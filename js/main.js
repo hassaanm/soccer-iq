@@ -4,6 +4,7 @@ import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
 import { generate } from './generate.js';
+import { VERSION } from './version.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
 
@@ -283,6 +284,7 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- loop ----------
 renderPickers(); show('#home');
+$('#version').textContent = VERSION;
 let last = performance.now(), time = 0;
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now; time += dt;
