@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test tests/",
     "audit": "node scripts/audit.js",
-    "audit:gen": "node scripts/gen-audit.js"
+    "audit:gen": "node scripts/gen-audit.js",
+    "voice": "node scripts/voice-build.js"
   }
 }

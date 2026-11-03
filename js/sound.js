@@ -83,3 +83,44 @@ const SFX = {
   aww: () => { tone(330, .5, { vol: .08, type: 'triangle', f1: 220 }); noise(.9, { type: 'lowpass', f0: 900, f1: 300, vol: .06, attack: .15 }); },
 };
 export function sfx(name, arg) { if (!ctx || !enabled) return; try { SFX[name]?.(arg); } catch { /* audio not ready */ } }
+
+// ---------- recorded voice ----------
+// Clips are fetched once and decoded; leading/trailing silence is trimmed so names flow into the sentence.
+// The voice has its own gain straight to the speakers, so it isn't muted by the Sounds switch.
+let voiceIndex = null, voiceGain = null, voicePlaying = [];
+const clipCache = new Map();
+export async function loadVoice(base = 'audio/voice/') {
+  try { const r = await fetch(base + 'index.json'); voiceIndex = { base, ...(await r.json()) }; } catch { voiceIndex = null; }
+}
+function trim(buf) {
+  const d = buf.getChannelData(0), th = .01;
+  let a = 0, b = d.length - 1;
+  while (a < b && Math.abs(d[a]) < th) a++;
+  while (b > a && Math.abs(d[b]) < th) b--;
+  a = Math.max(0, a - 400); b = Math.min(d.length - 1, b + 1200);
+  const out = ctx.createBuffer(1, b - a + 1, buf.sampleRate); out.getChannelData(0).set(d.subarray(a, b + 1)); return out;
+}
+function clip(key) {
+  const file = voiceIndex?.clips[key]; if (!file) return null;
+  if (!clipCache.has(file)) clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(b => new Promise((res, rej) => ctx.decodeAudioData(b, res, rej))).then(trim).catch(() => null));
+  return clipCache.get(file);
+}
+// True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
+export const canSpeak = keys => !!(ctx && voiceIndex && keys.every(k => voiceIndex.clips[k]));
+export function stopVoice() { for (const s of voicePlaying) try { s.stop(); } catch { /* already stopped */ } voicePlaying = []; }
+let voiceToken = 0;
+export async function speakClips(keys) {
+  const token = ++voiceToken; stopVoice();
+  const bufs = await Promise.all(keys.map(clip));
+  if (token !== voiceToken || bufs.some(b => !b)) return;
+  if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = 1; voiceGain.connect(ctx.destination); }
+  let t = now() + .05;
+  duck(true);
+  bufs.forEach((b, i) => {
+    const src = ctx.createBufferSource(); src.buffer = b; src.connect(voiceGain); src.start(t); voicePlaying.push(src);
+    t += b.duration + .04;
+    if (i === bufs.length - 1) src.onended = () => { if (token === voiceToken) duck(false); };
+  });
+}
+// Preload a few clips (e.g. this team's names) so the first line plays without a pause.
+export function preloadClips(keys) { if (ctx && voiceIndex) keys.forEach(clip); }
