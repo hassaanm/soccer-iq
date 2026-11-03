@@ -13,19 +13,25 @@ function canvasTex(w, h, draw) {
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
 }
 
-// Shirt + shorts wrapped around the body. u = 0.25 is the chest, u = 0.75 the back.
+// Shirt + shorts wrapped around the body. The lathe starts at phi = PI/8 so a flat facet sits at the middle of the
+// chest and back; that puts the chest at u = 0.1875 (x = 96 of 512) and the back at u = 0.6875 (x = 352).
+// Drawn at 2x so the name stays crisp. Number high on the back, name just above the shorts, where the camera
+// (behind and above the player) can see it past the head.
+const BACK = 352, CHEST = 96;
 function bodyTex(kit, p) {
-  return canvasTex(512, 256, g => {
+  return canvasTex(1024, 512, g => {
+    g.scale(2, 2);
     g.fillStyle = kit.colors[0]; g.fillRect(0, 0, 512, 256);
     if (kit.pattern === 'stripes') { g.fillStyle = kit.colors[1]; for (let i = 0; i < 16; i += 2) g.fillRect(i * 32 + 16, 0, 32, 256); }
-    if (kit.pattern === 'band') for (const c of [128, 384]) { g.fillStyle = '#fff'; g.fillRect(c - 30, 0, 60, 256); g.fillStyle = kit.colors[1]; g.fillRect(c - 20, 0, 40, 256); }
+    if (kit.pattern === 'band') for (const c of [CHEST, BACK]) { g.fillStyle = '#fff'; g.fillRect(c - 30, 0, 60, 256); g.fillStyle = kit.colors[1]; g.fillRect(c - 20, 0, 40, 256); }
     g.fillStyle = kit.shorts; g.fillRect(0, 176, 512, 80);
     g.fillStyle = kit.trim; g.fillRect(0, 0, 512, 12);
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
-    g.font = '900 90px system-ui,sans-serif'; g.lineWidth = 10; g.strokeStyle = 'rgba(0,0,0,.45)';
-    g.strokeText(p.num, 384, 110); g.fillStyle = kit.num; g.fillText(p.num, 384, 110);
-    g.font = '800 28px system-ui,sans-serif'; g.lineWidth = 6; g.strokeText(p.name, 384, 46, 170); g.fillText(p.name, 384, 46, 170);
-    g.fillStyle = kit.trim; g.beginPath(); g.arc(150, 60, 11, 0, 7); g.fill();
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.strokeStyle = 'rgba(0,0,0,.5)';
+    g.font = '900 74px system-ui,sans-serif'; g.lineWidth = 9;
+    g.strokeText(p.num, BACK, 94, 120); g.fillStyle = kit.num; g.fillText(p.num, BACK, 94, 120);
+    g.font = '900 36px system-ui,sans-serif'; g.lineWidth = 7;
+    g.strokeText(p.name, BACK, 150, 150); g.fillText(p.name, BACK, 150, 150);
+    g.fillStyle = kit.trim; g.beginPath(); g.arc(CHEST + 22, 60, 11, 0, 7); g.fill();
   });
 }
 // Simple face: two dark eyes and a small smile, painted at u = 0.5 (front after rotateX).
@@ -72,7 +78,7 @@ function makeRig(p, kit, isHero) {
     const bt = add(knee, sph(.085), boot); bt.scale.set(1.5, .95, .7); bt.position.set(.05, 0, -Lg * .5 + .03);
     legs.push({ hip, knee });
   }
-  const body = add(g, new THREE.LatheGeometry(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), 8).rotateX(Math.PI / 2),
+  const body = add(g, new THREE.LatheGeometry(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), 8, Math.PI / 8).rotateX(Math.PI / 2),
     (() => { const m = M('#ffffff', { map: bodyTex(kit, p) }); mats.push(m); return m; })());
   body.position.z = hipZ - .1; body.scale.set(.72, .9, hs);
   const top = hipZ - .1 + bodyH;
@@ -84,19 +90,77 @@ function makeRig(p, kit, isHero) {
   }
   const R = .26, hz = top + R * .78;
   add(g, sph(R), (() => { const m = M('#ffffff', { map: faceTex(p) }); mats.push(m); return m; })()).position.z = hz;
-  // Hair: a cap for everyone, plus curls or a little quiff depending on the player, so they don't all look alike.
-  const hairM = mat(p.hair), style = [...p.name].reduce((a, c) => a + c.charCodeAt(0), 0) % 3;
-  add(g, new THREE.SphereGeometry(R * 1.06, 10, 7, 0, Math.PI * 2, 0, Math.PI * .5).rotateX(Math.PI / 2).rotateY(-.4), hairM).position.set(-.01, 0, hz + .01);
-  if (style === 1) for (let i = 0; i < 9; i++) {
-    const a = i / 9 * Math.PI * 2, el = .55 + (i % 2) * .25, c = add(g, new THREE.IcosahedronGeometry(R * .32, 0), hairM);
-    c.position.set(Math.cos(a) * Math.cos(el) * R * .95 - .04, Math.sin(a) * Math.cos(el) * R * .95, hz + Math.sin(el) * R * .95);
-  }
-  if (style === 2) { const q = add(g, new THREE.IcosahedronGeometry(R * .42, 0), hairM); q.scale.set(1.1, .9, .6); q.position.set(R * .45, 0, hz + R * .82); }
+  addHair(g, p, kit, hz, R, mat, add);
   const blob = new THREE.Mesh(new THREE.CircleGeometry(.42, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
   blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
   g.userData = { mats, legs, arms, yaw: null };
   return g;
+}
+
+// Hair. Styles are picked from a hash of the name unless the player sets p.hairStyle.
+// The face is painted at +x: eyes ~8 degrees above the equator, brows ~20. Every piece stays above ~23 degrees
+// at the front (or behind the ears at the sides), so hair never covers the face.
+const HAIR_STYLES = ['buzz', 'curly', 'quiff', 'spiky', 'bun', 'swept', 'afro', 'headband', 'long'];
+function nameHash(s) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.codePointAt(0), 16777619); return h >>> 0; }
+function addHair(g, p, kit, hz, R, mat, add) {
+  const style = HAIR_STYLES.includes(p.hairStyle) ? p.hairStyle : HAIR_STYLES[nameHash(p.name || '') % HAIR_STYLES.length];
+  const hairM = mat(p.hair), Y = new THREE.Vector3(0, 1, 0);
+  // Shell of a sphere around the head. Pole on +z; tilt < 0 lifts the front edge to `-tilt` radians above the equator.
+  const shell = (r, theta, tilt, phi0 = 0, phiLen = Math.PI * 2) =>
+    new THREE.SphereGeometry(r, 10, 7, phi0, phiLen, 0, theta).rotateX(Math.PI / 2).rotateY(tilt);
+  // Point on the head at azimuth az (0 = front) and elevation el, at distance d * R from the head centre.
+  const at = (az, el, d) => new THREE.Vector3(Math.cos(az) * Math.cos(el) * R * d, Math.sin(az) * Math.cos(el) * R * d, hz + Math.sin(el) * R * d);
+  const lump = (r, pos, sx = 1, sy = 1, sz = 1, detail = 0) => { const m = add(g, new THREE.IcosahedronGeometry(r, detail), hairM); m.position.copy(pos); m.scale.set(sx, sy, sz); return m; };
+  const capOn = (r = 1.06, tilt = -.4) => add(g, shell(R * r, Math.PI * .5, tilt), hairM).position.set(-.01, 0, hz + .01);
+  // Back half only (behind the ears), reaching lower than the cap. Back half of the raw sphere is phi in (-PI/2, PI/2).
+  const backShell = (r, theta, m = hairM, spread = 1) => add(g, shell(R * r, theta, 0, -Math.PI / 2 * spread, Math.PI * spread), m).position.set(-.005, 0, hz);
+
+  if (style === 'buzz') {
+    capOn(1.03, -.42);
+    backShell(1.015, Math.PI * .7, mat(new THREE.Color(p.hair).lerp(new THREE.Color(p.skin), .45))); // faded sides and back
+  } else if (style === 'curly') {
+    capOn(1.04, -.45);
+    for (let i = 0; i < 8; i++) lump(R * .3, at(Math.PI * (.3 + 1.4 * i / 7), .42, .97));     // lower ring, sides and back only
+    for (let i = 0; i < 6; i++) lump(R * .3, at(i / 6 * Math.PI * 2 + .3, .95, .95));          // upper ring
+    lump(R * .32, at(0, Math.PI / 2, .98));
+  } else if (style === 'quiff') {
+    capOn(1.05, -.42);
+    const q = lump(R * .44, at(.0, 1.05, .9), 1.25, .95, .7); q.rotation.y = -.45;
+    lump(R * .3, at(Math.PI, .9, .88), 1.1, 1, .7);
+  } else if (style === 'spiky') {
+    capOn(1.04, -.42);
+    const cone = new THREE.ConeGeometry(R * .17, R * .55, 4);
+    for (const [az, el] of [[0, .78], [.9, .7], [-.9, .7], [2, .55], [-2, .55], [Math.PI, .6], [.45, 1.2], [-.45, 1.2], [2.6, 1.05], [-2.6, 1.05], [0, 1.5]]) {
+      const d = at(az, el, 1).sub(new THREE.Vector3(0, 0, hz)).normalize(), m = add(g, cone, hairM);
+      m.position.copy(at(az, el, 1.08)); m.quaternion.setFromUnitVectors(Y, d);
+    }
+  } else if (style === 'bun') {
+    capOn(1.035, -.45);
+    lump(R * .34, at(Math.PI, 1.1, 1.3), 1, 1, 1, 1);
+    const band = add(g, new THREE.TorusGeometry(R * .15, R * .07, 4, 10), mat(kit.trim));
+    band.position.copy(at(Math.PI, 1.1, 1.03)); band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), at(Math.PI, 1.1, 1).sub(new THREE.Vector3(0, 0, hz)).normalize());
+  } else if (style === 'swept') {
+    capOn(1.06, -.42);
+    const s = (p.name || '').length % 2 ? 1 : -1;
+    const f = lump(R * .42, at(s * .35, .82, .92), .75, 1.55, .5); f.rotation.x = -s * .35; f.rotation.y = -.35;
+    lump(R * .3, at(-s * 1.6, .55, .95), .8, 1, .9);
+  } else if (style === 'afro') {
+    capOn(1.04, -.45);
+    const c = new THREE.Vector3(-.085, 0, hz + .095), big = R * 1.16;
+    lump(big, c, 1, 1, .95, 1);
+    for (const [az, el] of [[1.3, .35], [-1.3, .35], [2.2, .55], [-2.2, .55], [Math.PI, .2], [.8, .95], [-.8, .95], [2.6, 1.1], [-2.6, 1.1]])
+      lump(R * .36, c.clone().add(new THREE.Vector3(Math.cos(az) * Math.cos(el), Math.sin(az) * Math.cos(el), Math.sin(el)).multiplyScalar(big * .9)));
+  } else if (style === 'headband') {
+    capOn(1.06, -.4);
+    backShell(1.07, Math.PI * .7, hairM, 1.1);
+    const band = add(g, new THREE.TorusGeometry(R * 1.07, R * .065, 4, 18).rotateY(-.52), mat(kit.trim));
+    band.position.set(-.005, 0, hz);
+  } else { // long
+    capOn(1.07, -.42);
+    backShell(1.09, Math.PI * .78, hairM, 1.15);
+    const f = lump(R * .34, at(.5, .75, .95), .7, 1.3, .5); f.rotation.x = -.3;
+  }
 }
 
 // Procedural run cycle driven by distance covered (so feet don't skate), with a knee bend,
@@ -129,19 +193,30 @@ function animate(g, a, sim) {
   u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
 }
 
-// Soccer ball: a finely split icosahedron; faces near the 12 original corners are black (the pentagons).
+// Soccer ball: a smooth sphere painted per pixel as a truncated icosahedron (12 black pentagons, 20 white hexagons).
+// Each pixel takes the panel whose face plane its direction hits first; seams go where the two best panels are close.
 function makeBall(r) {
-  const geo = new THREE.IcosahedronGeometry(r, 3), pos = geo.attributes.position, n = pos.count;
-  const corners = new THREE.IcosahedronGeometry(1, 0).attributes.position, dirs = [];
-  for (let i = 0; i < corners.count; i++) { const v = new THREE.Vector3().fromBufferAttribute(corners, i).normalize(); if (!dirs.some(d => d.distanceTo(v) < 1e-3)) dirs.push(v); }
-  const colors = new Float32Array(n * 3), c = new THREE.Vector3();
-  for (let i = 0; i < n; i += 3) {
-    c.set(0, 0, 0); for (let k = 0; k < 3; k++) c.add(new THREE.Vector3().fromBufferAttribute(pos, i + k)); c.normalize();
-    const black = dirs.some(d => d.dot(c) > .93), v = black ? .1 : 1;
-    for (let k = 0; k < 3; k++) colors.set([v, v, v * (black ? 1.2 : 1)], (i + k) * 3);
+  const t = (1 + Math.sqrt(5)) / 2, v3 = (x, y, z) => new THREE.Vector3(x, y, z).normalize();
+  const V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(p => v3(...p));
+  const hex = [];
+  for (let a = 0; a < 12; a++) for (let b = a + 1; b < 12; b++) for (let c = b + 1; c < 12; c++) {
+    const near = (i, j) => V[i].dot(V[j]) > .4; // neighbours on the icosahedron
+    if (near(a, b) && near(b, c) && near(a, c)) hex.push(V[a].clone().add(V[b]).add(V[c]).normalize());
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  const mat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
+  mat.onBeforeCompile = sh => {
+    sh.uniforms.uPent = { value: V }; sh.uniforms.uHex = { value: hex };
+    sh.vertexShader = 'varying vec3 vBallPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvBallPos = position;');
+    sh.fragmentShader = 'varying vec3 vBallPos;\nuniform vec3 uPent[12];\nuniform vec3 uHex[20];\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      vec3 bp = normalize(vBallPos);
+      float b1 = -2.0, b2 = -2.0, pent = 0.0;
+      for (int i = 0; i < 12; i++) { float s = dot(bp, uPent[i]) * 0.9742; if (s > b1) { b2 = b1; b1 = s; pent = 1.0; } else if (s > b2) b2 = s; }
+      for (int i = 0; i < 20; i++) { float s = dot(bp, uHex[i]); if (s > b1) { b2 = b1; b1 = s; pent = 0.0; } else if (s > b2) b2 = s; }
+      float e = b1 - b2, fw = fwidth(e) + 1e-4;
+      vec3 panel = mix(vec3(0.96, 0.96, 0.94), vec3(0.08, 0.08, 0.1), pent);
+      diffuseColor.rgb *= mix(panel, vec3(0.2, 0.2, 0.24), 1.0 - smoothstep(0.018 - fw, 0.018 + fw, e));`);
+  };
+  return new THREE.Mesh(new THREE.SphereGeometry(r, 28, 18), mat);
 }
 
 const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6], b: [-6, -6], o: [-1, 0] },
@@ -302,6 +377,14 @@ export class World {
     }));
     this.glows = new Map();
     this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = '';
+    // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
+    this.spotPool = Array.from({ length: 4 }, () => {
+      const g = new THREE.Group();
+      const disc = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.55, .75, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false, toneMapped: false }));
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(.18, 16), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+      ring.position.z = dot.position.z = .01; g.add(disc, ring, dot); g.visible = false; this.scene.add(g); return g;
+    });
   }
 
   setTeams(us, them) {
@@ -357,6 +440,10 @@ export class World {
       const s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
       if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = .92 + .08 * Math.sin(time * 5); }
     }
+    this.spotPool.forEach((g, i) => {
+      const sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) return;
+      g.position.set(sp.x, sp.y, .035); g.scale.setScalar(1 + .1 * Math.sin(time * 5 + i));
+    });
     this.setLines(ui.lines || []);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
     const b = sim.ball, bp = this.ballPrev;

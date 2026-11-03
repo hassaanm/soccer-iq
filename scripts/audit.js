@@ -1,11 +1,11 @@
 // Prints how every scenario × option plays out, and which soccer-realism rules it breaks.
 // Usage: npm run audit
 import { PATH, allScenarios } from '../js/skills.js';
-import { OPTIONS, playOption, judge } from '../tests/harness.js';
+import { optionsFor, playOption, judge } from '../tests/harness.js';
 
 let fails = 0;
 console.log('scenario      option      expect  result   gap   secs  problems');
-for (const sk of PATH.filter(s => s.ready)) for (const sc of allScenarios(sk.id)) for (const opt of OPTIONS) {
+for (const sk of PATH.filter(s => s.ready)) for (const sc of allScenarios(sk.id)) for (const opt of optionsFor(sc)) {
   const r = await playOption(sc, opt), broken = judge(r);
   if (broken.length) fails++;
   console.log([sc.id.padEnd(13), opt.padEnd(11), (r.good ? 'good' : 'bad').padEnd(7), (r.banners.join(',') || '-').padEnd(8),

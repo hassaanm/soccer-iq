@@ -3,7 +3,7 @@ import { World } from './world.js';
 import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
-import { generateLookUp } from './generate.js';
+import { generate } from './generate.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
 
@@ -38,12 +38,12 @@ const flash = (el, cls, text, ms) => {
 };
 const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look, locked }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
     if (d.mode !== mode) d.mode = mode;
-    hudEl.classList.toggle('up', lookUp);
+    hudEl.classList.toggle('up', lookUp); hudEl.dataset.kind = kind; hudEl.classList.toggle('touchpick', !!touchPick);
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
     $('#lookBtn').classList.toggle('nudge', nudge === 'look');
     $('#passBtn').classList.toggle('locked', !!locked); $('#dribBtn').classList.toggle('locked', !!locked);
@@ -51,8 +51,20 @@ const hud = {
     const lb = $('#lookBtn'); lb.classList.toggle('on', lookUp);
     const label = lookUp ? 'HEAD DOWN' : 'LOOK UP'; if (lb.lastChild.textContent !== label) { lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = label; }
     // Head down = tunnel vision: blurry, darker edges. Clears as he looks up.
-    const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
+    const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
     tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
+  },
+  // Stars for a decision. With `watch`, waits for "Watch the 3-star play" or "Next"; otherwise closes by itself.
+  rate(stars, text, watch) {
+    const el = $('#rate');
+    el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
+    el.querySelector('.txt').textContent = text; el.querySelector('.btns').classList.toggle('hidden', !watch);
+    el.className = 's' + stars; void el.offsetWidth; el.classList.add('show');
+    return new Promise(res => {
+      const done = v => { el.classList.remove('show'); res(v); };
+      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1300 : 900);
+      $('#rateWatch').onclick = () => done('watch'); $('#rateNext').onclick = () => done('next');
+    });
   },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
   banner(text, kind) { const b = $('#banner'); b.firstChild.textContent = text; b.className = kind; void b.offsetWidth; b.classList.add('show'); clearTimeout(timers.banner); timers.banner = setTimeout(() => b.classList.remove('show'), 1500); },
@@ -91,7 +103,13 @@ function drawShirt(cv, kit, num) {
   g.strokeStyle = 'rgba(36,25,58,.55)'; g.lineWidth = 3; g.lineJoin = 'round'; g.stroke(body);
   g.restore();
 }
-const neighbor = (id, dir, skip) => { let i = TEAMS.findIndex(t => t.id === id); do { i = (i + dir + TEAMS.length) % TEAMS.length; } while (TEAMS[i].id === skip); return TEAMS[i]; };
+// Cycles through teams of the same kind (clubs or countries) as `id`, skipping the other side's team.
+const neighbor = (id, dir, skip) => {
+  const type = teamById(id).type, list = TEAMS.filter(t => t.type === type);
+  let i = list.findIndex(t => t.id === id);
+  do { i = (i + dir + list.length) % list.length; } while (list[i].id === skip && list.length > 1);
+  return list[i];
+};
 function renderPickers(flip) {
   for (const side of ['us', 'them']) {
     const el = $(`.team[data-side=${side}]`), t = teamById(P[side]), other = side === 'us' ? P.them : P.us;
@@ -101,17 +119,34 @@ function renderPickers(flip) {
     drawShirt(el.querySelector('.side.r'), next.kit, next.players[0].num);
     el.style.setProperty('--team', t.kit.colors[0]);
     el.querySelector('.tname').textContent = t.name;
+    el.querySelectorAll('.kind button').forEach(b => b.classList.toggle('on', b.dataset.type === t.type));
     el.querySelector('.roster').innerHTML = t.players.map(p => `<span>${displayName(p.name)}</span>`).join('');
     if (flip && flip.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); void sh.offsetWidth; sh.classList.add(flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));
-  $('#stickers').innerHTML = P.stickers.slice(-10).map(s => `<span>${s.emoji}</span>`).join('');
+  renderLessons();
+}
+// Lesson chips on the home screen: each unlocks after the one before it has been played once.
+function renderLessons() {
+  const cur = nextSkill(P, PATH);
+  $('#lessons').innerHTML = PATH.map((sk, i) => {
+    const open = i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0, st = P.skills[sk.id];
+    return `<button class="chip ${sk.id === cur ? 'on' : ''} ${open ? '' : 'locked'}" data-id="${sk.id}" ${open ? '' : 'disabled'} title="${sk.kid}">
+      <span>${open ? sk.emoji : '🔒'}</span>${st?.sessions ? `<i>${'★'.repeat(Math.min(3, st.box))}</i>` : ''}</button>`;
+  }).join('');
+  $('#lessonName').textContent = `${skillById(cur).emoji} ${skillById(cur).kid}` + (skillById(cur).side === 'defense' ? '  ·  defense' : '');
+  document.querySelectorAll('#lessons .chip').forEach(c => c.onclick = () => { P.settings.skill = c.dataset.id; save(P); renderLessons(); });
 }
 function cycle(side, dir) {
   P[side] = neighbor(P[side], dir, side === 'us' ? P.them : P.us).id; save(P); renderPickers({ side, dir });
 }
 document.querySelectorAll('.team').forEach(el => {
   const side = el.dataset.side;
+  el.querySelectorAll('.kind button').forEach(b => b.onclick = () => {
+    if (teamById(P[side]).type === b.dataset.type) return;
+    const skip = side === 'us' ? P.them : P.us;
+    P[side] = TEAMS.find(t => t.type === b.dataset.type && t.id !== skip).id; save(P); renderPickers({ side, dir: 1 });
+  });
   el.querySelector('.prev').onclick = () => cycle(side, -1);
   el.querySelector('.next').onclick = () => cycle(side, 1);
   el.querySelector('.side.l').onclick = () => cycle(side, -1);
@@ -135,6 +170,7 @@ function card({ emoji, title, sub, button, alt }) {
 }
 
 // ---------- session ----------
+const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floor(Math.random() * ids.length)], Math.floor(Math.random() * 1e9))).filter(Boolean);
 let running = false;
 async function runSession() {
   if (running) return; running = true;
@@ -148,19 +184,19 @@ async function runSession() {
   const watch = await card({ emoji: sk.emoji, title: sk.kid, sub: firstTime ? `Watch ${hero} first` : `Want to watch ${hero} first?`,
     button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
   if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
-  await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
+  await card({ emoji: '⭐', title: 'Your turn!', sub: sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
   // First session: the hand-made scenarios. After that, about two thirds are freshly generated so no two sessions match.
-  const n = P.settings.rounds, fresh = n => Array.from({ length: n }, () => generateLookUp(Math.floor(Math.random() * 1e9))).filter(Boolean);
-  const gen = skillId === 'look-up' && !firstTime ? Math.round(n * 2 / 3) : 0;
-  const rounds = shuffle([...pickRounds([skillId, ...reviews], n - gen), ...fresh(gen)]), results = [];
+  // "Look up" starts with its hand-made rounds; everything else (and later sessions) is freshly generated.
+  const n = P.settings.rounds, gen = skillId === 'look-up' && firstTime ? 0 : skillId === 'look-up' ? Math.round(n * 2 / 3) : n;
+  const rounds = shuffle([...pickRounds([skillId, ...reviews], n - gen), ...fresh(gen, [skillId])]), results = [];
   let misses = 0;
   hud.dots(results, n);
   for (let i = 0; i < rounds.length; i++) {
     const r = await game.round(rounds[i], { hint: i < 2 || misses >= 2 });
-    results.push(r.firstTry); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
+    results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
   }
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  const score = await game.match([skillId, ...reviews], skillId === 'look-up' ? fresh(6) : []);
+  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
   finishSession(P, skillId, firstTry, rounds.length);
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
@@ -172,6 +208,23 @@ async function runSession() {
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
+// Free play: a match to 3 goals mixing every lesson he has played (attack and defense), with big pushes allowed.
+async function runFreePlay() {
+  if (running) return; running = true; unlockAudio();
+  const learned = PATH.filter(s => P.skills[s.id]?.sessions).map(s => s.id), ids = learned.length ? learned : ['look-up'];
+  const us = teamById(P.us), them = teamById(P.them);
+  game.setTeams(us, them); world.setEnv('crowd'); show(null); hud.dots([], 0);
+  await card({ emoji: '⚽', title: 'Free play!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
+  if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
+  $('#results .emoji').textContent = won ? '🏆' : '⚽'; $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
+  $('#results .starsrow').textContent = ''; $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
+  say(won ? 'You won the match!' : 'Good game!');
+  game.home(); show('#results'); renderPickers(); running = false;
+}
+$('#freeBtn').onclick = runFreePlay;
+$('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
+$('#touchBig').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('big'); });
 $('#againBtn').onclick = () => runSession();
 $('#teamsBtn').onclick = () => show('#home');
 $('#homeBtn').onclick = () => location.reload();

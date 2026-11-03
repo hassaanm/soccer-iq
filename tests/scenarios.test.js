@@ -12,7 +12,7 @@ function frozen(sc) {
 }
 
 for (const sk of PATH.filter(s => s.ready)) {
-  for (const sc of allScenarios(sk.id)) {
+  for (const sc of allScenarios(sk.id).filter(s => !s.id.startsWith('gen-'))) { // hand-made ones; generated ones are covered by generate.test.js
     test(`${sc.id}: good passes are open and bad passes are cut out`, () => {
       const s = frozen(sc), good = new Set([sc.best, ...(sc.ok || [])]);
       s.mates.forEach((m, i) => {

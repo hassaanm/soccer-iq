@@ -34,5 +34,7 @@ test('nextSkill honors the grown-up pick only for ready skills', () => {
   const p = defaultProgress();
   assert.equal(nextSkill(p, PATH), 'look-up');
   p.settings.skill = 'one-goes';
+  assert.equal(nextSkill(p, PATH), 'one-goes');
+  p.settings.skill = 'not-a-skill';
   assert.equal(nextSkill(p, PATH), 'look-up');
 });

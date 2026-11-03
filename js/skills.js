@@ -1,17 +1,18 @@
 // The learning path (see research/skill-tree.md) and the scenarios for each skill that is ready.
-import { mirrorScenario, shuffle } from './geom.js';
+import { mirrorScenario, shuffle, PITCH } from './geom.js';
+import { generate, generates } from './generate.js';
+export { PITCH };
 
-export const PITCH = { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 };
-
+// side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one idea, said to him.
 export const PATH = [
-  { id: 'look-up', emoji: '👀', kid: 'Look up!', adult: 'Scan before deciding', ready: true },
-  { id: 'get-goal-side', emoji: '🏠', kid: 'Run home first', adult: 'Recover goal-side after losing the ball', ready: false },
-  { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', adult: 'Dribble where defenders are not', ready: false },
-  { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', adult: 'One presses, the others cover', ready: false },
-  { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', adult: 'Recognize a 2v1 trap and release the ball', ready: false },
-  { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', adult: 'Mark the free attacker', ready: false },
-  { id: 'pass-to-open', emoji: '🎯', kid: 'Pass to the open friend', adult: 'Choose the unmarked teammate', ready: false },
-  { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', adult: 'Look forward, then sideways, then back', ready: false },
+  { id: 'look-up', emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding', ready: true, tip: 'Look up before you decide.' },
+  { id: 'get-goal-side', emoji: '🏠', kid: 'Run home first', side: 'defense', adult: 'Recover goal-side after losing the ball', ready: true, tip: 'Lost the ball? Run home first, between the ball and your goal.' },
+  { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true, tip: 'Lots of space? Push it and go! Defender close? Keep it close.' },
+  { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true, tip: 'Only one bee chases the ball. Everyone else guards someone.' },
+  { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball', ready: true, tip: 'Two defenders coming? Pass before they trap you.' },
+  { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true, tip: 'Guard the open player. Stand between him and your goal.' },
+  { id: 'pass-to-open', emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true, tip: 'Pass to the friend with nobody right next to him.' },
+  { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Look forward, then sideways, then back', ready: true, tip: 'Look forward first, then sideways, then back.' },
 ];
 export const skillById = id => PATH.find(s => s.id === id);
 
@@ -38,12 +39,14 @@ const LOOK_UP = [
 
 const BANK = { 'look-up': LOOK_UP };
 
+// Hand-made scenarios (and their mirror images) plus a fixed sample of generated ones.
 export function allScenarios(skillId) {
-  const base = BANK[skillId] || [];
-  return base.flatMap(sc => [{ ...sc, skill: skillId }, { ...mirrorScenario(sc, PITCH.W), skill: skillId }]);
+  const base = (BANK[skillId] || []).flatMap(sc => [{ ...sc, skill: skillId }, { ...mirrorScenario(sc, PITCH.W), skill: skillId }]);
+  const gen = generates(skillId) && !BANK[skillId] ? Array.from({ length: 10 }, (_, i) => generate(skillId, 101 + i)).filter(Boolean) : [];
+  return [...base, ...gen];
 }
 
-export const demoScenario = skillId => ({ ...BANK[skillId][0], skill: skillId });
+export const demoScenario = skillId => BANK[skillId] ? { ...BANK[skillId][0], skill: skillId } : generate(skillId, 7);
 
 // A round list: n scenarios, no repeats until the bank runs out, never the same base twice in a row.
 export function pickRounds(skillIds, n, rnd = Math.random) {

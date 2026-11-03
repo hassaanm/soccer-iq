@@ -3,9 +3,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PATH, allScenarios } from '../js/skills.js';
-import { OPTIONS, playOption, judge } from './harness.js';
+import { optionsFor, playOption, judge } from './harness.js';
 
-for (const sk of PATH.filter(s => s.ready)) for (const sc of allScenarios(sk.id)) for (const opt of OPTIONS) {
+for (const sk of PATH.filter(s => s.ready)) for (const sc of allScenarios(sk.id)) for (const opt of optionsFor(sc)) {
   test(`${sc.id} ${opt}`, async () => {
     const r = await playOption(sc, opt), broken = judge(r);
     assert.deepEqual(broken, [], broken.join('; '));

@@ -36,14 +36,14 @@ test('a right first choice counts as first try', async () => {
   const { g } = makeGame();
   const sc = allScenarios('look-up')[0];
   const r = await drive(g, g.round(sc, { hint: false }), gm => gm.sc.best);
-  assert.deepEqual(r, { firstTry: true });
+  assert.equal(r.firstTry, true); assert.equal(r.stars, 3);
 });
 
 test('a wrong choice shows feedback, replays, then accepts the retry', async () => {
   const { g, events } = makeGame();
   let tries = 0;
   const r = await drive(g, g.round(allScenarios('look-up').find(s => s.id === 'lu-space'), { hint: false }), gm => (tries++ ? gm.sc.best : 'pass:0'));
-  assert.deepEqual(r, { firstTry: false });
+  assert.equal(r.firstTry, false);
   assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'Stolen!'));
   assert.ok(events.some(e => e[0] === 'caption' && /Nobody was open/.test(e[1])));
 });

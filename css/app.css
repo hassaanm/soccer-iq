@@ -148,3 +148,31 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 @keyframes fillring{to{clip-path:inset(0 0 0 0)}}
 #gearTip{position:absolute;top:66px;right:calc(14px + var(--safe-r));background:var(--ink);color:#fff;font-size:13px;padding:6px 12px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
 #gearTip.show{opacity:1}
+
+/* star rating after each decision */
+#rate{position:absolute;top:47%;left:50%;transform:translate(-50%,10px) scale(.9);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s cubic-bezier(.3,1.5,.5,1);
+  background:var(--cream);border:3px solid #fff;border-radius:24px;padding:10px 22px 14px;text-align:center;box-shadow:0 7px 0 rgba(36,25,58,.2),0 16px 30px rgba(0,0,0,.25);max-width:80vw}
+#rate.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
+#rate .stars{font-size:44px;letter-spacing:6px;line-height:1.1}
+#rate .stars span{color:#d9d0c4}
+#rate .stars span.on{color:var(--gold-d);text-shadow:0 2px 0 var(--gold-e)}
+#rate .txt{font-size:18px;margin:4px 0 8px}
+#rate .btns{margin-top:4px}
+/* small touches or big push */
+#touchPick{position:absolute;bottom:calc(20px + var(--safe-b));left:50%;transform:translateX(-50%);display:none;gap:14px}
+#touchPick .btn{font-size:18px}
+#touchPick i{font-style:normal}
+#hud.touchpick #touchPick{display:flex}
+#hud[data-kind=defense] :is(#passBtn,#dribBtn){display:none!important}
+/* home: lesson chips, free play, clubs / countries */
+.lessonbox{display:flex;flex-direction:column;gap:4px}
+#lessonName{font-size:14px;color:#fff;text-shadow:0 1px 2px rgba(36,25,58,.7)}
+#lessons{display:flex;gap:4px}
+#lessons .chip{position:relative;width:32px;height:32px;border:0;border-radius:12px;background:rgba(255,250,242,.85);font-size:19px;box-shadow:0 3px 0 rgba(36,25,58,.25);cursor:pointer;padding:0}
+#lessons .chip.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 3px 0 var(--gold-e)}
+#lessons .chip.locked{opacity:.55;cursor:default}
+#lessons .chip i{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);font-style:normal;font-size:9px;color:var(--gold-d);text-shadow:0 1px 0 #fff;white-space:nowrap}
+.freebox{display:flex;justify-content:flex-end}
+.team .kind{display:flex;justify-content:center;gap:4px;margin:6px 0 0}
+.team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
+.team .kind button.on{background:var(--ink);color:#fff}

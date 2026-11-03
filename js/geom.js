@@ -1,4 +1,5 @@
 // Small pure helpers shared by the sim, the game and the tests.
+export const PITCH = { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 };
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };

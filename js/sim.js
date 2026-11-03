@@ -14,7 +14,8 @@ export class Sim {
     add('hero', 'us', sc.hero);
     sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
     sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
-    this.ball = { x: sc.hero[0] + 0.5, y: sc.hero[1], z: 0, state: 'carried', carrier: 'hero' };
+    const c = this.a(sc.carrier || 'hero'); // in defense lessons the other team starts with the ball
+    this.ball = { x: c.x + c.face[0] * .5, y: c.y, z: 0, state: 'carried', carrier: c.id };
     this.co = null; this.wait = 0; this.until = null;
   }
 
