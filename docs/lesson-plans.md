@@ -1,6 +1,6 @@
 # Lesson plans and replay
 
-Working notes for lessons that aren't built yet, and how the game keeps him coming back.
+How the lessons work, what each one teaches, and how the game keeps him coming back. All 8 lessons are built.
 The skill order comes from `research/skill-tree.md`; the teaching rules come from `research/learning-design.md`.
 
 ## How every lesson works
@@ -11,7 +11,22 @@ The skill order comes from `research/skill-tree.md`; the teaching rules come fro
 - **A good choice ends in a goal only if the path and the shot are really open.** Otherwise the round ends with "Kept the ball!".
 - **Every play is checked by the audit.** `npm run audit` covers the hand-made scenarios; `npm run audit:gen` covers generated ones.
 
-## Next lessons
+## Lessons (all built)
+
+Each lesson has a generator in `js/generate.js` with one or more teaching patterns. Every generated play is checked by `npm run audit:gen`.
+
+| Lesson | Side | Patterns | The right answer |
+|---|---|---|---|
+| Look up 👀 | attack | one open / nobody open / two open | look first, then the open friend or the space |
+| Run home first 🏠 | defense | goal-side | run to the spot between the ball and your goal |
+| Run into space 💨 | attack | space-far / space-near | lots of space: big push; defender near: small touches around him |
+| Only one bee chases 🐝 | defense | one-goes / you-go | a friend is on the ball: guard the open player; nobody is: you go |
+| Two shirts? Let it go! 🚧 | attack | trap | pass before two defenders close you in |
+| Guard the open player 🛡️ | defense | mark-free | stand goal-side of the free attacker, not behind him |
+| Pass to the open friend 🎯 | attack | marked / one open | the friend with nobody right next to him |
+| Forward first ⬆️ | attack | forward / two open | forward open friend (3★) beats the safe back pass (2★) |
+
+## Original notes
 
 ### Run into space (`dribble-to-space`)
 Teaches the difference between **dribbling** (small touches, ball close) and **running with the ball** (one big touch into open space, then sprint after it).
