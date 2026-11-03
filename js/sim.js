@@ -3,6 +3,13 @@
 import { lerp } from './geom.js';
 
 export const SPACE = .75; // meters between two players' centers
+const TURN = 9;            // radians per second a player can turn
+// Turn a player's facing toward (fx, fy) at a limited speed, so direction changes look like real turns.
+function turnToward(a, fx, fy, dt) {
+  const cur = Math.atan2(a.face[1], a.face[0]), want = Math.atan2(fy, fx);
+  const d = Math.atan2(Math.sin(want - cur), Math.cos(want - cur)), step = Math.max(-TURN * dt, Math.min(TURN * dt, d));
+  a.face = [Math.cos(cur + step), Math.sin(cur + step)];
+}
 
 export class Sim {
   constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
@@ -49,7 +56,7 @@ export class Sim {
       const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
       if (d > 0.02 && a.speed > 0) {
         const s = Math.min(a.speed * dt, d);
-        const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d]; a.dist += s;
+        const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; turnToward(a, dx / d, dy / d, dt); a.dist += s;
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
         if (this.ball.carrier === a.id && Math.floor(a.dist / 1.4) > Math.floor(before / 1.4)) this.on('touch');
         a.sp = lerp(a.sp, a.speed, Math.min(1, dt * 8));
@@ -67,7 +74,9 @@ export class Sim {
       // catches up. Touches cycle laces / inside / outside, nudging the ball sideways a little.
       const c = this.a(b.carrier), run = Math.min(1, c.sp / 2.5), k = (c.dist % 1.4) / 1.4, kind = Math.floor(c.dist / 1.4) % 3;
       const ahead = .34 + run * .55 * (1 - k), side = run * [0, .14, -.14][kind] * (1 - k);
-      b.x = c.x + c.face[0] * ahead - c.face[1] * side; b.y = c.y + c.face[1] * ahead + c.face[0] * side; b.z = 0;
+      // The ball rolls toward its spot at his feet instead of jumping there when he turns or takes it over.
+      const wx = c.x + c.face[0] * ahead - c.face[1] * side, wy = c.y + c.face[1] * ahead + c.face[0] * side, roll = Math.min(1, dt * 14);
+      b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);
@@ -78,7 +87,7 @@ export class Sim {
     for (const a of this.agents.values()) {
       if (a.sp < 0.3 && b.carrier !== a.id) {
         const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
-        if (l > 0.3) a.face = [dx / l, dy / l];
+        if (l > 0.3) turnToward(a, dx / l, dy / l, dt);
       }
     }
     if (!this.co) return;

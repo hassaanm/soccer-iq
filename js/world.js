@@ -444,7 +444,7 @@ export class World {
     this.heroRing.visible = !!ui.heroRing && !!h; if (h) this.heroRing.position.set(h.x, h.y, .02);
     for (const [k, m] of Object.entries(this.arrows)) {
       const s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
-      if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = .92 + .08 * Math.sin(time * 5); }
+      if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = s >= 1 ? .92 + .08 * Math.sin(time * 5) : s * .9; }
     }
     this.spotPool.forEach((g, i) => {
       const sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) return;

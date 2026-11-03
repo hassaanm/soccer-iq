@@ -91,6 +91,14 @@ function attack(r, pattern) {
   } else if (pattern === 'space-far') {                       // wide open field: push it and go
     add(onLane(mates[0], .6 + r() * .2)); add(onLane(mates[1], .6 + r() * .2));
     add([Math.min(L - 3, heroTo[0] + 12 + r() * 4), W / 2 + (r() - .5) * 6]);
+  } else if (pattern === 'space-behind') {                    // every defender is behind him: always push it and go
+    add(onLane(mates[0], .6 + r() * .2));
+    for (let k = 0; k < 2; k++) add([heroTo[0] - 1.5 - r() * 3, heroTo[1] + (r() - .5) * 8]);
+  } else if (pattern === 'space-close') {                     // a defender is close, ahead and to one side: push away from him
+    const side = pick(r, [1, -1]);
+    add(onLane(mates[0], .6 + r() * .2));
+    add(at(side * (.5 + r() * .5), 1.8 + r() * .5));
+    add([heroTo[0] - 3 - r() * 3, heroTo[1] + (r() - .5) * 6]);
   } else if (pattern === 'space-near') {                      // a defender lurks ahead: keep it close and go around
     add(onLane(mates[0], .6 + r() * .2)); add(onLane(mates[1], .6 + r() * .2));
     add(at((r() - .5) * .5, 5 + r() * 1.5));
@@ -123,6 +131,13 @@ function attack(r, pattern) {
     if (g['push:fwd'] !== 'good' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
     best = 'push:fwd'; safe = goods.filter(o => o.startsWith('drib:')); cue = 'Lots of space! Push it ahead and run!';
     return { ...sc, best, ok: Object.keys(g).filter(k => k.startsWith('push:') && g[k] === 'good' && k !== best), safe, cue };
+  } else if (pattern === 'space-behind' || pattern === 'space-close') {
+    const pushes = Object.keys(g).filter(k => k.startsWith('push:') && g[k] === 'good').sort((a, b) => pushEnd(P(heroTo), b.slice(5)).x - pushEnd(P(heroTo), a.slice(5)).x);
+    if (!pushes.length || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
+    if (pattern === 'space-close' && g['push:fwd'] === 'good' && pushes[0] === 'push:fwd' && pushes.length < 2) return null;
+    best = pushes[0]; safe = goods.filter(o => o.startsWith('drib:'));
+    cue = pattern === 'space-behind' ? 'All the defenders were behind you! Push it ahead and run!' : 'The defender was close, but not in your way. Push it away from him and race!';
+    return { ...sc, best, ok: pushes.slice(1), safe, cue };
   } else if (pattern === 'space-near') {
     if (g['push:fwd'] !== 'bad' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
     const smalls = goods.filter(o => o.startsWith('drib:') && o !== 'drib:fwd');
@@ -208,7 +223,7 @@ const PATTERNS = {
   'see-the-trap': ['trap'],
   'pass-to-open': ['marked', 'marked', 'one-open'],
   'forward-first': ['forward', 'forward', 'two-open'],
-  'dribble-to-space': ['space-far', 'space-near'],
+  'dribble-to-space': ['space-far', 'space-near', 'space-behind', 'space-behind', 'space-close', 'space-close', 'space-close'],
   'get-goal-side': ['goal-side'],
   'one-goes': ['one-goes', 'one-goes', 'you-go'],
   'mark-the-free-one': ['mark-free'],

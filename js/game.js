@@ -535,7 +535,7 @@ export class Game {
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
         if (q && q[0] > cw * .05 && q[0] < cw * .95 && q[1] > ch * .05 && q[1] < ch * .95) { this.seen.add(id); found.push(this.name(id)); }
       }
-      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense') this.hud.seen(`👀 You see ${found.join(' and ')}`);
+      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense' && this.sc?.skill !== 'dribble-to-space' && this.step !== 'dribble') this.hud.seen(`👀 You see ${found.join(' and ')}`);
     }
     this.updateCamera(dt, time);
     this.updateHud(time);
@@ -597,7 +597,7 @@ export class Game {
     hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: this.canAct && this.canShoot });
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
-    if (this.phase === 'decide' && this.step === 'dribble') for (const d of Object.keys(DRIBBLE_DIRS)) arrows[d] = 1;
+    if (this.phase === 'decide' && this.step === 'dribble') for (const d of Object.keys(DRIBBLE_DIRS)) arrows[d] = !this.pendingDir || this.pendingDir === d ? 1 : .3;
     const spots = this.phase === 'decide' && this.step === 'spot' ? this.sc.spots : [];
     this.ui = { glow, arrows, spots, lines: this.lines, heroRing: this.camMode === 'player' };
   }

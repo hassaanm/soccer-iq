@@ -160,9 +160,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #rate .txt{font-size:18px;margin:4px 0 8px}
 #rate .btns{margin-top:4px}
 /* small touches or big push */
-#touchPick{position:absolute;bottom:calc(20px + var(--safe-b));left:50%;transform:translateX(-50%);display:none;gap:14px}
-#touchPick .btn{font-size:18px}
-#touchPick i{font-style:normal}
+#touchPick{position:absolute;top:64px;right:calc(18px + var(--safe-r));display:none;flex-direction:column;gap:12px}
+#touchPick .btn{width:150px;height:74px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:17px}
+#touchPick i{font-style:normal;font-size:28px;line-height:1}
+#touchPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud.touchpick #touchPick{display:flex}
 #hud[data-kind=defense] :is(#passBtn,#dribBtn){display:none!important}
 /* home: lesson chips, free play, clubs / countries */
