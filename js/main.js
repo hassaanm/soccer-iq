@@ -202,9 +202,15 @@ async function runSession() {
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
   $('#results .emoji').textContent = won ? '🏆' : sk.emoji;
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
-  $('#results .starsrow').textContent = '⭐'.repeat(firstTry) + '☆'.repeat(rounds.length - firstTry);
+  // One circle per round, like the dots during the lesson: gold = right on the first try.
+  $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
+  $('#results .roundsnote').textContent = `${firstTry} of ${rounds.length} right on the first try`;
+  const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
+  $('#nextLessonBtn').classList.toggle('hidden', !nextSk);
+  $('#nextLessonBtn').onclick = () => { P.settings.skill = nextSk.id; save(P); runSession(); };
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short} · New sticker!`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
+  $('#againBtn').onclick = () => runSession();
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
@@ -218,16 +224,16 @@ async function runFreePlay() {
   const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
   $('#results .emoji').textContent = won ? '🏆' : '⚽'; $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
-  $('#results .starsrow').textContent = ''; $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
+  $('#results .roundsrow').innerHTML = ''; $('#results .roundsnote').textContent = ''; $('#nextLessonBtn').classList.add('hidden'); $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won the match!' : 'Good game!');
+  $('#againBtn').onclick = runFreePlay;
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#freeBtn').onclick = runFreePlay;
 $('#shootBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.shoot(); });
 $('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
 $('#touchBig').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('big'); });
-$('#againBtn').onclick = () => runSession();
-$('#teamsBtn').onclick = () => show('#home');
+$('#resultsHome').onclick = () => show('#home');
 $('#homeBtn').onclick = () => location.reload();
 $('#skipBtn').onclick = () => game.skipDemo();
 function unlockAudio() { if ('speechSynthesis' in window && P.settings.voice) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } }
