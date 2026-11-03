@@ -1,7 +1,7 @@
 // Game flow: lesson demo → rounds with feedback → mini match. Owns input, camera, team AI and outcome scripts.
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds } from './skills.js';
-import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd } from './geom.js';
+import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane } from './geom.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -66,7 +66,10 @@ export class Game {
 
   // ---------- outcome scripts (team AI moves everyone not in `scripted`) ----------
   *finish(id) {
-    const s = this.sim, a = s.a(id), tx = L - 5.5, ty = lerp(a.y, W / 2, .75);
+    // Run at goal down the lane with the most room, so he goes around defenders instead of through them.
+    const s = this.sim, a = s.a(id), tx = L - 5.5, opps = s.team('them');
+    const room = y => Math.min(...opps.map(o => closestOnLane(o, a, { x: tx, y }, 0).d));
+    const ty = [W / 2 - 2.5, W / 2, W / 2 + 2.5].map(y => ({ y, r: room(y) - Math.abs(y - a.y) * .08 })).sort((p, q) => q.r - p.r)[0].y;
     this.scripted.add(id); s.go(id, tx, ty, 5.4);
     const t0 = s.time; yield () => Math.hypot(a.x - tx, a.y - ty) < .3 || s.time - t0 > 3;
     s.stop(id); yield* this.strike(id, L + .7, clamp(a.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
@@ -91,7 +94,9 @@ export class Game {
     this.scripted.add(opp.id); s.go(opp.id, opp.x - 4, lerp(opp.y, W / 2, .4), 4.8); yield .8;
   }
   *passBad(id) {
-    const s = this.sim, ic = interceptor(s.ball, s.a(id), s.team('them'));
+    const s = this.sim, m = s.a(id), ic = interceptor(s.ball, m, s.team('them'));
+    // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
+    this.scripted.add(id); s.go(id, lerp(m.x, s.ball.x, .3), lerp(m.y, s.ball.y, .3), 4.2);
     this.scripted.add(ic.opp.id); s.go(ic.opp.id, ic.x, ic.y, 6);
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
@@ -153,7 +158,7 @@ export class Game {
     const attackers = s.team(atk);
     const defenders = s.team(def).filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
     defenders.forEach((d, i) => {
-      if (i === 0) return s.go(d.id, ball.x - dir * .6, ball.y, 3.4);
+      if (i === 0) return s.go(d.id, ball.x + dir * 1.1, ball.y, 3.4); // stand goal-side, a step off the ball
       if (i === 1) return s.go(d.id, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
       const danger = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX))[0] || ball;
       s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
@@ -251,14 +256,14 @@ export class Game {
     if (Math.abs(dx) > 8) { this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
   lookEnd() { this.drag = null; }
+  // PASS and DRIBBLE are always on screen; tapping one switches to it, tapping it again un-picks it.
   pass() {
     if (!this.canAct) return;
+    if (this.step === 'pass') { this.step = null; return; }
     this.step = 'pass'; this.lookUp = true;
     if (!this.seen.size) { this.hud.toast('Find a friend first! 👀', true); this.say('Find a friend first!'); }
   }
-  dribble() { if (this.canAct) { this.step = 'dribble'; this.turn = 0; } }
-  dribbleDir(d) { if (this.step === 'dribble') this.choose('drib:' + d); }
-  back() { if (this.canAct) this.step = null; }
+  dribble() { if (this.canAct) { this.step = this.step === 'dribble' ? null : 'dribble'; this.turn = 0; } }
   choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; f(opt); } }
   // Returns true when the tap picked a pass target or dribble arrow.
   tap(x, y) {
@@ -355,29 +360,21 @@ export class Game {
     this.cam.Ff = lerp(this.cam.Ff, want.Ff, k); this.cam.Fw = lerp(this.cam.Fw ?? want.Fw, want.Fw, k);
   }
   updateHud() {
-    const hud = this.hud, best = this.sc?.best, bestMate = MATE[best], s = this.sim, h = s.a('hero');
+    const hud = this.hud, s = this.sim;
     let prompt = '';
     if (this.mode === 'lesson' || this.mode === 'match') {
       if (this.phase === 'pre') prompt = this.lookUp ? '' : 'Tap 👀 to look up';
       else if (this.phase === 'decide') prompt =
-        this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Turn to find a friend') :
-        this.step === 'dribble' ? 'Which way?' :
-        this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Turn ⟲ ⟳ to find a friend' : 'Tap 👀 to look up';
+        this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Drag to look for a friend') :
+        this.step === 'dribble' ? 'Tap an arrow' :
+        this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Drag to look around' : 'Tap 👀 to look up';
     }
-    let nudge = null;
-    if (this.canAct) {
-      const stuck = s.time - this.decideAt > 4;
-      if (!this.lookUp && !this.seen.size && (this.hint || stuck)) nudge = 'look';
-      else if (this.hint && bestMate && !this.seen.has(bestMate) && h) {
-        const m = s.a(bestMate), d = wrap(Math.atan2(m.y - h.y, m.x - h.x) - this.yaw);
-        nudge = !this.lookUp ? 'look' : d > 0 ? 'turnL' : 'turnR';
-      } else if (this.hint && !this.step) nudge = bestMate ? 'pass' : 'dribble';
-    }
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, turn: this.turn,
-      hintDir: this.hint && best?.startsWith('drib:') ? best.slice(5) : null });
+    // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
+    const nudge = this.canAct && !this.lookUp && !this.seen.size && s.time - this.decideAt > 5 ? 'look' : null;
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look });
     const glow = {}, arrows = {};
-    if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = this.hint && id === bestMate ? 1 : .6;
-    if (this.phase === 'decide' && this.step === 'dribble') for (const d of ['fwd', 'left', 'right', 'back']) arrows[d] = this.hint && best === 'drib:' + d ? 1 : .55;
+    if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
+    if (this.phase === 'decide' && this.step === 'dribble') for (const d of ['fwd', 'left', 'right', 'back']) arrows[d] = 1;
     this.ui = { glow, arrows, lines: this.lines, heroRing: this.camMode === 'player' };
   }
 }

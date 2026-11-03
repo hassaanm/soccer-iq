@@ -36,18 +36,17 @@ const flash = (el, cls, text, ms) => {
 };
 const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look, turn, hintDir }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
     if (d.mode !== mode) d.mode = mode;
     hudEl.classList.toggle('up', lookUp);
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
-    for (const [id, k] of [['#lookBtn', 'look'], ['#passBtn', 'pass'], ['#dribBtn', 'dribble'], ['#turnL', 'turnL'], ['#turnR', 'turnR']]) $(id).classList.toggle('nudge', nudge === k);
+    $('#lookBtn').classList.toggle('nudge', nudge === 'look');
+    $('#passBtn').classList.toggle('active', step === 'pass'); $('#dribBtn').classList.toggle('active', step === 'dribble');
     const lb = $('#lookBtn'); lb.classList.toggle('on', lookUp);
     const label = lookUp ? 'HEAD DOWN' : 'LOOK UP'; if (lb.lastChild.textContent !== label) { lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = label; }
-    $('#turnL').classList.toggle('held', turn > 0); $('#turnR').classList.toggle('held', turn < 0);
-    document.querySelectorAll('#dpad .btn').forEach(b => b.classList.toggle('nudge', b.dataset.dir === hintDir));
     // Head down = tunnel vision: blurry, darker edges. Clears as he looks up.
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
     tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
@@ -137,7 +136,7 @@ async function runSession() {
   show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
   await card({ emoji: sk.emoji, title: sk.kid, sub: `Watch ${hero} first`, button: 'Watch' });
   await game.demo(skillId);
-  await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then turn to find a friend.`, button: 'Play' });
+  await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
   const n = P.settings.rounds, rounds = pickRounds([skillId, ...reviews], n), results = [];
   let misses = 0;
   hud.dots(results, n);
@@ -194,17 +193,11 @@ canvas.addEventListener('pointerdown', e => {
   game.lookStart(e.clientX, canvas.clientWidth); e.preventDefault();
 });
 $('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.toggleLook(); });
-for (const [id, dir] of [['#turnL', 1], ['#turnR', -1]]) {
-  $(id).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.turnStart(dir); });
-  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $(id).addEventListener(ev, () => game.turnEnd());
-}
-document.querySelectorAll('#dpad .btn').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); game.dribbleDir(b.dataset.dir); }));
 addEventListener('pointermove', e => game.lookMove(e.clientX));
-addEventListener('pointerup', () => { game.lookEnd(); game.turnEnd(); });
+addEventListener('pointerup', () => game.lookEnd());
 addEventListener('pointercancel', () => game.lookEnd());
 $('#passBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.pass(); });
 $('#dribBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.dribble(); });
-$('#backBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.back(); });
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- loop ----------

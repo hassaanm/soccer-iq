@@ -2,6 +2,8 @@
 // and outcomes run as generator scripts that yield seconds or "wait until" predicates.
 import { lerp } from './geom.js';
 
+export const SPACE = .75; // meters between two players' centers
+
 export class Sim {
   constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; }
 
@@ -48,6 +50,12 @@ export class Sim {
         a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d]; a.dist += s;
         a.sp = lerp(a.sp, a.speed, Math.min(1, dt * 8));
       } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
+    }
+    // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.
+    const list = [...this.agents.values()];
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const p = list[i], q = list[j], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
+      if (d < SPACE && d > 1e-6) { const push = (SPACE - d) / 2; p.x -= dx / d * push; p.y -= dy / d * push; q.x += dx / d * push; q.y += dy / d * push; }
     }
     const b = this.ball;
     if (b.state === 'carried') {
