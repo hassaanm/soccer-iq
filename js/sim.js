@@ -5,7 +5,7 @@ import { lerp } from './geom.js';
 export const SPACE = .75; // meters between two players' centers
 
 export class Sim {
-  constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; }
+  constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
 
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
@@ -37,6 +37,7 @@ export class Sim {
   windup(id) { const a = this.a(id); if (a) a.kickAt = this.time; }
   kick(x, y, { speed = 11, arc = 0.3, z1 = 0 } = {}) {
     const b = this.ball;
+    this.on('kick', speed);
     Object.assign(b, { state: 'flying', carrier: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
       dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
   }
@@ -48,7 +49,9 @@ export class Sim {
       const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
       if (d > 0.02 && a.speed > 0) {
         const s = Math.min(a.speed * dt, d);
-        a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d]; a.dist += s;
+        const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d]; a.dist += s;
+        if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
+        if (this.ball.carrier === a.id && Math.floor(a.dist / 1.4) > Math.floor(before / 1.4)) this.on('touch');
         a.sp = lerp(a.sp, a.speed, Math.min(1, dt * 8));
       } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
     }

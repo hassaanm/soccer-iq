@@ -45,6 +45,7 @@ export async function playOption(sc, opt) {
   const kick = s.kick.bind(s);
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
     if (x > 29 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
+    if (x < 1 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     return kick(x, y, o);
   };
   await drive(g, g.outcome(opt, good), {

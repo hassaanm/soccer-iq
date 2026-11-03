@@ -5,7 +5,7 @@ export const MASTER_BOX = 3;
 
 export function defaultProgress() {
   return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [],
-    settings: { voice: true, rounds: 6, skill: null } };
+    settings: { voice: true, sound: true, rounds: 6, skill: null } };
 }
 
 export function load(storage = globalThis.localStorage) {

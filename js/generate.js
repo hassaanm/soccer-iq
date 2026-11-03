@@ -134,6 +134,23 @@ function attack(r, pattern) {
 }
 
 // ---------- defending patterns ----------
+// How the attackers would beat our defense if he stood at `spot`: the carrier runs at goal through an open lane,
+// or passes to an attacker who is unmarked with an open lane to him and an open run at goal. null = no way through.
+const shotSpot = a => [4.5, a[1] + (W / 2 - a[1]) * .6];
+export function exploit(sc, spotId) {
+  const sp = sc.spots.find(s => s.id === spotId), defs = [[sp.x, sp.y], ...sc.mates].map(P), c = sc.oppsTo[0];
+  // Only defenders goal-side of an attacker (between him and our goal) can stop him; one standing behind him can't.
+  const goalSideOf = (d, a) => (d.x - a[0]) * (OUR_GOAL.x - a[0]) + (d.y - a[1]) * (OUR_GOAL.y - a[1]) > 0;
+  const shotOpen = a => { const f = P(shotSpot(a)), aim = { x: -.7, y: clamp(f.y, PITCH.gy0 + .8, PITCH.gy1 - .8) }; return defs.every(d => closestOnLane(d, f, aim, 0).d > 1); };
+  const runClear = a => shotOpen(a) && defs.filter(d => goalSideOf(d, a)).every(d => closestOnLane(d, P(a), P(shotSpot(a)), 0).d > 1.3);
+  if (runClear(c)) return { kind: 'dribble', who: 'o1', to: shotSpot(c) };
+  for (let i = 1; i < sc.oppsTo.length; i++) {
+    const a = sc.oppsTo[i], lane = Math.min(...defs.map(d => closestOnLane(d, P(c), P(a), .15).d));
+    const mark = Math.min(99, ...defs.filter(d => goalSideOf(d, a)).map(d => dist(d, P(a))));
+    if (lane > 1.1 && mark > 1.6 && runClear(a)) return { kind: 'pass', who: 'o' + (i + 1), to: shotSpot(a) };
+  }
+  return null;
+}
 // We defend the goal at x = 0. o1 has the ball; the child plays `hero`, choosing a spot to run to.
 function defense(r, pattern) {
   const c = [12 + r() * 7, 5 + r() * 10], sgn = c[1] < W / 2 ? 1 : -1;
@@ -141,14 +158,18 @@ function defense(r, pattern) {
   let hero, best, cue;
   const addOpp = p => { opps.push([p[0] + 1.5, p[1]]); oppsTo.push(p); };
   if (pattern === 'goal-side') {
+    // We just lost the ball. Both friends are already guarding an attacker each; nobody is in front of the ball.
     hero = [c[0] + 3.5 + r() * 1.5, c[1] - sgn * (1 + r() * 2)];             // he got caught behind the ball
-    const o2 = [c[0] - 4 - r() * 2, c[1] + sgn * (4 + r() * 3)], o3 = [c[0] + 1 + r() * 2, c[1] + sgn * (6 + r() * 2)];
+    const o2 = [c[0] - 3 - r() * 3, sgn > 0 ? 16.5 + r() * 2 : 1.5 + r() * 2], o3 = [c[0] - 1 - r() * 3, sgn > 0 ? 1.5 + r() * 2 : 16.5 + r() * 2];
     addOpp(o2); addOpp(o3);
-    mates.push([4 + r() * 2, W / 2 + (r() - .5) * 4], goalSide(o2, 1.2));
-    spots.push({ id: 'home', p: goalSide(c, 4.5), label: 'Run home' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Chase' }, { id: 'o3', p: goalSide(o3, 1.2), label: 'Guard' });
-    best = 'home'; cue = 'Run home first! Get between the ball and your goal.';
+    mates.push(goalSide(o2, 1.1), goalSide(o3, 1.1));
+    const dbl = goalSide(o2, .9);
+    spots.push({ id: 'home', p: goalSide(c, 3.4), label: 'Run home' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Chase' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] - sgn * 1.4], label: 'Help guard' });
+    best = 'home'; cue = 'Your friends were each guarding a player, and nobody was in front of the ball. Run home and get between the ball and your goal!';
   } else if (pattern === 'one-goes' || pattern === 'you-go') {
-    const o2 = [c[0] - 3 - r() * 3, c[1] + sgn * (4 + r() * 3)], o3 = [c[0] + 1 + r() * 3, c[1] - sgn * (4 + r() * 2)];
+    // The open attacker (o2) sits on the far side from where a pressing friend would stand, so the pass to him is really open.
+    const side = pattern === 'one-goes' ? -sgn : sgn;
+    const o2 = [c[0] - 3 - r() * 3, c[1] + side * (3.5 + r() * 2.5)], o3 = [c[0] + 1 + r() * 3, c[1] - side * (4 + r() * 2)];
     addOpp(o2); addOpp(o3);
     if (pattern === 'one-goes') {
       mates.push(goalSide(c, 1.1), goalSide(o3, 1.1));                       // a friend is already on the ball
@@ -160,22 +181,26 @@ function defense(r, pattern) {
       best = 'press'; cue = 'Nobody was on the ball and you were closest. Go get it!';
     }
     const press = goalSide(c, 1.1);
-    spots.push({ id: 'press', p: pattern === 'one-goes' ? [press[0] - .3, press[1] + sgn * .9] : press, label: 'Chase the ball' },
+    spots.push({ id: 'press', p: pattern === 'one-goes' ? [press[0] - .3, press[1] - side * .9] : press, label: 'Chase the ball' },
       { id: 'o2', p: goalSide(o2, 1.2), label: 'Guard' }, { id: 'o3', p: pattern === 'one-goes' ? [goalSide(o3, 1.2)[0], goalSide(o3, 1.2)[1] + .8] : goalSide(o3, 1.2), label: 'Guard' });
   } else if (pattern === 'mark-free') {
     const o2 = [c[0] - 2 - r() * 3, c[1] - sgn * (4 + r() * 2)], o3 = [c[0] - 4 - r() * 3, c[1] + sgn * (5 + r() * 2)];
     addOpp(o2); addOpp(o3);
     mates.push(goalSide(c, 1.1), goalSide(o2, 1.1));
     hero = [o3[0] + 2 + r() * 2, o3[1] - sgn * (2 + r() * 2)];
-    const away = [o3[0] + (o3[0] - OUR_GOAL.x) / Math.hypot(o3[0] - OUR_GOAL.x, o3[1] - OUR_GOAL.y) * 1.3, o3[1] + (o3[1] - OUR_GOAL.y) / Math.hypot(o3[0] - OUR_GOAL.x, o3[1] - OUR_GOAL.y) * 1.3];
-    spots.push({ id: 'o3', p: goalSide(o3, 1.3), label: 'Goal side' }, { id: 'behind', p: away, label: 'Behind him' }, { id: 'press', p: [goalSide(c, 1.1)[0] - .3, goalSide(c, 1.1)[1] + sgn * .9], label: 'Chase the ball' });
-    best = 'o3'; cue = 'Stand between your player and your goal, so he can\'t get the ball and turn.';
+    const dbl = goalSide(o2, .9);
+    spots.push({ id: 'o3', p: goalSide(o3, 1.3), label: 'Guard' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] + sgn * 1.4], label: 'Help guard' }, { id: 'press', p: [goalSide(c, 1.1)[0] - .3, goalSide(c, 1.1)[1] - sgn * .9], label: 'Chase the ball' });
+    best = 'o3'; cue = 'Your friends already had the ball and one player covered. The open player was free — guard him, between him and your goal!';
   }
   const all = [...opps, ...oppsTo, ...mates, hero, ...spots.map(s => s.p)];
   if (!all.every(p => inPitch(p, 1))) return null;
   if (spots.some((s, i) => spots.some((t, j) => j > i && Math.hypot(s.p[0] - t.p[0], s.p[1] - t.p[1]) < 2))) return null; // spots must be clearly apart
-  return { kind: 'defense', carrier: 'o1', hero: [hero[0] + 1.2, hero[1]], heroTo: hero, mates, opps, oppsTo,
+  const sc = { kind: 'defense', carrier: 'o1', hero: [hero[0] + 1.2, hero[1]], heroTo: hero, mates, opps, oppsTo,
     spots: spots.map(s => ({ id: s.id, x: s.p[0], y: s.p[1], label: s.label })), best: 'spot:' + best, ok: [], cue };
+  // The right spot must leave no way through, and every wrong spot must leave a real one (no magic goals).
+  sc.exploits = Object.fromEntries(sc.spots.map(s => [s.id, exploit(sc, s.id)]));
+  if (sc.exploits[best] || sc.spots.some(s => s.id !== best && !sc.exploits[s.id])) return null;
+  return sc;
 }
 
 const PATTERNS = {
@@ -195,7 +220,7 @@ export const generates = id => !!PATTERNS[id];
 export function generate(skill, seed) {
   const r = rng(seed), pats = PATTERNS[skill];
   if (!pats) return null;
-  for (let i = 0; i < 600; i++) {
+  for (let i = 0; i < 2500; i++) {
     const pattern = pats[Math.floor(r() * pats.length)], sc = DEFENSE.has(pattern) ? defense(r, pattern) : attack(r, pattern);
     if (sc) return { ...sc, id: `gen-${pattern}-${seed}`, skill, pattern };
   }

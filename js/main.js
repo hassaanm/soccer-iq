@@ -5,6 +5,7 @@ import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
+import { sfx, unlock as unlockSound, setSoundOn } from './sound.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
 
@@ -55,18 +56,30 @@ const hud = {
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
     tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
   },
-  // Stars for a decision. With `watch`, waits for "Watch the 3-star play" or "Next"; otherwise closes by itself.
-  rate(stars, text, watch) {
+  // One result card for every play: the outcome ("GOAL!", "Stole it!"...) appears the moment it happens,
+  // then the stars and a short tip fill in underneath. With `watch`, it waits for "Watch the 3-star play" or "Next".
+  banner(text, kind) {
     const el = $('#rate');
+    el.querySelector('.title').textContent = text; el.querySelector('.title').className = 'title ' + kind;
+    el.querySelector('.stars').innerHTML = ''; el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(timers.rate); timers.rate = setTimeout(() => el.classList.remove('show'), 1700);
+    sfx(kind === 'bad' ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
+  },
+  rate(stars, text, watch) {
+    const el = $('#rate'); clearTimeout(timers.rate);
     el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
     el.querySelector('.txt').textContent = text; el.querySelector('.btns').classList.toggle('hidden', !watch);
-    el.className = 's' + stars; void el.offsetWidth; el.classList.add('show');
+    el.className = 's' + stars; el.classList.add('show');
+    [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 120 + i * 160));
     return new Promise(res => {
       const done = v => { el.classList.remove('show'); res(v); };
-      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1300 : 900);
+      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1500 : 1000);
       $('#rateWatch').onclick = () => done('watch'); $('#rateNext').onclick = () => done('next');
     });
   },
+  // "You see …": a small note near the top, so it doesn't look like something he has to act on.
+  seen(text) { flash($('#seenNote'), '', text, 1400); sfx('ping'); },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
   banner(text, kind) { const b = $('#banner'); b.firstChild.textContent = text; b.className = kind; void b.offsetWidth; b.classList.add('show'); clearTimeout(timers.banner); timers.banner = setTimeout(() => b.classList.remove('show'), 1500); },
   caption(text) { const c = $('#caption'); c.textContent = text; c.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
@@ -79,7 +92,10 @@ const hud = {
   },
 };
 
-const game = new Game({ world, hud, say });
+const game = new Game({ world, hud, say, sfx });
+setSoundOn(P.settings.sound !== false);
+// Sound can only start after a tap; every chunky button also clicks.
+document.addEventListener('pointerdown', e => { unlockSound(); if (e.target.closest('.btn,.chip')) sfx('click'); }, true);
 
 // ---------- screens ----------
 const screens = ['#home', '#card', '#results', '#menu'];
@@ -253,7 +269,7 @@ function openMenu() {
   $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
     PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
   $('#roundsSel').value = String(P.settings.rounds);
-  $('#voiceChk').checked = P.settings.voice;
+  $('#voiceChk').checked = P.settings.voice; $('#soundChk').checked = P.settings.sound !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
     return `<div><span>${s.emoji} ${s.adult}</span><span>${!s.ready ? 'not built yet' : !st ? 'not started' : isMastered(P, s.id) ? 'mastered ✓' : `box ${st.box}/4 · ${st.firstTry}/${st.rounds} first try`}</span></div>`;
@@ -261,7 +277,7 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked;
+  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound);
   save(P); show('#home');
 };
 $('#resetBtn').onclick = () => {

@@ -32,9 +32,10 @@ const segDist = (x, y, a, b) => {
 };
 
 export class Game {
-  constructor({ world, hud, say }) {
-    Object.assign(this, { world, hud, say });
+  constructor({ world, hud, say, sfx = () => {} }) {
+    Object.assign(this, { world, hud, say, sfx });
     this.sim = new Sim();
+    this.sim.on = (ev, v) => sfx(ev === 'kick' ? (v >= 15 ? 'shot' : 'kick') : ev === 'touch' ? 'tap' : 'step');
     this.tweens = [];
     this.reset();
     this.mode = 'home';
@@ -236,31 +237,40 @@ export class Game {
         yield* this.strike(c.id, cut.x, cut.y, { speed: 10, arc: .1 });
         yield () => s.ball.state === 'loose';
         s.give('hero');
-      } else { // pressure or recovery: the carrier slows down and the nearest defender takes it
-        this.scripted.add(c.id); s.go(c.id, lerp(c.x, 0, .15), lerp(c.y, W / 2, .1), 2.6);
-        yield .5;
-        const tackler = [...defenders()].sort((a, b) => dist(a, c) - dist(b, c))[0];
-        this.scripted.add(tackler.id); s.go(tackler.id, c.x, c.y, 5);
-        const t0 = s.time; yield () => dist(tackler, c) < .9 || s.time - t0 > 2.5;
-        s.give(tackler.id); s.stop(c.id);
+      } else { // pressure or recovery: he is now in front of the ball, so the carrier runs into him and loses it
+        const toGoal = (a) => { const dx = 0 - a.x, dy = W / 2 - a.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+        const [gx, gy] = toGoal(c);
+        this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.8);          // keeps going at goal, facing it
+        // The tackle comes from a defender who is goal-side of the ball (in front of him), never from behind.
+        const front = [...defenders()].filter(d => (d.x - c.x) * gx + (d.y - c.y) * gy > .3).sort((a, b) => dist(a, c) - dist(b, c));
+        const tackler = front[0] || h;
+        this.scripted.add(tackler.id);
+        const t0 = s.time;
+        yield () => { s.go(tackler.id, c.x + gx * .7, c.y + gy * .7, 4.6); return dist(tackler, c) < 1 || s.time - t0 > 3; };
+        s.stop(c.id); c.face = [gx, gy];
+        tackler.face = [-gx, -gy]; s.give(tackler.id);                                     // he pokes it away, facing upfield
+        s.go(tackler.id, tackler.x - gx * 2.5, tackler.y - gy * 2.5, 3.6);
+        yield .4;
       }
       this.result = 'won'; this.ai = false; s.stopAll(); this.emit('won'); yield 1.3; return;
     }
-    // Wrong spot: the attackers use the space he left.
-    const holder = spotId === 'chase' || spotId === 'behind' && false ? c : null;
+    // Wrong spot: the attackers use the gap he left — an open run at goal, or a pass to the unmarked attacker.
+    const plan = sc.exploits?.[spotId] || { kind: 'dribble', who: c.id, to: [4.5, W / 2] };
     let shooter = c;
-    if (spotId !== 'chase') {
-      const free = s.team('them').filter(a => a.id !== c.id)
-        .sort((a, b) => Math.min(...defenders().map(d => dist(d.id === 'hero' ? sp : d, b))) - Math.min(...defenders().map(d => dist(d.id === 'hero' ? sp : d, a))))[0];
+    if (plan.kind === 'pass') {
+      const free = s.a(plan.who);
       this.scripted.add(c.id); this.scripted.add(free.id); s.stop(free.id);
       yield* this.strike(c.id, free.x, free.y, { speed: 11, arc: .2 });
       yield () => s.ball.state === 'loose';
-      s.give(free.id); shooter = free; void holder;
+      s.give(free.id); shooter = free;
     }
     this.scripted.add(shooter.id);
-    const spot = { x: 4.5, y: lerp(shooter.y, W / 2, .6) };
-    s.go(shooter.id, spot.x, spot.y, 5);
-    const t0 = s.time; yield () => dist(shooter, spot) < .4 || s.time - t0 > 3.5;
+    const spot = { x: plan.to[0], y: plan.to[1] };
+    s.go(shooter.id, spot.x, spot.y, 5.2);
+    // He got past them: the beaten defenders chase from behind (slower), so nobody magically appears in the shot.
+    this.ai = false;
+    const t0 = s.time; yield () => { for (const d of s.team('us')) s.go(d.id, shooter.x + 1.4, shooter.y + (d.y > shooter.y ? 1 : -1), 3.4); return dist(shooter, spot) < .4 || s.time - t0 > 3.5; };
+    this.ai = false; s.stopAll();
     s.stop(shooter.id); yield* this.strike(shooter.id, -.7, clamp(shooter.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
     this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
@@ -443,7 +453,7 @@ export class Game {
   get canAct() { return this.phase === 'decide' && this.mode !== 'demo'; }
   get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo'; }
   // LOOK is a toggle: head up to see the field, head down to watch the ball.
-  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; if (this.lookUp) this.scanned = true; else this.turn = 0; }
+  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) this.scanned = true; else this.turn = 0; }
   // Turning stays where he leaves it, so he can turn all the way around to find someone behind him.
   turnStart(dir) { if (!this.canLook || this.step === 'dribble') return; this.lookUp = true; this.scanned = true; this.turn = dir; }
   turnEnd() { this.turn = 0; }
@@ -451,7 +461,7 @@ export class Game {
   lookMove(x) {
     if (!this.drag) return;
     const dx = x - this.drag.x0;
-    if (Math.abs(dx) > 8) { this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
+    if (Math.abs(dx) > 8) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
   lookEnd() { this.drag = null; }
   // Shooting is offered when he is close enough to goal to have a real chance.
@@ -525,7 +535,7 @@ export class Game {
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
         if (q && q[0] > cw * .05 && q[0] < cw * .95 && q[1] > ch * .05 && q[1] < ch * .95) { this.seen.add(id); found.push(this.name(id)); }
       }
-      if (found.length && this.mode !== 'demo') this.hud.toast(`👀 You see ${found.join(' and ')}!`);
+      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense') this.hud.seen(`👀 You see ${found.join(' and ')}`);
     }
     this.updateCamera(dt, time);
     this.updateHud(time);
@@ -551,7 +561,11 @@ export class Game {
     // Head up: just above head height, looking out across the field.
     const k = smooth(this.look);
     const [bx, by] = rot(-lerp(3.1, 5.2, k), lerp(1.3, .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
-    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(b.x, h.x + fx, k), lerp(b.y, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
+    // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
+    // looks a few meters ahead of him toward the ball, keeping him in view.
+    let dx = b.x, dy = b.y;
+    if (this.sc?.kind === 'defense') { const [ax, ay] = rot(3.5, 0, this.yaw); dx = lerp(h.x + ax, b.x, .25); dy = lerp(h.y + ay, b.y, .25); }
+    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
   }
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;
