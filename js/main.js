@@ -44,7 +44,6 @@ const flash = (el, cls, text, ms) => {
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
 const tunnel = $('#tunnel');
-const EMPTY_STARS = '<span>★</span><span>★</span><span>★</span>';
 const hud = {
   state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot }) {
     const d = hudEl.dataset;
@@ -62,27 +61,25 @@ const hud = {
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
     tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
   },
-  // (three empty star slots, filled in by rate())
   // One result card for every play: the outcome ("GOAL!", "Stole it!"...) appears the moment it happens,
   // then the stars and a short tip fill in underneath. With `watch`, it waits for "Watch the 3-star play" or "Next".
-  banner(text, kind) {
-    const el = $('#rate');
-    el.querySelector('.title').textContent = text; el.querySelector('.title').className = 'title ' + kind;
-    el.querySelector('.stars').innerHTML = EMPTY_STARS; el.querySelector('.stars').classList.add('wait'); el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); hudEl.classList.add('rating');
-    clearTimeout(timers.rate); timers.rate = setTimeout(() => { el.classList.remove('show'); hudEl.classList.remove('rating'); }, 1700);
+  // `rated` = { stars, text, watch }: in lessons the whole card (title, stars, tip) appears at once, the moment
+  // the play ends. Without it (matches, demos) the card is just the title.
+  banner(text, kind, rated) {
+    const el = $('#rate'), title = el.querySelector('.title');
+    title.textContent = text; title.className = 'title ' + kind;
+    el.className = rated ? 's' + rated.stars : 'solo';
+    el.querySelector('.stars').innerHTML = rated ? [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join('') : '';
+    el.querySelector('.txt').textContent = rated?.text || ''; el.querySelector('.btns').classList.toggle('hidden', !rated?.watch);
+    void el.offsetWidth; el.classList.add('show'); hudEl.classList.add('rating');
     sfx(kind === 'bad' ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
-  },
-  rate(stars, text, watch) {
-    const el = $('#rate'); clearTimeout(timers.rate);
-    el.querySelector('.stars').classList.remove('wait'); el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
-    el.querySelector('.txt').textContent = text; el.querySelector('.btns').classList.toggle('hidden', !watch);
-    el.className = 's' + stars; el.classList.add('show'); hudEl.classList.add('rating');
-    [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 120 + i * 160));
+    clearTimeout(timers.rate);
+    const done = v => { el.classList.remove('show'); hudEl.classList.remove('rating'); return v; };
+    if (!rated) { timers.rate = setTimeout(done, 1700); return Promise.resolve(); }
+    [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 250 + i * 160));
     return new Promise(res => {
-      const done = v => { el.classList.remove('show'); hudEl.classList.remove('rating'); res(v); };
-      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1200 + text.length * 45 : 1600);
-      $('#rateWatch').onclick = () => done('watch'); $('#rateNext').onclick = () => done('next');
+      if (!rated.watch) { timers.rate = setTimeout(() => res(done('next')), rated.stars === 3 ? 1600 + rated.text.length * 45 : 2200); return; }
+      $('#rateWatch').onclick = () => res(done('watch')); $('#rateNext').onclick = () => res(done('next'));
     });
   },
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.

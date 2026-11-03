@@ -392,13 +392,14 @@ export class Game {
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good));
   }
+  // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
+  // the same card, at the same moment.
   emit(ev) {
-    if (ev === 'goal') { this.sfx('net'); this.hud.banner('GOAL!', 'goal'); }
-    if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
-    if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
-    if (ev === 'won') { this.hud.banner('Stole it!', 'goal'); }
-    if (ev === 'held') { this.hud.banner('Stopped him!', 'goal'); }
-    if (ev === 'kept') { this.hud.banner('Kept the ball!', 'goal'); }
+    const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'] }[ev];
+    if (ev === 'goal') this.sfx('net');
+    const rated = this.rated; this.rated = null;
+    this.card = this.hud.banner(title, kind, rated);
+    if (rated?.say) this.say(rated.text);
   }
 
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -511,24 +512,25 @@ export class Game {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
-      await this.outcome(opt, good);
       // Every decision gets 1–3 stars. 3 = the best choice, 2 = safe but there was a better one, 1 = lost it.
-      if (good && rating !== 'safe') {
-        const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
-        // Say why it was right, so the idea sticks (not just that it was right).
-        await this.hud.rate(3, sc.live ? praise : `${praise} ${this.cue()}`);
-        return { firstTry: attempt === 1, stars: 3 };
-      }
+      // The stars and tip are decided now and shown together with the result, the moment the play ends.
+      const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
+      const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
+      this.rated = rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
+        : good ? { stars: 3, text: `${praise} ${this.cue()}` } // say why it was right, so the idea sticks
+        : { stars: 1, text: sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!' };
+      this.card = null;
+      await this.outcome(opt, good);
+      const answer = await (this.card || this.hud.banner('', 'goal', this.rated));
+      this.rated = null;
+      if (good && rating !== 'safe') return { firstTry: attempt === 1, stars: 3 };
       if (rating === 'safe') {
-        const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
-        this.say(tip);
-        if (await this.hud.rate(2, tip, true) === 'watch') {
+        if (answer === 'watch') {
           this.sim.restore(save); this.reset(); this.camMode = 'player';
           this.hud.caption('Here is the 3-star play!'); await this.outcome(sc.best, true); this.hud.caption('');
         }
         return { firstTry: false, stars: 2 };
       }
-      await this.hud.rate(1, sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!');
       await this.feedback(save, opt);
       this.sim.restore(save); this.reset(); this.camMode = 'player';
       this.hud.caption('Watch this way!');
