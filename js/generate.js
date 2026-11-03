@@ -100,10 +100,10 @@ function attack(r, pattern) {
   let best, cue, safe = [];
   if (pattern === 'one-open' || pattern === 'marked') {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'bad' || g['drib:fwd'] !== 'bad') return null;
-    best = 'pass:0'; cue = pattern === 'marked' ? '{m1} had a defender right next to him. {m0} was open!' : '{m0} was open!';
+    best = 'pass:0'; cue = pattern === 'marked' ? '{m1} had a defender right next to him. {m0} had nobody near him!' : '{m0} was open!';
   } else if (pattern === 'trap') {
     if (g['pass:0'] !== 'good' || goods.some(o => o.startsWith('drib:'))) return null;
-    best = 'pass:0'; cue = 'Two defenders! Let it go — pass to {m0}!';
+    best = 'pass:0'; cue = 'Two defenders were closing in on you. Pass it away before they trap you! {m0} was open.';
   } else if (pattern === 'none-open') {
     if (g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad' || !goods.length) return null;
     best = goods.includes('drib:fwd') ? 'drib:fwd' : goods[0]; cue = 'Nobody was open. Run into the space!';

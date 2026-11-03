@@ -31,7 +31,7 @@ const LOOK_UP = [
     best: 'drib:fwd', cue: 'Nobody was open. Run into the space!' },
   { id: 'lu-behind', hero: [9, 10], heroTo: [12, 10], mates: [[8, 4], [18, 15]],
     opps: [[17, 10.5], [16, 13], [18, 13.6]], oppsTo: [[13.6, 10.3], [13.2, 11.9], [17.6, 14.3]],
-    best: 'pass:0', cue: 'Two defenders! {m0} was open behind you.' },
+    best: 'pass:0', cue: 'Two defenders were close to you, so pass it away! {m0} was open behind you.' },
   { id: 'lu-forward', hero: [6, 10], heroTo: [9, 10], mates: [[8, 16], [17, 6]],
     opps: [[12, 11], [14, 16.5], [24, 12]], oppsTo: [[10.9, 10.6], null, null],
     best: 'pass:1', ok: ['pass:0'], cue: '{m1} was open and closer to the goal!' },

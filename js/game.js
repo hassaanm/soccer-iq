@@ -254,11 +254,11 @@ export class Game {
     await this.play(this.outcomeGen(opt, good, counter));
   }
   emit(ev) {
-    if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); this.say('Goal!'); }
+    if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); }
     if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
-    if (ev === 'won') { this.hud.banner('Stole it!', 'goal'); this.say('You won the ball back!'); }
-    if (ev === 'kept') { this.hud.banner('Kept the ball!', 'goal'); this.say('You kept the ball!'); }
+    if (ev === 'won') { this.hud.banner('Stole it!', 'goal'); }
+    if (ev === 'kept') { this.hud.banner('Kept the ball!', 'goal'); }
   }
 
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -333,7 +333,7 @@ export class Game {
       // Every decision gets 1–3 stars. 3 = the best choice, 2 = safe but there was a better one, 1 = lost it.
       if (good && rating !== 'safe') {
         const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
-        this.say(praise); await this.hud.rate(3, praise);
+        await this.hud.rate(3, praise);
         return { firstTry: attempt === 1, stars: 3 };
       }
       if (rating === 'safe') {
@@ -348,10 +348,10 @@ export class Game {
       await this.hud.rate(1, sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!');
       await this.feedback(save, opt);
       this.sim.restore(save); this.reset(); this.camMode = 'player';
-      this.hud.caption('Watch this way!'); this.say('Watch this way.');
+      this.hud.caption('Watch this way!');
       await this.outcome(sc.best, true);
       this.sim.restore(save); this.reset(); this.camMode = 'player';
-      this.hud.caption('Your turn!'); this.say('Your turn!');
+      this.hud.caption('Your turn!');
     }
   }
   // Freeze at the decision moment: red line for his choice, green for the better one.
@@ -405,14 +405,14 @@ export class Game {
     if (this.step === 'pass') { this.step = null; return; }
     if (this.locked) return this.lookFirst();
     this.step = 'pass';
-    if (!this.seen.size) { this.hud.toast('Find a friend first! 👀', true); this.say('Find a friend first!'); }
+    if (!this.seen.size) this.hud.toast('Find a friend first! 👀', true);
   }
   dribble() { if (!this.canAct) return; if (this.locked) return this.lookFirst(); this.step = this.step === 'dribble' ? null : 'dribble'; this.turn = 0; this.pendingDir = null; }
   // After picking an arrow in the dribble lesson: keep it close, or knock it ahead and race for it.
   touch(kind) { if (!this.pendingDir) return; const d = this.pendingDir; this.pendingDir = null; this.choose((kind === 'big' ? 'push:' : 'drib:') + d); }
   // In the "Look up" lesson he has to look up before he can pass or dribble.
   get locked() { return this.mode === 'lesson' && this.sc?.skill === 'look-up' && !this.scanned; }
-  lookFirst() { this.hud.toast('Look up first! 👀', true); this.say('Look up first!'); }
+  lookFirst() { this.hud.toast('Look up first! 👀', true); }
   choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; f(opt); } }
   // Returns true when the tap picked a pass target or dribble arrow.
   tap(x, y) {
@@ -459,17 +459,15 @@ export class Game {
       h.face = [Math.cos(f), Math.sin(f)];
     }
 
-    // If you can see him on screen, you've found him (head up or down).
-    if (this.phase === 'pre' || this.phase === 'decide') {
-      const cw = this.world.canvas.clientWidth, ch = this.world.canvas.clientHeight;
+    // Teammates count as found when he can see them with his head up. Everyone spotted together shows in one message.
+    if (this.look > .8 && (this.phase === 'pre' || this.phase === 'decide')) {
+      const cw = this.world.canvas.clientWidth, ch = this.world.canvas.clientHeight, found = [];
       for (const id of ['m1', 'm2']) {
         if (this.seen.has(id)) continue;
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
-        if (q && q[0] > cw * .03 && q[0] < cw * .97 && q[1] > ch * .03 && q[1] < ch * .97) {
-          this.seen.add(id);
-          if (this.mode !== 'demo') { this.hud.toast(`👀 You see ${this.name(id)}!`); this.say(this.name(id)); }
-        }
+        if (q && q[0] > cw * .05 && q[0] < cw * .95 && q[1] > ch * .05 && q[1] < ch * .95) { this.seen.add(id); found.push(this.name(id)); }
       }
+      if (found.length && this.mode !== 'demo') this.hud.toast(`👀 You see ${found.join(' and ')}!`);
     }
     this.updateCamera(dt, time);
     this.updateHud(time);
