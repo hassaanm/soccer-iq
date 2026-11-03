@@ -1,7 +1,7 @@
 // Generated "Look up" scenarios must be clean (one clear right answer) and play out realistically.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLookUp, generate, grade } from '../js/generate.js';
+import { generateLookUp, generate, grade, mainPattern } from '../js/generate.js';
 import { PATH } from '../js/skills.js';
 import { optionsFor, playOption, judge } from './harness.js';
 
@@ -43,7 +43,7 @@ test('demos show each lesson\'s main idea, and tips never show a {name} placehol
   const { makeGame } = await import('./harness.js');
   for (const sk of PATH) {
     const sc = demoScenario(sk.id);
-    if (sc.pattern) assert.ok(!/contrast/.test(sc.pattern) && !['trap-one', 'shot-far', 'shot-blocked', 'gs-covered', 'you-go', 'two-open'].includes(sc.pattern), `${sk.id} demo is a contrast round (${sc.pattern})`);
+    if (sc.pattern) assert.equal(sc.pattern, mainPattern(sk.id), `${sk.id} demo is a contrast round (${sc.pattern})`);
     if (sc.best.startsWith('pass:')) assert.ok(sc.mates[+sc.best[5]][0] >= sc.heroTo[0], `${sk.id} demo passes backward`);
   }
   const { g } = makeGame();

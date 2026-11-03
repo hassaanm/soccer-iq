@@ -19,9 +19,9 @@ export function rng(seed) {
   return next;
 }
 const pick = (r, a) => a[Math.floor(r() * a.length)];
-// Where the open friend stands, as an angle from straight at goal: usually ahead, often out wide,
-// and only now and then behind (at this age a pass back is right only when nothing forward is on).
-const openAngle = r => { const u = r(), sd = pick(r, [1, -1]); return sd * (u < .5 ? .6 + r() * .6 : u < .83 ? 1.25 + r() * .6 : 2.2 + r() * .6); };
+// Where the open friend stands, as an angle from straight at goal: ahead or out wide. A pass back just to keep
+// the ball is never the right answer at this age (FA/DFB guidance); escaping a two-defender trap is the exception.
+const openAngle = (r, pattern) => { const u = r(), sd = pick(r, [1, -1]); return sd * (u < .6 ? .6 + r() * .6 : pattern === 'trap' && u > .85 ? 2.2 + r() * .6 : 1.25 + r() * .55); };
 const PASS_TO = new Set(['one-open', 'marked', 'trap', 'two-open']);
 const inPitch = ([x, y], m = 1.5) => x > m && x < L - m && y > m && y < W - m;
 const P = ([x, y]) => ({ x, y });
@@ -72,8 +72,9 @@ function attack(r, pattern) {
   let angles = [r() * 2.6 - 1.3, pick(r, [1, -1]) * (1.3 + r() * 1.4)];
   const fside = pick(r, [1, -1]);
   if (pattern === 'forward') angles = [-fside * (.1 + r() * .5), fside * (2.3 + r() * .6)];
+  if (pattern === 'carry') angles = [pick(r, [1, -1]) * (1.5 + r() * 1.2), pick(r, [1, -1]) * (1.8 + r() * 1)];
   if (pattern.startsWith('space') || pattern.startsWith('shot')) angles = [pick(r, [1, -1]) * (2.2 + r() * .7), pick(r, [1, -1]) * (2.2 + r() * .7)];
-  if (PASS_TO.has(pattern)) { const a0 = openAngle(r); let a1; do a1 = r() * 5.6 - 2.8; while (Math.abs(a1 - a0) < .9); angles = [a0, a1]; }
+  if (PASS_TO.has(pattern)) { const a0 = openAngle(r, pattern); let a1; do a1 = r() * 5.6 - 2.8; while (Math.abs(a1 - a0) < .9); angles = [a0, a1]; }
   else if (r() < .5 && pattern !== 'forward') angles.reverse();
   // The presser comes from the side away from the open friend, so a pass ahead or out wide really is on.
   const s0 = Math.sign(angles[0]), ahead0 = Math.abs(angles[0]) < 1.25;
@@ -133,6 +134,10 @@ function attack(r, pattern) {
   } else if (pattern === 'space-near') {                      // a defender lurks ahead: keep it close and go around
     add(onLane(mates[0], .6 + r() * .2)); add(onLane(mates[1], .6 + r() * .2));
     add(at((r() - .5) * .5, 5 + r() * 1.5));
+  } else if (pattern === 'carry') {                           // space ahead, friends only to the side or behind: keep it and run
+    add([heroTo[0] - 2 - r() * 2, heroTo[1] + pick(r, [1, -1]) * (2 + r() * 2)]);   // chasing from behind
+    add([Math.min(L - 3, heroTo[0] + 9 + r() * 4), W / 2 + (r() - .5) * 6]);        // last defender, far away
+    add([heroTo[0] + 4 + r() * 2, heroTo[1] > W / 2 ? heroTo[1] - 5 - r() * 2 : heroTo[1] + 5 + r() * 2]); // across, not in his path
   }
   if (!opps.every(p => inPitch(p, .5)) || !oppsTo.every(p => inPitch(p, 1))) return null;
 
@@ -150,7 +155,8 @@ function attack(r, pattern) {
     const fwdish = goods.filter(o => o.startsWith('drib:')).sort((a, b) => dribbleEnd(P(heroTo), b.slice(5), L, W).x - dribbleEnd(P(heroTo), a.slice(5), L, W).x);
     if (!fwdish.length || g['drib:fwd'] !== 'bad') return null;
     best = fwdish[0]; cue = 'Only one defender. Take him on — dribble past!';
-    return { ...sc, best, ok: goods.filter(o => o !== best), cue };
+    // 1v1: staying on the ball is the lesson, so a pass that keeps it is only "safe" here.
+    return { ...sc, best, ok: fwdish.slice(1), safe: goods.filter(o => o.startsWith('pass:')), cue };
   } else if (pattern === 'shot-open') {
     if (g.shoot !== 'good') return null;
     best = 'shoot'; cue = 'Close to the goal and nobody in the way. Shoot!';
@@ -186,6 +192,11 @@ function attack(r, pattern) {
     best = pushes[0]; safe = goods.filter(o => o.startsWith('drib:'));
     cue = pattern === 'space-behind' ? 'All the defenders were behind you! Push it ahead and run!' : 'The defender was close, but not in your way. Push it away from him and race!';
     return { ...sc, best, ok: pushes.slice(1), safe, cue };
+  } else if (pattern === 'carry') {
+    // At this age, staying on the ball is right when there's space ahead and every pass goes sideways or back.
+    if (g['drib:fwd'] !== 'good' || !['pass:0', 'pass:1'].every(k => g[k] !== 'unclear') || mates.some(m => m[0] > heroTo[0] + 1)) return null;
+    best = 'drib:fwd'; cue = 'Space ahead and the passes only went back. Keep it and run!';
+    return { ...sc, best, ok: goods.filter(o => o.startsWith('drib:') && o !== best && !BACKWARD.has(o.slice(5))), safe: ['pass:0', 'pass:1'].filter(k => g[k] === 'good'), cue };
   } else if (pattern === 'space-near') {
     if (g['push:fwd'] !== 'bad' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
     const smalls = goods.filter(o => o.startsWith('drib:') && o !== 'drib:fwd');
@@ -281,11 +292,12 @@ function defense(r, pattern) {
 }
 
 const PATTERNS = {
-  'look-up': ['one-open', 'one-open', 'none-open', 'two-open'],
+  'look-up': ['one-open', 'carry', 'none-open', 'carry', 'two-open'],
   'shoot-close': ['shot-open', 'shot-open', 'shot-blocked', 'shot-far'],
   'see-the-trap': ['trap', 'trap', 'trap-one'],
-  'pass-to-open': ['marked', 'marked', 'one-open'],
-  'forward-first': ['forward', 'forward', 'two-open'],
+  'take-him-on': ['trap-one', 'trap-one', 'carry', 'trap'],
+  'pass-to-open': ['marked', 'marked', 'one-open', 'carry'],
+  'forward-first': ['forward', 'forward', 'two-open', 'carry'],
   'dribble-to-space': ['space-far', 'space-near', 'space-behind'],
   'get-goal-side': ['goal-side', 'goal-side', 'gs-covered'],
   'one-goes': ['one-goes', 'you-go'],
@@ -299,10 +311,11 @@ function swapMates(sc) {
 }
 const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']);
 export const generates = id => !!PATTERNS[id];
+export const mainPattern = id => PATTERNS[id]?.[0];
 // The demo for a lesson: always its main pattern (never a contrast round), and for passes, a friend ahead or wide
 // of him, never a pass back. Same scenario every time.
 export function demoFor(skill) {
-  const main = PATTERNS[skill]?.[0];
+  const main = mainPattern(skill);
   for (let seed = 7; seed < 400; seed++) {
     const sc = generate(skill, seed);
     if (!sc || sc.pattern !== main) continue;

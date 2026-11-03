@@ -6,9 +6,10 @@ export { PITCH };
 // side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one idea, said to him.
 export const PATH = [
   { id: 'look-up', emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding', ready: true, tip: 'Look up before you decide.' },
+  { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true, tip: 'Lots of space? Push it and go! Defender close? Keep it close.' },
+  { id: 'take-him-on', emoji: '⚡', kid: 'Take him on!', side: 'attack', adult: '1v1: stay on the ball and dribble past a lone defender', ready: true, tip: 'Only one defender? Dribble past him!' },
   { id: 'shoot-close', emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true, tip: 'Close to the goal and nobody in the way? Shoot!' },
   { id: 'get-goal-side', emoji: '🏠', kid: 'Get in front!', side: 'defense', adult: 'Nobody on the ball? Recover goal-side of it and win it from the front', ready: true, tip: 'Nobody on the ball? Get in front of it. Stop him going to your goal!' },
-  { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true, tip: 'Lots of space? Push it and go! Defender close? Keep it close.' },
   { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true, tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.' },
   { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball', ready: true, tip: 'Two defenders coming? Pass before they trap you.' },
   { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true, tip: 'Guard the open player. Stand between him and your goal.' },

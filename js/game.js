@@ -15,7 +15,8 @@ function liveScenario(s, skill, pushAllowed) {
   const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: [P(s.a('m1')), P(s.a('m2'))],
     opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))) };
   sc.oppsTo = sc.opps;
-  // Score each good option by how far it moves the ball toward goal; passes get a bonus (the ball moves faster than he does).
+  // Score each good option by how far it moves the ball toward goal. At this age staying on the ball comes first
+  // (FA foundation phase), so a pass is the best answer only when it gains clearly more than running with it.
   const g = grade(sc);
   // Passes in live play: open unless a defender is in the lane or really on the receiver. A defender behind the
   // receiver (on his far side from the ball) only counts if he's right on him; the receiver is between him and the ball.
@@ -25,7 +26,7 @@ function liveScenario(s, skill, pushAllowed) {
     const marked = opps.some(o => { const r = dist(o, mate); if (r < 1.2) return true; const behind = (o.x - mate.x) * (s.ball.x - mate.x) + (o.y - mate.y) * (s.ball.y - mate.y) < 0; return r < 1.8 && !behind; });
     g['pass:' + i] = d > 1.1 && !marked ? 'good' : 'bad';
   });
-  const gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] + 2 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
+  const gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] - 1.5 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
   const goods = Object.keys(g).filter(o => g[o] === 'good' && (pushAllowed || !o.startsWith('push:'))).sort((a, b) => gain(b) - gain(a));
   sc.grades = g; sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
   sc.cue = !sc.best ? 'That was a tough spot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!` : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
@@ -512,13 +513,13 @@ export class Game {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
-      // Every decision gets 1–3 stars. 3 = the best choice, 2 = safe but there was a better one, 1 = lost it.
+      // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good ? { stars: 3, text: `${praise} ${this.cue()}` } // say why it was right, so the idea sticks
-        : { stars: 1, text: sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!' };
+        : { stars: 0, text: sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!' };
       this.card = null;
       await this.outcome(opt, good);
       const answer = await (this.card || this.hud.banner('', 'goal', this.rated));
