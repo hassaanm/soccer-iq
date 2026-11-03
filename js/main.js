@@ -150,15 +150,18 @@ function renderPickers(flip) {
 const lessonOpen = i => i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0 || (P.skills[PATH[i].id]?.sessions || 0) > 0;
 // Lesson chips on the home screen: each unlocks after the one before it has been played once.
 function renderLessons() {
-  const cur = nextSkill(P, PATH);
-  $('#lessons').innerHTML = PATH.map((sk, i) => {
-    const st = P.skills[sk.id], open = lessonOpen(i);
-    return `<button class="chip ${sk.id === cur ? 'on' : ''} ${open ? '' : 'locked'}" data-id="${sk.id}" ${open ? '' : 'disabled'} title="${sk.kid}">
-      <span>${open ? sk.emoji : '🔒'}</span>${st?.sessions ? `<i>${'★'.repeat(Math.min(3, st.box))}</i>` : ''}</button>`;
+  const cur = nextSkill(P, PATH), sk = skillById(cur);
+  $('#lessons').innerHTML = PATH.map((l, i) => {
+    const st = P.skills[l.id], open = lessonOpen(i);
+    return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
+      <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${st?.sessions ? '★'.repeat(Math.max(1, Math.min(3, st.box))) : ''}</span></button>`;
   }).join('');
-  $('#lessonName').textContent = `${skillById(cur).emoji} ${skillById(cur).kid}` + (skillById(cur).side === 'defense' ? '  ·  defense' : '');
-  document.querySelectorAll('#lessons .chip').forEach(c => c.onclick = () => { P.settings.skill = c.dataset.id; save(P); renderLessons(); });
+  $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
+  document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.settings.skill = c.dataset.id; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
 }
+$('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
+$('#sheetClose').onclick = () => $('#lessonSheet').classList.add('hidden');
+$('#lessonSheet').onclick = e => { if (e.target.id === 'lessonSheet') $('#lessonSheet').classList.add('hidden'); };
 function cycle(side, dir) {
   P[side] = neighbor(P[side], dir, side === 'us' ? P.them : P.us).id; save(P); renderPickers({ side, dir });
 }

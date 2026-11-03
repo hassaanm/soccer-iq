@@ -69,11 +69,17 @@
   </div>
   <div id="version"></div>
   <div class="home-foot">
-    <div class="lessonbox"><div id="lessonName"></div><div id="lessons"></div></div>
+    <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
     <div class="freebox"><button id="freeBtn" class="btn btn-blue">⚽ Free play</button></div>
   </div>
 </section>
+
+<section id="lessonSheet" class="screen hidden"><div class="panel wide sheet">
+  <h2>Pick a lesson</h2>
+  <div id="lessons"></div>
+  <button id="sheetClose" class="btn btn-ghost">Done</button>
+</div></section>
 
 <section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><div class="btns"><button id="cardMain" class="btn btn-green btn-lg"></button><button id="cardAlt" class="btn btn-ghost"></button></div></div></section>
 
