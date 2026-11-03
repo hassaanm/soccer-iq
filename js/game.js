@@ -1,4 +1,4 @@
-// Game flow: lesson demo → rounds with feedback → mini match. Owns input, camera and outcome scripts.
+// Game flow: lesson demo → rounds with feedback → mini match. Owns input, camera, team AI and outcome scripts.
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds } from './skills.js';
 import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd } from './geom.js';
@@ -6,13 +6,12 @@ import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
-const SCAN_TIME = 3; // seconds for one look-around
+const TURN_SPEED = 1.9; // radians per second while a turn button is held
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const segDist = (x, y, a, b) => {
   const dx = b[0] - a[0], dy = b[1] - a[1], t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
   return Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t);
 };
-// Yaw over one scan: left shoulder, right shoulder, back to center.
-const scanYaw = t => t < .9 ? lerp(0, 1.05, smooth(t / .9)) : t < 2.1 ? lerp(1.05, -1.05, smooth((t - .9) / 1.2)) : lerp(-1.05, 0, smooth((t - 2.1) / .6));
 
 export class Game {
   constructor({ world, hud, say }) {
@@ -25,8 +24,9 @@ export class Game {
   }
 
   reset() {
-    Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, yaw: 0, yawT: 0, holding: false, drag: null,
-      scanned: false, scanT: null, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0, ballDir: 1 });
+    Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, turn: 0, drag: null,
+      scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null });
   }
 
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
@@ -42,9 +42,7 @@ export class Game {
   play(gen) { return new Promise(res => this.sim.run((function* () { yield* gen; res(); })())); }
 
   // ---------- scenario setup ----------
-  load(sc) {
-    this.reset(); this.sc = sc; this.sim.setup(sc); this.camMode = 'player'; this.cam = null;
-  }
+  load(sc) { this.reset(); this.sc = sc; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; }
   // Short run-up: he dribbles forward head-down while defenders close in.
   async pre() {
     this.phase = 'pre';
@@ -66,58 +64,61 @@ export class Game {
   }
   cue() { return this.sc.cue.replace('{m0}', this.name('m1')).replace('{m1}', this.name('m2')); }
 
-  // ---------- outcome scripts ----------
+  // ---------- outcome scripts (team AI moves everyone not in `scripted`) ----------
   *finish(id) {
     const s = this.sim, a = s.a(id), tx = L - 5.5, ty = lerp(a.y, W / 2, .75);
-    s.go(id, tx, ty, 5.4);
-    // Defenders chase from behind and are too slow to catch up.
-    for (const o of s.team('them')) s.go(o.id, lerp(o.x, a.x, .6), lerp(o.y, a.y, .6), 3.2);
-    for (const m of s.team('us')) if (m.id !== id) s.go(m.id, Math.min(L - 7, m.x + 5), m.y, 4);
+    this.scripted.add(id); s.go(id, tx, ty, 5.4);
     const t0 = s.time; yield () => Math.hypot(a.x - tx, a.y - ty) < .3 || s.time - t0 > 3;
     s.stop(id); yield* this.strike(id, L + .7, clamp(a.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
-    this.emit('goal'); s.stopAll(); yield 1.4;
+    this.ai = false; s.stopAll(); this.emit('goal'); yield 1.4;
   }
-  // Wind up, then the ball leaves the foot at contact.
-  *strike(id, x, y, opts) { this.sim.windup(id); yield .2; this.sim.kick(x, y, opts); }
+  // Turn to face the target, wind up, then the ball leaves the foot at contact.
+  *strike(id, x, y, opts) {
+    const a = this.sim.a(id), dx = x - a.x, dy = y - a.y, l = Math.hypot(dx, dy) || 1;
+    a.face = [dx / l, dy / l]; this.sim.windup(id); yield .2; this.sim.kick(x, y, opts);
+  }
   *passGood(id) {
     const s = this.sim, t = s.a(id);
+    this.scripted.add(id); s.stop(id);
     yield* this.strike('hero', t.x, t.y, { speed: 13, arc: .2 });
+    this.scripted.delete('hero'); // after passing he runs to support
     yield () => s.ball.state === 'loose';
-    s.give(id); yield .15;
+    s.give(id); this.scripted.delete(id); yield .15;
   }
   *steal(opp) {
     const s = this.sim; s.give(opp.id); s.stop('hero'); this.emit('stolen');
-    s.go(opp.id, opp.x - 4, lerp(opp.y, W / 2, .4), 4.8); yield .8;
+    this.scripted.add(opp.id); s.go(opp.id, opp.x - 4, lerp(opp.y, W / 2, .4), 4.8); yield .8;
   }
   *passBad(id) {
     const s = this.sim, ic = interceptor(s.ball, s.a(id), s.team('them'));
-    s.go(ic.opp.id, ic.x, ic.y, 6); yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
+    this.scripted.add(ic.opp.id); s.go(ic.opp.id, ic.x, ic.y, 6);
+    yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(ic.opp);
   }
   *dribbleGen(dir, good) {
     const s = this.sim, h = s.a('hero'), end = dribbleEnd(h, dir, L, W);
-    s.go('hero', end.x, end.y, 4.4);
-    const opps = s.team('them').sort((a, b) => dist(a, end) - dist(b, end));
+    this.scripted.add('hero'); s.go('hero', end.x, end.y, 4.4);
     const t0 = s.time;
     if (good) {
-      for (const o of opps) s.go(o.id, lerp(o.x, end.x, .3), lerp(o.y, end.y, .3), 2.6);
       yield () => dist(h, end) < .3 || s.time - t0 > 2.5;
       yield* this.finish('hero');
     } else {
-      for (const o of opps.slice(0, 2)) s.go(o.id, end.x, end.y, 5);
+      const opps = s.team('them').sort((a, b) => dist(a, end) - dist(b, end)).slice(0, 2);
+      for (const o of opps) { this.scripted.add(o.id); s.go(o.id, end.x, end.y, 5); }
       yield () => opps.some(o => dist(o, h) < .9) || s.time - t0 > 2.5;
       yield* this.steal(opps.find(o => dist(o, h) < 1.2) || opps[0]);
     }
   }
   *counter() {
     const s = this.sim, c = s.a(s.ball.carrier);
+    this.scripted.add(c.id); this.scripted.add('hero');
     s.go(c.id, 5, W / 2, 5.4); s.go('hero', 7, W / 2, 4.6);
     const t0 = s.time; yield () => dist(c, { x: 5, y: W / 2 }) < .3 || s.time - t0 > 3.5;
     s.stop(c.id); yield* this.strike(c.id, -.7, W / 2, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
-    this.emit('goalAgainst'); s.stopAll(); yield 1.3;
+    this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
   }
   *outcomeGen(opt, good, counter) {
     if (MATE[opt]) {
@@ -125,10 +126,11 @@ export class Game {
       else yield* this.passBad(MATE[opt]);
     } else yield* this.dribbleGen(opt.slice(5), good);
     if (!good && counter) yield* this.counter();
+    this.ai = false;
   }
   async outcome(opt, good, counter = false) {
     const h = this.sim.a('hero');
-    this.phase = 'outcome'; this.step = null; this.holding = false; this.scanT = null; this.camMode = 'follow';
+    Object.assign(this, { phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good, counter));
   }
@@ -138,18 +140,45 @@ export class Game {
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
   }
 
+  // Simple team shape while the ball is live: the nearest defender presses, the next covers
+  // between the ball and goal, the last marks the most dangerous attacker. Attackers without
+  // the ball run ahead into wide lanes to support. Scripted players (passer, shooter, tacklers) are left alone.
+  teamAI() {
+    const s = this.sim, b = s.ball, carrier = s.a(b.carrier);
+    if (carrier) this.ballTeam = carrier.team;
+    const atk = this.ballTeam, def = atk === 'us' ? 'them' : 'us';
+    const goalX = def === 'them' ? L : 0, dir = atk === 'us' ? 1 : -1;
+    const ball = b.state === 'flying' ? { x: b.tx, y: b.ty } : { x: b.x, y: b.y };
+    const free = a => !this.scripted.has(a.id) && a.id !== b.carrier;
+    const attackers = s.team(atk);
+    const defenders = s.team(def).filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
+    defenders.forEach((d, i) => {
+      if (i === 0) return s.go(d.id, ball.x - dir * .6, ball.y, 3.4);
+      if (i === 1) return s.go(d.id, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
+      const danger = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX))[0] || ball;
+      s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
+    });
+    attackers.filter(free).forEach(a => {
+      const lane = a.y < W / 2 ? W * .22 : W * .78;
+      s.go(a.id, clamp(ball.x + dir * 4, 2, L - 3), lerp(a.y, lane, .5), 3.8);
+    });
+  }
+
   // ---------- flows ----------
   async demo(skillId) {
     this.mode = 'demo';
     const sc = demoScenario(skillId); this.load(sc);
-    const hero = this.name('hero'), mate = this.name(MATE[sc.best] || 'm1');
+    const hero = this.name('hero'), mateId = MATE[sc.best] || 'm1', mate = this.name(mateId);
     this.hud.caption(`Watch ${hero}!`); this.say(`Watch ${hero}.`);
     await this.pre();
     this.phase = 'decide';
-    this.hud.caption(`${hero} looks up… 👀`); this.say(`${hero} looks up, and looks around.`);
-    this.startScan(); await this.delay(SCAN_TIME);
+    this.hud.caption(`${hero} looks up 👀`); this.say(`${hero} looks up.`);
+    await this.delay(.5); this.lookUp = true; await this.delay(.8);
+    this.hud.caption('…and turns to find a friend'); this.say('And turns to find a friend.');
+    const h = this.sim.a('hero'), m = this.sim.a(mateId), aim = Math.atan2(m.y - h.y, m.x - h.x) * .85;
+    await this.tween(1.6, t => { this.yaw = lerp(0, aim, smooth(t)); });
     this.hud.caption(`${mate} is open!`); this.say(`${mate} is open!`);
-    await this.delay(.6); this.step = 'pass'; this.hint = true; await this.delay(1.4);
+    await this.delay(.6); this.step = 'pass'; this.hint = true; await this.delay(1.2);
     this.hud.caption('Pass!'); this.say('Pass!');
     await this.outcome(sc.best, true);
     this.hud.caption('');
@@ -173,7 +202,6 @@ export class Game {
       }
       await this.feedback(save, opt);
       this.sim.restore(save); this.reset(); this.camMode = 'player';
-      this.seen = new Set(MATE[sc.best] ? [MATE[sc.best]] : []);
       this.hud.caption('Watch this way!'); this.say('Watch this way.');
       await this.outcome(sc.best, true);
       this.sim.restore(save); this.reset(); this.camMode = 'player';
@@ -211,17 +239,24 @@ export class Game {
   // ---------- input ----------
   get canAct() { return this.phase === 'decide' && this.mode !== 'demo'; }
   get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo'; }
-  lookStart(x, width) { if (!this.canLook) return; this.scanT = null; this.holding = true; this.drag = { x0: x, yaw0: this.yaw, w: width }; }
-  // One tap on LOOK: lift the head and turn over the left shoulder, the right shoulder, then forward.
-  scan() { if (this.canLook) this.startScan(); }
-  startScan() { this.scanT = 0; this.scanned = true; }
-  lookMove(x) { if (this.drag && this.holding) this.yawT = clamp(this.drag.yaw0 - (x - this.drag.x0) / this.drag.w * 2.4, -1.3, 1.3); }
-  lookEnd() { this.drag = null; this.holding = false; }
-  pass() {
-    if (!this.canAct) return; this.step = 'pass';
-    if (!this.seen.size) { this.hud.toast('Look first! 👀', true); this.say('Look first!'); }
+  // LOOK is a toggle: head up to see the field, head down to watch the ball.
+  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; if (this.lookUp) this.scanned = true; else this.turn = 0; }
+  // Turning stays where he leaves it, so he can turn all the way around to find someone behind him.
+  turnStart(dir) { if (!this.canLook || this.step === 'dribble') return; this.lookUp = true; this.scanned = true; this.turn = dir; }
+  turnEnd() { this.turn = 0; }
+  lookStart(x, width) { if (this.canLook && this.step !== 'dribble') this.drag = { x0: x, yaw0: this.yaw, w: width }; }
+  lookMove(x) {
+    if (!this.drag) return;
+    const dx = x - this.drag.x0;
+    if (Math.abs(dx) > 8) { this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
-  dribble() { if (this.canAct) this.step = 'dribble'; }
+  lookEnd() { this.drag = null; }
+  pass() {
+    if (!this.canAct) return;
+    this.step = 'pass'; this.lookUp = true;
+    if (!this.seen.size) { this.hud.toast('Find a friend first! 👀', true); this.say('Find a friend first!'); }
+  }
+  dribble() { if (this.canAct) { this.step = 'dribble'; this.turn = 0; } }
   dribbleDir(d) { if (this.step === 'dribble') this.choose('drib:' + d); }
   back() { if (this.canAct) this.step = null; }
   choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; f(opt); } }
@@ -256,20 +291,17 @@ export class Game {
       t.t += dt; const u = Math.min(1, t.t / t.dur); t.f?.(u);
       if (u >= 1) { this.tweens.splice(this.tweens.indexOf(t), 1); t.res(); }
     }
+    if (this.ai) this.teamAI();
     if (this.phase !== 'feedback') this.sim.step(dt);
     const s = this.sim, h = s.a('hero');
 
-    // Head: hold to look up; drag to turn. Picking a pass or showing feedback lifts the head toward the targets.
-    let scanning = false;
-    if (this.scanT != null) { this.scanT += dt; scanning = this.scanT < SCAN_TIME; if (scanning) this.yawT = scanYaw(this.scanT); else this.scanT = null; }
-    const aimPts = this.aimAt ? [this.aimAt] : this.step === 'pass' && !this.holding ? [...this.seen].map(id => s.a(id)) : [];
-    if (scanning) { /* yaw set by the scan */ }
-    else if (aimPts.length && h) this.yawT = clamp(aimPts.reduce((a, p) => a + Math.atan2(p.y - h.y, p.x - h.x), 0) / aimPts.length * .8, -1.3, 1.3);
-    else if (!this.holding) this.yawT = 0;
-    this.yaw += (this.yawT - this.yaw) * Math.min(1, dt * 7);
-    const up = this.holding || scanning || aimPts.length > 0;
-    this.look = clamp(this.look + (up ? 1 : -1) * dt / .35, 0, 1);
-    if (this.holding) this.scanned = true;
+    if (this.lookUp && this.turn) this.yaw = wrap(this.yaw + this.turn * TURN_SPEED * dt);
+    this.look = clamp(this.look + (this.lookUp ? 1 : -1) * dt / .3, 0, 1);
+    // While deciding with his head up, his body turns with his head (the ball stays at his feet).
+    if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble') {
+      const f = Math.atan2(h.face[1], h.face[0]) + wrap(this.yaw - Math.atan2(h.face[1], h.face[0])) * Math.min(1, dt * 10);
+      h.face = [Math.cos(f), Math.sin(f)];
+    }
 
     // Spot teammates that are on screen while looking up.
     if (this.look > .8 && (this.phase === 'pre' || this.phase === 'decide')) {
@@ -303,10 +335,11 @@ export class Game {
     }
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
-    // Player view. Head down: tight on the ball. Head up: just above head height behind him, turned by yaw.
-    const k = smooth(this.look), yw = this.yaw * k;
-    const [bx, by] = rot(-lerp(3.1, 5.2, k), lerp(1.3, .3, k), yw), [fx, fy] = rot(9, 0, yw);
-    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(b.x + .8, h.x + fx, k), lerp(b.y - .2, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
+    // Player view, behind him in the direction he's turned. Head down: close and aimed at the ball.
+    // Head up: just above head height, looking out across the field.
+    const k = smooth(this.look);
+    const [bx, by] = rot(-lerp(3.1, 5.2, k), lerp(1.3, .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
+    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(b.x, h.x + fx, k), lerp(b.y, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
   }
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;
@@ -321,21 +354,27 @@ export class Game {
     for (let i = 0; i < 3; i++) { this.cam.eye[i] = lerp(this.cam.eye[i], want.eye[i], k); this.cam.tgt[i] = lerp(this.cam.tgt[i], want.tgt[i], k); }
     this.cam.Ff = lerp(this.cam.Ff, want.Ff, k); this.cam.Fw = lerp(this.cam.Fw ?? want.Fw, want.Fw, k);
   }
-  updateHud(time) {
-    const hud = this.hud, best = this.sc?.best, bestMate = MATE[best];
+  updateHud() {
+    const hud = this.hud, best = this.sc?.best, bestMate = MATE[best], s = this.sim, h = s.a('hero');
     let prompt = '';
     if (this.mode === 'lesson' || this.mode === 'match') {
-      if (this.phase === 'pre') prompt = this.holding || this.scanT != null ? '' : 'Tap 👀 to look around';
-      else if (this.phase === 'decide') prompt = this.step === 'pass' ? (this.seen.size ? 'Tap a friend' : 'Look first! Tap 👀') : this.step === 'dribble' ? 'Which way?' : this.seen.size ? 'Pass or dribble?' : 'Tap 👀 to look around';
+      if (this.phase === 'pre') prompt = this.lookUp ? '' : 'Tap 👀 to look up';
+      else if (this.phase === 'decide') prompt =
+        this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Turn to find a friend') :
+        this.step === 'dribble' ? 'Which way?' :
+        this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Turn ⟲ ⟳ to find a friend' : 'Tap 👀 to look up';
     }
     let nudge = null;
     if (this.canAct) {
-      const stuck = this.sim.time - this.decideAt > 4;
-      if ((this.hint || stuck) && !this.seen.size && !this.holding) nudge = 'look';
-      else if (this.hint && bestMate && !this.seen.has(bestMate) && !this.holding) nudge = 'look';
-      else if (this.hint && !this.step) nudge = bestMate ? 'pass' : 'dribble';
+      const stuck = s.time - this.decideAt > 4;
+      if (!this.lookUp && !this.seen.size && (this.hint || stuck)) nudge = 'look';
+      else if (this.hint && bestMate && !this.seen.has(bestMate) && h) {
+        const m = s.a(bestMate), d = wrap(Math.atan2(m.y - h.y, m.x - h.x) - this.yaw);
+        nudge = !this.lookUp ? 'look' : d > 0 ? 'turnL' : 'turnR';
+      } else if (this.hint && !this.step) nudge = bestMate ? 'pass' : 'dribble';
     }
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, holding: this.holding || this.scanT != null, hintDir: this.hint && best?.startsWith('drib:') ? best.slice(5) : null });
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, turn: this.turn,
+      hintDir: this.hint && best?.startsWith('drib:') ? best.slice(5) : null });
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = this.hint && id === bestMate ? 1 : .6;
     if (this.phase === 'decide' && this.step === 'dribble') for (const d of ['fwd', 'left', 'right', 'back']) arrows[d] = this.hint && best === 'drib:' + d ? 1 : .55;

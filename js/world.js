@@ -96,7 +96,9 @@ function animate(g, a, sim) {
   const cyc = (a.dist % TOUCH) / TOUCH, touch = Math.floor(a.dist / TOUCH) % 3;
   u.legs.forEach(({ hip, knee }, i) => {
     const sgn = i ? 1 : -1, sw = Math.sin(ph + Math.PI / 2) * sgn;
-    let h = -sw * .7 * run, k = run * (.15 + .9 * Math.max(0, -sw)) + .06 * (1 - run), turn = 0;
+    // Standing still: a ready stance (defenders crouch a bit more) with a slow breath.
+    const ready = (1 - run) * (a.team === 'them' ? .34 : .16) + (1 - run) * .04 * Math.sin(sim.time * 2.2 + a.x);
+    let h = -sw * .7 * run - ready * .45, k = run * (.15 + .9 * Math.max(0, -sw)) + ready, turn = 0;
     if (carrying && i === 1 && run > .2 && cyc < .18) turn = [0, -.55, .45][touch] * run;
     if (i === 1 && kick < 1) {
       const t = kick;

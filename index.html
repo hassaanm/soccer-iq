@@ -11,53 +11,70 @@
 <title>Soccer IQ</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
 </head>
 <body>
 <canvas id="view"></canvas>
+<div id="tunnel"></div>
 
 <div id="hud" class="hidden" data-phase="idle" data-step="none" data-mode="home">
-  <button id="homeBtn" class="mini" aria-label="Home">🏠</button>
-  <div id="dots"></div>
-  <div id="score" class="hidden"></div>
+  <button id="homeBtn" class="btn btn-glass btn-icon top-left" aria-label="Home">⌂</button>
+  <div id="topbar"><div id="dots"></div><div id="score" class="hidden"></div></div>
   <div id="prompt"></div>
   <div id="caption"></div>
   <div id="toast"></div>
-  <div id="banner"></div>
-  <div id="confetti"></div>
-  <button class="gbtn eye" id="lookBtn"><i>👀</i>LOOK</button>
-  <button class="gbtn pass" id="passBtn"><i>⚽</i>PASS</button>
-  <button class="gbtn drib" id="dribBtn"><i>👟</i>DRIBBLE</button>
-  <div id="dpad"><button data-dir="fwd" aria-label="Forward">▲</button><button data-dir="left" aria-label="Left">◀</button><button data-dir="right" aria-label="Right">▶</button><button data-dir="back" aria-label="Back">▼</button></div>
-  <button class="gbtn back" id="backBtn" aria-label="Back"><i>✕</i></button>
+  <div id="banner"><span></span></div>
+  <button class="btn btn-glass turn" id="turnL" aria-label="Turn left">⟲</button>
+  <button class="btn btn-glass turn" id="turnR" aria-label="Turn right">⟳</button>
+  <button class="btn btn-gold btn-round" id="lookBtn"><i>👀</i><span>LOOK UP</span></button>
+  <button class="btn btn-blue btn-round" id="passBtn"><i>⚽</i><span>PASS</span></button>
+  <button class="btn btn-green btn-round" id="dribBtn"><i>👟</i><span>DRIBBLE</span></button>
+  <div id="dpad"><button class="btn btn-green" data-dir="fwd" aria-label="Forward">▲</button><button class="btn btn-green" data-dir="left" aria-label="Left">◀</button><button class="btn btn-green" data-dir="right" aria-label="Right">▶</button><button class="btn btn-green" data-dir="back" aria-label="Back">▼</button></div>
+  <button class="btn btn-glass btn-icon" id="backBtn" aria-label="Back">✕</button>
 </div>
 
 <section id="home" class="screen">
-  <h1>⚽ Soccer IQ</h1>
-  <div class="pickers">
-    <div class="picker" data-side="us">
-      <div class="lbl">YOUR TEAM</div>
-      <div class="row"><button class="arrow prev" aria-label="Previous team">◀</button><canvas width="320" height="320"></canvas><button class="arrow next" aria-label="Next team">▶</button></div>
-      <div class="tname"></div><div class="stars"></div>
+  <header class="brand"><span class="logo">⚽</span><h1>Soccer IQ</h1></header>
+  <button id="gear" class="btn btn-glass btn-icon top-right" aria-label="Grown-ups: hold">⚙︎</button>
+  <div class="matchup">
+    <div class="team" data-side="us">
+      <div class="tag">YOUR TEAM</div>
+      <div class="carousel">
+        <button class="btn btn-glass btn-icon prev" aria-label="Previous team">‹</button>
+        <div class="shirts"><canvas class="side l" width="160" height="160"></canvas><canvas class="main" width="320" height="320"></canvas><canvas class="side r" width="160" height="160"></canvas></div>
+        <button class="btn btn-glass btn-icon next" aria-label="Next team">›</button>
+      </div>
+      <div class="tname"></div>
+      <div class="roster"></div>
     </div>
     <div class="vs">VS</div>
-    <div class="picker" data-side="them">
-      <div class="lbl">OTHER TEAM</div>
-      <div class="row"><button class="arrow prev" aria-label="Previous team">◀</button><canvas width="320" height="320"></canvas><button class="arrow next" aria-label="Next team">▶</button></div>
-      <div class="tname"></div><div class="stars"></div>
+    <div class="team" data-side="them">
+      <div class="tag">OTHER TEAM</div>
+      <div class="carousel">
+        <button class="btn btn-glass btn-icon prev" aria-label="Previous team">‹</button>
+        <div class="shirts"><canvas class="side l" width="160" height="160"></canvas><canvas class="main" width="320" height="320"></canvas><canvas class="side r" width="160" height="160"></canvas></div>
+        <button class="btn btn-glass btn-icon next" aria-label="Next team">›</button>
+      </div>
+      <div class="tname"></div>
+      <div class="roster"></div>
     </div>
   </div>
-  <button id="playBtn" class="big">▶ PLAY</button>
-  <div id="stickers"></div>
-  <button id="gear" class="mini" aria-label="Grown-ups: hold">⚙️</button>
+  <div class="home-foot">
+    <div id="stickers"></div>
+    <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
+    <div class="spacer"></div>
+  </div>
 </section>
 
-<section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><button class="big"></button></div></section>
+<section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><button class="btn btn-green btn-lg"></button></div></section>
 
 <section id="results" class="screen hidden"><div class="panel">
   <div class="emoji"></div><h2></h2><div class="starsrow"></div><p></p>
-  <div class="btns"><button id="againBtn" class="big">▶ Play again</button><button id="teamsBtn" class="ghost">Change teams</button></div>
+  <div class="btns"><button id="againBtn" class="btn btn-green btn-lg">Play again</button><button id="teamsBtn" class="btn btn-ghost">Change teams</button></div>
 </div></section>
 
 <section id="menu" class="screen hidden"><div class="panel wide">
@@ -66,7 +83,7 @@
   <label>Rounds per session <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
   <label class="chk"><input type="checkbox" id="voiceChk"> Voice narration</label>
   <div id="progressList"></div>
-  <div class="btns"><button id="menuClose" class="big">Done</button><button id="resetBtn" class="ghost danger">Reset progress</button></div>
+  <div class="btns"><button id="menuClose" class="btn btn-green btn-lg">Done</button><button id="resetBtn" class="btn btn-ghost danger">Reset progress</button></div>
 </div></section>
 
 <div id="rotate"><div>📱↻</div><p>Turn your phone sideways</p></div>

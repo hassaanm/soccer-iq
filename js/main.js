@@ -34,22 +34,26 @@ const flash = (el, cls, text, ms) => {
   el.textContent = text; el.className = cls; void el.offsetWidth; el.classList.add('show');
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
+const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, holding, hintDir }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, turn, hintDir }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
     if (d.mode !== mode) d.mode = mode;
+    hudEl.classList.toggle('up', lookUp);
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
-    for (const [id, k] of [['#lookBtn', 'look'], ['#passBtn', 'pass'], ['#dribBtn', 'dribble']]) $(id).classList.toggle('nudge', nudge === k);
-    $('#lookBtn').classList.toggle('held', holding);
-    document.querySelectorAll('#dpad button').forEach(b => b.classList.toggle('nudge', b.dataset.dir === hintDir));
+    for (const [id, k] of [['#lookBtn', 'look'], ['#passBtn', 'pass'], ['#dribBtn', 'dribble'], ['#turnL', 'turnL'], ['#turnR', 'turnR']]) $(id).classList.toggle('nudge', nudge === k);
+    const lb = $('#lookBtn'); lb.classList.toggle('on', lookUp);
+    const label = lookUp ? 'HEAD DOWN' : 'LOOK UP'; if (lb.lastChild.textContent !== label) { lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = label; }
+    $('#turnL').classList.toggle('held', turn > 0); $('#turnR').classList.toggle('held', turn < 0);
+    document.querySelectorAll('#dpad .btn').forEach(b => b.classList.toggle('nudge', b.dataset.dir === hintDir));
+    // Head down = tunnel vision: blurry, darker edges. Clears as he looks up.
+    const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
+    tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
   },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
-  banner(text, kind) {
-    flash($('#banner'), kind, text, 1500);
-    if (kind === 'goal') confetti();
-  },
+  banner(text, kind) { const b = $('#banner'); b.firstChild.textContent = text; b.className = kind; void b.offsetWidth; b.classList.add('show'); clearTimeout(timers.banner); timers.banner = setTimeout(() => b.classList.remove('show'), 1500); },
   caption(text) { const c = $('#caption'); c.textContent = text; c.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
   dots(results, n) {
     $('#dots').innerHTML = Array.from({ length: n }, (_, i) => `<span class="${i < results.length ? (results[i] ? 'star' : 'done') : i === results.length ? 'now' : ''}"></span>`).join('');
@@ -59,14 +63,6 @@ const hud = {
     el.innerHTML = `<span>${us.short}</span><b>${s.us} – ${s.them}</b><span>${them.short}</span>`;
   },
 };
-function confetti() {
-  const box = $('#confetti');
-  for (let i = 0; i < 22; i++) {
-    const e = document.createElement('i'); e.textContent = ['⭐', '🎉', '⚽', '✨'][i % 4];
-    e.style.left = Math.random() * 100 + '%'; e.style.animationDelay = Math.random() * .3 + 's'; e.style.fontSize = 18 + Math.random() * 18 + 'px';
-    box.appendChild(e); setTimeout(() => e.remove(), 1900);
-  }
-}
 
 const game = new Game({ world, hud, say });
 
@@ -76,41 +72,51 @@ const show = id => { for (const s of screens) $(s).classList.toggle('hidden', s 
 
 function drawShirt(cv, kit, num) {
   const g = cv.getContext('2d'), Wd = cv.width; g.clearRect(0, 0, Wd, Wd); g.save(); g.scale(Wd / 160, Wd / 160);
-  const body = new Path2D('M50 22 L68 14 Q80 28 92 14 L110 22 L142 48 L122 70 L110 60 L110 146 L50 146 L50 60 L38 70 L18 48 Z');
+  const body = new Path2D('M50 22 Q60 16 68 13 Q80 30 92 13 Q100 16 110 22 L143 46 Q138 60 124 70 L110 61 L111 146 Q80 152 49 146 L50 61 L36 70 Q22 60 17 46 Z');
+  const sleeveL = new Path2D('M50 22 L17 46 Q22 60 36 70 L50 61 Z'), sleeveR = new Path2D('M110 22 L143 46 Q138 60 124 70 L110 61 Z');
   g.fillStyle = kit.colors[0]; g.fill(body);
   g.save(); g.clip(body);
   if (kit.pattern === 'stripes') { g.fillStyle = kit.colors[1]; for (let x = 44; x < 116; x += 24) g.fillRect(x, 0, 12, 160); }
-  if (kit.pattern === 'band') { g.fillStyle = '#fff'; g.fillRect(66, 0, 28, 160); g.fillStyle = kit.colors[1]; g.fillRect(71, 0, 18, 160); }
-  if (kit.pattern === 'sleeves') { g.fillStyle = kit.colors[1]; g.fill(new Path2D('M50 22 L18 48 L38 70 L50 60 Z')); g.fill(new Path2D('M110 22 L142 48 L122 70 L110 60 Z')); }
-  g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(100, 0, 60, 160);
+  if (kit.pattern === 'band') { g.fillStyle = '#fff'; g.fillRect(65, 0, 30, 160); g.fillStyle = kit.colors[1]; g.fillRect(70, 0, 20, 160); }
+  if (kit.pattern === 'sleeves') { g.fillStyle = kit.colors[1]; g.fill(sleeveL); g.fill(sleeveR); }
+  g.fillStyle = kit.trim; for (const p of [[22, 52, 34, 64], [138, 52, 126, 64]]) { g.save(); g.lineWidth = 5; g.strokeStyle = kit.trim; g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(p[2], p[3]); g.stroke(); g.restore(); }
+  const shade = g.createLinearGradient(0, 0, 160, 0); shade.addColorStop(0, 'rgba(255,255,255,.22)'); shade.addColorStop(.45, 'rgba(255,255,255,0)'); shade.addColorStop(1, 'rgba(0,0,0,.18)');
+  g.fillStyle = shade; g.fillRect(0, 0, 160, 160);
   g.restore();
-  g.strokeStyle = kit.trim; g.lineWidth = 5; g.beginPath(); g.moveTo(68, 15); g.quadraticCurveTo(80, 30, 92, 15); g.stroke();
-  g.fillStyle = kit.shorts; g.fillRect(52, 140, 56, 6);
-  g.font = '900 46px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.35)';
-  g.strokeText(num, 80, 92); g.fillStyle = kit.num; g.fillText(num, 80, 92);
-  g.strokeStyle = 'rgba(40,20,10,.55)'; g.lineWidth = 3; g.stroke(body);
+  g.strokeStyle = kit.trim; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(67, 14); g.quadraticCurveTo(80, 32, 93, 14); g.stroke();
+  g.font = '700 50px Fredoka, system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.3)';
+  g.strokeText(num, 80, 94); g.fillStyle = kit.num; g.fillText(num, 80, 94);
+  g.strokeStyle = 'rgba(36,25,58,.55)'; g.lineWidth = 3; g.lineJoin = 'round'; g.stroke(body);
   g.restore();
 }
-function renderPickers() {
+const neighbor = (id, dir, skip) => { let i = TEAMS.findIndex(t => t.id === id); do { i = (i + dir + TEAMS.length) % TEAMS.length; } while (TEAMS[i].id === skip); return TEAMS[i]; };
+function renderPickers(flip) {
   for (const side of ['us', 'them']) {
-    const el = $(`.picker[data-side=${side}]`), t = teamById(P[side]);
-    drawShirt(el.querySelector('canvas'), t.kit, t.players[0].num);
+    const el = $(`.team[data-side=${side}]`), t = teamById(P[side]), other = side === 'us' ? P.them : P.us;
+    const prev = neighbor(t.id, -1, other), next = neighbor(t.id, 1, other);
+    drawShirt(el.querySelector('.main'), t.kit, t.players[0].num);
+    drawShirt(el.querySelector('.side.l'), prev.kit, prev.players[0].num);
+    drawShirt(el.querySelector('.side.r'), next.kit, next.players[0].num);
+    el.style.setProperty('--team', t.kit.colors[0]);
     el.querySelector('.tname').textContent = t.name;
-    el.querySelector('.stars').textContent = t.players.map(p => displayName(p.name)).join(' · ');
+    el.querySelector('.roster').innerHTML = t.players.map(p => `<span>${displayName(p.name)}</span>`).join('');
+    if (flip && flip.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); void sh.offsetWidth; sh.classList.add(flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));
-  const stickers = P.stickers.slice(-12);
-  $('#stickers').innerHTML = stickers.length ? stickers.map(s => `<span title="${s.skill}">${s.emoji}</span>`).join('') : '';
+  $('#stickers').innerHTML = P.stickers.slice(-10).map(s => `<span>${s.emoji}</span>`).join('');
 }
 function cycle(side, dir) {
-  const other = side === 'us' ? P.them : P.us;
-  let i = TEAMS.findIndex(t => t.id === P[side]);
-  do { i = (i + dir + TEAMS.length) % TEAMS.length; } while (TEAMS[i].id === other);
-  P[side] = TEAMS[i].id; save(P); renderPickers();
+  P[side] = neighbor(P[side], dir, side === 'us' ? P.them : P.us).id; save(P); renderPickers({ side, dir });
 }
-document.querySelectorAll('.picker').forEach(el => {
-  el.querySelector('.prev').onclick = () => cycle(el.dataset.side, -1);
-  el.querySelector('.next').onclick = () => cycle(el.dataset.side, 1);
+document.querySelectorAll('.team').forEach(el => {
+  const side = el.dataset.side;
+  el.querySelector('.prev').onclick = () => cycle(side, -1);
+  el.querySelector('.next').onclick = () => cycle(side, 1);
+  el.querySelector('.side.l').onclick = () => cycle(side, -1);
+  el.querySelector('.side.r').onclick = () => cycle(side, 1);
+  let sx = null; const sh = el.querySelector('.shirts');
+  sh.addEventListener('pointerdown', e => { sx = e.clientX; });
+  sh.addEventListener('pointerup', e => { if (sx != null && Math.abs(e.clientX - sx) > 30) cycle(side, e.clientX < sx ? 1 : -1); sx = null; });
 });
 
 function card({ emoji, title, sub, button }) {
@@ -129,9 +135,9 @@ async function runSession() {
   game.setTeams(us, them);
   world.setEnv('crowd');
   show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
-  await card({ emoji: sk.emoji, title: sk.kid, sub: `Watch ${hero} first`, button: '▶ Watch' });
+  await card({ emoji: sk.emoji, title: sk.kid, sub: `Watch ${hero} first`, button: 'Watch' });
   await game.demo(skillId);
-  await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Hold 👀 to look up.`, button: '▶ Play' });
+  await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then turn to find a friend.`, button: 'Play' });
   const n = P.settings.rounds, rounds = pickRounds([skillId, ...reviews], n), results = [];
   let misses = 0;
   hud.dots(results, n);
@@ -139,7 +145,7 @@ async function runSession() {
     const r = await game.round(rounds[i], { hint: i < 2 || misses >= 2 });
     results.push(r.firstTry); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
   }
-  await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: '▶ Kick off' });
+  await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
   const score = await game.match([skillId, ...reviews]);
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
   finishSession(P, skillId, firstTry, rounds.length);
@@ -187,10 +193,14 @@ canvas.addEventListener('pointerdown', e => {
   if (game.tap(e.clientX, e.clientY)) return;
   game.lookStart(e.clientX, canvas.clientWidth); e.preventDefault();
 });
-$('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.scan(); });
-document.querySelectorAll('#dpad button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); game.dribbleDir(b.dataset.dir); }));
+$('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.toggleLook(); });
+for (const [id, dir] of [['#turnL', 1], ['#turnR', -1]]) {
+  $(id).addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.turnStart(dir); });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $(id).addEventListener(ev, () => game.turnEnd());
+}
+document.querySelectorAll('#dpad .btn').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); game.dribbleDir(b.dataset.dir); }));
 addEventListener('pointermove', e => game.lookMove(e.clientX));
-addEventListener('pointerup', () => game.lookEnd());
+addEventListener('pointerup', () => { game.lookEnd(); game.turnEnd(); });
 addEventListener('pointercancel', () => game.lookEnd());
 $('#passBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.pass(); });
 $('#dribBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.dribble(); });
