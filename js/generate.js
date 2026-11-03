@@ -299,6 +299,18 @@ function swapMates(sc) {
 }
 const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']);
 export const generates = id => !!PATTERNS[id];
+// The demo for a lesson: always its main pattern (never a contrast round), and for passes, a friend ahead or wide
+// of him, never a pass back. Same scenario every time.
+export function demoFor(skill) {
+  const main = PATTERNS[skill]?.[0];
+  for (let seed = 7; seed < 400; seed++) {
+    const sc = generate(skill, seed);
+    if (!sc || sc.pattern !== main) continue;
+    if (sc.best.startsWith('pass:') && sc.mates[+sc.best[5]][0] < sc.heroTo[0] + 1) continue;
+    return sc;
+  }
+  return generate(skill, 7);
+}
 
 // A fresh, clean scenario for a lesson. Same seed, same scenario (handy for tests).
 export function generate(skill, seed) {

@@ -37,3 +37,18 @@ test('every lesson makes every pattern, each with 3 defenders, 2 teammates, a ri
     assert.ok(seen.size >= 2 || sk.id === 'mark-the-free-one', `${sk.id}: only ${[...seen]}`);
   }
 });
+
+test('demos show each lesson\'s main idea, and tips never show a {name} placeholder', async () => {
+  const { demoScenario } = await import('../js/skills.js');
+  const { makeGame } = await import('./harness.js');
+  for (const sk of PATH) {
+    const sc = demoScenario(sk.id);
+    if (sc.pattern) assert.ok(!/contrast/.test(sc.pattern) && !['trap-one', 'shot-far', 'shot-blocked', 'gs-covered', 'you-go', 'two-open'].includes(sc.pattern), `${sk.id} demo is a contrast round (${sc.pattern})`);
+    if (sc.best.startsWith('pass:')) assert.ok(sc.mates[+sc.best[5]][0] >= sc.heroTo[0], `${sk.id} demo passes backward`);
+  }
+  const { g } = makeGame();
+  for (const sk of PATH) for (let seed = 1; seed < 40; seed++) {
+    const sc = generate(sk.id, seed); g.sc = sc;
+    assert.ok(!/\{m\d\}/.test(g.cue()), `${sc.id}: "${g.cue()}"`);
+  }
+});

@@ -212,3 +212,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 
 /* While the result card is up, the caption steps aside so the card never covers it (the card says the same thing). */
 #hud.rating #caption,#hud.rating #prompt{opacity:0}
+#menu .btn-sm{padding:6px 12px;font-size:14px;flex:none}
+#menu #voiceSel{flex:1}
+#menu .hint{margin:0 0 8px;font-size:12.5px;font-weight:500;color:var(--ink-soft);text-align:left;line-height:1.35}
+/* Star slots keep their space but stay hidden until the play is rated (demos are never rated). */
+#rate .stars.wait{visibility:hidden}

@@ -18,16 +18,21 @@ try { world = new World(canvas, { art: P.settings.art }); } catch (e) {
 }
 
 // ---------- voice ----------
-let voice = null;
+// English voices, warmest first: downloaded Premium/Enhanced voices sound far less robotic than the defaults.
+// Joke voices (Bubbles, Zarvox...) are left out. The grown-ups menu can pick any of them.
+const NOVELTY = /Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley/;
+const WARM = ['Ava', 'Zoe', 'Allison', 'Samantha', 'Nicky', 'Evan', 'Nathan', 'Tom', 'Susan', 'Karen', 'Serena', 'Daniel', 'Moira', 'Google US English'];
+const voiceScore = v => (/Premium/.test(v.name) ? 0 : /Enhanced/.test(v.name) ? 100 : 200) + ((WARM.findIndex(n => v.name.startsWith(n)) + 1) || 50) + (v.lang === 'en-US' ? 0 : 5);
+let voice = null, voices = [];
 const pickVoice = () => {
-  const vs = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en'));
-  voice = vs.find(v => /Samantha|Google US English|Karen|Daniel/.test(v.name)) || vs[0] || null;
+  voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en') && !NOVELTY.test(v.name)).sort((a, b) => voiceScore(a) - voiceScore(b));
+  voice = voices.find(v => v.name === P.settings.voiceName) || voices[0] || null;
 };
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 function say(text) {
   if (!P.settings.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, ''));
-  if (voice) u.voice = voice; u.rate = .95; u.pitch = 1.1;
+  if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12;
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
@@ -63,14 +68,14 @@ const hud = {
   banner(text, kind) {
     const el = $('#rate');
     el.querySelector('.title').textContent = text; el.querySelector('.title').className = 'title ' + kind;
-    el.querySelector('.stars').innerHTML = EMPTY_STARS; el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
+    el.querySelector('.stars').innerHTML = EMPTY_STARS; el.querySelector('.stars').classList.add('wait'); el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); hudEl.classList.add('rating');
     clearTimeout(timers.rate); timers.rate = setTimeout(() => { el.classList.remove('show'); hudEl.classList.remove('rating'); }, 1700);
     sfx(kind === 'bad' ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
   },
   rate(stars, text, watch) {
     const el = $('#rate'); clearTimeout(timers.rate);
-    el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
+    el.querySelector('.stars').classList.remove('wait'); el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
     el.querySelector('.txt').textContent = text; el.querySelector('.btns').classList.toggle('hidden', !watch);
     el.className = 's' + stars; el.classList.add('show'); hudEl.classList.add('rating');
     [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 120 + i * 160));
@@ -144,11 +149,13 @@ function renderPickers(flip) {
   game.setTeams(teamById(P.us), teamById(P.them));
   renderLessons();
 }
+// A lesson unlocks after the one before it has been played once (or once it has been played itself).
+const lessonOpen = i => i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0 || (P.skills[PATH[i].id]?.sessions || 0) > 0;
 // Lesson chips on the home screen: each unlocks after the one before it has been played once.
 function renderLessons() {
   const cur = nextSkill(P, PATH);
   $('#lessons').innerHTML = PATH.map((sk, i) => {
-    const st = P.skills[sk.id], open = i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0 || (st?.sessions || 0) > 0;
+    const st = P.skills[sk.id], open = lessonOpen(i);
     return `<button class="chip ${sk.id === cur ? 'on' : ''} ${open ? '' : 'locked'}" data-id="${sk.id}" ${open ? '' : 'disabled'} title="${sk.kid}">
       <span>${open ? sk.emoji : '🔒'}</span>${st?.sessions ? `<i>${'★'.repeat(Math.min(3, st.box))}</i>` : ''}</button>`;
   }).join('');
@@ -221,7 +228,7 @@ async function runSession() {
     results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
   }
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  game.pushUnlocked = skillId === 'dribble-to-space' || !!P.skills['dribble-to-space']?.sessions;
+  game.pushUnlocked = lessonOpen(PATH.findIndex(s => s.id === 'dribble-to-space'));
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
   finishSession(P, skillId, firstTry, rounds.length);
@@ -279,6 +286,8 @@ function openMenu() {
   $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
     PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
   $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
+  if ('speechSynthesis' in window) pickVoice();
+  $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#voiceChk').checked = P.settings.voice; $('#soundChk').checked = P.settings.sound !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
@@ -287,10 +296,12 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound);
+  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound);
   const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
   save(P); show('#home');
 };
+$('#voiceSel').onchange = () => { P.settings.voiceName = $('#voiceSel').value; pickVoice(); say('Nice pass! You looked up!'); };
+$('#voiceTest').onclick = () => say('Nice pass! You looked up!');
 $('#resetBtn').onclick = () => {
   if (!confirm('Reset all progress and stickers?')) return;
   const fresh = defaultProgress(); fresh.us = P.us; fresh.them = P.them; Object.keys(P).forEach(k => delete P[k]); Object.assign(P, fresh); save(P); renderPickers(); openMenu();

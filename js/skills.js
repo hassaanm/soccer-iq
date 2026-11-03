@@ -1,6 +1,6 @@
 // The learning path (see research/skill-tree.md) and the scenarios for each skill that is ready.
 import { mirrorScenario, shuffle, PITCH } from './geom.js';
-import { generate, generates } from './generate.js';
+import { generate, generates, demoFor } from './generate.js';
 export { PITCH };
 
 // side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one idea, said to him.
@@ -47,7 +47,7 @@ export function allScenarios(skillId) {
   return [...base, ...gen];
 }
 
-export const demoScenario = skillId => BANK[skillId] ? { ...BANK[skillId][0], skill: skillId } : generate(skillId, 7);
+export const demoScenario = skillId => BANK[skillId] ? { ...BANK[skillId][0], skill: skillId } : demoFor(skillId);
 
 // A round list: n scenarios, no repeats until the bank runs out, never the same base twice in a row.
 export function pickRounds(skillIds, n, rnd = Math.random) {

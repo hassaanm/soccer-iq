@@ -2,7 +2,7 @@
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds, skillById } from './skills.js';
 import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
-import { grade, pushEnd, goalSide, exploit } from './generate.js';
+import { grade, pushEnd, goalSide, exploit, DEF_RUN } from './generate.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -188,7 +188,7 @@ export class Game {
     if (opt.startsWith('push:')) return pushEnd(h, opt.slice(5));
     return MATE[opt] ? { ...this.sim.a(MATE[opt]) } : dribbleEnd(h, opt.slice(5), L, W);
   }
-  cue() { return this.sc.cue.replace('{m0}', this.name('m1')).replace('{m1}', this.name('m2')); }
+  cue() { return this.sc.cue.replaceAll('{m0}', this.name('m1')).replaceAll('{m1}', this.name('m2')); }
 
   // ---------- outcome scripts (team AI moves everyone not in `scripted`) ----------
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
@@ -282,10 +282,16 @@ export class Game {
     this.scripted.add('hero');
     yield* this.strike('hero', end.x, end.y, { speed: 8.5, arc: .15 });
     s.go('hero', end.x, end.y, 5.4);
+    // The nearest defender always races for it too. A push is only "good" when he clearly gets there first,
+    // so the defender arrives a step late (and pulls up instead of running into him).
     const racer = opps.sort((a, b) => dist(a, end) - dist(b, end))[0];
-    if (!good) { this.scripted.add(racer.id); s.go(racer.id, end.x, end.y, 5); }
+    this.scripted.add(racer.id); s.go(racer.id, end.x, end.y, good ? DEF_RUN : 5);
     const t0 = s.time; yield () => s.ball.state === 'loose' && (dist(h, end) < .6 || (!good && dist(racer, end) < .6)) || s.time - t0 > 3;
-    if (good) { s.give('hero'); yield* this.finish('hero'); } else yield* this.steal(racer);
+    if (good) {
+      s.give('hero');
+      const back = Math.max(1.4, dist(racer, h)); s.go(racer.id, h.x + (racer.x - h.x) / (dist(racer, h) || 1) * back, h.y + (racer.y - h.y) / (dist(racer, h) || 1) * back, 2);
+      yield .1; this.scripted.delete(racer.id); yield* this.finish('hero');
+    } else yield* this.steal(racer);
   }
   // Defense: he runs to the spot he picked. The right spot closes every way through: usually the attackers
   // just get stopped and have to pass back (no steal needed), sometimes they try anyway and lose the ball.
@@ -480,6 +486,15 @@ export class Game {
     this.phase = 'decide'; this.step = sc.kind === 'defense' ? 'spot' : null;
     await this.delay(.4); this.lookUp = true; await this.delay(.9);
     this.hud.caption(tip); this.say(tip); await this.delay(3.4);
+    // For a pass, he turns his head to find the open friend first, so the pass doesn't come out of nowhere.
+    const mateId = MATE[sc.best];
+    if (mateId) {
+      const h = this.sim.a('hero'), m = this.sim.a(mateId), aim = wrap(Math.atan2(m.y - h.y, m.x - h.x));
+      this.hud.caption(`${hero} finds a friend 👀`); this.say(`${hero} finds a friend.`);
+      const y0 = this.yaw; await this.tween(1.6, t => { this.yaw = y0 + wrap(aim - y0) * smooth(t); });
+      this.step = 'pass'; this.seen.add(mateId); this.hint = true;
+      const open = `${this.name(mateId)} is open!`; this.hud.caption(open); this.say(open); await this.delay(1.4);
+    }
     this.hud.caption('');
     await this.outcome(sc.best, true);
     // Then say why it worked, with a moment to take it in.

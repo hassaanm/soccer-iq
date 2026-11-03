@@ -36,14 +36,14 @@ function tone(freq, dur, { type = 'sine', vol = .15, f1 = freq, at = 0, attack =
 // A low, breathing crowd murmur that swells gently now and then.
 function startCrowd() {
   const src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
-  src.buffer = noiseBuf; src.loop = true; flt.type = 'bandpass'; flt.frequency.value = 650; flt.Q.value = .6;
-  crowdGain = ctx.createGain(); crowdGain.gain.value = .05;
-  lfo.frequency.value = .13; lfoGain.gain.value = .012; lfo.connect(lfoGain).connect(crowdGain.gain);
+  src.buffer = noiseBuf; src.loop = true; flt.type = 'bandpass'; flt.frequency.value = 480; flt.Q.value = .7;
+  crowdGain = ctx.createGain(); crowdGain.gain.value = .022;
+  lfo.frequency.value = .13; lfoGain.gain.value = .007; lfo.connect(lfoGain).connect(crowdGain.gain);
   src.connect(flt).connect(crowdGain).connect(master); src.start(); lfo.start();
 }
 function swellCrowd(amount, dur) {
   if (!crowdGain) return; const t = now(), g = crowdGain.gain;
-  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(.05 + amount, t + .25); g.linearRampToValueAtTime(.05, t + dur);
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(.022 + amount, t + .25); g.linearRampToValueAtTime(.022, t + dur);
 }
 
 const SFX = {
