@@ -12,6 +12,7 @@ export const PATH = [
   { id: 'get-goal-side', emoji: '🏠', kid: 'Get in front!', side: 'defense', adult: 'Nobody on the ball? Recover goal-side of it and win it from the front', ready: true, tip: 'Nobody on the ball? Get in front of it. Stop him going to your goal!' },
   { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true, tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.' },
   { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball', ready: true, tip: 'Two defenders coming? Pass before they trap you.' },
+  { id: 'get-open', emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true, tip: 'Your friend has the ball? Find open space where they can pass to you.' },
   { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true, tip: 'Guard the open player. Stand between him and your goal.' },
   { id: 'pass-to-open', emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true, tip: 'Pass to the friend with nobody right next to him.' },
   { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Look forward, then sideways, then back', ready: true, tip: 'Look to the goal first!' },

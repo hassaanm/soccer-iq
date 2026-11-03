@@ -7,6 +7,8 @@ import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
+// Rounds where he picks a spot to run to: defending, or getting open while a friend has the ball.
+const spotKind = sc => sc?.kind === 'defense' || sc?.kind === 'support';
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
 // moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
@@ -150,7 +152,7 @@ export class Game {
   load(sc) {
     this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null;
     this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
-    if (sc.kind === 'defense') { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
+    if (spotKind(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
   }
   // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
   get pushAllowed() { return this.mode === 'free' || this.sc?.skill === 'dribble-to-space' || (this.mode === 'match' && !!this.pushUnlocked); }
@@ -165,7 +167,7 @@ export class Game {
     s.stopAll();
   }
   decide() {
-    this.phase = 'decide'; this.step = this.sc.kind === 'defense' ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
+    this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
     this.delay(1.2).then(() => { if (this.phase === 'decide') this.hud.caption(''); });
     return new Promise(res => { this._choose = res; });
   }
@@ -176,7 +178,7 @@ export class Game {
     if (this.sc.best && opt === this.sc.best) return 'best';
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
-    if (this.sc.kind === 'defense') return 'bad';
+    if (spotKind(this.sc)) return 'bad';
     const g = (this.grades ||= this.sc.grades || grade(this.sc))[opt];
     if ((opt.startsWith('drib:') || opt.startsWith('push:') || opt === 'shoot') && g === 'good') return 'ok';
     if (opt.startsWith('drib:') && g === 'safe') return 'safe';
@@ -393,6 +395,33 @@ export class Game {
     yield () => s.ball.state === 'loose';
     this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
   }
+  // Getting open: he runs to his spot while his defender follows a step behind. Open space: his friend passes
+  // and he plays on. Behind a defender: the pass gets cut out. Next to the ball: both defenders close in and win it.
+  *supportGen(spotId, good) {
+    const s = this.sim, sp = this.sc.spots.find(x => x.id === spotId), h = s.a('hero'), c = s.a('m1'), o1 = s.a('o1'), o2 = s.a('o2');
+    this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
+    s.go('hero', sp.x, sp.y, 5);
+    const t0 = s.time;
+    yield () => { s.go('o2', h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); return dist(h, sp) < .4 || s.time - t0 > 1.8; };
+    s.stop('hero'); s.stop('o2');
+    if (sp.crowd) { // two defenders on two players right together: they win it
+      const t1 = s.time; yield () => { s.go('o1', c.x, c.y, 4); s.go('o2', lerp(h.x, c.x, .5), lerp(h.y, c.y, .5), 3.5); return dist(o1, c) < .9 || s.time - t1 > 1.5; };
+      yield* this.steal(o1); return;
+    }
+    const l = Math.hypot(c.x - h.x, c.y - h.y) || 1; h.face = [(c.x - h.x) / l, (c.y - h.y) / l]; yield .25;
+    if (good) {
+      yield* this.strike('m1', h.x, h.y, { speed: 11, arc: .15 });
+      yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
+      s.give('hero'); this.scripted = new Set(['hero']); this.ai = true; yield .2;
+      yield* this.finish('hero'); return;
+    }
+    // The pass goes, but the defender standing in its path cuts it out.
+    const them = s.team('them'), cut = them.map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((a, b) => a.d - b.d)[0];
+    s.go(cut.opp.id, cut.x, cut.y, 4);
+    yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
+    yield () => s.ball.state === 'loose';
+    yield* this.steal(cut.opp);
+  }
   // He shoots: a clear shot goes in; a blocked one is stopped by the defender in the way.
   *shootGen(good) {
     const s = this.sim, h = s.a('hero'), aim = { x: L + .7, y: clamp(h.y, gy0 + .8, gy1 - .8) };
@@ -406,7 +435,7 @@ export class Game {
   }
   *outcomeGen(opt, good) {
     if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); this.ai = false; return; }
-    if (opt.startsWith('spot:')) { yield* this.defendGen(opt.slice(5), good); this.ai = false; return; }
+    if (opt.startsWith('spot:')) { yield* (this.sc.kind === 'support' ? this.supportGen(opt.slice(5), good) : this.defendGen(opt.slice(5), good)); this.ai = false; return; }
     if (opt.startsWith('push:')) { yield* this.pushGen(opt.slice(5), good); this.ai = false; return; }
     if (MATE[opt]) {
       if (good) { yield* this.passGood(MATE[opt]); yield* this.finish(MATE[opt]); }
@@ -522,7 +551,7 @@ export class Game {
     const hero = this.name('hero'), tip = skillById(skillId)?.tip || '';
     this.hud.caption(`Watch ${hero}!`); this.say(`Watch ${hero}.`);
     await this.pre();
-    this.phase = 'decide'; this.step = sc.kind === 'defense' ? 'spot' : null;
+    this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null;
     await this.delay(.4); this.lookUp = true; await this.delay(.9);
     this.hud.caption(tip); this.say(tip); await this.delay(3.4);
     // He looks around first, so the choice doesn't come out of nowhere. For a pass he ends up facing the open
@@ -533,9 +562,10 @@ export class Game {
       await this.lookAround(wrap(Math.atan2(m.y - h.y, m.x - h.x)));
       this.step = 'pass'; this.seen.add(mateId); this.hint = true;
       const open = `${this.name(mateId)} is open!`; this.hud.caption(open); this.say(open); await this.delay(1.4);
-    } else if (sc.kind === 'defense') {
+    } else if (spotKind(sc)) {
       await this.lookAround(this.yaw, 1.1);
-      this.hud.caption('See who is open? 👀'); this.say('See who is open?'); await this.delay(1.3);
+      const q = sc.kind === 'support' ? 'Where is the space? 👀' : 'See who is open? 👀';
+      this.hud.caption(q); this.say(q); await this.delay(1.3);
     } else {
       await this.lookAround(0);
       const saw = sc.best === 'shoot' ? 'Goal ahead! 🥅' : sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
@@ -559,11 +589,11 @@ export class Game {
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
-      const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
+      const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good ? { stars: 3, text: `${praise} ${this.cue()}` } // say why it was right, so the idea sticks
-        : { stars: 0, text: sc.kind === 'defense' ? 'They got through!' : 'Oops, lost it!' };
+        : { stars: 0, text: sc.kind === 'defense' ? 'They got through!' : sc.kind === 'support' ? 'No pass was on!' : 'Oops, lost it!' };
       this.card = null;
       await this.outcome(opt, good);
       const answer = await (this.card || this.hud.banner('', 'goal', this.rated));
@@ -639,7 +669,7 @@ export class Game {
   }
   lookEnd() { this.drag = null; }
   // Shooting is offered when he is close enough to goal to have a real chance.
-  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && this.sc?.kind !== 'defense' && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); }
+  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !spotKind(this.sc) && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); }
   shoot() { if (this.canAct && this.canShoot && !this.locked) this.choose('shoot'); }
   // PASS and DRIBBLE are always on screen; tapping one switches to it, tapping it again un-picks it.
   pass() {
@@ -718,7 +748,7 @@ export class Game {
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
         if (q && q[0] > cw * .05 && q[0] < cw * .95 && q[1] > ch * .05 && q[1] < ch * .95) { this.seen.add(id); found.push(this.name(id)); }
       }
-      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense' && this.sc?.skill !== 'dribble-to-space' && (this.step === 'pass' || (!this.step && this.lookUp))) this.hud.seen(`👀 You see ${found.join(' and ')}`);
+      if (found.length && this.mode !== 'demo' && !spotKind(this.sc) && this.sc?.skill !== 'dribble-to-space' && (this.step === 'pass' || (!this.step && this.lookUp))) this.hud.seen(`👀 You see ${found.join(' and ')}`);
     }
     this.updateCamera(dt, time);
     this.updateHud(time);
@@ -747,7 +777,7 @@ export class Game {
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.
     let dx = b.x, dy = b.y;
-    if (this.sc?.kind === 'defense') { const [ax, ay] = rot(3.5, 0, this.yaw); dx = lerp(h.x + ax, b.x, .25); dy = lerp(h.y + ay, b.y, .25); }
+    if (spotKind(this.sc)) { const [ax, ay] = rot(3.5, 0, this.yaw); dx = lerp(h.x + ax, b.x, .25); dy = lerp(h.y + ay, b.y, .25); }
     return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
   }
   updateCamera(dt, time) {

@@ -227,7 +227,7 @@ async function runSession() {
   const watch = await card({ emoji: sk.emoji, title: sk.kid, sub: firstTime ? `Watch ${hero} first` : `Want to watch ${hero} first?`,
     button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
   if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
-  await card({ emoji: '⭐', title: 'Your turn!', sub: sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
+  await card({ emoji: '⭐', title: 'Your turn!', sub: sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.` : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
   // First session: the hand-made scenarios. After that, about two thirds are freshly generated so no two sessions match.
   // "Look up" starts with its hand-made rounds; everything else (and later sessions) is freshly generated.
   const n = P.settings.rounds, gen = skillId === 'look-up' && firstTime ? 0 : skillId === 'look-up' ? Math.round(n * 2 / 3) : n;

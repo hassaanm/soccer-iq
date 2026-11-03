@@ -167,7 +167,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #touchPick i{font-style:normal;font-size:28px;line-height:1}
 #touchPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud.touchpick #touchPick{display:flex}
-#hud[data-kind=defense] :is(#passBtn,#dribBtn){display:none!important}
+#hud:is([data-kind=defense],[data-kind=support]) :is(#passBtn,#dribBtn){display:none!important}
 /* home: lesson chips, free play, clubs / countries */
 .lessonbox{display:flex;flex-direction:column;gap:4px}
 /* Home: one lesson button next to PLAY; tapping it opens a sheet with big lesson tiles. */

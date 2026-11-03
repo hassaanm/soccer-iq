@@ -1,7 +1,7 @@
 // Endless scenarios for every lesson. Each one is built around a teaching pattern, then every option is graded
 // with the same geometry the game uses. Anything unclear (a pass lane that is half open, a push the defender
 // might or might not win) is thrown away and rebuilt, so every round has a clear right answer.
-import { PITCH, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, DRIBBLE_DIRS, BACKWARD } from './geom.js';
+import { PITCH, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, DRIBBLE_DIRS, BACKWARD } from './geom.js';
 
 const { L, W } = PITCH;
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
@@ -292,6 +292,52 @@ function defense(r, pattern) {
   return sc;
 }
 
+// ---------- getting open (his team has the ball, a friend is carrying it) ----------
+// m1 has the ball with a defender right in front of him, so he needs a pass. The child (hero) has no ball and
+// picks where to run. Right spot: a clear path for the pass and no defender near. Wrong spots: hiding behind a
+// defender (the pass gets cut out) or running next to the ball (his defender follows and they trap both).
+const laneClear = (from, to, opps) => opps.every(o => closestOnLane(P(o), P(from), P(to), .1).d > 1.3 && dist(P(o), P(to)) > 2.2);
+const laneRoom = (from, to, opps) => Math.min(...opps.map(o => closestOnLane(P(o), P(from), P(to), .1).d));
+const laneBlocked = (from, to, opps) => opps.some(o => closestOnLane(P(o), P(from), P(to), .1).d < .7);
+function support(r, pattern) {
+  const c = [8 + r() * 8, 6 + r() * 8], side = c[1] < W / 2 ? 1 : -1;   // the open side of the pitch
+  const o1 = [c[0] + 1.5, c[1] - side * (.5 + r() * .3)];                 // presser in front of the carrier (forward passes are blocked)
+  const at = (ang, d) => { const [dx, dy] = rot(d, 0, ang); return [c[0] + dx, c[1] + dy]; };
+  const perp = (a, b, k) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy); return [b[0] - dy / l * k, b[1] + dx / l * k]; };
+  let hero, o2, spots, best, cue;
+  const m2 = at(-side * (.25 + r() * .35), 9 + r() * 2), o3 = goalSideOf(m2, 1.1);   // the other friend is up the field, marked
+  if (pattern === 'shadow') {                     // he's standing right behind a defender: move out of the shadow
+    hero = at(side * (.8 + r() * .5), 6.5 + r() * 1.5);
+    o2 = [lerp(c[0], hero[0], .62) + (r() - .5) * .3, lerp(c[1], hero[1], .62) + (r() - .5) * .3];
+    const k = 3 + r() * .8, a1 = perp(c, hero, k), a2 = perp(c, hero, -k);
+    const space = laneRoom(c, a1, [o1, o2]) > laneRoom(c, a2, [o1, o2]) ? a1 : a2;   // step out to the side with the clearer path
+    spots = [{ id: 'space', p: space }, { id: 'stay', p: hero }, { id: 'ball', p: [c[0] - .6, c[1] + side * 1.6] }];
+    best = 'space'; cue = 'A defender was between you and the ball. Move to open space so {m0} can pass!';
+  } else if (pattern === 'spread') {              // he's crowding the ball: spread out into space
+    hero = [c[0] - .4, c[1] + side * 2.2];
+    o2 = [hero[0] - 1, hero[1] - side * .2];
+    spots = [{ id: 'space', p: at(side * (1 + r() * .45), 6.5 + r() * 1.5) }, { id: 'stay', p: hero }, { id: 'hide', p: hero }];
+    spots[2].p = [o3[0] + (o3[0] - c[0]) * .25, o3[1] + (o3[1] - c[1]) * .25];  // behind the other defender
+    best = 'space'; cue = 'Too close to {m0}! Spread out into open space.';
+  } else {                                        // 'stay-open': he's already open, so stay and be ready
+    hero = at(side * (1 + r() * .45), 6.5 + r() * 1.5);
+    o2 = [hero[0] - 2.5 - r(), hero[1] - side * (3 + r())];
+    spots = [{ id: 'stay', p: hero }, { id: 'ball', p: [c[0] - .6, c[1] + side * 1.6] }, { id: 'hide', p: [o2[0] + (o2[0] - c[0]) * .3, o2[1] + (o2[1] - c[1]) * .3] }];
+    best = 'stay'; cue = 'You were already open. Stay there and get ready for the pass!';
+  }
+  const opps = [o1, o2, o3], all = [c, o1, o2, o3, m2, hero, ...spots.map(s => s.p)];
+  if (!all.every(p => inPitch(p, 1))) return null;
+  if (spots.some((s, i) => spots.some((t, j) => j > i && Math.hypot(s.p[0] - t.p[0], s.p[1] - t.p[1]) < 2.2))) return null;
+  // The right spot must have a clear pass; every wrong one must be blocked, or right next to the ball.
+  const ok = sp => laneClear(c, sp.p, opps), crowd = sp => Math.hypot(sp.p[0] - c[0], sp.p[1] - c[1]) < 2.6;
+  if (!ok(spots.find(s => s.id === best))) return null;
+  for (const s2 of spots) if (s2.id !== best && !crowd(s2) && (ok(s2) || !laneBlocked(c, s2.p, opps))) return null;
+  if (spots.find(s => s.id === best).p[0] < c[0] - 1) return null;   // open space ahead or level, not behind
+  return { kind: 'support', carrier: 'm1', hero: [hero[0] - .8, hero[1]], heroTo: hero, mates: [c, m2], opps, oppsTo: opps,
+    spots: spots.map(s => ({ id: s.id, x: s.p[0], y: s.p[1], crowd: crowd(s) })), best: 'spot:' + best, ok: [], cue };
+}
+const goalSideOf = (p, k) => { const dx = L - p[0], dy = W / 2 - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + dx / l * k, p[1] + dy / l * k]; }; // their goal is at x = L
+
 const PATTERNS = {
   'look-up': ['one-open', 'carry', 'none-open', 'carry', 'two-open'],
   'shoot-close': ['shot-open', 'shot-open', 'shot-blocked', 'shot-far'],
@@ -303,6 +349,7 @@ const PATTERNS = {
   'get-goal-side': ['goal-side', 'goal-side', 'gs-covered'],
   'one-goes': ['one-goes', 'you-go'],
   'mark-the-free-one': ['mark-free'],
+  'get-open': ['shadow', 'shadow', 'spread', 'stay-open'],
 };
 // Half the time the two teammates trade places, so the open one isn't always the same friend.
 const swap = o => o?.replace(/pass:([01])/, (_, i) => 'pass:' + (1 - i));
@@ -310,7 +357,7 @@ function swapMates(sc) {
   return { ...sc, mates: [sc.mates[1], sc.mates[0]], best: swap(sc.best), ok: (sc.ok || []).map(swap), safe: (sc.safe || []).map(swap),
     cue: sc.cue.replace(/\{m([01])\}/g, (_, i) => `{m${1 - i}}`) };
 }
-const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']);
+const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']), SUPPORT = new Set(['shadow', 'spread', 'stay-open']);
 export const generates = id => !!PATTERNS[id];
 export const mainPattern = id => PATTERNS[id]?.[0];
 // The demo for a lesson: always its main pattern (never a contrast round), and for passes, a friend ahead or wide
@@ -333,8 +380,8 @@ export function generate(skill, seed) {
   // Pick the pattern once, then retry only its layout, so patterns that are harder to build still come up as often.
   const first = Math.floor(r() * pats.length);
   for (let i = 0; i < 4000; i++) {
-    const pattern = i < 3000 ? pats[first] : pats[Math.floor(r() * pats.length)], sc = DEFENSE.has(pattern) ? defense(r, pattern) : attack(r, pattern);
-    if (sc) return { ...(DEFENSE.has(pattern) || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
+    const pattern = i < 3000 ? pats[first] : pats[Math.floor(r() * pats.length)], sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : attack(r, pattern);
+    if (sc) return { ...(DEFENSE.has(pattern) || SUPPORT.has(pattern) || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
   }
   return null;
 }

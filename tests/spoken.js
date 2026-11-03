@@ -20,7 +20,7 @@ export function spokenLines() {
     ...PATH.flatMap(s => [s.kid, s.tip]),
     'Your turn!', 'Mini match!', 'Free play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
-    'See who is open?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
+    'See who is open?', 'Where is the space?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
   ];
   for (const c of cues) {
