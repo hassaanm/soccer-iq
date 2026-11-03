@@ -28,7 +28,7 @@ async function drive(g, promise, pick, maxSec = 120) {
 test('demo plays to the end and scores', async () => {
   const { g, events } = makeGame();
   await drive(g, g.demo('look-up'), () => null);
-  assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'GOAL!'));
+  assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'GOAL!' || e[1] === 'Kept it!')));
 });
 
 test('a right first choice counts as first try', async () => {

@@ -62,7 +62,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #banner{position:absolute;top:26%;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none}
 #banner span{display:block;font-weight:700;font-size:clamp(48px,10vw,96px);letter-spacing:.03em;color:#fff;
   -webkit-text-stroke:4px var(--ink);paint-order:stroke fill;text-shadow:0 6px 0 var(--ink),0 12px 30px rgba(0,0,0,.3);transform:scale(.4)}
-#banner.goal span{background:linear-gradient(#fff6c2,#ffd84d 55%,#f5a300);-webkit-background-clip:text;background-clip:text;color:transparent}
+#banner.goal span{color:#ffd84d}
 #banner.goal::before{content:"";position:absolute;left:50%;top:50%;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;z-index:-1;
   background:repeating-conic-gradient(rgba(255,230,140,.55) 0 8deg,rgba(255,230,140,0) 8deg 22deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 68%);mask:radial-gradient(circle,#000 20%,transparent 68%);animation:spin 6s linear infinite}
 #banner.bad span{color:#fff;-webkit-text-stroke-color:#7a1d1d;text-shadow:0 6px 0 #7a1d1d,0 12px 30px rgba(0,0,0,.3)}

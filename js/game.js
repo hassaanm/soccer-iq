@@ -6,6 +6,8 @@ import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
+// A shot is on only if no defender is within a body-width of the line from the shooter to the goal.
+const shotClear = (a, aim, opps) => opps.every(o => closestOnLane(o, a, aim, 0).d > .9);
 const TURN_SPEED = 1.9; // radians per second while a turn button is held
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const segDist = (x, y, a, b) => {
@@ -65,16 +67,29 @@ export class Game {
   cue() { return this.sc.cue.replace('{m0}', this.name('m1')).replace('{m1}', this.name('m2')); }
 
   // ---------- outcome scripts (team AI moves everyone not in `scripted`) ----------
+  // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
+  // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
-    // Run at goal down the lane with the most room, so he goes around defenders instead of through them.
     const s = this.sim, a = s.a(id), tx = L - 5.5, opps = s.team('them');
     const room = y => Math.min(...opps.map(o => closestOnLane(o, a, { x: tx, y }, 0).d));
     const ty = [W / 2 - 2.5, W / 2, W / 2 + 2.5].map(y => ({ y, r: room(y) - Math.abs(y - a.y) * .08 })).sort((p, q) => q.r - p.r)[0].y;
-    this.scripted.add(id); s.go(id, tx, ty, 5.4);
-    const t0 = s.time; yield () => Math.hypot(a.x - tx, a.y - ty) < .3 || s.time - t0 > 3;
-    s.stop(id); yield* this.strike(id, L + .7, clamp(a.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
+    this.scripted.add(id); s.go(id, tx, ty, 5.2);
+    const t0 = s.time;
+    let blocked = false;
+    for (;;) {
+      yield 1 / 30;
+      const aim = { x: L, y: clamp(a.y, gy0 + .8, gy1 - .8) };
+      if (dist(a, aim) < 13 && shotClear(a, aim, opps)) break;                // open look at goal: shoot
+      const fx = tx - a.x, fy = ty - a.y, fl = Math.hypot(fx, fy) || 1;
+      if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { blocked = true; break; } // defender in front
+      if (Math.hypot(fx, fy) < .3 || s.time - t0 > 3.2) { blocked = !shotClear(a, aim, opps); break; }
+    }
+    s.stop(id);
+    if (blocked) { this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
+    this.ai = false; s.stopAll(); // the shot comes quickly: defenders are caught flat-footed during the wind-up
+    yield* this.strike(id, L + .7, clamp(a.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
-    this.ai = false; s.stopAll(); this.emit('goal'); yield 1.4;
+    this.result = 'goal'; this.ai = false; s.stopAll(); this.emit('goal'); yield 1.4;
   }
   // Turn to face the target, wind up, then the ball leaves the foot at contact.
   *strike(id, x, y, opts) {
@@ -90,7 +105,7 @@ export class Game {
     s.give(id); this.scripted.delete(id); yield .15;
   }
   *steal(opp) {
-    const s = this.sim; s.give(opp.id); s.stop('hero'); this.emit('stolen');
+    const s = this.sim; s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit('stolen');
     this.scripted.add(opp.id); s.go(opp.id, opp.x - 4, lerp(opp.y, W / 2, .4), 4.8); yield .8;
   }
   *passBad(id) {
@@ -123,7 +138,7 @@ export class Game {
     const t0 = s.time; yield () => dist(c, { x: 5, y: W / 2 }) < .3 || s.time - t0 > 3.5;
     s.stop(c.id); yield* this.strike(c.id, -.7, W / 2, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
-    this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
+    this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
   }
   *outcomeGen(opt, good, counter) {
     if (MATE[opt]) {
@@ -135,7 +150,7 @@ export class Game {
   }
   async outcome(opt, good, counter = false) {
     const h = this.sim.a('hero');
-    Object.assign(this, { phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    Object.assign(this, { result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good, counter));
   }
@@ -143,6 +158,7 @@ export class Game {
     if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); this.say('Goal!'); }
     if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
+    if (ev === 'kept') { this.hud.banner('Kept it!', 'goal'); this.say('You kept the ball!'); }
   }
 
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -200,8 +216,8 @@ export class Game {
       const good = this.isGood(opt), scanned = this.scanned;
       await this.outcome(opt, good);
       if (good) {
-        this.hud.toast(scanned ? 'You looked up! ⭐' : 'Nice! ⭐');
-        this.say(scanned ? 'You looked up! Great job!' : 'Nice!');
+        const msg = scanned ? 'You looked up! ⭐' : 'Good choice! ⭐';
+        this.hud.toast(msg); this.say(scanned ? 'You looked up! Great job!' : 'Good choice!');
         await this.delay(.9);
         return { firstTry: attempt === 1 };
       }
@@ -233,8 +249,10 @@ export class Game {
       this.load(rounds[i % rounds.length]); await this.pre();
       const opt = await this.decide(), good = this.isGood(opt);
       await this.outcome(opt, good, true);
-      good ? score.us++ : score.them++;
+      if (this.result === 'goal') score.us++;
+      else if (this.result === 'goalAgainst') score.them++;
       this.hud.score(score, this.us, this.them);
+      if (i >= 11) break; // safety: don't let a match run forever
     }
     return score;
   }
@@ -308,13 +326,13 @@ export class Game {
       h.face = [Math.cos(f), Math.sin(f)];
     }
 
-    // Spot teammates that are on screen while looking up.
-    if (this.look > .8 && (this.phase === 'pre' || this.phase === 'decide')) {
+    // If you can see him on screen, you've found him (head up or down).
+    if (this.phase === 'pre' || this.phase === 'decide') {
       const cw = this.world.canvas.clientWidth, ch = this.world.canvas.clientHeight;
       for (const id of ['m1', 'm2']) {
         if (this.seen.has(id)) continue;
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
-        if (q && q[0] > cw * .1 && q[0] < cw * .9 && q[1] > ch * .05 && q[1] < ch * .95) {
+        if (q && q[0] > cw * .03 && q[0] < cw * .97 && q[1] > ch * .03 && q[1] < ch * .97) {
           this.seen.add(id);
           if (this.mode !== 'demo') { this.hud.toast(`👀 You see ${this.name(id)}!`); this.say(this.name(id)); }
         }

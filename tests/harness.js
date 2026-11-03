@@ -1,7 +1,7 @@
 // Headless game runner shared by the tests and the audit: a stub renderer, fixed 30 fps ticks, and per-play metrics.
 import { Game } from '../js/game.js';
 import { TEAMS } from '../js/teams.js';
-import { dist } from '../js/geom.js';
+import { dist, closestOnLane } from '../js/geom.js';
 
 export const OPTIONS = ['pass:0', 'pass:1', 'drib:fwd', 'drib:left', 'drib:right', 'drib:back'];
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
@@ -35,7 +35,12 @@ export async function playOption(sc, opt) {
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
   const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y } };
   const nearestDef = s.team('them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
-  const m = { minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
+  const m = { shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
+  const kick = s.kick.bind(s);
+  s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
+    if (x > 29 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
+    return kick(x, y, o);
+  };
   await drive(g, g.outcome(opt, good), {
     onFrame: () => {
       m.frames++;
@@ -54,7 +59,9 @@ export async function playOption(sc, opt) {
 export function judge(r) {
   const bad = [];
   if (r.minGap < .6) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
-  if (r.good && !r.banners.includes('GOAL!')) bad.push('good choice did not end in a goal');
+  if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept it!')) bad.push('good choice lost the ball');
+  if (r.good && r.banners.includes('Stolen!')) bad.push('good choice lost the ball');
+  if (r.shotBlocked) bad.push('shot went through a defender');
   if (!r.good && !r.banners.includes('Stolen!')) bad.push('bad choice did not lose the ball');
   if (!r.good && r.mateStart != null && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
   if (r.defClosest > r.defStart + .2) bad.push('nearest defender backed off the ball');
