@@ -137,20 +137,6 @@ function attack(r, pattern) {
   if (pattern === 'one-open' || pattern === 'marked') {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'bad' || g['drib:fwd'] !== 'bad') return null;
     best = 'pass:0'; cue = pattern === 'marked' ? '{m0} had nobody near him. Pass to {m0}!' : '{m0} was open!';
-  } else if (pattern === 'trap-one') {                        // only one defender: take him on, dribble past
-    add(at((r() - .5) * .4, 1.8 + r() * .4));
-    add(onLane(mates[1], .6 + r() * .2));
-    add([L - 6 - r() * 4, W / 2 + (r() - .5) * 8]);
-  } else if (pattern === 'shot-open' || pattern === 'shot-far') { // a clear look at goal (close or too far)
-    add(onLane(mates[0], .6 + r() * .2));
-    add([heroTo[0] - 2 - r() * 3, heroTo[1] + pick(r, [1, -1]) * (2 + r() * 3)]);            // chasing from behind
-    if (far) { const p = [L - 3 - r(), clamp(heroTo[1] + (W / 2 - heroTo[1]) * .6, 8.6, 11.4)]; opps.push(p); oppsTo.push(p); } // recovering near goal
-    else add([heroTo[0] - 1 - r() * 2, heroTo[1] + pick(r, [1, -1]) * (3 + r() * 2)]);
-  } else if (pattern === 'shot-blocked') {                    // a defender stands right in the way of the shot
-    const aim = [L + .7, clamp(heroTo[1], PITCH.gy0 + .8, PITCH.gy1 - .8)], t = .25 + r() * .2;
-    add(onLane(mates[0], .6 + r() * .2));
-    add([ball[0] + (aim[0] - ball[0]) * t, ball[1] + (aim[1] - ball[1]) * t + (r() - .5) * .4]);
-    add([heroTo[0] - 3 - r() * 2, heroTo[1] + (r() - .5) * 6]);
   } else if (pattern === 'trap') {
     if (g['pass:0'] !== 'good' || goods.some(o => o.startsWith('drib:'))) return null;
     best = 'pass:0'; cue = 'Two shirts coming! Pass to {m0}!';
