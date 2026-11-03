@@ -16,9 +16,18 @@ function liveScenario(s, skill, pushAllowed) {
     opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))) };
   sc.oppsTo = sc.opps;
   // Score each good option by how far it moves the ball toward goal; passes get a bonus (the ball moves faster than he does).
-  const g = grade(sc), gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] + 2 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
+  const g = grade(sc);
+  // Passes in live play: open unless a defender is in the lane or really on the receiver. A defender behind the
+  // receiver (on his far side from the ball) only counts if he's right on him; the receiver is between him and the ball.
+  const opps = s.team('them');
+  sc.mates.forEach((m, i) => {
+    const mate = s.a('m' + (i + 1)), d = interceptor(s.ball, mate, opps).d;
+    const marked = opps.some(o => { const r = dist(o, mate); if (r < 1.2) return true; const behind = (o.x - mate.x) * (s.ball.x - mate.x) + (o.y - mate.y) * (s.ball.y - mate.y) < 0; return r < 1.8 && !behind; });
+    g['pass:' + i] = d > 1.1 && !marked ? 'good' : 'bad';
+  });
+  const gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] + 2 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
   const goods = Object.keys(g).filter(o => g[o] === 'good' && (pushAllowed || !o.startsWith('push:'))).sort((a, b) => gain(b) - gain(a));
-  sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
+  sc.grades = g; sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
   sc.cue = !sc.best ? 'That was a tough spot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!` : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
   return sc;
 }
@@ -167,7 +176,7 @@ export class Game {
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
     if (this.sc.kind === 'defense') return 'bad';
-    const g = (this.grades ||= grade(this.sc))[opt];
+    const g = (this.grades ||= this.sc.grades || grade(this.sc))[opt];
     if ((opt.startsWith('drib:') || opt.startsWith('push:') || opt === 'shoot') && g === 'good') return 'ok';
     if (opt.startsWith('drib:') && g === 'safe') return 'safe';
     return 'bad';
@@ -229,13 +238,19 @@ export class Game {
   }
   *passBad(id) {
     const s = this.sim, m = s.a(id), ic = interceptor(s.ball, m, s.team('them'));
-    if (ic.d > .9) { // lane was open but a defender was right on him: he gets the ball and loses it straight away
-      const marker = s.team('them').sort((a, b) => dist(a, m) - dist(b, m))[0];
+    let marker = s.team('them').sort((a, b) => dist(a, m) - dist(b, m))[0];
+    // If the cut-off point is past where he'll meet the ball, the ball reaches him first: then it's a tackle, not an interception.
+    const meetD = dist(s.ball, { x: lerp(m.x, s.ball.x, .3), y: lerp(m.y, s.ball.y, .3) }), late = dist(s.ball, ic) > meetD - .5;
+    if (late) marker = ic.opp;
+    if ((ic.d > .9 && dist(marker, m) < 1.8) || late) { // lane was open but a defender was right on him: he gets the ball and loses it straight away
       this.scripted.add(id); this.scripted.add(marker.id);
       const meet = { x: lerp(m.x, s.ball.x, .2), y: lerp(m.y, s.ball.y, .2) }; s.go(id, meet.x, meet.y, 3.5); // he comes to meet it
       yield* this.strike('hero', meet.x, meet.y, { speed: 13, arc: .2 });
       s.go(marker.id, meet.x, meet.y, 4.5);
       yield () => s.ball.state === 'loose';
+      // He controls it, but the defender is right there: the steal only happens once the defender reaches him.
+      s.give(id); s.stop(id);
+      const t0 = s.time; yield () => { s.go(marker.id, m.x, m.y, 4.5); return dist(marker, m) < .8 || s.time - t0 > 1.5; };
       yield* this.steal(marker); return;
     }
     // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
@@ -243,6 +258,7 @@ export class Game {
     this.scripted.add(ic.opp.id); s.go(ic.opp.id, ic.x, ic.y, 6);
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
+    const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
     yield* this.steal(ic.opp);
   }
   *dribbleGen(dir, good) {
@@ -371,7 +387,7 @@ export class Game {
     await this.play(this.outcomeGen(opt, good));
   }
   emit(ev) {
-    if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); }
+    if (ev === 'goal') { this.sfx('net'); this.hud.banner('GOAL!', 'goal'); }
     if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
     if (ev === 'won') { this.hud.banner('Stole it!', 'goal'); }

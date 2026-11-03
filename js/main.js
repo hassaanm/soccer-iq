@@ -39,6 +39,7 @@ const flash = (el, cls, text, ms) => {
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
 const tunnel = $('#tunnel');
+const EMPTY_STARS = '<span>★</span><span>★</span><span>★</span>';
 const hud = {
   state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot }) {
     const d = hudEl.dataset;
@@ -56,24 +57,25 @@ const hud = {
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
     tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
   },
+  // (three empty star slots, filled in by rate())
   // One result card for every play: the outcome ("GOAL!", "Stole it!"...) appears the moment it happens,
   // then the stars and a short tip fill in underneath. With `watch`, it waits for "Watch the 3-star play" or "Next".
   banner(text, kind) {
     const el = $('#rate');
     el.querySelector('.title').textContent = text; el.querySelector('.title').className = 'title ' + kind;
-    el.querySelector('.stars').innerHTML = ''; el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    clearTimeout(timers.rate); timers.rate = setTimeout(() => el.classList.remove('show'), 1700);
+    el.querySelector('.stars').innerHTML = EMPTY_STARS; el.querySelector('.txt').textContent = ''; el.querySelector('.btns').classList.add('hidden');
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); hudEl.classList.add('rating');
+    clearTimeout(timers.rate); timers.rate = setTimeout(() => { el.classList.remove('show'); hudEl.classList.remove('rating'); }, 1700);
     sfx(kind === 'bad' ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
   },
   rate(stars, text, watch) {
     const el = $('#rate'); clearTimeout(timers.rate);
     el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= stars ? 'on' : ''}">★</span>`).join('');
     el.querySelector('.txt').textContent = text; el.querySelector('.btns').classList.toggle('hidden', !watch);
-    el.className = 's' + stars; el.classList.add('show');
+    el.className = 's' + stars; el.classList.add('show'); hudEl.classList.add('rating');
     [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 120 + i * 160));
     return new Promise(res => {
-      const done = v => { el.classList.remove('show'); res(v); };
+      const done = v => { el.classList.remove('show'); hudEl.classList.remove('rating'); res(v); };
       if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1200 + text.length * 45 : 1600);
       $('#rateWatch').onclick = () => done('watch'); $('#rateNext').onclick = () => done('next');
     });
@@ -232,7 +234,7 @@ async function runSession() {
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   $('#nextLessonBtn').classList.toggle('hidden', !nextSk);
   $('#nextLessonBtn').onclick = () => { P.settings.skill = nextSk.id; save(P); runSession(); };
-  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short} · ${P.stickers.length} sticker${P.stickers.length === 1 ? '' : 's'} collected`;
+  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
   $('#againBtn').onclick = () => runSession();
   game.home(); show('#results'); renderPickers(); running = false;
