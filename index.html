@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Soccer IQ">
+<meta name="theme-color" content="#ffc89a">
+<title>Soccer IQ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hidden" data-phase="idle" data-step="none" data-mode="home">
+  <button id="homeBtn" class="mini" aria-label="Home">🏠</button>
+  <div id="dots"></div>
+  <div id="score" class="hidden"></div>
+  <div id="prompt"></div>
+  <div id="caption"></div>
+  <div id="toast"></div>
+  <div id="banner"></div>
+  <div id="confetti"></div>
+  <button class="gbtn eye" id="lookBtn"><i>👀</i>LOOK</button>
+  <button class="gbtn pass" id="passBtn"><i>⚽</i>PASS</button>
+  <button class="gbtn drib" id="dribBtn"><i>👟</i>DRIBBLE</button>
+  <button class="gbtn back" id="backBtn" aria-label="Back"><i>✕</i></button>
+</div>
+
+<section id="home" class="screen">
+  <h1>⚽ Soccer IQ</h1>
+  <div class="pickers">
+    <div class="picker" data-side="us">
+      <div class="lbl">YOUR TEAM</div>
+      <div class="row"><button class="arrow prev" aria-label="Previous team">◀</button><canvas width="320" height="320"></canvas><button class="arrow next" aria-label="Next team">▶</button></div>
+      <div class="tname"></div><div class="stars"></div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="picker" data-side="them">
+      <div class="lbl">OTHER TEAM</div>
+      <div class="row"><button class="arrow prev" aria-label="Previous team">◀</button><canvas width="320" height="320"></canvas><button class="arrow next" aria-label="Next team">▶</button></div>
+      <div class="tname"></div><div class="stars"></div>
+    </div>
+  </div>
+  <button id="playBtn" class="big">▶ PLAY</button>
+  <div id="stickers"></div>
+  <button id="gear" class="mini" aria-label="Grown-ups: hold">⚙️</button>
+</section>
+
+<section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><button class="big"></button></div></section>
+
+<section id="results" class="screen hidden"><div class="panel">
+  <div class="emoji"></div><h2></h2><div class="starsrow"></div><p></p>
+  <div class="btns"><button id="againBtn" class="big">▶ Play again</button><button id="teamsBtn" class="ghost">Change teams</button></div>
+</div></section>
+
+<section id="menu" class="screen hidden"><div class="panel wide">
+  <h2>Grown-ups</h2>
+  <label>Lesson <select id="skillSel"></select></label>
+  <label>Rounds per session <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
+  <label class="chk"><input type="checkbox" id="voiceChk"> Voice narration</label>
+  <div id="progressList"></div>
+  <div class="btns"><button id="menuClose" class="big">Done</button><button id="resetBtn" class="ghost danger">Reset progress</button></div>
+</div></section>
+
+<div id="rotate"><div>📱↻</div><p>Turn your phone sideways</p></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

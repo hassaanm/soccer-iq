@@ -1,0 +1,76 @@
+// Tiny match simulation: players walk toward targets, the ball is carried or flying,
+// and outcomes run as generator scripts that yield seconds or "wait until" predicates.
+import { lerp } from './geom.js';
+
+export class Sim {
+  constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; }
+
+  // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
+  setup(sc) {
+    this.agents.clear();
+    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, face: [team === 'us' ? 1 : -1, 0] });
+    add('hero', 'us', sc.hero);
+    sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
+    sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
+    this.ball = { x: sc.hero[0] + 0.5, y: sc.hero[1], z: 0, state: 'carried', carrier: 'hero' };
+    this.co = null; this.wait = 0; this.until = null;
+  }
+
+  // Snapshot / restore so a play can be replayed from the decision moment.
+  save() { return { agents: [...this.agents.values()].map(a => ({ ...a, face: [...a.face] })), ball: { ...this.ball } }; }
+  restore(s) {
+    this.agents.clear();
+    for (const a of s.agents) this.agents.set(a.id, { ...a, face: [...a.face], tx: a.x, ty: a.y, speed: 0, sp: 0 });
+    this.ball = { ...s.ball }; this.co = null; this.wait = 0; this.until = null;
+  }
+
+  a(id) { return this.agents.get(id); }
+  team(t) { return [...this.agents.values()].filter(a => a.team === t); }
+  go(id, x, y, speed = 4) { const a = this.a(id); a.tx = x; a.ty = y; a.speed = speed; }
+  stop(id) { const a = this.a(id); a.tx = a.x; a.ty = a.y; }
+  stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } }
+  give(id) { Object.assign(this.ball, { state: 'carried', carrier: id, z: 0 }); }
+  kick(x, y, { speed = 11, arc = 0.3, z1 = 0 } = {}) {
+    const b = this.ball;
+    Object.assign(b, { state: 'flying', carrier: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
+      dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
+  }
+  run(gen) { this.co = gen; this.wait = 0; this.until = null; }
+
+  step(dt) {
+    this.time += dt;
+    for (const a of this.agents.values()) {
+      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+      if (d > 0.02 && a.speed > 0) {
+        const s = Math.min(a.speed * dt, d);
+        a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d];
+        a.sp = lerp(a.sp, a.speed, Math.min(1, dt * 8));
+      } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
+    }
+    const b = this.ball;
+    if (b.state === 'carried') {
+      const c = this.a(b.carrier), w = 0.5 + 0.1 * Math.sin(this.time * 14) * Math.min(1, c.sp / 3);
+      b.x = c.x + c.face[0] * w; b.y = c.y + c.face[1] * w; b.z = 0;
+    } else if (b.state === 'flying') {
+      b.t += dt / b.dur;
+      const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);
+      b.x = lerp(b.fx, b.tx, e); b.y = lerp(b.fy, b.ty, e); b.z = b.arc * 4 * u * (1 - u) + b.z1 * u;
+      if (u >= 1) b.state = 'loose';
+    }
+    // Players standing still turn to watch the ball.
+    for (const a of this.agents.values()) {
+      if (a.sp < 0.3 && b.carrier !== a.id) {
+        const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
+        if (l > 0.3) a.face = [dx / l, dy / l];
+      }
+    }
+    if (!this.co) return;
+    if (this.wait > 0) { this.wait -= dt; return; }
+    if (this.until && !this.until()) return;
+    this.until = null;
+    const r = this.co.next();
+    if (r.done) this.co = null;
+    else if (typeof r.value === 'number') this.wait = r.value;
+    else if (typeof r.value === 'function') this.until = r.value;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Soccer IQ",
+  "short_name": "Soccer IQ",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#ffc89a",
+  "theme_color": "#ffc89a",
+  "start_url": "./",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }]
+}
