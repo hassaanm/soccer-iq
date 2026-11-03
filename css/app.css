@@ -194,3 +194,15 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #seenNote.show{opacity:1}
 .btn-icon{display:inline-flex;align-items:center;justify-content:center;color:var(--ink)}
 .btn-icon svg{display:block}
+
+/* Results sticker: a die-cut sticker with a white border that slaps onto the card, then a shine sweeps across it. */
+.sticker{position:relative;display:inline-flex;flex-direction:column;align-items:center;margin:2px 0 4px}
+.sticker .face{position:relative;width:clamp(84px,25vh,112px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;overflow:hidden;
+  background:radial-gradient(circle at 35% 30%,#fff7c9,var(--gold) 55%,var(--gold-d));border:6px solid #fff;
+  box-shadow:0 0 0 2px rgba(36,25,58,.15),0 6px 0 rgba(36,25,58,.18),0 12px 22px rgba(0,0,0,.25);transform:rotate(-8deg);animation:slap .55s cubic-bezier(.3,1.6,.5,1) both}
+.sticker .face span{font-size:clamp(46px,13vh,62px);line-height:1;filter:drop-shadow(0 3px 0 rgba(36,25,58,.2))}
+.sticker .face i{position:absolute;inset:-20%;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.75) 50%,transparent 60%);transform:translateX(-120%);animation:shine 1.1s .6s ease-out both}
+.sticker b{margin-top:-10px;position:relative;background:var(--ink);color:#fff;font-size:13px;letter-spacing:.06em;text-transform:uppercase;padding:3px 12px;border-radius:999px;transform:rotate(-3deg);box-shadow:0 3px 0 rgba(0,0,0,.2)}
+.sticker.trophy .face{background:radial-gradient(circle at 35% 30%,#fff,#ffe9a8 50%,#f5b800)}
+@keyframes slap{0%{transform:scale(2.2) rotate(14deg);opacity:0}60%{opacity:1}100%{transform:scale(1) rotate(-8deg)}}
+@keyframes shine{to{transform:translateX(120%)}}

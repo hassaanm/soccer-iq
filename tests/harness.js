@@ -69,7 +69,7 @@ export function judge(r) {
   if (r.shotBlocked) bad.push('shot went through a defender');
   if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
   if (r.defense) {
-    if (r.good && !r.banners.includes('Stole it!')) bad.push('right spot did not win the ball back');
+    if (r.good && !r.banners.some(b => b === 'Stole it!' || b === 'Stopped him!')) bad.push('right spot did not stop the attack');
     if (!r.good && !r.banners.includes('They scored')) bad.push('wrong spot did not cost a goal');
     return bad;
   }

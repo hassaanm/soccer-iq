@@ -2,7 +2,7 @@
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds, skillById } from './skills.js';
 import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
-import { grade, pushEnd } from './generate.js';
+import { grade, pushEnd, goalSide, exploit } from './generate.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -22,6 +22,33 @@ function liveScenario(s, skill, pushAllowed) {
   sc.cue = !sc.best ? 'That was a tough spot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!` : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
   return sc;
 }
+// A defending decision built from wherever play is right now (after we lose the ball in a match). Spots: get in
+// front of the ball, guard each attacker, or chase from behind. A spot is right when it leaves the attackers no
+// open run or pass (the same check the defense lessons use). null when no spot can stop them.
+function liveDefense(s) {
+  const c = s.a(s.ball.carrier); if (!c || c.team !== 'them') return null;
+  const P = a => [a.x, a.y], h = s.a('hero'), others = s.team('them').filter(o => o.id !== c.id);
+  const mates = [P(s.a('m1')), P(s.a('m2'))], near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
+  const ok = ([x, y]) => x > 1 && x < L - 1 && y > 1 && y < W - 1;
+  const cand = [{ id: 'home', p: goalSide(P(c), 2.6), label: 'In front' },
+    ...others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })),
+    { id: 'chase', p: [c.x + 1.3, c.y], label: 'Behind him' }];
+  const spots = [];
+  for (const sp of cand) if (ok(sp.p) && dist({ x: sp.p[0], y: sp.p[1] }, h) > 1 && spots.every(t => Math.hypot(t.x - sp.p[0], t.y - sp.p[1]) > 2.2)) spots.push({ id: sp.id, x: sp.p[0], y: sp.p[1], label: sp.label });
+  const sc = { id: `live-def-${Math.round(c.x * 10)}-${Math.round(c.y * 10)}`, kind: 'defense', live: true, carrier: c.id, oppIds: [c.id, ...others.map(o => o.id)],
+    hero: P(h), heroTo: P(h), mates, opps: [P(c), ...others.map(P)], spots, ok: [] };
+  sc.oppsTo = sc.opps;
+  sc.exploits = Object.fromEntries(spots.map(sp => [sp.id, exploit(sc, sp.id)]));
+  const goods = spots.filter(sp => !sc.exploits[sp.id]).map(sp => sp.id);
+  if (spots.length < 2 || !goods.length || goods.length === spots.length) return null;
+  const onBall = near(goalSide(P(c), 1.2), 2.2), best = goods.includes('home') && !onBall ? 'home' : goods.find(g => g !== 'home' && g !== 'chase') || goods[0];
+  sc.best = 'spot:' + best; sc.ok = goods.filter(g => g !== best).map(g => 'spot:' + g);
+  sc.cue = best === 'home' ? 'Nobody was in front of the ball. Get in front!' : best === 'chase' ? 'Your friends had it covered. Stay close!' : 'A friend was on the ball. Guard the open player!';
+  return sc;
+}
+// Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
+// Fixed per scenario, so the replay of the right answer looks the same.
+const holds = sc => ([...String(sc.id)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) | 0, 7) >>> 4) % 3 !== 0;
 // A shot is on only if no defender is within a body-width of the line from the shooter to the goal.
 const shotClear = (a, aim, opps) => opps.every(o => closestOnLane(o, a, aim, 0).d > .9);
 const TURN_SPEED = 1.9; // radians per second while a turn button is held
@@ -76,6 +103,28 @@ export class Game {
     this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed);
   }
 
+  // After we lose the ball in a match: our team gets back into shape for a moment, then he decides where to run.
+  // If no spot could stop them, the play just runs on and the geometry decides what happens.
+  async continueDefense() {
+    const s = this.sim, c = s.a(s.ball.carrier);
+    Object.assign(this, { phase: 'pre', step: null, seen: new Set(), lookUp: false, turn: 0, drag: null, scanned: false, lines: [], aimAt: null,
+      roles: null, ai: true, scripted: new Set(['hero', c.id]), camMode: 'player', follow: null, grades: null, ballTeam: 'them' });
+    const h = s.a('hero');
+    this.sc = { kind: 'defense', carrier: c.id, spots: [] };
+    this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)];
+    s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 2.4); s.go('hero', h.x - 1.2, h.y, 2.4);
+    await this.delay(1.1); this.ai = false; s.stopAll();
+    const sc = liveDefense(s);
+    if (sc) { this.sc = sc; this.yaw = Math.atan2(c.y - h.y, c.x - h.x); return true; }
+    // No fair choice: play it out from where everyone stands.
+    const stay = { kind: 'defense', live: true, id: 'live-stay', carrier: c.id, oppIds: [c.id, ...s.team('them').filter(o => o.id !== c.id).map(o => o.id)],
+      mates: [[s.a('m1').x, s.a('m1').y], [s.a('m2').x, s.a('m2').y]], spots: [{ id: 'stay', x: h.x, y: h.y }] };
+    stay.oppsTo = [[c.x, c.y], ...stay.oppIds.slice(1).map(id => [s.a(id).x, s.a(id).y])];
+    stay.exploits = { stay: exploit(stay, 'stay') };
+    this.sc = stay; await this.outcome('spot:stay', !stay.exploits.stay);
+    return false;
+  }
+
   // ---------- timing helpers ----------
   // While skipping the demo, every wait finishes at once so the demo script runs straight to its end.
   delay(sec) { return this.skipping ? Promise.resolve() : new Promise(res => this.tweens.push({ t: 0, dur: sec, f: null, res })); }
@@ -93,8 +142,8 @@ export class Game {
     this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
     if (sc.kind === 'defense') { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
   }
-  // Big pushes are offered in the dribble lesson and in free play.
-  get pushAllowed() { return this.mode === 'free' || this.sc?.skill === 'dribble-to-space'; }
+  // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
+  get pushAllowed() { return this.mode === 'free' || this.sc?.skill === 'dribble-to-space' || (this.mode === 'match' && !!this.pushUnlocked); }
   // Short run-up: he dribbles forward head-down while defenders close in.
   async pre() {
     this.phase = 'pre';
@@ -222,12 +271,30 @@ export class Game {
     const t0 = s.time; yield () => s.ball.state === 'loose' && (dist(h, end) < .6 || (!good && dist(racer, end) < .6)) || s.time - t0 > 3;
     if (good) { s.give('hero'); yield* this.finish('hero'); } else yield* this.steal(racer);
   }
-  // Defense: he runs to the spot he picked. The right spot wins the ball back; a wrong one leaves a gap.
+  // Defense: he runs to the spot he picked. The right spot closes every way through: usually the attackers
+  // just get stopped and have to pass back (no steal needed), sometimes they try anyway and lose the ball.
+  // A wrong spot leaves a gap.
   *defendGen(spotId, good) {
     const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), c = s.a(sc.carrier || 'o1'), h = s.a('hero');
     this.scripted.add('hero'); s.go('hero', sp.x, sp.y, 5.2);
     const defenders = () => s.team('us');
     yield .55;
+    const toGoal = (a) => { const dx = 0 - a.x, dy = W / 2 - a.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+    if (good && holds(sc)) {
+      // He's in the way: the carrier slows down when a defender is in front of him, finds no way through and passes away.
+      const [gx, gy] = toGoal(c);
+      this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.4);
+      const t0 = s.time;
+      yield () => defenders().some(d => (d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2) || s.time - t0 > 2.5;
+      s.stop(c.id); yield .4;
+      const mates = s.team('them').filter(o => o.id !== c.id), us = s.team('us');
+      const to = mates.sort((a, b) => interceptor(c, b, us).d - interceptor(c, a, us).d)[0];
+      this.scripted.add(to.id); s.stop(to.id);
+      yield* this.strike(c.id, to.x, to.y, { speed: 10, arc: .15 });
+      yield () => s.ball.state === 'loose';
+      s.give(to.id);
+      this.result = 'held'; this.ai = false; s.stopAll(); this.emit('held'); yield 1.3; return;
+    }
     if (good) {
       const guarded = spotId.startsWith('o') ? s.a(spotId) : null;
       if (guarded) { // the carrier tries the pass he was guarding; he steps in and takes it
@@ -238,7 +305,6 @@ export class Game {
         yield () => s.ball.state === 'loose';
         s.give('hero');
       } else { // pressure or recovery: he is now in front of the ball, so the carrier runs into him and loses it
-        const toGoal = (a) => { const dx = 0 - a.x, dy = W / 2 - a.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
         const [gx, gy] = toGoal(c);
         this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.8);          // keeps going at goal, facing it
         // The tackle comes from a defender who is goal-side of the ball (in front of him), never from behind.
@@ -277,15 +343,6 @@ export class Game {
     yield () => s.ball.state === 'loose';
     this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
   }
-  *counter() {
-    const s = this.sim, c = s.a(s.ball.carrier);
-    this.scripted.add(c.id); this.scripted.add('hero');
-    s.go(c.id, 5, W / 2, 5.4); s.go('hero', 7, W / 2, 4.6);
-    const t0 = s.time; yield () => dist(c, { x: 5, y: W / 2 }) < .3 || s.time - t0 > 3.5;
-    s.stop(c.id); yield* this.strike(c.id, -.7, W / 2, { speed: 17, arc: .5 });
-    yield () => s.ball.state === 'loose';
-    this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
-  }
   // He shoots: a clear shot goes in; a blocked one is stopped by the defender in the way.
   *shootGen(good) {
     const s = this.sim, h = s.a('hero'), aim = { x: L + .7, y: clamp(h.y, gy0 + .8, gy1 - .8) };
@@ -297,28 +354,28 @@ export class Game {
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);
   }
-  *outcomeGen(opt, good, counter) {
-    if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); if (!good && counter) yield* this.counter(); this.ai = false; return; }
+  *outcomeGen(opt, good) {
+    if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); this.ai = false; return; }
     if (opt.startsWith('spot:')) { yield* this.defendGen(opt.slice(5), good); this.ai = false; return; }
-    if (opt.startsWith('push:')) { yield* this.pushGen(opt.slice(5), good); if (!good && counter) yield* this.counter(); this.ai = false; return; }
+    if (opt.startsWith('push:')) { yield* this.pushGen(opt.slice(5), good); this.ai = false; return; }
     if (MATE[opt]) {
       if (good) { yield* this.passGood(MATE[opt]); yield* this.finish(MATE[opt]); }
       else yield* this.passBad(MATE[opt]);
     } else yield* this.dribbleGen(opt.slice(5), good);
-    if (!good && counter) yield* this.counter();
     this.ai = false;
   }
-  async outcome(opt, good, counter = false) {
+  async outcome(opt, good) {
     const h = this.sim.a('hero');
     Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
-    await this.play(this.outcomeGen(opt, good, counter));
+    await this.play(this.outcomeGen(opt, good));
   }
   emit(ev) {
     if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); }
     if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
     if (ev === 'won') { this.hud.banner('Stole it!', 'goal'); }
+    if (ev === 'held') { this.hud.banner('Stopped him!', 'goal'); }
     if (ev === 'kept') { this.hud.banner('Kept the ball!', 'goal'); }
   }
 
@@ -343,9 +400,13 @@ export class Game {
       s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
     });
     }
-    attackers.filter(free).forEach(a => {
+    // Support shape: the attacker nearer the goal runs ahead into a wide lane; the other stays a bit behind
+    // the ball on the other side, as an outlet. Nobody runs to the same spot.
+    const goalAhead = (p, q) => (q.x - p.x) * dir;
+    attackers.filter(free).sort(goalAhead).forEach((a, i) => {
       const lane = a.y < W / 2 ? W * .22 : W * .78;
-      s.go(a.id, clamp(ball.x + dir * 4, 2, L - 3), lerp(a.y, lane, .5), 3.8);
+      if (i === 0) s.go(a.id, clamp(ball.x + dir * 4.5, 2, L - 3), lerp(a.y, lane, .5), 3.8);
+      else s.go(a.id, clamp(ball.x - dir * 2, 2, L - 3), lerp(a.y, ball.y > W / 2 ? W * .25 : W * .75, .4), 3.4);
     });
   }
 
@@ -402,8 +463,11 @@ export class Game {
     await this.pre();
     this.phase = 'decide'; this.step = sc.kind === 'defense' ? 'spot' : null;
     await this.delay(.4); this.lookUp = true; await this.delay(.9);
-    this.hud.caption(tip); this.say(tip); await this.delay(2.6);
+    this.hud.caption(tip); this.say(tip); await this.delay(3.4);
+    this.hud.caption('');
     await this.outcome(sc.best, true);
+    // Then say why it worked, with a moment to take it in.
+    if (!this.skipping) { const why = this.cue(); this.hud.caption(why); this.say(why); } await this.delay(3.2);
     this.hud.caption(''); this.skipping = false;
   }
 
@@ -420,7 +484,8 @@ export class Game {
       // Every decision gets 1–3 stars. 3 = the best choice, 2 = safe but there was a better one, 1 = lost it.
       if (good && rating !== 'safe') {
         const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : 'Great choice!';
-        await this.hud.rate(3, praise);
+        // Say why it was right, so the idea sticks (not just that it was right).
+        await this.hud.rate(3, sc.live ? praise : `${praise} ${this.cue()}`);
         return { firstTry: attempt === 1, stars: 3 };
       }
       if (rating === 'safe') {
@@ -449,7 +514,7 @@ export class Game {
     this.aimAt = { x: (bad.x + best.x) / 2, y: (bad.y + best.y) / 2 };
     const cue = this.cue();
     this.hud.caption(cue); this.say(cue);
-    await this.delay(3.2);
+    await this.delay(4);
     this.lines = []; this.aimAt = null;
   }
 
@@ -459,18 +524,21 @@ export class Game {
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra]);
     // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
     // Only a goal resets to a fresh situation, like a kickoff.
+    // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
     let live = false, next = 0, streak = 0;
+    const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
-      if (live) await this.continueLive(); else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
+      if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
+        if (!(await this.continueDefense())) { tally(); streak = this.result === 'goalAgainst' ? 0 : streak + 1; live = streak > 0 && streak <= 4; continue; }
+      } else if (live) await this.continueLive();
+      else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
       const opt = await this.decide(), good = this.isGood(opt);
-      await this.outcome(opt, good, true);
-      if (this.result === 'goal') score.us++;
-      else if (this.result === 'goalAgainst') score.them++;
-      this.hud.score(score, this.us, this.them);
-      // Keep playing from here after "Kept the ball!" or "Stole it!", but start a fresh attack after 3 plays in a row.
-      streak = this.result === 'kept' || this.result === 'won' ? streak + 1 : 0;
-      live = streak > 0 && streak <= 3;
-      if (i >= toWin * 10) break; // safety: don't let a match run forever
+      await this.outcome(opt, good);
+      tally();
+      // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
+      streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
+      live = streak > 0 && streak <= 4;
+      if (i >= toWin * 12) break; // safety: don't let a match run forever
     }
     return score;
   }
@@ -489,7 +557,7 @@ export class Game {
   lookMove(x) {
     if (!this.drag) return;
     const dx = x - this.drag.x0;
-    if (Math.abs(dx) > 8) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
+    if (Math.abs(dx) > 12) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
   lookEnd() { this.drag = null; }
   // Shooting is offered when he is close enough to goal to have a real chance.

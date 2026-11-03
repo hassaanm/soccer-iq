@@ -59,8 +59,8 @@ test('every scenario plays out for every option without getting stuck', async ()
 
 test('mini match ends at 2 goals', async () => {
   const { g } = makeGame(); let i = 0;
-  const s = await drive(g, g.match(['look-up']), gm => (i++ % 2 ? 'drib:back' : gm.sc.best), 300);
-  assert.ok(s.us === 2 || s.them === 2);
+  const s = await drive(g, g.match(['look-up']), gm => (i++, gm.sc.best || (gm.sc.kind === 'defense' ? 'spot:' + gm.sc.spots[0].id : 'drib:back')), 300);
+  assert.equal(s.us, 2, `always choosing the best play should win (${JSON.stringify(s)}, ${i} choices)`);
 });
 
 test('skipping the demo ends it right away', async () => {
@@ -81,4 +81,18 @@ test('a match flows on after kept-the-ball and still ends', async () => {
   const s = await drive(g, g.match(['look-up', 'one-goes', 'pass-to-open'], [], 3, 'free'), pick, 900);
   assert.ok(s.us === 3 || s.them === 3 || decisions > 25, `match did not finish (${JSON.stringify(s)})`);
   assert.ok(live > 0, 'play never continued from a live position');
+});
+
+test('after losing the ball in a match he gets to defend from right there', async () => {
+  const { g, events } = makeGame();
+  let liveDef = 0, decisions = 0;
+  const pick = gm => {
+    decisions++;
+    if (gm.sc.kind === 'defense') { if (gm.sc.live) liveDef++; return gm.sc.best; }
+    const all = ['pass:0', 'pass:1', 'drib:fwd', 'drib:fl', 'drib:fr', 'drib:left', 'drib:right'];
+    return all.find(o => gm.rating(o) === 'bad') || gm.sc.best || 'drib:fwd';
+  };
+  await drive(g, g.match(['look-up', 'pass-to-open'], [], 3, 'free'), pick, 1500);
+  assert.ok(liveDef > 0, 'never got a defending choice after losing the ball');
+  assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'Stopped him!' || e[1] === 'Stole it!')), 'defending never stopped them');
 });

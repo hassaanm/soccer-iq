@@ -74,7 +74,7 @@ const hud = {
     [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 120 + i * 160));
     return new Promise(res => {
       const done = v => { el.classList.remove('show'); res(v); };
-      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1500 : 1000);
+      if (!watch) return setTimeout(() => done('next'), stars === 3 ? 1200 + text.length * 45 : 1600);
       $('#rateWatch').onclick = () => done('watch'); $('#rateNext').onclick = () => done('next');
     });
   },
@@ -185,6 +185,13 @@ function card({ emoji, title, sub, button, alt }) {
   });
 }
 
+// The sticker he just earned, shown on the results card (replaces the plain emoji).
+function showSticker(emoji, trophy) {
+  const st = $('#results .sticker'), clone = st.cloneNode(true); // a fresh copy restarts the slap animation
+  clone.querySelector('span').textContent = emoji; clone.classList.toggle('trophy', !!trophy); clone.classList.remove('hidden');
+  st.replaceWith(clone); $('#results .emoji').classList.add('hidden'); setTimeout(() => sfx('star', 2), 250);
+}
+
 // ---------- session ----------
 const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floor(Math.random() * ids.length)], Math.floor(Math.random() * 1e9))).filter(Boolean);
 let running = false;
@@ -212,11 +219,12 @@ async function runSession() {
     results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
   }
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
+  game.pushUnlocked = skillId === 'dribble-to-space' || !!P.skills['dribble-to-space']?.sessions;
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
   finishSession(P, skillId, firstTry, rounds.length);
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
-  $('#results .emoji').textContent = won ? '🏆' : sk.emoji;
+  showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
   // One circle per round, like the dots during the lesson: gold = right on the first try.
   $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
@@ -224,7 +232,7 @@ async function runSession() {
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   $('#nextLessonBtn').classList.toggle('hidden', !nextSk);
   $('#nextLessonBtn').onclick = () => { P.settings.skill = nextSk.id; save(P); runSession(); };
-  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short} · New sticker!`;
+  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short} · ${P.stickers.length} sticker${P.stickers.length === 1 ? '' : 's'} collected`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
   $('#againBtn').onclick = () => runSession();
   game.home(); show('#results'); renderPickers(); running = false;
@@ -239,7 +247,8 @@ async function runFreePlay() {
   await card({ emoji: '⚽', title: 'Free play!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
   const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
-  $('#results .emoji').textContent = won ? '🏆' : '⚽'; $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
+  if (won) showSticker('🏆', true); else { $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden'); $('#results .emoji').textContent = '⚽'; }
+  $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
   $('#results .roundsrow').innerHTML = ''; $('#results .roundsnote').textContent = ''; $('#nextLessonBtn').classList.add('hidden'); $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won the match!' : 'Good game!');
   $('#againBtn').onclick = runFreePlay;
@@ -286,14 +295,22 @@ $('#resetBtn').onclick = () => {
 };
 
 // ---------- input ----------
+// A touch only picks a player, spot or arrow if the finger lifts without sliding; any slide is a look-around drag.
+let press = null;
 canvas.addEventListener('pointerdown', e => {
-  if (game.tap(e.clientX, e.clientY)) return;
+  press = { x: e.clientX, y: e.clientY, moved: false };
   game.lookStart(e.clientX, canvas.clientWidth); e.preventDefault();
 });
 $('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.toggleLook(); });
-addEventListener('pointermove', e => game.lookMove(e.clientX));
-addEventListener('pointerup', () => game.lookEnd());
-addEventListener('pointercancel', () => game.lookEnd());
+addEventListener('pointermove', e => {
+  if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 12) press.moved = true;
+  game.lookMove(e.clientX);
+});
+addEventListener('pointerup', e => {
+  const p = press; press = null; game.lookEnd();
+  if (p && !p.moved && e.target === canvas) game.tap(p.x, p.y);
+});
+addEventListener('pointercancel', () => { press = null; game.lookEnd(); });
 $('#passBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.pass(); });
 $('#dribBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.dribble(); });
 document.addEventListener('contextmenu', e => e.preventDefault());
