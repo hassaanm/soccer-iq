@@ -331,6 +331,8 @@ export class Game {
     const ball = b.state === 'flying' ? { x: b.tx, y: b.ty } : { x: b.x, y: b.y };
     const free = a => !this.scripted.has(a.id) && a.id !== b.carrier;
     const attackers = s.team(atk);
+    if (def === 'us') { this.ourDefense(ball, attackers, free); }
+    else {
     const defenders = s.team(def).filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
     defenders.forEach((d, i) => {
       if (i === 0) return s.go(d.id, ball.x + dir * 1.1, ball.y, 3.4); // stand goal-side, a step off the ball
@@ -338,10 +340,29 @@ export class Game {
       const danger = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX))[0] || ball;
       s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
     });
+    }
     attackers.filter(free).forEach(a => {
       const lane = a.y < W / 2 ? W * .22 : W * .78;
       s.go(a.id, clamp(ball.x + dir * 4, 2, L - 3), lerp(a.y, lane, .5), 3.8);
     });
+  }
+
+  // Our team on defense does what the lessons teach: only one player (the closest) pressures the ball,
+  // and everyone else guards an attacker, standing goal-side of him. Nobody leaves his player to chase.
+  ourDefense(ball, attackers, free) {
+    const s = this.sim, ours = s.team('us'), goal = { x: 0, y: W / 2 };
+    const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
+    const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
+    // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
+    let pressing = ours.some(d => !free(d) && dist(d, ball) < 2.5);
+    for (const d of ours) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
+    const freeOurs = ours.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
+    for (const d of freeOurs) {
+      if (!pressing) { pressing = true; const p = gs(ball, 1); s.go(d.id, p.x, p.y, 3.6); continue; }
+      const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
+      if (mark) { taken.add(mark.id); const p = gs(mark, 1.1); s.go(d.id, p.x, p.y, 3.8); }
+      else { const p = gs(ball, 4); s.go(d.id, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
+    }
   }
 
   // ---------- flows ----------
@@ -535,7 +556,7 @@ export class Game {
         const a = s.a(id), q = this.world.project(a.x, a.y, .9);
         if (q && q[0] > cw * .05 && q[0] < cw * .95 && q[1] > ch * .05 && q[1] < ch * .95) { this.seen.add(id); found.push(this.name(id)); }
       }
-      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense' && this.sc?.skill !== 'dribble-to-space' && this.step !== 'dribble') this.hud.seen(`👀 You see ${found.join(' and ')}`);
+      if (found.length && this.mode !== 'demo' && this.sc?.kind !== 'defense' && this.sc?.skill !== 'dribble-to-space' && (this.step === 'pass' || (!this.step && this.lookUp))) this.hud.seen(`👀 You see ${found.join(' and ')}`);
     }
     this.updateCamera(dt, time);
     this.updateHud(time);

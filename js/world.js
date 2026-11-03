@@ -6,7 +6,10 @@ import { DRIBBLE_DIRS } from './geom.js';
 
 const { L, W, gy0, gy1, gh } = PITCH;
 const CX = L / 2, CY = W / 2;
-const M = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, flatShading: true, ...o });
+// Art style: 'lowpoly' (faceted, the default) or 'smooth' (more polygons, soft shading). Set once when the World is made.
+const ART = { smooth: false };
+const SEG = n => ART.smooth ? n * 3 : n;
+const M = (c, o = {}) => ART.smooth ? new THREE.MeshStandardMaterial({ color: c, roughness: .72, ...o }) : new THREE.MeshLambertMaterial({ color: c, flatShading: true, ...o });
 
 function canvasTex(w, h, draw) {
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d'));
@@ -64,8 +67,8 @@ const PROFILE = [[0, 0], [.15, 0], [.185, .05], [.19, .15], [.165, .27], [.17, .
 function makeRig(p, kit, isHero) {
   const g = new THREE.Group(), mats = [], legs = [], arms = [];
   const mat = c => { const m = M(c); mats.push(m); return m; };
-  const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 1, 6).rotateX(Math.PI / 2);
-  const sph = r => new THREE.SphereGeometry(r, 10, 8).rotateX(Math.PI / 2);
+  const cap = (r, l) => new THREE.CapsuleGeometry(r, l, SEG(1) + 1, SEG(6)).rotateX(Math.PI / 2);
+  const sph = r => new THREE.SphereGeometry(r, SEG(10), SEG(8)).rotateX(Math.PI / 2);
   const add = (parent, geo, m) => { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; parent.add(mesh); return mesh; };
   const Lg = .42, hipZ = Lg + .06, skin = mat(p.skin), bodyH = .62, hs = bodyH / .71;
   const sock = mat(kit.socks), boot = mat(isHero ? '#f59e0b' : '#1d1f26');
@@ -78,7 +81,7 @@ function makeRig(p, kit, isHero) {
     const bt = add(knee, sph(.085), boot); bt.scale.set(1.5, .95, .7); bt.position.set(.05, 0, -Lg * .5 + .03);
     legs.push({ hip, knee });
   }
-  const body = add(g, new THREE.LatheGeometry(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), 8, Math.PI / 8).rotateX(Math.PI / 2),
+  const body = add(g, new THREE.LatheGeometry(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), SEG(8), Math.PI / 8).rotateX(Math.PI / 2),
     (() => { const m = M('#ffffff', { map: bodyTex(kit, p) }); mats.push(m); return m; })());
   body.position.z = hipZ - .1; body.scale.set(.72, .9, hs);
   const top = hipZ - .1 + bodyH;
@@ -108,10 +111,10 @@ function addHair(g, p, kit, hz, R, mat, add) {
   const hairM = mat(p.hair), Y = new THREE.Vector3(0, 1, 0);
   // Shell of a sphere around the head. Pole on +z; tilt < 0 lifts the front edge to `-tilt` radians above the equator.
   const shell = (r, theta, tilt, phi0 = 0, phiLen = Math.PI * 2) =>
-    new THREE.SphereGeometry(r, 10, 7, phi0, phiLen, 0, theta).rotateX(Math.PI / 2).rotateY(tilt);
+    new THREE.SphereGeometry(r, SEG(10), SEG(7), phi0, phiLen, 0, theta).rotateX(Math.PI / 2).rotateY(tilt);
   // Point on the head at azimuth az (0 = front) and elevation el, at distance d * R from the head centre.
   const at = (az, el, d) => new THREE.Vector3(Math.cos(az) * Math.cos(el) * R * d, Math.sin(az) * Math.cos(el) * R * d, hz + Math.sin(el) * R * d);
-  const lump = (r, pos, sx = 1, sy = 1, sz = 1, detail = 0) => { const m = add(g, new THREE.IcosahedronGeometry(r, detail), hairM); m.position.copy(pos); m.scale.set(sx, sy, sz); return m; };
+  const lump = (r, pos, sx = 1, sy = 1, sz = 1, detail = 0) => { const m = add(g, new THREE.IcosahedronGeometry(r, ART.smooth ? detail + 2 : detail), hairM); m.position.copy(pos); m.scale.set(sx, sy, sz); return m; };
   const capOn = (r = 1.06, tilt = -.4) => add(g, shell(R * r, Math.PI * .5, tilt), hairM).position.set(-.01, 0, hz + .01);
   // Back half only (behind the ears), reaching lower than the cap. Back half of the raw sphere is phi in (-PI/2, PI/2).
   const backShell = (r, theta, m = hairM, spread = 1) => add(g, shell(R * r, theta, 0, -Math.PI / 2 * spread, Math.PI * spread), m).position.set(-.005, 0, hz);
@@ -223,7 +226,8 @@ const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6
   { a: [L + 6, W + 6], b: [-6, W + 6], o: [0, 1] }, { a: [-6, -6], b: [L + 6, -6], o: [0, -1] }];
 
 export class World {
-  constructor(canvas) {
+  constructor(canvas, { art = 'lowpoly' } = {}) {
+    ART.smooth = art === 'smooth';
     this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     r.setPixelRatio(Math.min(devicePixelRatio, 2)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;

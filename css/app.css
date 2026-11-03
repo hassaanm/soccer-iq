@@ -192,3 +192,5 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #rate .stars span.on.pop{transform:scale(1);transition:transform .3s cubic-bezier(.3,1.8,.5,1)}
 #seenNote{position:absolute;top:100px;left:50%;transform:translateX(-50%);background:rgba(36,25,58,.72);color:#fff;font-size:14px;padding:5px 12px;border-radius:999px;opacity:0;transition:opacity .2s;white-space:nowrap}
 #seenNote.show{opacity:1}
+.btn-icon{display:inline-flex;align-items:center;justify-content:center;color:var(--ink)}
+.btn-icon svg{display:block}

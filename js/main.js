@@ -13,7 +13,7 @@ const $ = s => document.querySelector(s);
 const P = load();
 const canvas = $('#view');
 let world;
-try { world = new World(canvas); } catch (e) {
+try { world = new World(canvas, { art: P.settings.art }); } catch (e) {
   document.body.innerHTML = '<p style="padding:24px;font:600 18px system-ui">This device can’t show 3D graphics (WebGL is off).</p>'; throw e;
 }
 
@@ -268,7 +268,7 @@ function openMenu() {
   $('#gear').classList.remove('holding');
   $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
     PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
-  $('#roundsSel').value = String(P.settings.rounds);
+  $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
   $('#voiceChk').checked = P.settings.voice; $('#soundChk').checked = P.settings.sound !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
@@ -278,6 +278,7 @@ function openMenu() {
 }
 $('#menuClose').onclick = () => {
   P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound);
+  const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
   save(P); show('#home');
 };
 $('#resetBtn').onclick = () => {
