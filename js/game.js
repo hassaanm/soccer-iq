@@ -485,6 +485,16 @@ export class Game {
   }
 
   // ---------- flows ----------
+  // In demos he really looks around: head up, turn left, then right (past his shoulder, so he can see behind),
+  // then settle on what he found. Shows a child that turning to look is part of the move.
+  async lookAround(aim, wide = 1.5) {
+    const turnTo = (to, sec) => { const y0 = this.yaw; return this.tween(sec, t => { this.yaw = y0 + wrap(to - y0) * smooth(t); }); };
+    const base = this.yaw;
+    this.hud.caption('👀 Look left…'); this.say('Look left.'); await turnTo(base + wide, 1.2);
+    this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnTo(base - wide, 1.8);
+    await turnTo(aim, 1.2);
+  }
+
   async demo(skillId) {
     if (skillId !== 'look-up') return this.demoGeneric(skillId);
     this.mode = 'demo';
@@ -495,9 +505,9 @@ export class Game {
     this.phase = 'decide';
     this.hud.caption(`${hero} looks up 👀`); this.say(`${hero} looks up.`);
     await this.delay(.5); this.lookUp = true; await this.delay(.8);
-    this.hud.caption('…and turns to find a friend'); this.say('And turns to find a friend.');
-    const h = this.sim.a('hero'), m = this.sim.a(mateId), aim = Math.atan2(m.y - h.y, m.x - h.x) * .85;
-    await this.tween(1.6, t => { this.yaw = lerp(0, aim, smooth(t)); });
+    this.hud.caption('…and looks around for a friend'); this.say('And looks around for a friend.'); await this.delay(1.4);
+    const h = this.sim.a('hero'), m = this.sim.a(mateId);
+    await this.lookAround(wrap(Math.atan2(m.y - h.y, m.x - h.x)));
     this.hud.caption(`${mate} is open!`); this.say(`${mate} is open!`);
     await this.delay(.6); this.step = 'pass'; this.hint = true; await this.delay(1.2);
     this.hud.caption('Pass!'); this.say('Pass!');
@@ -515,14 +525,21 @@ export class Game {
     this.phase = 'decide'; this.step = sc.kind === 'defense' ? 'spot' : null;
     await this.delay(.4); this.lookUp = true; await this.delay(.9);
     this.hud.caption(tip); this.say(tip); await this.delay(3.4);
-    // For a pass, he turns his head to find the open friend first, so the pass doesn't come out of nowhere.
-    const mateId = MATE[sc.best];
+    // He looks around first, so the choice doesn't come out of nowhere. For a pass he ends up facing the open
+    // friend; otherwise he turns back to the space ahead (or to the ball on defense).
+    const mateId = MATE[sc.best], h = this.sim.a('hero');
     if (mateId) {
-      const h = this.sim.a('hero'), m = this.sim.a(mateId), aim = wrap(Math.atan2(m.y - h.y, m.x - h.x));
-      this.hud.caption(`${hero} finds a friend 👀`); this.say(`${hero} finds a friend.`);
-      const y0 = this.yaw; await this.tween(1.6, t => { this.yaw = y0 + wrap(aim - y0) * smooth(t); });
+      const m = this.sim.a(mateId);
+      await this.lookAround(wrap(Math.atan2(m.y - h.y, m.x - h.x)));
       this.step = 'pass'; this.seen.add(mateId); this.hint = true;
       const open = `${this.name(mateId)} is open!`; this.hud.caption(open); this.say(open); await this.delay(1.4);
+    } else if (sc.kind === 'defense') {
+      await this.lookAround(this.yaw, 1.1);
+      this.hud.caption('See who is open? 👀'); this.say('See who is open?'); await this.delay(1.3);
+    } else {
+      await this.lookAround(0);
+      const saw = sc.best === 'shoot' ? 'Goal ahead! 🥅' : sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
+      this.hud.caption(saw); this.say(saw); await this.delay(1.2);
     }
     this.hud.caption('');
     await this.outcome(sc.best, true);

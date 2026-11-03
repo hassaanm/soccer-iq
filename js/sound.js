@@ -1,21 +1,27 @@
-// All sounds are made on the fly with Web Audio (no files): a soft crowd bed plus short effects.
+// All sounds are made on the fly with Web Audio (no files): short effects plus a soft background tune.
 // The browser only allows audio after a tap, so `unlock()` runs on the first touch.
 // iPhones mute Web Audio when the ring/silent switch is on silent (speech still plays). Marking the page as
-// media playback (iOS 17+), and playing a silent <audio> clip on older iOS, makes the effects play anyway.
-let ctx = null, master = null, crowdGain = null, enabled = true, noiseBuf = null;
+// media playback (iOS 17+) makes the effects play anyway.
+let ctx = null, master = null, musicGain = null, enabled = true, musicOn = true, noiseBuf = null, ducked = false;
+const MUSIC_VOL = .05;
 
 export function setSoundOn(on) { enabled = on; if (master) master.gain.value = on ? 1 : 0; }
+export function setMusicOn(on) { musicOn = on; fadeMusic(); }
+// While the voice talks, the tune drops almost to silence so the words are easy to hear.
+export function duck(on) { ducked = on; fadeMusic(); }
+function fadeMusic() {
+  if (!musicGain) return; const t = now(), g = musicGain.gain;
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(musicOn ? (ducked ? MUSIC_VOL * .15 : MUSIC_VOL) : 0, t + .4);
+}
 
-const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
 export function unlock() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
-  try { const a = new Audio(SILENT); a.loop = true; a.setAttribute('playsinline', ''); a.play().catch(() => {}); } catch { /* no audio element */ }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   ctx = new AC(); master = ctx.createGain(); master.gain.value = enabled ? 1 : 0; master.connect(ctx.destination);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  startCrowd();
+  startMusic();
 }
 
 const now = () => ctx.currentTime;
@@ -33,18 +39,32 @@ function tone(freq, dur, { type = 'sine', vol = .15, f1 = freq, at = 0, attack =
   o.connect(g).connect(master); o.start(t); o.stop(t + dur + .05);
 }
 
-// A low, breathing crowd murmur that swells gently now and then.
-function startCrowd() {
-  const src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), lfo = ctx.createOscillator(), lfoGain = ctx.createGain();
-  src.buffer = noiseBuf; src.loop = true; flt.type = 'bandpass'; flt.frequency.value = 480; flt.Q.value = .7;
-  crowdGain = ctx.createGain(); crowdGain.gain.value = .022;
-  lfo.frequency.value = .13; lfoGain.gain.value = .007; lfo.connect(lfoGain).connect(crowdGain.gain);
-  src.connect(flt).connect(crowdGain).connect(master); src.start(); lfo.start();
+// Background tune: a slow four-chord loop (C, G, Am, F) of soft pads, a gentle bass, and a few bell notes from
+// the pentatonic scale. Every note fades in and out, so nothing cuts off. Notes are scheduled a little ahead.
+const CHORDS = [[261.6, 329.6, 392], [246.9, 293.7, 392], [220, 261.6, 329.6], [220, 261.6, 349.2]];
+const BASS = [130.8, 98, 110, 87.3], BELLS = [523.3, 587.3, 659.3, 784, 880], BAR = 2.4;
+let nextBar = 0, bar = 0;
+function pad(freq, t, dur, vol, type = 'triangle') {
+  const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+  o.type = type; o.frequency.value = freq; f.type = 'lowpass'; f.frequency.value = 1400;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + dur * .3); g.gain.linearRampToValueAtTime(vol * .8, t + dur * .7); g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(f).connect(g).connect(musicGain); o.start(t); o.stop(t + dur + .05);
 }
-function swellCrowd(amount, dur) {
-  if (!crowdGain) return; const t = now(), g = crowdGain.gain;
-  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(.022 + amount, t + .25); g.linearRampToValueAtTime(.022, t + dur);
+function scheduleMusic() {
+  while (nextBar < now() + 1.5) {
+    const t = nextBar, i = bar % 4;
+    for (const f of CHORDS[i]) pad(f, t, BAR * 1.25, .22);                 // overlapping pads blend into each other
+    pad(BASS[i], t, BAR, .3, 'sine');
+    for (let k = 0; k < 4; k++) if (Math.random() < .55) pad(BELLS[Math.floor(Math.random() * BELLS.length)], t + k * BAR / 4, .9, .16, 'sine');
+    nextBar += BAR; bar++;
+  }
 }
+function startMusic() {
+  musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(master); fadeMusic();
+  nextBar = now() + .1; scheduleMusic(); setInterval(scheduleMusic, 500);
+}
+// A short cheer for goals and good plays (it fades out on its own).
+function cheer(vol, dur) { noise(dur, { f0: 700, f1: 500, q: .5, vol, attack: .25 }); }
 
 const SFX = {
   kick: () => { tone(110, .14, { vol: .5, f1: 55 }); noise(.06, { type: 'lowpass', f0: 2500, vol: .25 }); },
@@ -58,8 +78,8 @@ const SFX = {
   star: i => tone([784, 988, 1319][i] || 1319, .25, { vol: .2, type: 'triangle' }),
   // The ball hitting the net: a soft swish.
   net: () => noise(.5, { f0: 2400, f1: 700, q: .8, vol: .22, attack: .02 }),
-  yay: () => { [523, 659, 784].forEach((f, i) => tone(f, .2, { vol: .1, type: 'triangle', at: i * .07 })); swellCrowd(.05, 1.4); },
-  goal: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, .28, { vol: .13, type: 'triangle', at: i * .08 })); swellCrowd(.14, 2.6); noise(1.6, { f0: 900, q: .5, vol: .12, attack: .3 }); },
+  yay: () => { [523, 659, 784].forEach((f, i) => tone(f, .2, { vol: .1, type: 'triangle', at: i * .07 })); cheer(.05, 1.2); },
+  goal: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, .28, { vol: .13, type: 'triangle', at: i * .08 })); cheer(.14, 2.2); },
   aww: () => { tone(330, .5, { vol: .08, type: 'triangle', f1: 220 }); noise(.9, { type: 'lowpass', f0: 900, f1: 300, vol: .06, attack: .15 }); },
 };
 export function sfx(name, arg) { if (!ctx || !enabled) return; try { SFX[name]?.(arg); } catch { /* audio not ready */ } }

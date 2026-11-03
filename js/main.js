@@ -5,7 +5,7 @@ import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
-import { sfx, unlock as unlockSound, setSoundOn } from './sound.js';
+import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, duck } from './sound.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
 
@@ -32,7 +32,9 @@ if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged 
 function say(text) {
   if (!P.settings.voice || !('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, ''));
-  if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12;
+  if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12; u.volume = 1;
+  // The music dips while he talks, so the words stand out (in the car the voice can come through quieter).
+  u.onstart = () => duck(true); u.onend = u.onerror = () => duck(false);
   speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 
@@ -96,7 +98,7 @@ const hud = {
 };
 
 const game = new Game({ world, hud, say, sfx });
-setSoundOn(P.settings.sound !== false);
+setSoundOn(P.settings.sound !== false); setMusicOn(P.settings.music !== false);
 // Sound can only start after a tap; every chunky button also clicks.
 document.addEventListener('pointerdown', e => { unlockSound(); if (e.target.closest('.btn,.chip')) sfx('click'); }, true);
 
@@ -288,7 +290,7 @@ function openMenu() {
   $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
   if ('speechSynthesis' in window) pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
-  $('#voiceChk').checked = P.settings.voice; $('#soundChk').checked = P.settings.sound !== false;
+  $('#voiceChk').checked = P.settings.voice; $('#soundChk').checked = P.settings.sound !== false; $('#musicChk').checked = P.settings.music !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
     return `<div><span>${s.emoji} ${s.adult}</span><span>${!s.ready ? 'not built yet' : !st ? 'not started' : isMastered(P, s.id) ? 'mastered ✓' : `box ${st.box}/4 · ${st.firstTry}/${st.rounds} first try`}</span></div>`;
@@ -296,7 +298,7 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound);
+  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound); P.settings.music = $('#musicChk').checked; setMusicOn(P.settings.music);
   const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
   save(P); show('#home');
 };
