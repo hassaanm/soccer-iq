@@ -8,7 +8,7 @@ export class Sim {
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
     this.agents.clear();
-    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, face: [team === 'us' ? 1 : -1, 0] });
+    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, dist: 0, kickAt: null, face: [team === 'us' ? 1 : -1, 0] });
     add('hero', 'us', sc.hero);
     sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
     sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
@@ -30,6 +30,8 @@ export class Sim {
   stop(id) { const a = this.a(id); a.tx = a.x; a.ty = a.y; }
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } }
   give(id) { Object.assign(this.ball, { state: 'carried', carrier: id, z: 0 }); }
+  // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
+  windup(id) { const a = this.a(id); if (a) a.kickAt = this.time; }
   kick(x, y, { speed = 11, arc = 0.3, z1 = 0 } = {}) {
     const b = this.ball;
     Object.assign(b, { state: 'flying', carrier: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
@@ -43,14 +45,17 @@ export class Sim {
       const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
       if (d > 0.02 && a.speed > 0) {
         const s = Math.min(a.speed * dt, d);
-        a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d];
+        a.x += dx / d * s; a.y += dy / d * s; a.face = [dx / d, dy / d]; a.dist += s;
         a.sp = lerp(a.sp, a.speed, Math.min(1, dt * 8));
       } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
     }
     const b = this.ball;
     if (b.state === 'carried') {
-      const c = this.a(b.carrier), w = 0.5 + 0.1 * Math.sin(this.time * 14) * Math.min(1, c.sp / 3);
-      b.x = c.x + c.face[0] * w; b.y = c.y + c.face[1] * w; b.z = 0;
+      // Dribbling: each touch (every 1.4 m, matching world.js) pushes the ball ahead, then the player
+      // catches up. Touches cycle laces / inside / outside, nudging the ball sideways a little.
+      const c = this.a(b.carrier), run = Math.min(1, c.sp / 2.5), k = (c.dist % 1.4) / 1.4, kind = Math.floor(c.dist / 1.4) % 3;
+      const ahead = .34 + run * .55 * (1 - k), side = run * [0, .14, -.14][kind] * (1 - k);
+      b.x = c.x + c.face[0] * ahead - c.face[1] * side; b.y = c.y + c.face[1] * ahead + c.face[0] * side; b.z = 0;
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);

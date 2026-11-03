@@ -35,7 +35,7 @@ const flash = (el, cls, text, ms) => {
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
 const hud = {
-  state({ phase, step, mode, prompt, nudge, holding }) {
+  state({ phase, step, mode, prompt, nudge, holding, hintDir }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
@@ -43,6 +43,7 @@ const hud = {
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
     for (const [id, k] of [['#lookBtn', 'look'], ['#passBtn', 'pass'], ['#dribBtn', 'dribble']]) $(id).classList.toggle('nudge', nudge === k);
     $('#lookBtn').classList.toggle('held', holding);
+    document.querySelectorAll('#dpad button').forEach(b => b.classList.toggle('nudge', b.dataset.dir === hintDir));
   },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
   banner(text, kind) {
@@ -186,7 +187,8 @@ canvas.addEventListener('pointerdown', e => {
   if (game.tap(e.clientX, e.clientY)) return;
   game.lookStart(e.clientX, canvas.clientWidth); e.preventDefault();
 });
-$('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.lookStart(e.clientX, canvas.clientWidth); });
+$('#lookBtn').addEventListener('pointerdown', e => { e.preventDefault(); game.scan(); });
+document.querySelectorAll('#dpad button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); game.dribbleDir(b.dataset.dir); }));
 addEventListener('pointermove', e => game.lookMove(e.clientX));
 addEventListener('pointerup', () => game.lookEnd());
 addEventListener('pointercancel', () => game.lookEnd());

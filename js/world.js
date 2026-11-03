@@ -52,11 +52,15 @@ function makeRig(p, kit, isHero) {
   const sph = r => new THREE.SphereGeometry(r, 8, 6).rotateX(Math.PI / 2);
   const add = (parent, geo, m) => { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; parent.add(mesh); return mesh; };
   const Lg = .42, hipZ = Lg + .06, skin = mat(p.skin), bodyH = .62, hs = bodyH / .71;
+  const sock = mat(kit.socks), boot = mat(isHero ? '#f59e0b' : '#1d1f26');
   for (const s of [-1, 1]) {
-    const piv = new THREE.Group(); piv.position.set(0, s * .08, hipZ); g.add(piv); legs.push(piv);
-    add(piv, cap(.06, Lg * .3), skin).position.z = -Lg * .22;
-    add(piv, cap(.068, Lg * .36), mat(kit.socks)).position.z = -Lg * .62;
-    const bt = add(piv, sph(.085), mat(isHero ? '#f59e0b' : '#1d1f26')); bt.scale.set(1.5, .95, .7); bt.position.set(.05, 0, -Lg + .03);
+    // Hip joint → thigh, knee joint → shin and boot, so legs bend instead of swinging stiff.
+    const hip = new THREE.Group(); hip.position.set(0, s * .08, hipZ); g.add(hip);
+    add(hip, cap(.062, Lg * .3), skin).position.z = -Lg * .24;
+    const knee = new THREE.Group(); knee.position.z = -Lg * .5; hip.add(knee);
+    add(knee, cap(.068, Lg * .3), sock).position.z = -Lg * .24;
+    const bt = add(knee, sph(.085), boot); bt.scale.set(1.5, .95, .7); bt.position.set(.05, 0, -Lg * .5 + .03);
+    legs.push({ hip, knee });
   }
   const body = add(g, new THREE.LatheGeometry(PROFILE.map(([r, y]) => new THREE.Vector2(r, y)), 8).rotateX(Math.PI / 2),
     (() => { const m = M('#ffffff', { map: bodyTex(kit, p) }); mats.push(m); return m; })());
@@ -71,8 +75,37 @@ function makeRig(p, kit, isHero) {
   const R = .26, hz = top + R * .78;
   add(g, sph(R), (() => { const m = M('#ffffff', { map: faceTex(p) }); mats.push(m); return m; })()).position.z = hz;
   add(g, new THREE.SphereGeometry(R * 1.06, 8, 6, 0, Math.PI * 2, 0, Math.PI * .5).rotateX(Math.PI / 2).rotateY(-.4), mat(p.hair)).position.set(-.01, 0, hz + .01);
-  g.userData = { mats, legs, arms };
+  g.rotation.order = 'ZYX';
+  g.userData = { mats, legs, arms, yaw: null };
   return g;
+}
+
+// Procedural run cycle driven by distance covered (so feet don't skate), with a knee bend,
+// body bob and lean, dribble touches with the laces / inside / outside, and a kick wind-up.
+const STEP = .7, TOUCH = 1.4; // meters per step; one ball touch every two steps (matches sim.js)
+const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
+function animate(g, a, sim) {
+  const u = g.userData, run = Math.min(1, a.sp / 4.5), ph = a.dist / STEP * Math.PI;
+  const want = Math.atan2(a.face[1], a.face[0]);
+  if (u.yaw === null) u.yaw = want;
+  u.yaw += Math.atan2(Math.sin(want - u.yaw), Math.cos(want - u.yaw)) * .3;
+  g.position.set(a.x, a.y, run * .05 * Math.abs(Math.sin(ph)));
+  g.rotation.z = u.yaw; g.rotation.y = run * .16;
+  const kick = a.kickAt != null ? (sim.time - a.kickAt) / .45 : 9;
+  const carrying = sim.ball.state === 'carried' && sim.ball.carrier === a.id;
+  const cyc = (a.dist % TOUCH) / TOUCH, touch = Math.floor(a.dist / TOUCH) % 3;
+  u.legs.forEach(({ hip, knee }, i) => {
+    const sgn = i ? 1 : -1, sw = Math.sin(ph + Math.PI / 2) * sgn;
+    let h = -sw * .7 * run, k = run * (.15 + .9 * Math.max(0, -sw)) + .06 * (1 - run), turn = 0;
+    if (carrying && i === 1 && run > .2 && cyc < .18) turn = [0, -.55, .45][touch] * run;
+    if (i === 1 && kick < 1) {
+      const t = kick;
+      h = t < .4 ? lerp(0, .9, t / .4) : t < .62 ? lerp(.9, -1.25, (t - .4) / .22) : lerp(-1.25, 0, (t - .62) / .38);
+      k = t < .4 ? lerp(.1, 1.3, t / .4) : t < .62 ? lerp(1.3, .1, (t - .4) / .22) : .1;
+    }
+    hip.rotation.set(0, h, turn); knee.rotation.y = k;
+  });
+  u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
 }
 
 const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6], b: [-6, -6], o: [-1, 0] },
@@ -113,14 +146,27 @@ export class World {
     pitch.position.set(CX, CY, 0); pitch.receiveShadow = true; this.scene.add(pitch);
     this.outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: '#a9d67a' }));
     this.outer.position.set(CX, CY, -.02); this.outer.receiveShadow = true; this.scene.add(this.outer);
+    // Goals: white frame plus a mesh net (back, sides, sloped roof).
+    const netCanvas = document.createElement('canvas'); netCanvas.width = netCanvas.height = 64;
+    const ng = netCanvas.getContext('2d'); ng.strokeStyle = 'rgba(255,255,255,.95)'; ng.lineWidth = 5; ng.strokeRect(0, 0, 64, 64);
+    const netMat = (w, h) => {
+      const t = new THREE.CanvasTexture(netCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / .22, h / .22); t.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: .2, side: THREE.DoubleSide });
+    };
+    const depth = 1, gw = gy1 - gy0, backH = gh * .75;
     for (const [gx, dir] of [[L, 1], [0, -1]]) {
-      const white = M('#ffffff'), post = new THREE.CylinderGeometry(.06, .06, gh, 6).rotateX(Math.PI / 2);
+      const white = M('#ffffff'), post = new THREE.CylinderGeometry(.07, .07, gh, 6).rotateX(Math.PI / 2);
       for (const y of [gy0, gy1]) { const m = new THREE.Mesh(post, white); m.position.set(gx, y, gh / 2); m.castShadow = true; this.scene.add(m); }
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, gy1 - gy0, 6), white); bar.position.set(gx, CY, gh); bar.castShadow = true; this.scene.add(bar);
-      const net = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .3, side: THREE.DoubleSide, depthWrite: false });
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(gy1 - gy0, gh * .8).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), net);
-      back.position.set(gx + dir, CY, gh * .4); this.scene.add(back);
-      const roof = new THREE.Mesh(new THREE.PlaneGeometry(1, gy1 - gy0), net); roof.position.set(gx + dir / 2, CY, gh * .9); roof.rotation.y = dir * .2; this.scene.add(roof);
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, gw, 6), white); bar.position.set(gx, CY, gh); bar.castShadow = true; this.scene.add(bar);
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(gw, backH).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, backH));
+      back.position.set(gx + dir * depth, CY, backH / 2); this.scene.add(back);
+      for (const y of [gy0, gy1]) {
+        const side = new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh));
+        side.position.set(gx + dir * depth / 2, y, gh / 2); this.scene.add(side);
+      }
+      const slope = Math.atan((gh - backH) / depth);
+      const roof = new THREE.Mesh(new THREE.PlaneGeometry(depth / Math.cos(slope), gw), netMat(depth, gw));
+      roof.position.set(gx + dir * depth / 2, CY, (gh + backH) / 2); roof.rotation.y = dir * slope; this.scene.add(roof);
     }
   }
 
@@ -230,10 +276,7 @@ export class World {
     for (const [id, g] of this.rigs) {
       const a = sim.a(id), glow = this.glows.get(id);
       g.visible = !!a; glow.visible = false; if (!a) continue;
-      g.position.set(a.x, a.y, 0); g.rotation.z = Math.atan2(a.face[1], a.face[0]);
-      const sw = Math.sin(time * 11 + a.x) * Math.min(1, a.sp / 4);
-      g.userData.legs.forEach((l, i) => l.rotation.y = sw * .6 * (i ? 1 : -1));
-      g.userData.arms.forEach((l, i) => l.rotation.y = -sw * .7 * (i ? 1 : -1));
+      animate(g, a, sim, time);
       const s = ui.glow?.[id] || 0;
       for (const m of g.userData.mats) { m.emissive.setRGB(1, .78, .2); m.emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
