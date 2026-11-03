@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/",
-    "audit": "node scripts/audit.js"
+    "audit": "node scripts/audit.js",
+    "audit:gen": "node scripts/gen-audit.js"
   }
 }

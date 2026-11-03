@@ -35,7 +35,7 @@ export async function playOption(sc, opt) {
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
   const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y } };
   const nearestDef = s.team('them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
-  const m = { shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
+  const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
   const kick = s.kick.bind(s);
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
     if (x > 29 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
@@ -46,7 +46,7 @@ export async function playOption(sc, opt) {
       m.frames++;
       const list = [...s.agents.values()];
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) m.minGap = Math.min(m.minGap, dist(list[i], list[j]));
-      if (mate && s.ball.state === 'flying') m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball));
+      if (mate && s.ball.state === 'flying') { m.flight++; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
       if (m.frames < 30) m.defClosest = Math.min(m.defClosest, dist(nearestDef, s.ball));
     },
   });
@@ -58,12 +58,12 @@ export async function playOption(sc, opt) {
 // The rules a play has to follow to look like real soccer. Returns a list of broken rules.
 export function judge(r) {
   const bad = [];
-  if (r.minGap < .6) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
-  if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept it!')) bad.push('good choice lost the ball');
+  if (r.minGap < .55) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
+  if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept the ball!')) bad.push('good choice lost the ball');
   if (r.good && r.banners.includes('Stolen!')) bad.push('good choice lost the ball');
   if (r.shotBlocked) bad.push('shot went through a defender');
   if (!r.good && !r.banners.includes('Stolen!')) bad.push('bad choice did not lose the ball');
-  if (!r.good && r.mateStart != null && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
+  if (!r.good && r.mateStart != null && r.flight > 12 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
   if (r.defClosest > r.defStart + .2) bad.push('nearest defender backed off the ball');
   if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
   return bad;

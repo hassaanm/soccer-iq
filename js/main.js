@@ -3,6 +3,8 @@ import { World } from './world.js';
 import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
+import { generateLookUp } from './generate.js';
+import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
 
 const $ = s => document.querySelector(s);
@@ -36,7 +38,7 @@ const flash = (el, cls, text, ms) => {
 };
 const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, locked }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
@@ -44,6 +46,7 @@ const hud = {
     hudEl.classList.toggle('up', lookUp);
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
     $('#lookBtn').classList.toggle('nudge', nudge === 'look');
+    $('#passBtn').classList.toggle('locked', !!locked); $('#dribBtn').classList.toggle('locked', !!locked);
     $('#passBtn').classList.toggle('active', step === 'pass'); $('#dribBtn').classList.toggle('active', step === 'dribble');
     const lb = $('#lookBtn'); lb.classList.toggle('on', lookUp);
     const label = lookUp ? 'HEAD DOWN' : 'LOOK UP'; if (lb.lastChild.textContent !== label) { lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = label; }
@@ -146,7 +149,10 @@ async function runSession() {
     button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
   if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
   await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
-  const n = P.settings.rounds, rounds = pickRounds([skillId, ...reviews], n), results = [];
+  // First session: the hand-made scenarios. After that, about two thirds are freshly generated so no two sessions match.
+  const n = P.settings.rounds, fresh = n => Array.from({ length: n }, () => generateLookUp(Math.floor(Math.random() * 1e9))).filter(Boolean);
+  const gen = skillId === 'look-up' && !firstTime ? Math.round(n * 2 / 3) : 0;
+  const rounds = shuffle([...pickRounds([skillId, ...reviews], n - gen), ...fresh(gen)]), results = [];
   let misses = 0;
   hud.dots(results, n);
   for (let i = 0; i < rounds.length; i++) {
@@ -154,7 +160,7 @@ async function runSession() {
     results.push(r.firstTry); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
   }
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  const score = await game.match([skillId, ...reviews]);
+  const score = await game.match([skillId, ...reviews], skillId === 'look-up' ? fresh(6) : []);
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
   finishSession(P, skillId, firstTry, rounds.length);
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);

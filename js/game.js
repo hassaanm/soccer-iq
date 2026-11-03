@@ -1,7 +1,7 @@
 // Game flow: lesson demo → rounds with feedback → mini match. Owns input, camera, team AI and outcome scripts.
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds } from './skills.js';
-import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane } from './geom.js';
+import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle } from './geom.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -85,15 +85,19 @@ export class Game {
     for (;;) {
       yield 1 / 30;
       const aim = { x: L, y: clamp(a.y, gy0 + .8, gy1 - .8) };
-      if (dist(a, aim) < 13 && shotClear(a, aim, opps)) break;                // open look at goal: shoot
+      if (dist(a, aim) < 13 && shotClear(s.ball, aim, opps)) break;           // open look at goal: shoot
       const fx = tx - a.x, fy = ty - a.y, fl = Math.hypot(fx, fy) || 1;
       if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { blocked = true; break; } // defender in front
-      if (Math.hypot(fx, fy) < .3 || s.time - t0 > 3.2) { blocked = !shotClear(a, aim, opps); break; }
+      if (Math.hypot(fx, fy) < .3 || s.time - t0 > 3.2) { blocked = !shotClear(s.ball, aim, opps); break; }
     }
     s.stop(id);
     if (blocked) { this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
-    this.ai = false; s.stopAll(); // the shot comes quickly: defenders are caught flat-footed during the wind-up
-    yield* this.strike(id, L + .7, clamp(a.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
+    // Wind up facing the goal, then check the shot line once more at the moment of the kick.
+    this.ai = false; s.stopAll();
+    const shot = { x: L + .7, y: clamp(a.y, gy0 + .8, gy1 - .8) }, l = Math.hypot(shot.x - a.x, shot.y - a.y) || 1;
+    a.face = [(shot.x - a.x) / l, (shot.y - a.y) / l]; s.windup(id); yield .2;
+    if (!shotClear(s.ball, shot, opps)) { this.result = 'kept'; s.stopAll(); this.emit('kept'); yield 1.1; return; }
+    s.kick(shot.x, shot.y, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
     this.result = 'goal'; this.ai = false; s.stopAll(); this.emit('goal'); yield 1.4;
   }
@@ -164,7 +168,7 @@ export class Game {
     if (ev === 'goal') { this.hud.banner('GOAL!', 'goal'); this.say('Goal!'); }
     if (ev === 'goalAgainst') { this.hud.banner('They scored', 'bad'); }
     if (ev === 'stolen') { this.hud.banner('Stolen!', 'bad'); }
-    if (ev === 'kept') { this.hud.banner('Kept it!', 'goal'); this.say('You kept the ball!'); }
+    if (ev === 'kept') { this.hud.banner('Kept the ball!', 'goal'); this.say('You kept the ball!'); }
   }
 
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -247,10 +251,10 @@ export class Game {
     this.lines = []; this.aimAt = null;
   }
 
-  async match(skillIds) {
+  async match(skillIds, extra = []) {
     this.mode = 'match';
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
-    const rounds = pickRounds(skillIds, 12);
+    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra]);
     for (let i = 0; score.us < 2 && score.them < 2; i++) {
       this.load(rounds[i % rounds.length]); await this.pre();
       const opt = await this.decide(), good = this.isGood(opt);
@@ -284,10 +288,14 @@ export class Game {
   pass() {
     if (!this.canAct) return;
     if (this.step === 'pass') { this.step = null; return; }
-    this.step = 'pass'; this.lookUp = true;
+    if (this.locked) return this.lookFirst();
+    this.step = 'pass';
     if (!this.seen.size) { this.hud.toast('Find a friend first! 👀', true); this.say('Find a friend first!'); }
   }
-  dribble() { if (this.canAct) { this.step = this.step === 'dribble' ? null : 'dribble'; this.turn = 0; } }
+  dribble() { if (!this.canAct) return; if (this.locked) return this.lookFirst(); this.step = this.step === 'dribble' ? null : 'dribble'; this.turn = 0; }
+  // In the "Look up" lesson he has to look up before he can pass or dribble.
+  get locked() { return this.mode === 'lesson' && this.sc?.skill === 'look-up' && !this.scanned; }
+  lookFirst() { this.hud.toast('Look up first! 👀', true); this.say('Look up first!'); }
   choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; f(opt); } }
   // Returns true when the tap picked a pass target or dribble arrow.
   tap(x, y) {
@@ -394,8 +402,8 @@ export class Game {
         this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Drag to look around' : 'Tap 👀 to look up';
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
-    const nudge = this.canAct && !this.lookUp && !this.seen.size && s.time - this.decideAt > 5 ? 'look' : null;
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look });
+    const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && s.time - this.decideAt > 5)) ? 'look' : null;
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked });
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
     if (this.phase === 'decide' && this.step === 'dribble') for (const d of ['fwd', 'left', 'right', 'back']) arrows[d] = 1;

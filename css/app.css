@@ -138,3 +138,4 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 
 #skipBtn{display:none;font-size:16px;padding:9px 16px}
 #hud[data-mode=demo] #skipBtn{display:block}
+#hud .btn-round.locked{filter:grayscale(.85) brightness(.9);opacity:.55}
