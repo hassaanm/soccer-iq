@@ -32,11 +32,21 @@ function bodyTex(kit, p) {
 function faceTex(p) {
   return canvasTex(512, 256, g => {
     g.fillStyle = p.skin; g.fillRect(0, 0, 512, 256);
-    g.fillStyle = '#1d1410';
-    for (const s of [-1, 1]) { g.beginPath(); g.ellipse(256 + s * 26, 116, 6, 8, 0, 0, 7); g.fill(); }
+    for (const s of [-1, 1]) {
+      g.fillStyle = 'rgba(255,120,110,.22)'; g.beginPath(); g.ellipse(256 + s * 40, 132, 11, 7, 0, 0, 7); g.fill();      // cheeks
+      g.fillStyle = '#1d1410'; g.beginPath(); g.ellipse(256 + s * 25, 116, 6.5, 8.5, 0, 0, 7); g.fill();                  // eyes
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(256 + s * 25 - 2, 112, 2.2, 0, 7); g.fill();                               // catchlight
+      g.strokeStyle = p.hair; g.lineWidth = 4; g.lineCap = 'round'; g.beginPath(); g.moveTo(256 + s * 17, 101); g.lineTo(256 + s * 33, 99); g.stroke(); // brows
+    }
+    g.fillStyle = 'rgba(0,0,0,.08)'; g.beginPath(); g.ellipse(256, 125, 4, 3, 0, 0, 7); g.fill();                          // nose
     g.strokeStyle = '#5a2a1c'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.arc(256, 132, 7, .2 * Math.PI, .8 * Math.PI); g.stroke();
   });
 }
+// Soft dark spot under each player so they sit on the grass.
+const blobTex = canvasTex(64, 64, g => {
+  const r = g.createRadialGradient(32, 32, 2, 32, 32, 31); r.addColorStop(0, 'rgba(30,20,40,.42)'); r.addColorStop(1, 'rgba(30,20,40,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+});
 const glowTex = canvasTex(128, 128, g => {
   const r = g.createRadialGradient(64, 64, 4, 64, 64, 62);
   r.addColorStop(0, 'rgba(255,230,120,1)'); r.addColorStop(.55, 'rgba(255,210,63,.55)'); r.addColorStop(1, 'rgba(255,210,63,0)');
@@ -49,7 +59,7 @@ function makeRig(p, kit, isHero) {
   const g = new THREE.Group(), mats = [], legs = [], arms = [];
   const mat = c => { const m = M(c); mats.push(m); return m; };
   const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 1, 6).rotateX(Math.PI / 2);
-  const sph = r => new THREE.SphereGeometry(r, 8, 6).rotateX(Math.PI / 2);
+  const sph = r => new THREE.SphereGeometry(r, 10, 8).rotateX(Math.PI / 2);
   const add = (parent, geo, m) => { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; parent.add(mesh); return mesh; };
   const Lg = .42, hipZ = Lg + .06, skin = mat(p.skin), bodyH = .62, hs = bodyH / .71;
   const sock = mat(kit.socks), boot = mat(isHero ? '#f59e0b' : '#1d1f26');
@@ -74,7 +84,16 @@ function makeRig(p, kit, isHero) {
   }
   const R = .26, hz = top + R * .78;
   add(g, sph(R), (() => { const m = M('#ffffff', { map: faceTex(p) }); mats.push(m); return m; })()).position.z = hz;
-  add(g, new THREE.SphereGeometry(R * 1.06, 8, 6, 0, Math.PI * 2, 0, Math.PI * .5).rotateX(Math.PI / 2).rotateY(-.4), mat(p.hair)).position.set(-.01, 0, hz + .01);
+  // Hair: a cap for everyone, plus curls or a little quiff depending on the player, so they don't all look alike.
+  const hairM = mat(p.hair), style = [...p.name].reduce((a, c) => a + c.charCodeAt(0), 0) % 3;
+  add(g, new THREE.SphereGeometry(R * 1.06, 10, 7, 0, Math.PI * 2, 0, Math.PI * .5).rotateX(Math.PI / 2).rotateY(-.4), hairM).position.set(-.01, 0, hz + .01);
+  if (style === 1) for (let i = 0; i < 9; i++) {
+    const a = i / 9 * Math.PI * 2, el = .55 + (i % 2) * .25, c = add(g, new THREE.IcosahedronGeometry(R * .32, 0), hairM);
+    c.position.set(Math.cos(a) * Math.cos(el) * R * .95 - .04, Math.sin(a) * Math.cos(el) * R * .95, hz + Math.sin(el) * R * .95);
+  }
+  if (style === 2) { const q = add(g, new THREE.IcosahedronGeometry(R * .42, 0), hairM); q.scale.set(1.1, .9, .6); q.position.set(R * .45, 0, hz + R * .82); }
+  const blob = new THREE.Mesh(new THREE.CircleGeometry(.42, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+  blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
   g.userData = { mats, legs, arms, yaw: null };
   return g;
@@ -133,11 +152,24 @@ export class World {
     this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     r.setPixelRatio(Math.min(devicePixelRatio, 2)); r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
     const scene = this.scene = new THREE.Scene();
-    scene.background = new THREE.Color('#ffc89a'); scene.fog = new THREE.Fog('#ffd9b3', 35, 140);
+    scene.background = new THREE.Color('#ffc89a'); scene.fog = new THREE.Fog('#ffd6b0', 45, 170);
+    // Sky: a big dome fading from warm peach at the horizon to soft blue overhead, with a few low-poly clouds.
+    const dome = new THREE.SphereGeometry(300, 24, 12), cols = [], v = new THREE.Vector3(), lo = new THREE.Color('#ffd2a6'), hi = new THREE.Color('#7fb8e8');
+    for (let i = 0; i < dome.attributes.position.count; i++) { v.fromBufferAttribute(dome.attributes.position, i); const t = Math.max(0, Math.min(1, v.y / 160)); const c = lo.clone().lerp(hi, Math.pow(t, .7)); cols.push(c.r, c.g, c.b); }
+    dome.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); dome.rotateX(Math.PI / 2);
+    const sky = new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, toneMapped: false }));
+    sky.position.set(CX, CY, 0); scene.add(sky);
+    const cloudM = new THREE.MeshLambertMaterial({ color: '#fff6ee', flatShading: true, emissive: '#ffe9d6', emissiveIntensity: .45, fog: false });
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI * 2 + .3, d = 150 + (k % 3) * 25, cl = new THREE.Group();
+      for (let j = 0; j < 4; j++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(9 + (j % 2) * 4, 0), cloudM); b.position.set((j - 1.5) * 10, 0, (j % 2) * 3); b.scale.z = .55; cl.add(b); }
+      cl.position.set(CX + Math.cos(a) * d, CY + Math.sin(a) * d, 38 + (k % 4) * 7); cl.rotation.z = a + Math.PI / 2; scene.add(cl);
+    }
     this.camera = new THREE.PerspectiveCamera(40, 2, .1, 500); this.camera.up.set(0, 0, 1);
-    const hemi = new THREE.HemisphereLight('#ffd2a8', '#6e9a5a', 1.0); hemi.position.set(0, 0, 1); scene.add(hemi);
-    const sun = new THREE.DirectionalLight('#ffe2b8', 1.6); sun.position.set(-8, -12, 30); sun.target.position.set(CX, CY, 0); scene.add(sun.target);
+    const hemi = new THREE.HemisphereLight('#ffe0c0', '#6e9a5a', .95); hemi.position.set(0, 0, 1); scene.add(hemi);
+    const sun = new THREE.DirectionalLight('#ffe6c4', 1.9); sun.position.set(-8, -12, 30); sun.target.position.set(CX, CY, 0); scene.add(sun.target);
     sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
 
     this.buildPitch(); this.buildEnv(); this.buildMarkers();
@@ -151,7 +183,9 @@ export class World {
     const tex = canvasTex((L + 12) * ppm, (W + 12) * ppm, g => {
       const X = x => Math.round((x + 6) * ppm), Y = y => Math.round((W + 6 - y) * ppm);
       g.fillStyle = '#a9d67a'; g.fillRect(0, 0, (L + 12) * ppm, (W + 12) * ppm);
-      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#92c862' : '#9fd36e'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
+      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8fc75e' : '#9ed46c'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
+      let sd = 5; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      for (let k = 0; k < 14000; k++) { g.fillStyle = rr() < .5 ? 'rgba(40,90,30,.10)' : 'rgba(255,255,210,.08)'; g.fillRect(rr() * (L + 12) * ppm, rr() * (W + 12) * ppm, 2, 6); }
       g.fillStyle = '#ffffff'; const lw = Math.round(.14 * ppm);
       const hl = (x0, x1, y) => g.fillRect(X(x0), Y(y), X(x1) - X(x0), lw), vl = (x, y0, y1) => g.fillRect(X(x), Y(y1), lw, Y(y0) - Y(y1));
       hl(0, L, 0); hl(0, L, W); vl(0, 0, W); vl(L, 0, W); vl(CX, 0, W);
@@ -237,6 +271,13 @@ export class World {
     const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(.14, 6, 5), M('#ffffff'), fans.length);
     fans.forEach((s, k) => { mtx.makeTranslation(s.x, s.y, s.z + .45); bodies.setMatrixAt(k, mtx); bodies.setColorAt(k, col.set(s.c)); mtx.makeTranslation(s.x, s.y, s.z + .85); heads.setMatrixAt(k, mtx); heads.setColorAt(k, col.set(s.s)); });
     crowd.add(bodies, heads);
+    // Floodlight towers at the four corners (stadium only).
+    const poleM = M('#e9e2da'), lampM = new THREE.MeshLambertMaterial({ color: '#fffbe8', emissive: '#fff3c2', emissiveIntensity: 1 });
+    for (const [x, y] of [[-10, -10], [L + 10, -10], [-10, W + 10], [L + 10, W + 10]]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.25, .35, 16, 6).rotateX(Math.PI / 2), poleM); pole.position.set(x, y, 8);
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(3, 1.6, 2), lampM); lamp.position.set(x, y, 16.5); lamp.lookAt(CX, CY, 0);
+      stands.add(pole, lamp);
+    }
     this.scene.add(park, stands, crowd);
     this.setEnv('crowd');
   }

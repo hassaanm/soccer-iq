@@ -180,8 +180,13 @@ function unlockAudio() { if ('speechSynthesis' in window && P.settings.voice) { 
 
 // ---------- grown-ups menu (hold the gear) ----------
 let gearTimer;
-$('#gear').addEventListener('pointerdown', () => { $('#gear').classList.add('holding'); gearTimer = setTimeout(openMenu, 1200); });
-for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('#gear').addEventListener(ev, () => { $('#gear').classList.remove('holding'); clearTimeout(gearTimer); });
+let gearDown = 0, tipTimer;
+$('#gear').addEventListener('pointerdown', () => { gearDown = Date.now(); $('#gear').classList.add('holding'); gearTimer = setTimeout(openMenu, 1200); });
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('#gear').addEventListener(ev, () => {
+  $('#gear').classList.remove('holding'); clearTimeout(gearTimer);
+  if (ev === 'pointerup' && gearDown && Date.now() - gearDown < 1200) { $('#gearTip').classList.add('show'); clearTimeout(tipTimer); tipTimer = setTimeout(() => $('#gearTip').classList.remove('show'), 1800); }
+  gearDown = 0;
+});
 function openMenu() {
   $('#gear').classList.remove('holding');
   $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +

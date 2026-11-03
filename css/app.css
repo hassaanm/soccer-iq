@@ -91,7 +91,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px calc(16px + var(--safe-r)) 12px calc(16px + var(--safe-l))}
 #home{justify-content:space-between;background:radial-gradient(ellipse at 50% 40%,rgba(255,250,242,.25),rgba(36,25,58,.28))}
 .brand{display:flex;align-items:center;gap:10px;margin-top:2px}
-.brand .logo{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-size:26px;background:var(--cream);box-shadow:0 4px 0 rgba(36,25,58,.25)}
+.brand .logo{width:46px;height:46px;flex:none;filter:drop-shadow(0 4px 0 rgba(36,25,58,.35));animation:spinball 8s linear infinite}
+@keyframes spinball{to{transform:rotate(360deg)}}
+.brand h1 span{color:var(--gold)}
 .brand h1{margin:0;font-size:clamp(26px,4.6vw,40px);font-weight:700;color:#fff;letter-spacing:.02em;-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:0 4px 0 var(--ink)}
 .matchup{display:flex;align-items:center;gap:clamp(10px,2.6vw,30px)}
 .team{--team:#888;position:relative;width:min(38vw,330px);border-radius:28px;padding:10px 10px 12px;text-align:center;overflow:hidden;
@@ -139,3 +141,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #skipBtn{display:none;font-size:16px;padding:9px 16px}
 #hud[data-mode=demo] #skipBtn{display:block}
 #hud .btn-round.locked{filter:grayscale(.85) brightness(.9);opacity:.55}
+
+/* grown-ups gear: a ring fills while held; a tap shows how to open it */
+#gear::after{content:"";position:absolute;inset:-5px;border-radius:19px;border:4px solid var(--gold);opacity:0;clip-path:inset(0 100% 0 0)}
+#gear.holding::after{opacity:1;animation:fillring 1.2s linear forwards}
+@keyframes fillring{to{clip-path:inset(0 0 0 0)}}
+#gearTip{position:absolute;top:66px;right:calc(14px + var(--safe-r));background:var(--ink);color:#fff;font-size:13px;padding:6px 12px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+#gearTip.show{opacity:1}

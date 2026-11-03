@@ -1,4 +1,4 @@
-# Soccer IQ
+# Heads Up! Soccer
 
 A phone game that teaches young kids soccer decisions: look up, pass to the open friend, dribble into space.
 Static site (three.js from a CDN, progress in localStorage). Play in landscape; "Add to Home Screen" for full screen.
