@@ -7,6 +7,21 @@ import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
+
+// A decision built from wherever play is right now (continuous matches). The best choice is the good option that
+// moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
+function liveScenario(s, skill, pushAllowed) {
+  const P = a => [a.x, a.y], h = s.a('hero');
+  const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: [P(s.a('m1')), P(s.a('m2'))],
+    opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))) };
+  sc.oppsTo = sc.opps;
+  // Score each good option by how far it moves the ball toward goal; passes get a bonus (the ball moves faster than he does).
+  const g = grade(sc), gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] + 2 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
+  const goods = Object.keys(g).filter(o => g[o] === 'good' && (pushAllowed || !o.startsWith('push:'))).sort((a, b) => gain(b) - gain(a));
+  sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
+  sc.cue = !sc.best ? 'That was a tough spot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!` : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
+  return sc;
+}
 // A shot is on only if no defender is within a body-width of the line from the shooter to the goal.
 const shotClear = (a, aim, opps) => opps.every(o => closestOnLane(o, a, aim, 0).d > .9);
 const TURN_SPEED = 1.9; // radians per second while a turn button is held
@@ -34,9 +49,30 @@ export class Game {
 
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
   name(id) {
-    if (id === 'hero') return displayName(this.us.players[0].name);
-    if (id[0] === 'm') return displayName(this.us.players[+id[1]].name);
-    return displayName(this.them.players[+id[1] - 1].name);
+    if (id[0] === 'o') return displayName(this.them.players[+id[1] - 1].name);
+    return displayName(this.us.players[(this.roster || { hero: 0, m1: 1, m2: 2 })[id]].name);
+  }
+  // Hand control to teammate `id`: the sim's "hero" slot takes over his body, position and the ball.
+  takeOver(id) {
+    if (id === 'hero') return;
+    const s = this.sim, h = s.a('hero'), m = s.a(id);
+    for (const k of ['x', 'y', 'tx', 'ty', 'speed', 'sp', 'dist', 'kickAt', 'face']) [h[k], m[k]] = [m[k], h[k]];
+    if (s.ball.carrier === id) s.ball.carrier = 'hero';
+    this.world.swapRigs('hero', id);
+    const r = this.roster; [r.hero, r[id]] = [r[id], r.hero];
+  }
+  // Continue a match from wherever the last play ended: a defender steps up, then he makes the next choice.
+  async continueLive() {
+    const s = this.sim, c = s.a(s.ball.carrier);
+    if (c && c.team === 'us') this.takeOver(c.id);
+    const h = s.a('hero');
+    Object.assign(this, { phase: 'pre', step: null, seen: new Set(), lookUp: false, turn: 0, drag: null, scanned: false, lines: [], aimAt: null, ai: false, scripted: new Set(), camMode: 'player', yaw: 0, follow: null, grades: null });
+    h.face = [1, 0];
+    // The nearest defender steps up to about 3 m, off to one side, so there's pressure but still room to play.
+    const press = s.team('them').sort((a, b) => dist(a, h) - dist(b, h))[0], side = press.y > h.y ? 1 : -1;
+    s.go(press.id, Math.min(L - 1, h.x + 2.2), clamp(h.y + side * 1.8, 1, W - 1), 3.5);
+    await this.delay(.8); s.stopAll();
+    this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed);
   }
 
   // ---------- timing helpers ----------
@@ -53,6 +89,7 @@ export class Game {
   // ---------- scenario setup ----------
   load(sc) {
     this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null;
+    this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
     if (sc.kind === 'defense') { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
   }
   // Big pushes are offered in the dribble lesson and in free play.
@@ -76,12 +113,12 @@ export class Game {
   // a better choice) or 'bad' (loses it). Dribbles are graded by the real space on the field, so any of the
   // eight directions into open grass works, and only directions a defender blocks lose the ball.
   rating(opt) {
-    if (opt === this.sc.best) return 'best';
+    if (this.sc.best && opt === this.sc.best) return 'best';
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
     if (this.sc.kind === 'defense') return 'bad';
     const g = (this.grades ||= grade(this.sc))[opt];
-    if ((opt.startsWith('drib:') || opt.startsWith('push:')) && g === 'good') return 'ok';
+    if ((opt.startsWith('drib:') || opt.startsWith('push:') || opt === 'shoot') && g === 'good') return 'ok';
     if (opt.startsWith('drib:') && g === 'safe') return 'safe';
     return 'bad';
   }
@@ -237,7 +274,19 @@ export class Game {
     yield () => s.ball.state === 'loose';
     this.result = 'goalAgainst'; this.ai = false; s.stopAll(); this.emit('goalAgainst'); yield 1.3;
   }
+  // He shoots: a clear shot goes in; a blocked one is stopped by the defender in the way.
+  *shootGen(good) {
+    const s = this.sim, h = s.a('hero'), aim = { x: L + .7, y: clamp(h.y, gy0 + .8, gy1 - .8) };
+    this.scripted.add('hero'); this.ai = false; s.stopAll();
+    if (good) { yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
+    const block = interceptor(s.ball, aim, s.team('them'));
+    this.scripted.add(block.opp.id); s.go(block.opp.id, block.x, block.y, 5);
+    yield* this.strike('hero', block.x, block.y, { speed: 15, arc: .2 });
+    yield () => s.ball.state === 'loose';
+    yield* this.steal(block.opp);
+  }
   *outcomeGen(opt, good, counter) {
+    if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); if (!good && counter) yield* this.counter(); this.ai = false; return; }
     if (opt.startsWith('spot:')) { yield* this.defendGen(opt.slice(5), good); this.ai = false; return; }
     if (opt.startsWith('push:')) { yield* this.pushGen(opt.slice(5), good); if (!good && counter) yield* this.counter(); this.ai = false; return; }
     if (MATE[opt]) {
@@ -370,14 +419,20 @@ export class Game {
     this.mode = mode;
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra]);
+    // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
+    // Only a goal resets to a fresh situation, like a kickoff.
+    let live = false, next = 0, streak = 0;
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
-      this.load(rounds[i % rounds.length]); await this.pre();
+      if (live) await this.continueLive(); else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
       const opt = await this.decide(), good = this.isGood(opt);
       await this.outcome(opt, good, true);
       if (this.result === 'goal') score.us++;
       else if (this.result === 'goalAgainst') score.them++;
       this.hud.score(score, this.us, this.them);
-      if (i >= toWin * 6) break; // safety: don't let a match run forever
+      // Keep playing from here after "Kept the ball!" or "Stole it!", but start a fresh attack after 3 plays in a row.
+      streak = this.result === 'kept' || this.result === 'won' ? streak + 1 : 0;
+      live = streak > 0 && streak <= 3;
+      if (i >= toWin * 10) break; // safety: don't let a match run forever
     }
     return score;
   }
@@ -399,6 +454,9 @@ export class Game {
     if (Math.abs(dx) > 8) { this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
   lookEnd() { this.drag = null; }
+  // Shooting is offered when he is close enough to goal to have a real chance.
+  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && this.sc?.kind !== 'defense' && !!h && h.x > L - 13; }
+  shoot() { if (this.canAct && this.canShoot && !this.locked) this.choose('shoot'); }
   // PASS and DRIBBLE are always on screen; tapping one switches to it, tapping it again un-picks it.
   pass() {
     if (!this.canAct) return;
@@ -522,7 +580,7 @@ export class Game {
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
     const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && s.time - this.decideAt > 5)) ? 'look' : null;
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir });
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: this.canAct && this.canShoot });
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
     if (this.phase === 'decide' && this.step === 'dribble') for (const d of Object.keys(DRIBBLE_DIRS)) arrows[d] = 1;

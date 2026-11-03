@@ -38,12 +38,12 @@ const flash = (el, cls, text, ms) => {
 };
 const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot }) {
     const d = hudEl.dataset;
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
     if (d.mode !== mode) d.mode = mode;
-    hudEl.classList.toggle('up', lookUp); hudEl.dataset.kind = kind; hudEl.classList.toggle('touchpick', !!touchPick);
+    hudEl.classList.toggle('up', lookUp); hudEl.dataset.kind = kind; hudEl.classList.toggle('touchpick', !!touchPick); hudEl.classList.toggle('shoot', !!canShoot);
     const pr = $('#prompt'); if (pr.textContent !== prompt) pr.textContent = prompt;
     $('#lookBtn').classList.toggle('nudge', nudge === 'look');
     $('#passBtn').classList.toggle('locked', !!locked); $('#dribBtn').classList.toggle('locked', !!locked);
@@ -223,6 +223,7 @@ async function runFreePlay() {
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#freeBtn').onclick = runFreePlay;
+$('#shootBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.shoot(); });
 $('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
 $('#touchBig').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('big'); });
 $('#againBtn').onclick = () => runSession();

@@ -14,7 +14,7 @@ const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
 
 export function makeGame() {
   const events = [];
-  const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, project: () => [400, 200] };
+  const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] };
   const hud = new Proxy({}, { get: (_, k) => (...a) => events.push([k, ...a]) });
   const g = new Game({ world, hud, say: () => {} });
   g.setTeams(TEAMS[3], TEAMS[13]);

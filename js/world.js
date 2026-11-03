@@ -396,7 +396,13 @@ export class World {
       const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
       glow.visible = false; this.scene.add(glow); this.glows.get(id) && this.scene.remove(this.glows.get(id)); this.glows.set(id, glow);
     }
+    this.home = { rigs: new Map(this.rigs), glows: new Map(this.glows) };
   }
+  // In a continuous match the child takes over whichever teammate has the ball: swap which body each sim id drives.
+  swapRigs(a, b) {
+    for (const m of [this.rigs, this.glows]) { const t = m.get(a); m.set(a, m.get(b)); m.set(b, t); }
+  }
+  resetRigs() { if (this.home) { this.rigs = new Map(this.home.rigs); this.glows = new Map(this.home.glows); } }
 
   setLines(lines) {
     const key = JSON.stringify(lines); if (key === this.linesKey) return; this.linesKey = key;

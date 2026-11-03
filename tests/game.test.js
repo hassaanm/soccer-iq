@@ -8,7 +8,7 @@ import { OPTIONS } from './harness.js';
 
 function makeGame() {
   const events = [];
-  const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, project: () => [400, 200] };
+  const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] };
   const hud = new Proxy({}, { get: (_, k) => (...a) => events.push([k, ...a]) });
   const g = new Game({ world, hud, say: () => {} });
   g.setTeams(TEAMS[3], TEAMS[13]);
@@ -72,4 +72,13 @@ test('skipping the demo ends it right away', async () => {
   for (let i = 0; i < 3 && !done; i++) { g.tick(1 / 30, 2); for (let k = 0; k < 50; k++) await null; }
   assert.ok(done, 'demo should finish within a few frames of Skip');
   assert.equal(g.skipping, false);
+});
+
+test('a match flows on after kept-the-ball and still ends', async () => {
+  const { g } = makeGame();
+  let live = 0, decisions = 0;
+  const pick = gm => { decisions++; if (gm.sc.live) live++; const opts = gm.sc.kind === 'defense' ? gm.sc.spots.map(s => 'spot:' + s.id) : ['pass:0', 'pass:1', 'drib:fwd']; return gm.sc.best || opts[0]; };
+  const s = await drive(g, g.match(['look-up', 'one-goes', 'pass-to-open'], [], 3, 'free'), pick, 900);
+  assert.ok(s.us === 3 || s.them === 3 || decisions > 25, `match did not finish (${JSON.stringify(s)})`);
+  assert.ok(live > 0, 'play never continued from a live position');
 });

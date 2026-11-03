@@ -31,6 +31,9 @@ export function grade(sc) {
     const mate = P(m), d = interceptor(ball, mate, opps).d, mark = Math.min(...opps.map(o => dist(o, mate)));
     out['pass:' + i] = d > OPEN && mark > FREE ? 'good' : d < BLOCKED || mark < MARKED ? 'bad' : 'unclear';
   });
+  // Shooting: on from about 9 m or closer with no defender on the line; blocked or from far out, it gets stopped.
+  const aim = { x: L + .7, y: clamp(hero.y, PITCH.gy0 + .8, PITCH.gy1 - .8) }, shotD = dist(hero, aim), shotLane = Math.min(...opps.map(o => closestOnLane(o, ball, aim, 0).d));
+  out.shoot = shotD < 9.5 && shotLane > 1.1 ? 'good' : shotLane < .8 || shotD > 12 ? 'bad' : 'unclear';
   for (const dir of Object.keys(DRIBBLE_DIRS)) {
     const end = dribbleEnd(hero, dir, L, W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, 0).d));
     out['drib:' + dir] = near < PATH_HIT ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > PATH_FREE ? 'good' : 'unclear';
