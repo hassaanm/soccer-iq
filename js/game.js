@@ -127,7 +127,9 @@ export class Game {
     if (!good && counter) yield* this.counter();
   }
   async outcome(opt, good, counter = false) {
-    this.phase = 'outcome'; this.step = null; this.holding = false; this.camMode = 'follow';
+    const h = this.sim.a('hero');
+    this.phase = 'outcome'; this.step = null; this.holding = false; this.scanT = null; this.camMode = 'follow';
+    this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good, counter));
   }
   emit(ev) {
@@ -293,10 +295,11 @@ export class Game {
       return { eye: [mx - 8, my, 9], tgt: [mx + 1.5, my, 0], Ff: .85, Fw: .42 };
     }
     if (this.camMode === 'follow') {
-      const vx = b.state === 'flying' ? b.tx - b.fx : (s.a(b.carrier)?.tx ?? b.x) - b.x;
-      if (Math.abs(vx) > .5) this.ballDir = Math.sign(vx);
-      const d = this.ballDir, y = lerp(b.y, W / 2, .35);
-      return { eye: [b.x - 6.5 * d, y, 3.6], tgt: [b.x + 5 * d, y, .3], Ff: .9, Fw: .45 };
+      // A calm chase camera: it trails a smoothed point near the ball and only turns around
+      // (slowly) when the other team has the ball, so kicks and passes never make it jump.
+      const f = this.follow;
+      const c = s.a(b.carrier); if (c) f.yawT = c.team === 'them' ? Math.PI : 0;
+      return { eye: [f.x - Math.cos(f.yaw) * 7, f.y - Math.sin(f.yaw) * 7, 4.2], tgt: [f.x + Math.cos(f.yaw) * 4, f.y + Math.sin(f.yaw) * 4, .3], Ff: .9, Fw: .46 };
     }
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
@@ -306,6 +309,12 @@ export class Game {
     return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(b.x + .8, h.x + fx, k), lerp(b.y - .2, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
   }
   updateCamera(dt, time) {
+    const f = this.follow, b = this.sim.ball;
+    if (this.camMode === 'follow' && f) {
+      const k = 1 - Math.exp(-dt * 2.2), ahead = f.yaw > 1.5 ? -2 : 2;
+      f.x = lerp(f.x, b.x + ahead, k); f.y = lerp(f.y, lerp(b.y, W / 2, .4), k);
+      f.yaw += (f.yawT - f.yaw) * (1 - Math.exp(-dt * 1.4));
+    }
     const want = this.camSpec(time);
     if (!this.cam) { this.cam = { eye: [...want.eye], tgt: [...want.tgt], Ff: want.Ff, Fw: want.Fw }; return; }
     const k = 1 - Math.exp(-dt * (this.camMode === 'player' ? 12 : 4));

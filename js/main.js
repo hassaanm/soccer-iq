@@ -127,7 +127,7 @@ async function runSession() {
   const skillId = nextSkill(P, PATH), sk = skillById(skillId), reviews = reviewsDue(P, PATH, skillId).slice(0, 2);
   const us = teamById(P.us), them = teamById(P.them), hero = displayName(us.players[0].name);
   game.setTeams(us, them);
-  world.setEnv(['park', 'empty', 'crowd'][P.sessions % 3]);
+  world.setEnv('crowd');
   show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
   await card({ emoji: sk.emoji, title: sk.kid, sub: `Watch ${hero} first`, button: '▶ Watch' });
   await game.demo(skillId);

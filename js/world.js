@@ -108,6 +108,21 @@ function animate(g, a, sim) {
   u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
 }
 
+// Soccer ball: a finely split icosahedron; faces near the 12 original corners are black (the pentagons).
+function makeBall(r) {
+  const geo = new THREE.IcosahedronGeometry(r, 3), pos = geo.attributes.position, n = pos.count;
+  const corners = new THREE.IcosahedronGeometry(1, 0).attributes.position, dirs = [];
+  for (let i = 0; i < corners.count; i++) { const v = new THREE.Vector3().fromBufferAttribute(corners, i).normalize(); if (!dirs.some(d => d.distanceTo(v) < 1e-3)) dirs.push(v); }
+  const colors = new Float32Array(n * 3), c = new THREE.Vector3();
+  for (let i = 0; i < n; i += 3) {
+    c.set(0, 0, 0); for (let k = 0; k < 3; k++) c.add(new THREE.Vector3().fromBufferAttribute(pos, i + k)); c.normalize();
+    const black = dirs.some(d => d.dot(c) > .93), v = black ? .1 : 1;
+    for (let k = 0; k < 3; k++) colors.set([v, v, v * (black ? 1.2 : 1)], (i + k) * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+}
+
 const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6], b: [-6, -6], o: [-1, 0] },
   { a: [L + 6, W + 6], b: [-6, W + 6], o: [0, 1] }, { a: [-6, -6], b: [L + 6, -6], o: [0, -1] }];
 
@@ -124,10 +139,9 @@ export class World {
     sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
 
     this.buildPitch(); this.buildEnv(); this.buildMarkers();
-    this.ball = new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), M('#ffffff', {
-      map: canvasTex(256, 128, g => { g.fillStyle = '#fff'; g.fillRect(0, 0, 256, 128); g.fillStyle = '#222'; for (let i = 0; i < 10; i++) { g.beginPath(); g.arc((i * 53) % 256, (i * 37) % 128, 14, 0, 7); g.fill(); } }) }));
+    this.ball = makeBall(.2); this.ballPrev = null;
     this.ball.castShadow = true; scene.add(this.ball);
-    this.rigs = new Map(); this.tmp = new THREE.Vector3(); this.camDir = new THREE.Vector3();
+    this.rigs = new Map(); this.tmp = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.axis = new THREE.Vector3(); this.camDir = new THREE.Vector3();
   }
 
   buildPitch() {
@@ -146,27 +160,30 @@ export class World {
     pitch.position.set(CX, CY, 0); pitch.receiveShadow = true; this.scene.add(pitch);
     this.outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: '#a9d67a' }));
     this.outer.position.set(CX, CY, -.02); this.outer.receiveShadow = true; this.scene.add(this.outer);
-    // Goals: white frame plus a mesh net (back, sides, sloped roof).
+    // Goals: white frame and a simple box net (back, sides and a flat top), with a faint fill so it reads as netting.
     const netCanvas = document.createElement('canvas'); netCanvas.width = netCanvas.height = 64;
-    const ng = netCanvas.getContext('2d'); ng.strokeStyle = 'rgba(255,255,255,.95)'; ng.lineWidth = 5; ng.strokeRect(0, 0, 64, 64);
+    const ng = netCanvas.getContext('2d'); ng.fillStyle = 'rgba(255,255,255,.16)'; ng.fillRect(0, 0, 64, 64);
+    ng.strokeStyle = 'rgba(255,255,255,.95)'; ng.lineWidth = 6; ng.strokeRect(0, 0, 64, 64);
     const netMat = (w, h) => {
-      const t = new THREE.CanvasTexture(netCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / .22, h / .22); t.colorSpace = THREE.SRGBColorSpace;
-      return new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: .2, side: THREE.DoubleSide });
+      const t = new THREE.CanvasTexture(netCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / .2, h / .2); t.colorSpace = THREE.SRGBColorSpace;
+      return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     };
-    const depth = 1, gw = gy1 - gy0, backH = gh * .75;
+    const depth = 1.1, gw = gy1 - gy0, frame = M('#ffffff'), rear = M('#d9dde3');
+    const bar = (len, r, m, axis) => { const g = new THREE.CylinderGeometry(r, r, len, 8); if (axis === 'z') g.rotateX(Math.PI / 2); if (axis === 'x') g.rotateZ(Math.PI / 2); const o = new THREE.Mesh(g, m); o.castShadow = true; return o; };
     for (const [gx, dir] of [[L, 1], [0, -1]]) {
-      const white = M('#ffffff'), post = new THREE.CylinderGeometry(.07, .07, gh, 6).rotateX(Math.PI / 2);
-      for (const y of [gy0, gy1]) { const m = new THREE.Mesh(post, white); m.position.set(gx, y, gh / 2); m.castShadow = true; this.scene.add(m); }
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(.07, .07, gw, 6), white); bar.position.set(gx, CY, gh); bar.castShadow = true; this.scene.add(bar);
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(gw, backH).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, backH));
-      back.position.set(gx + dir * depth, CY, backH / 2); this.scene.add(back);
+      const bx = gx + dir * depth, add = (o, x, y, z) => { o.position.set(x, y, z); this.scene.add(o); };
       for (const y of [gy0, gy1]) {
-        const side = new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh));
-        side.position.set(gx + dir * depth / 2, y, gh / 2); this.scene.add(side);
+        add(bar(gh, .07, frame, 'z'), gx, y, gh / 2);           // front posts
+        add(bar(gh, .03, rear, 'z'), bx, y, gh / 2);            // back posts
+        add(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, gh); // top side bars
+        add(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, .03);
       }
-      const slope = Math.atan((gh - backH) / depth);
-      const roof = new THREE.Mesh(new THREE.PlaneGeometry(depth / Math.cos(slope), gw), netMat(depth, gw));
-      roof.position.set(gx + dir * depth / 2, CY, (gh + backH) / 2); roof.rotation.y = dir * slope; this.scene.add(roof);
+      add(bar(gw, .07, frame), gx, CY, gh);                       // crossbar
+      add(bar(gw, .03, rear), bx, CY, gh);
+      add(bar(gw, .03, rear), bx, CY, .03);
+      add(new THREE.Mesh(new THREE.PlaneGeometry(gw, gh).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, gh)), bx, CY, gh / 2);
+      for (const y of [gy0, gy1]) add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh)), gx + dir * depth / 2, y, gh / 2);
+      add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gw), netMat(depth, gw)), gx + dir * depth / 2, CY, gh);
     }
   }
 
@@ -219,7 +236,7 @@ export class World {
     fans.forEach((s, k) => { mtx.makeTranslation(s.x, s.y, s.z + .45); bodies.setMatrixAt(k, mtx); bodies.setColorAt(k, col.set(s.c)); mtx.makeTranslation(s.x, s.y, s.z + .85); heads.setMatrixAt(k, mtx); heads.setColorAt(k, col.set(s.s)); });
     crowd.add(bodies, heads);
     this.scene.add(park, stands, crowd);
-    this.setEnv('park');
+    this.setEnv('crowd');
   }
   setEnv(env) { this.park.visible = env === 'park'; this.stands.visible = env !== 'park'; this.crowd.visible = env === 'crowd'; }
 
@@ -288,7 +305,14 @@ export class World {
       if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = (.45 + .35 * s) * (.8 + .2 * Math.sin(time * 6)); }
     }
     this.setLines(ui.lines || []);
-    const b = sim.ball; this.ball.position.set(b.x, b.y, .2 + (b.z || 0)); this.ball.rotation.y = b.x * 3; this.ball.rotation.x = b.y * 3;
+    // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
+    const b = sim.ball, bp = this.ballPrev;
+    if (bp) {
+      const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
+      if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / .2));
+    }
+    this.ballPrev = { x: b.x, y: b.y };
+    this.ball.position.set(b.x, b.y, .2 + (b.z || 0));
     this.renderer.render(this.scene, c);
   }
 }
