@@ -1,7 +1,8 @@
 // Game flow: lesson demo → rounds with feedback → mini match. Owns input, camera, team AI and outcome scripts.
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds } from './skills.js';
-import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle } from './geom.js';
+import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
+import { grade } from './generate.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -50,7 +51,7 @@ export class Game {
   }
 
   // ---------- scenario setup ----------
-  load(sc) { this.reset(); this.sc = sc; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; }
+  load(sc) { this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; }
   // Short run-up: he dribbles forward head-down while defenders close in.
   async pre() {
     this.phase = 'pre';
@@ -65,7 +66,18 @@ export class Game {
     this.delay(1.2).then(() => { if (this.phase === 'decide') this.hud.caption(''); });
     return new Promise(res => { this._choose = res; });
   }
-  isGood(opt) { return opt === this.sc.best || (this.sc.ok || []).includes(opt); }
+  // How good a choice is: 'best' (the star answer), 'ok' (just as good), 'safe' (keeps the ball but there was
+  // a better choice) or 'bad' (loses it). Dribbles are graded by the real space on the field, so any of the
+  // eight directions into open grass works, and only directions a defender blocks lose the ball.
+  rating(opt) {
+    if (opt === this.sc.best) return 'best';
+    if ((this.sc.ok || []).includes(opt)) return 'ok';
+    const g = (this.grades ||= grade(this.sc))[opt];
+    if (opt.startsWith('drib:') && g === 'good') return 'ok';
+    if (opt.startsWith('drib:') && g === 'safe') return 'safe';
+    return 'bad';
+  }
+  isGood(opt) { return this.rating(opt) !== 'bad'; }
   target(opt) {
     const h = this.sim.a('hero');
     return MATE[opt] ? { ...this.sim.a(MATE[opt]) } : dribbleEnd(h, opt.slice(5), L, W);
@@ -133,6 +145,7 @@ export class Game {
     const t0 = s.time;
     if (good) {
       yield () => dist(h, end) < .3 || s.time - t0 > 2.5;
+      if (BACKWARD.has(dir)) { s.stop('hero'); this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
       yield* this.finish('hero');
     } else {
       const opps = s.team('them').sort((a, b) => dist(a, end) - dist(b, end)).slice(0, 2);
@@ -223,8 +236,13 @@ export class Game {
     for (let attempt = 1; ; attempt++) {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
-      const good = this.isGood(opt), scanned = this.scanned;
+      const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
       await this.outcome(opt, good);
+      if (rating === 'safe') { // kept the ball, but there was a better choice: say which, no star
+        const tip = 'Safe! But ' + this.cue().replace(/!$/, '.');
+        this.hud.caption(tip); this.say(tip); await this.delay(2.2); this.hud.caption('');
+        return { firstTry: false };
+      }
       if (good) {
         const msg = scanned ? 'You looked up! ⭐' : 'Good choice! ⭐';
         this.hud.toast(msg); this.say(scanned ? 'You looked up! Great job!' : 'Good choice!');
@@ -318,7 +336,7 @@ export class Game {
   targets() {
     const h = this.sim.a('hero');
     if (this.step === 'pass') return Object.entries(MATE).filter(([, id]) => this.seen.has(id)).map(([opt, id]) => ({ opt, ...this.sim.a(id), z: .8 }));
-    if (this.step === 'dribble') return ['fwd', 'left', 'right', 'back'].map(d => { const e = dribbleEnd(h, d, L, W); return { opt: 'drib:' + d, x: lerp(h.x, e.x, .8), y: lerp(h.y, e.y, .8), z: 0 }; });
+    if (this.step === 'dribble') return Object.keys(DRIBBLE_DIRS).map(d => { const e = dribbleEnd(h, d, L, W); return { opt: 'drib:' + d, x: lerp(h.x, e.x, .8), y: lerp(h.y, e.y, .8), z: 0 }; });
     return [];
   }
 
@@ -406,7 +424,7 @@ export class Game {
     hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked });
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
-    if (this.phase === 'decide' && this.step === 'dribble') for (const d of ['fwd', 'left', 'right', 'back']) arrows[d] = 1;
+    if (this.phase === 'decide' && this.step === 'dribble') for (const d of Object.keys(DRIBBLE_DIRS)) arrows[d] = 1;
     this.ui = { glow, arrows, lines: this.lines, heroRing: this.camMode === 'player' };
   }
 }

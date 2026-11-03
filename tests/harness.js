@@ -1,9 +1,9 @@
 // Headless game runner shared by the tests and the audit: a stub renderer, fixed 30 fps ticks, and per-play metrics.
 import { Game } from '../js/game.js';
 import { TEAMS } from '../js/teams.js';
-import { dist, closestOnLane } from '../js/geom.js';
+import { dist, closestOnLane, DRIBBLE_DIRS } from '../js/geom.js';
 
-export const OPTIONS = ['pass:0', 'pass:1', 'drib:fwd', 'drib:left', 'drib:right', 'drib:back'];
+export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d => 'drib:' + d)];
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
 
 export function makeGame() {

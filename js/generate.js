@@ -2,7 +2,7 @@
 // with the same geometry the game uses. Anything unclear (a lane that is half open, a dribble path that is
 // neither free nor blocked) is thrown away and rebuilt, so every generated round has a clear right answer.
 import { PITCH } from './skills.js';
-import { closestOnLane, interceptor, dribbleEnd, rot, DRIBBLE_DIRS } from './geom.js';
+import { closestOnLane, interceptor, dribbleEnd, rot, DRIBBLE_DIRS, BACKWARD } from './geom.js';
 
 const { L, W } = PITCH;
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
@@ -12,7 +12,8 @@ export function rng(seed) { let s = seed % 2147483647 || 1; return () => (s = (s
 const pick = (r, a) => a[Math.floor(r() * a.length)];
 const inPitch = ([x, y], m = 1.5) => x > m && x < L - m && y > m && y < W - m;
 
-// Grades every option at the freeze. 'good', 'bad', or 'unclear'.
+// Grades every option at the freeze: 'good', 'bad' or 'unclear'. Backward dribbles into open space are 'safe'
+// (he keeps the ball but goes away from goal).
 export function grade(sc) {
   const hero = { x: sc.heroTo[0], y: sc.heroTo[1] }, ball = { x: hero.x + .5, y: hero.y };
   const opps = sc.opps.map((p, i) => { const q = (sc.oppsTo || [])[i] || p; return { x: q[0], y: q[1] }; });
@@ -23,7 +24,7 @@ export function grade(sc) {
   });
   for (const dir of Object.keys(DRIBBLE_DIRS)) {
     const end = dribbleEnd(hero, dir, L, W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, 0).d));
-    out['drib:' + dir] = dir === 'back' ? (near < PATH_HIT ? 'bad' : 'unclear') : near > PATH_FREE ? 'good' : near < PATH_HIT ? 'bad' : 'unclear';
+    out['drib:' + dir] = near < PATH_HIT ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > PATH_FREE ? 'good' : 'unclear';
   }
   return out;
 }
@@ -48,7 +49,7 @@ function attempt(r, pattern) {
     add([L - 6 - r() * 4, W / 2 + (r() - .5) * 8]);           // last defender stays home
   } else if (pattern === 'none-open') {
     const side = pick(r, [1, -1]);
-    add(at(side * (1.6 + r() * .4), 2 + r() * .5));            // presser comes from the side
+    add(at(side * (1.9 + r() * .4), 2.8 + r() * .5));          // presser closes from the side and behind
     add(onLane(mates[0], .6 + r() * .2));
     add(onLane(mates[1], .6 + r() * .2));                      // both teammates marked: run into the space
   } else { // 'two-open': both are open, the one nearer the goal is better
@@ -60,7 +61,8 @@ function attempt(r, pattern) {
 
   const sc = { hero: [hx, hy], heroTo, mates, opps, oppsTo };
   const g = grade(sc), goods = Object.keys(g).filter(k => g[k] === 'good');
-  if (Object.entries(g).some(([k, v]) => v === 'unclear' && k !== 'drib:back')) return null;
+  // Pass lanes must be clearly open or clearly cut off. A borderline dribble direction just counts as blocked.
+  if (Object.entries(g).some(([k, v]) => v === 'unclear' && k.startsWith('pass:'))) return null;
   let best, cue;
   if (pattern === 'one-open') {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'bad' || g['drib:fwd'] !== 'bad') return null;
@@ -74,7 +76,7 @@ function attempt(r, pattern) {
     if (Math.abs(mates[0][0] - mates[1][0]) < 3) return null;   // "closer to goal" must be obvious
     best = 'pass:' + fwd; cue = `{m${fwd}} was open and closer to the goal!`;
   }
-  return { ...sc, best, ok: goods.filter(o => o !== best && o !== 'drib:back'), cue };
+  return { ...sc, best, ok: goods.filter(o => o !== best), cue };
 }
 
 const PATTERNS = ['one-open', 'one-open', 'none-open', 'two-open'];

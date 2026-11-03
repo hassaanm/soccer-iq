@@ -6,7 +6,9 @@ export const rot = (x, y, a) => [x * Math.cos(a) - y * Math.sin(a), x * Math.sin
 export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Dribble directions, as angles from "toward the other goal" (+x). Left is +y.
-export const DRIBBLE_DIRS = { fwd: 0, left: Math.PI / 3, right: -Math.PI / 3, back: Math.PI };
+const Q = Math.PI / 4;
+export const DRIBBLE_DIRS = { fwd: 0, fl: Q, left: 2 * Q, bl: 3 * Q, back: 4 * Q, br: -3 * Q, right: -2 * Q, fr: -Q };
+export const BACKWARD = new Set(['bl', 'back', 'br']); // away from the goal he attacks
 export const DRIBBLE_LEN = 4.5;
 
 export function dribbleEnd(from, dir, L, W) {
@@ -35,7 +37,8 @@ export function interceptor(a, b, opps) {
 // Flip a scenario top-to-bottom so each one can be played on both sides.
 export function mirrorScenario(sc, W) {
   const f = p => p && [p[0], W - p[1]];
-  const opt = o => o === 'drib:left' ? 'drib:right' : o === 'drib:right' ? 'drib:left' : o;
+  const SWAP = { left: 'right', right: 'left', fl: 'fr', fr: 'fl', bl: 'br', br: 'bl' };
+  const opt = o => o.startsWith('drib:') && SWAP[o.slice(5)] ? 'drib:' + SWAP[o.slice(5)] : o;
   return {
     ...sc, id: sc.id + 'm', hero: f(sc.hero), heroTo: f(sc.heroTo),
     mates: sc.mates.map(f), opps: sc.opps.map(f), oppsTo: (sc.oppsTo || []).map(f),

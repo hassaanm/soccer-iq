@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
 import { allScenarios } from '../js/skills.js';
 import { TEAMS } from '../js/teams.js';
+import { OPTIONS } from './harness.js';
 
 function makeGame() {
   const events = [];
@@ -49,7 +50,7 @@ test('a wrong choice shows feedback, replays, then accepts the retry', async () 
 
 test('every scenario plays out for every option without getting stuck', async () => {
   for (const sc of allScenarios('look-up')) {
-    for (const opt of ['pass:0', 'pass:1', 'drib:fwd', 'drib:left', 'drib:right', 'drib:back']) {
+    for (const opt of OPTIONS) {
       const { g } = makeGame(); let first = true;
       await drive(g, g.round(sc, { hint: false }), gm => { const o = first ? opt : gm.sc.best; first = false; return o; });
     }
