@@ -245,15 +245,19 @@ export class World {
   buildMarkers() {
     const gold = () => new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: .9, depthWrite: false });
     this.heroRing = new THREE.Mesh(new THREE.RingGeometry(.46, .6, 24), gold()); this.scene.add(this.heroRing);
-    const sh = new THREE.Shape();
-    // Big dribble arrows: gold with a white border, the only way to pick a dribble direction.
-    const pts = [[1, -.55], [3.2, -.55], [3.2, -1.25], [4.9, 0], [3.2, 1.25], [3.2, .55], [1, .55]];
-    pts.forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y));
-    const border = new THREE.Shape(); pts.map(([x, y]) => [x + (x > 4 ? .22 : x < 1.1 ? -.15 : 0), y * 1.22]).forEach(([x, y], i) => i ? border.lineTo(x, y) : border.moveTo(x, y));
-    const ag = new THREE.ShapeGeometry(sh), bg = new THREE.ShapeGeometry(border);
+    // Dribble arrows: one flat shape each, gold with a rounded white outline, painted into a texture.
+    const X0 = .6, X1 = 5.3, HALF = 1.45, TW = 512, TH = Math.round(TW * 2 * HALF / (X1 - X0));
+    const arrowTex = canvasTex(TW, TH, g => {
+      const px = ([x, y]) => [(x - X0) / (X1 - X0) * TW, TH / 2 - y / HALF * TH / 2];
+      g.beginPath(); [[1, -.55], [3.2, -.55], [3.2, -1.15], [4.9, 0], [3.2, 1.15], [3.2, .55], [1, .55]].map(px).forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath();
+      g.lineJoin = 'round'; g.lineWidth = 22; g.strokeStyle = '#ffffff'; g.stroke();
+      const grad = g.createLinearGradient(0, 0, TW, 0); grad.addColorStop(0, '#ffcc33'); grad.addColorStop(1, '#ffe27a');
+      g.fillStyle = grad; g.fill();
+    });
+    const arrowGeo = new THREE.PlaneGeometry(X1 - X0, 2 * HALF).translate((X0 + X1) / 2, 0, 0);
     this.arrows = Object.fromEntries(Object.entries(DRIBBLE_DIRS).map(([k, a]) => {
-      const g = new THREE.Group(), white = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, depthWrite: false }));
-      const m = new THREE.Mesh(ag, gold()); m.position.z = .01; white.renderOrder = 1; m.renderOrder = 2; g.add(white, m); g.rotation.z = a; g.visible = false; this.scene.add(g); return [k, g];
+      const m = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, depthWrite: false }));
+      m.rotation.z = a; m.visible = false; this.scene.add(m); return [k, m];
     }));
     this.glows = new Map();
     this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = '';
@@ -310,7 +314,7 @@ export class World {
     this.heroRing.visible = !!ui.heroRing && !!h; if (h) this.heroRing.position.set(h.x, h.y, .02);
     for (const [k, m] of Object.entries(this.arrows)) {
       const s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
-      if (m.visible) { m.position.set(h.x, h.y, .03); m.children[1].material.opacity = .82 + .15 * Math.sin(time * 5); }
+      if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = .85 + .15 * Math.sin(time * 5); }
     }
     this.setLines(ui.lines || []);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
