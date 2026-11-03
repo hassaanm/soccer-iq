@@ -118,11 +118,17 @@ document.querySelectorAll('.team').forEach(el => {
   sh.addEventListener('pointerup', e => { if (sx != null && Math.abs(e.clientX - sx) > 30) cycle(side, e.clientX < sx ? 1 : -1); sx = null; });
 });
 
-function card({ emoji, title, sub, button }) {
-  $('#card .emoji').textContent = emoji; $('#card h2').textContent = title; $('#card p').textContent = sub || ''; $('#card button').textContent = button;
+// Shows a card and resolves 'main' or 'alt' with the button that was tapped.
+function card({ emoji, title, sub, button, alt }) {
+  $('#card .emoji').textContent = emoji; $('#card h2').textContent = title; $('#card p').textContent = sub || '';
+  const main = $('#cardMain'), other = $('#cardAlt');
+  main.textContent = button; other.textContent = alt || ''; other.classList.toggle('hidden', !alt);
   $('#card').classList.remove('hidden');
   say(title);
-  return new Promise(res => { $('#card button').onclick = () => { $('#card').classList.add('hidden'); res(); }; });
+  return new Promise(res => {
+    const done = v => { $('#card').classList.add('hidden'); res(v); };
+    main.onclick = () => done('main'); other.onclick = () => done('alt');
+  });
 }
 
 // ---------- session ----------
@@ -134,8 +140,11 @@ async function runSession() {
   game.setTeams(us, them);
   world.setEnv('crowd');
   show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
-  await card({ emoji: sk.emoji, title: sk.kid, sub: `Watch ${hero} first`, button: 'Watch' });
-  await game.demo(skillId);
+  // The demo plays the first time a lesson is played; after that it's one tap away.
+  const firstTime = !P.skills[skillId]?.sessions;
+  const watch = await card({ emoji: sk.emoji, title: sk.kid, sub: firstTime ? `Watch ${hero} first` : `Want to watch ${hero} first?`,
+    button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
+  if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
   await card({ emoji: '⭐', title: 'Your turn!', sub: `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
   const n = P.settings.rounds, rounds = pickRounds([skillId, ...reviews], n), results = [];
   let misses = 0;
@@ -160,6 +169,7 @@ $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
 $('#againBtn').onclick = () => runSession();
 $('#teamsBtn').onclick = () => show('#home');
 $('#homeBtn').onclick = () => location.reload();
+$('#skipBtn').onclick = () => game.skipDemo();
 function unlockAudio() { if ('speechSynthesis' in window && P.settings.voice) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } }
 
 // ---------- grown-ups menu (hold the gear) ----------

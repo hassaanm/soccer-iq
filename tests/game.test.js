@@ -61,3 +61,14 @@ test('mini match ends at 2 goals', async () => {
   const s = await drive(g, g.match(['look-up']), gm => (i++ % 2 ? 'drib:back' : gm.sc.best), 300);
   assert.ok(s.us === 2 || s.them === 2);
 });
+
+test('skipping the demo ends it right away', async () => {
+  const { g } = makeGame();
+  const p = g.demo('look-up');
+  for (let i = 0; i < 45; i++) g.tick(1 / 30, i / 30); // 1.5 s in
+  g.skipDemo();
+  let done = false; p.then(() => { done = true; });
+  for (let i = 0; i < 3 && !done; i++) { g.tick(1 / 30, 2); for (let k = 0; k < 50; k++) await null; }
+  assert.ok(done, 'demo should finish within a few frames of Skip');
+  assert.equal(g.skipping, false);
+});

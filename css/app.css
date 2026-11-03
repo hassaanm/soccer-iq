@@ -135,3 +135,6 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #rotate{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:var(--peach);z-index:10;font-weight:700;font-size:22px}
 #rotate div{font-size:64px}
 @media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
+
+#skipBtn{display:none;font-size:16px;padding:9px 16px}
+#hud[data-mode=demo] #skipBtn{display:block}

@@ -39,9 +39,15 @@ export class Game {
   }
 
   // ---------- timing helpers ----------
-  delay(sec) { return new Promise(res => this.tweens.push({ t: 0, dur: sec, f: null, res })); }
-  tween(sec, f) { return new Promise(res => this.tweens.push({ t: 0, dur: sec, f, res })); }
-  play(gen) { return new Promise(res => this.sim.run((function* () { yield* gen; res(); })())); }
+  // While skipping the demo, every wait finishes at once so the demo script runs straight to its end.
+  delay(sec) { return this.skipping ? Promise.resolve() : new Promise(res => this.tweens.push({ t: 0, dur: sec, f: null, res })); }
+  tween(sec, f) { if (this.skipping) { f(1); return Promise.resolve(); } return new Promise(res => this.tweens.push({ t: 0, dur: sec, f, res })); }
+  play(gen) { return this.skipping ? Promise.resolve() : new Promise(res => { this._playRes = res; this.sim.run((function* () { yield* gen; res(); })()); }); }
+  skipDemo() {
+    if (this.mode !== 'demo') return;
+    this.skipping = true; this.sim.co = null; this._playRes?.();
+    for (const t of this.tweens.splice(0)) { t.f?.(1); t.res(); }
+  }
 
   // ---------- scenario setup ----------
   load(sc) { this.reset(); this.sc = sc; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; }
@@ -202,7 +208,7 @@ export class Game {
     await this.delay(.6); this.step = 'pass'; this.hint = true; await this.delay(1.2);
     this.hud.caption('Pass!'); this.say('Pass!');
     await this.outcome(sc.best, true);
-    this.hud.caption('');
+    this.hud.caption(''); this.skipping = false;
   }
 
   // Plays one scenario until he gets it. Wrong choices show why, replay the better way, then retry.
