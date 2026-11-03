@@ -40,7 +40,8 @@ export function grade(sc) {
   const out = {};
   sc.mates.forEach((m, i) => {
     const mate = P(m), d = interceptor(ball, mate, opps).d, mark = Math.min(...opps.map(o => dist(o, mate)));
-    out['pass:' + i] = d > OPEN && mark > FREE ? 'good' : d < BLOCKED || mark < MARKED ? 'bad' : 'unclear';
+    const other = P(sc.mates[1 - i]), blockedByFriend = closestOnLane(other, ball, mate, .05).d < .8 && dist(other, mate) > 1;
+    out['pass:' + i] = blockedByFriend ? 'unclear' : d > OPEN && mark > FREE ? 'good' : d < BLOCKED || mark < MARKED ? 'bad' : 'unclear';
   });
   // Shooting: on from about 9 m or closer with no defender on the line; blocked or from far out, it gets stopped.
   const aim = { x: L + .7, y: clamp(hero.y, PITCH.gy0 + .8, PITCH.gy1 - .8) }, shotD = dist(hero, aim), shotLane = Math.min(...opps.map(o => closestOnLane(o, ball, aim, 0).d));

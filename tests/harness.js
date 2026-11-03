@@ -43,7 +43,9 @@ export async function playOption(sc, opt) {
   const nearestDef = s.team(sc.kind === 'defense' ? 'us' : 'them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
   const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
   const kick = s.kick.bind(s);
+  let kicker = null, aimAt = null;
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
+    kicker = s.ball.carrier; aimAt = { x, y };
     if (x > 29 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     if (x < 1 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     return kick(x, y, o);
@@ -55,6 +57,8 @@ export async function playOption(sc, opt) {
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) m.minGap = Math.min(m.minGap, dist(list[i], list[j]));
       if (mate && s.ball.state === 'flying') { m.flight++; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
       if (m.frames < 30) m.defClosest = Math.min(m.defClosest, dist(nearestDef, s.ball));
+      // A low ball in flight must not pass through anyone except where it's going.
+      if (s.ball.state === 'flying' && s.ball.z < .9) for (const a of list) if (a.id !== kicker && dist(a, s.ball) < .4 && dist(a, aimAt) > 1) m.through = a.id;
     },
   });
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
@@ -68,6 +72,7 @@ export function judge(r) {
   if (r.minGap < .5) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
   if (r.shotBlocked) bad.push('shot went through a defender');
   if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
+  if (r.through) bad.push(`ball went through ${r.through}`);
   if (r.defense) {
     if (r.good && !r.banners.some(b => b === 'Stole it!' || b === 'Stopped him!')) bad.push('right spot did not stop the attack');
     if (!r.good && !r.banners.includes('They scored')) bad.push('wrong spot did not cost a goal');
