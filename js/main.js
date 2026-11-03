@@ -81,7 +81,6 @@ const hud = {
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.
   seen(text) { flash($('#seenNote'), '', text, 1400); sfx('ping'); },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
-  banner(text, kind) { const b = $('#banner'); b.firstChild.textContent = text; b.className = kind; void b.offsetWidth; b.classList.add('show'); clearTimeout(timers.banner); timers.banner = setTimeout(() => b.classList.remove('show'), 1500); },
   caption(text) { const c = $('#caption'); c.textContent = text; c.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
   dots(results, n) {
     $('#dots').innerHTML = Array.from({ length: n }, (_, i) => `<span class="${i < results.length ? (results[i] ? 'star' : 'done') : i === results.length ? 'now' : ''}"></span>`).join('');
@@ -147,7 +146,7 @@ function renderPickers(flip) {
 function renderLessons() {
   const cur = nextSkill(P, PATH);
   $('#lessons').innerHTML = PATH.map((sk, i) => {
-    const open = i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0, st = P.skills[sk.id];
+    const st = P.skills[sk.id], open = i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0 || (st?.sessions || 0) > 0;
     return `<button class="chip ${sk.id === cur ? 'on' : ''} ${open ? '' : 'locked'}" data-id="${sk.id}" ${open ? '' : 'disabled'} title="${sk.kid}">
       <span>${open ? sk.emoji : '🔒'}</span>${st?.sessions ? `<i>${'★'.repeat(Math.min(3, st.box))}</i>` : ''}</button>`;
   }).join('');

@@ -6,13 +6,14 @@ export { PITCH };
 // side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one idea, said to him.
 export const PATH = [
   { id: 'look-up', emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding', ready: true, tip: 'Look up before you decide.' },
-  { id: 'get-goal-side', emoji: '🏠', kid: 'Run home first', side: 'defense', adult: 'Recover goal-side after losing the ball', ready: true, tip: 'Lost the ball? Run home first, between the ball and your goal.' },
+  { id: 'shoot-close', emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true, tip: 'Close to the goal and nobody in the way? Shoot!' },
+  { id: 'get-goal-side', emoji: '🏠', kid: 'Get in front!', side: 'defense', adult: 'Nobody on the ball? Recover goal-side of it and win it from the front', ready: true, tip: 'Nobody on the ball? Get in front of it, then take it!' },
   { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true, tip: 'Lots of space? Push it and go! Defender close? Keep it close.' },
   { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true, tip: 'Only one bee chases the ball. Everyone else guards someone.' },
   { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball', ready: true, tip: 'Two defenders coming? Pass before they trap you.' },
   { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true, tip: 'Guard the open player. Stand between him and your goal.' },
   { id: 'pass-to-open', emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true, tip: 'Pass to the friend with nobody right next to him.' },
-  { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Look forward, then sideways, then back', ready: true, tip: 'Look forward first, then sideways, then back.' },
+  { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Look forward, then sideways, then back', ready: true, tip: 'Look to the goal first!' },
 ];
 export const skillById = id => PATH.find(s => s.id === id);
 

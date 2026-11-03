@@ -6,11 +6,18 @@ import { PITCH, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, DRIBBL
 const { L, W } = PITCH;
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
 const FREE = 2.2, MARKED = 1.3;        // receivers: nobody near / a defender right on him
-const PATH_FREE = 2, PATH_HIT = 2.6;   // small-touch dribbles: clearly free / a defender close enough to win the ball
+const PATH_FREE = 2.2, PATH_HIT = 1.8; // small-touch dribbles: clearly free / a defender in the way (measured from a stride ahead)
 export const PUSH_LEN = 7, HERO_RUN = 5.4, DEF_RUN = 4.8; // "big push": knock it 7 m ahead and race for it
 export const OUR_GOAL = { x: 0, y: W / 2 };
 
-export function rng(seed) { let s = seed % 2147483647 || 1; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+// Small seeded random generator. The seed is scrambled and the first values thrown away, because nearby seeds
+// otherwise start with nearly identical (tiny) numbers and always pick the same pattern.
+export function rng(seed) {
+  let s = (Math.abs(Math.floor(seed)) * 2654435761 + 12345) % 2147483647 || 1;
+  const next = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 4; i++) next();
+  return next;
+}
 const pick = (r, a) => a[Math.floor(r() * a.length)];
 const inPitch = ([x, y], m = 1.5) => x > m && x < L - m && y > m && y < W - m;
 const P = ([x, y]) => ({ x, y });
@@ -33,10 +40,13 @@ export function grade(sc) {
   });
   // Shooting: on from about 9 m or closer with no defender on the line; blocked or from far out, it gets stopped.
   const aim = { x: L + .7, y: clamp(hero.y, PITCH.gy0 + .8, PITCH.gy1 - .8) }, shotD = dist(hero, aim), shotLane = Math.min(...opps.map(o => closestOnLane(o, ball, aim, 0).d));
-  out.shoot = shotD < 9.5 && shotLane > 1.1 ? 'good' : shotLane < .8 || shotD > 12 ? 'bad' : 'unclear';
+  out.shoot = shotD < 12 && shotLane > 1.1 ? 'good' : shotLane < .8 || shotD > 13.5 ? 'bad' : 'unclear';
+  // Dribbles: one defender near him is NOT a reason to pass. A dribble only loses the ball if it runs into a
+  // defender (checked from a stride ahead, not his own feet) or if two defenders are already on him (a trap).
+  const onHim = opps.filter(o => dist(o, hero) < 2.6).length;
   for (const dir of Object.keys(DRIBBLE_DIRS)) {
-    const end = dribbleEnd(hero, dir, L, W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, 0).d));
-    out['drib:' + dir] = near < PATH_HIT ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > PATH_FREE ? 'good' : 'unclear';
+    const end = dribbleEnd(hero, dir, L, W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, .8 / 4.5).d));
+    out['drib:' + dir] = near < PATH_HIT || onHim >= 2 ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > PATH_FREE ? 'good' : 'unclear';
     if (BACKWARD.has(dir)) continue;
     const pe = pushEnd(hero, dir), lane = Math.min(...opps.map(o => closestOnLane(o, hero, pe, .15).d));
     const tHero = dist(hero, pe) / HERO_RUN + .15, tDef = Math.min(...opps.map(o => dist(o, pe) / DEF_RUN + .3));
@@ -47,7 +57,8 @@ export function grade(sc) {
 
 // ---------- attacking patterns ----------
 function attack(r, pattern) {
-  const hy = 5 + r() * 10, hx = 5 + r() * 7, heroTo = [hx + 3, hy], ball = [hx + 3.5, hy];
+  const near = pattern === 'shot-open' || pattern === 'shot-blocked', far = pattern === 'shot-far';
+  const hy = near ? 7 + r() * 6 : 5 + r() * 10, hx = near ? 16 + r() * 4 : far ? 10 + r() * 2 : 5 + r() * 7, heroTo = [hx + 3, hy], ball = [hx + 3.5, hy];
   const mates = [], opps = [], oppsTo = [];
   const at = (ang, d) => { const [dx, dy] = rot(d, 0, ang); return [heroTo[0] + dx, heroTo[1] + dy]; };
   const onLane = (to, t) => [ball[0] + (to[0] - ball[0]) * t + (r() - .5) * .5, ball[1] + (to[1] - ball[1]) * t + (r() - .5) * .5];
@@ -57,7 +68,7 @@ function attack(r, pattern) {
   let angles = [r() * 2.6 - 1.3, pick(r, [1, -1]) * (1.3 + r() * 1.4)];
   const fside = pick(r, [1, -1]);
   if (pattern === 'forward') angles = [-fside * (.1 + r() * .5), fside * (2.3 + r() * .6)];
-  if (pattern.startsWith('space')) angles = [pick(r, [1, -1]) * (2.2 + r() * .7), pick(r, [1, -1]) * (2.2 + r() * .7)];
+  if (pattern.startsWith('space') || pattern.startsWith('shot')) angles = [pick(r, [1, -1]) * (2.2 + r() * .7), pick(r, [1, -1]) * (2.2 + r() * .7)];
   if (r() < .5 && pattern !== 'forward') angles.reverse();
   for (const a of angles) mates.push(at(a, 5.5 + r() * 4));
   if (!mates.every(p => inPitch(p))) return null;
@@ -74,6 +85,20 @@ function attack(r, pattern) {
     add(at((r() - .5) * .5, 1.7 + r() * .4));
     add(sidePt(mates[1], pick(r, [1, -1]) * (.7 + r() * .4)));  // right next to the second teammate, not in the lane
     add([L - 6 - r() * 4, W / 2 + (r() - .5) * 8]);
+  } else if (pattern === 'trap-one') {                        // only one defender: take him on, dribble past
+    add(at((r() - .5) * .4, 1.8 + r() * .4));
+    add(onLane(mates[1], .6 + r() * .2));
+    add([L - 6 - r() * 4, W / 2 + (r() - .5) * 8]);
+  } else if (pattern === 'shot-open' || pattern === 'shot-far') { // a clear look at goal (close or too far)
+    add(onLane(mates[0], .6 + r() * .2));
+    add([heroTo[0] - 2 - r() * 3, heroTo[1] + pick(r, [1, -1]) * (2 + r() * 3)]);            // chasing from behind
+    if (far) { const p = [L - 3 - r(), clamp(heroTo[1] + (W / 2 - heroTo[1]) * .6, 8.6, 11.4)]; opps.push(p); oppsTo.push(p); } // recovering near goal
+    else add([heroTo[0] - 1 - r() * 2, heroTo[1] + pick(r, [1, -1]) * (3 + r() * 2)]);
+  } else if (pattern === 'shot-blocked') {                    // a defender stands right in the way of the shot
+    const aim = [L + .7, clamp(heroTo[1], PITCH.gy0 + .8, PITCH.gy1 - .8)], t = .25 + r() * .2;
+    add(onLane(mates[0], .6 + r() * .2));
+    add([ball[0] + (aim[0] - ball[0]) * t, ball[1] + (aim[1] - ball[1]) * t + (r() - .5) * .4]);
+    add([heroTo[0] - 3 - r() * 2, heroTo[1] + (r() - .5) * 6]);
   } else if (pattern === 'trap') {
     const side = pick(r, [1, -1]);
     add(at((r() - .5) * .4, 1.5 + r() * .4));                 // one in front...
@@ -111,10 +136,41 @@ function attack(r, pattern) {
   let best, cue, safe = [];
   if (pattern === 'one-open' || pattern === 'marked') {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'bad' || g['drib:fwd'] !== 'bad') return null;
-    best = 'pass:0'; cue = pattern === 'marked' ? '{m1} had a defender right next to him. {m0} had nobody near him!' : '{m0} was open!';
+    best = 'pass:0'; cue = pattern === 'marked' ? '{m0} had nobody near him. Pass to {m0}!' : '{m0} was open!';
+  } else if (pattern === 'trap-one') {                        // only one defender: take him on, dribble past
+    add(at((r() - .5) * .4, 1.8 + r() * .4));
+    add(onLane(mates[1], .6 + r() * .2));
+    add([L - 6 - r() * 4, W / 2 + (r() - .5) * 8]);
+  } else if (pattern === 'shot-open' || pattern === 'shot-far') { // a clear look at goal (close or too far)
+    add(onLane(mates[0], .6 + r() * .2));
+    add([heroTo[0] - 2 - r() * 3, heroTo[1] + pick(r, [1, -1]) * (2 + r() * 3)]);            // chasing from behind
+    if (far) { const p = [L - 3 - r(), clamp(heroTo[1] + (W / 2 - heroTo[1]) * .6, 8.6, 11.4)]; opps.push(p); oppsTo.push(p); } // recovering near goal
+    else add([heroTo[0] - 1 - r() * 2, heroTo[1] + pick(r, [1, -1]) * (3 + r() * 2)]);
+  } else if (pattern === 'shot-blocked') {                    // a defender stands right in the way of the shot
+    const aim = [L + .7, clamp(heroTo[1], PITCH.gy0 + .8, PITCH.gy1 - .8)], t = .25 + r() * .2;
+    add(onLane(mates[0], .6 + r() * .2));
+    add([ball[0] + (aim[0] - ball[0]) * t, ball[1] + (aim[1] - ball[1]) * t + (r() - .5) * .4]);
+    add([heroTo[0] - 3 - r() * 2, heroTo[1] + (r() - .5) * 6]);
   } else if (pattern === 'trap') {
     if (g['pass:0'] !== 'good' || goods.some(o => o.startsWith('drib:'))) return null;
-    best = 'pass:0'; cue = 'Two defenders were closing in on you. Pass it away before they trap you! {m0} was open.';
+    best = 'pass:0'; cue = 'Two shirts coming! Pass to {m0}!';
+  } else if (pattern === 'trap-one') {
+    const fwdish = goods.filter(o => o.startsWith('drib:')).sort((a, b) => dribbleEnd(P(heroTo), b.slice(5), L, W).x - dribbleEnd(P(heroTo), a.slice(5), L, W).x);
+    if (!fwdish.length || g['drib:fwd'] !== 'bad') return null;
+    best = fwdish[0]; cue = 'Only one defender. Take him on — dribble past!';
+    return { ...sc, best, ok: goods.filter(o => o !== best), cue };
+  } else if (pattern === 'shot-open') {
+    if (g.shoot !== 'good') return null;
+    best = 'shoot'; cue = 'Close to the goal and nobody in the way. Shoot!';
+    return { ...sc, best, ok: [], safe: goods, cue };
+  } else if (pattern === 'shot-blocked') {
+    if (g.shoot !== 'bad' || !goods.some(o => o.startsWith('drib:'))) return null;
+    best = goods.filter(o => o.startsWith('drib:'))[0]; cue = 'A defender was in the way. Dribble around him, then shoot!';
+    return { ...sc, best, ok: goods.filter(o => o !== best), cue };
+  } else if (pattern === 'shot-far') {
+    if (g.shoot !== 'bad' || g['drib:fwd'] !== 'good') return null;
+    best = 'drib:fwd'; cue = 'Too far to shoot. Get closer first!';
+    return { ...sc, best, ok: goods.filter(o => o !== best), cue };
   } else if (pattern === 'none-open') {
     if (g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad' || !goods.length) return null;
     best = goods.includes('drib:fwd') ? 'drib:fwd' : goods[0]; cue = 'Nobody was open. Run into the space!';
@@ -129,8 +185,8 @@ function attack(r, pattern) {
     return { ...sc, best, ok: goods.filter(o => o !== best && o !== 'pass:1'), safe, cue };
   } else if (pattern === 'space-far') {
     if (g['push:fwd'] !== 'good' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
-    best = 'push:fwd'; safe = goods.filter(o => o.startsWith('drib:')); cue = 'Lots of space! Push it ahead and run!';
-    return { ...sc, best, ok: Object.keys(g).filter(k => k.startsWith('push:') && g[k] === 'good' && k !== best), safe, cue };
+    best = 'push:fwd'; cue = 'Lots of space! Push it ahead and run!';
+    return { ...sc, best, ok: [...Object.keys(g).filter(k => k.startsWith('push:') && g[k] === 'good' && k !== best), ...goods.filter(o => o.startsWith('drib:'))], cue };
   } else if (pattern === 'space-behind' || pattern === 'space-close') {
     const pushes = Object.keys(g).filter(k => k.startsWith('push:') && g[k] === 'good').sort((a, b) => pushEnd(P(heroTo), b.slice(5)).x - pushEnd(P(heroTo), a.slice(5)).x);
     if (!pushes.length || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
@@ -179,8 +235,18 @@ function defense(r, pattern) {
     addOpp(o2); addOpp(o3);
     mates.push(goalSide(o2, 1.1), goalSide(o3, 1.1));
     const dbl = goalSide(o2, .9);
-    spots.push({ id: 'home', p: goalSide(c, 3.4), label: 'Run home' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Chase' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] - sgn * 1.4], label: 'Help guard' });
-    best = 'home'; cue = 'Your friends were each guarding a player, and nobody was in front of the ball. Run home and get between the ball and your goal!';
+    spots.push({ id: 'home', p: goalSide(c, 3.4), label: 'In front' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Behind him' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] - sgn * 1.4], label: 'Help guard' });
+    best = 'home'; cue = 'Nobody was on the ball, so you go! Get in front of it.';
+  } else if (pattern === 'gs-covered') {
+    // Contrast round: a friend is already in front of the ball, so the open attacker is his job.
+    hero = [c[0] + 3 + r() * 1.5, c[1] - sgn * (1 + r() * 2)];
+    c[1] = clamp(c[1], 7, 13);
+    const o2 = [c[0] - 1.5 - r() * 1.5, c[1] - sgn * (4.5 + r())], o3 = [c[0] - 1 - r() * 3, sgn > 0 ? 16.5 + r() * 2 : 1.5 + r() * 2];
+    addOpp(o2); addOpp(o3);
+    mates.push(goalSide(c, 1.1), goalSide(o3, 1.1));
+    const inFront = goalSide(c, 3.4);
+    spots.push({ id: 'home', p: [inFront[0], inFront[1] + sgn * 1.2], label: 'In front' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Behind him' }, { id: 'o2', p: goalSide(o2, 1.2), label: 'Guard' });
+    best = 'o2'; cue = 'A friend was already in front of the ball. Guard the open player!';
   } else if (pattern === 'one-goes' || pattern === 'you-go') {
     // The open attacker (o2) sits on the far side from where a pressing friend would stand, so the pass to him is really open.
     const side = pattern === 'one-goes' ? -sgn : sgn;
@@ -205,7 +271,7 @@ function defense(r, pattern) {
     hero = [o3[0] + 2 + r() * 2, o3[1] - sgn * (2 + r() * 2)];
     const dbl = goalSide(o2, .9);
     spots.push({ id: 'o3', p: goalSide(o3, 1.3), label: 'Guard' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] + sgn * 1.4], label: 'Help guard' }, { id: 'press', p: [goalSide(c, 1.1)[0] - .3, goalSide(c, 1.1)[1] - sgn * .9], label: 'Chase the ball' });
-    best = 'o3'; cue = 'Your friends already had the ball and one player covered. The open player was free — guard him, between him and your goal!';
+    best = 'o3'; cue = 'A friend was on the ball. Nobody was guarding him — you guard him!';
   }
   const all = [...opps, ...oppsTo, ...mates, hero, ...spots.map(s => s.p)];
   if (!all.every(p => inPitch(p, 1))) return null;
@@ -220,15 +286,16 @@ function defense(r, pattern) {
 
 const PATTERNS = {
   'look-up': ['one-open', 'one-open', 'none-open', 'two-open'],
-  'see-the-trap': ['trap'],
+  'shoot-close': ['shot-open', 'shot-open', 'shot-blocked', 'shot-far'],
+  'see-the-trap': ['trap', 'trap', 'trap-one'],
   'pass-to-open': ['marked', 'marked', 'one-open'],
   'forward-first': ['forward', 'forward', 'two-open'],
-  'dribble-to-space': ['space-far', 'space-near', 'space-behind', 'space-behind', 'space-close', 'space-close', 'space-close'],
-  'get-goal-side': ['goal-side'],
+  'dribble-to-space': ['space-far', 'space-near', 'space-behind'],
+  'get-goal-side': ['goal-side', 'goal-side', 'gs-covered'],
   'one-goes': ['one-goes', 'one-goes', 'you-go'],
   'mark-the-free-one': ['mark-free'],
 };
-const DEFENSE = new Set(['goal-side', 'one-goes', 'you-go', 'mark-free']);
+const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']);
 export const generates = id => !!PATTERNS[id];
 
 // A fresh, clean scenario for a lesson. Same seed, same scenario (handy for tests).

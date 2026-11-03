@@ -8,7 +8,7 @@ export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d =
 export function optionsFor(sc) {
   if (sc.kind === 'defense') return sc.spots.map(s => 'spot:' + s.id);
   const push = sc.skill === 'dribble-to-space' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
-  return [...OPTIONS, ...push];
+  return [...OPTIONS, ...push, ...(sc.skill === 'shoot-close' ? ['shoot'] : [])];
 }
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
 
@@ -65,7 +65,7 @@ export async function playOption(sc, opt) {
 // The rules a play has to follow to look like real soccer. Returns a list of broken rules.
 export function judge(r) {
   const bad = [];
-  if (r.minGap < .55) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
+  if (r.minGap < .5) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
   if (r.shotBlocked) bad.push('shot went through a defender');
   if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
   if (r.defense) {

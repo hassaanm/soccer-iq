@@ -269,7 +269,9 @@ export class Game {
     s.go(shooter.id, spot.x, spot.y, 5.2);
     // He got past them: the beaten defenders chase from behind (slower), so nobody magically appears in the shot.
     this.ai = false;
-    const t0 = s.time; yield () => { for (const d of s.team('us')) s.go(d.id, shooter.x + 1.4, shooter.y + (d.y > shooter.y ? 1 : -1), 3.4); return dist(shooter, spot) < .4 || s.time - t0 > 3.5; };
+    // Only the beaten player (him) chases from behind; teammates stay with their own players.
+    for (const d of s.team('us')) if (d.id !== 'hero') s.stop(d.id);
+    const t0 = s.time; yield () => { s.go('hero', shooter.x + 1.4, shooter.y + (h.y > shooter.y ? 1 : -1), 3.4); return dist(shooter, spot) < .4 || s.time - t0 > 3.5; };
     this.ai = false; s.stopAll();
     s.stop(shooter.id); yield* this.strike(shooter.id, -.7, clamp(shooter.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
@@ -308,7 +310,7 @@ export class Game {
   }
   async outcome(opt, good, counter = false) {
     const h = this.sim.a('hero');
-    Object.assign(this, { result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good, counter));
   }
@@ -352,17 +354,22 @@ export class Game {
   ourDefense(ball, attackers, free) {
     const s = this.sim, ours = s.team('us'), goal = { x: 0, y: W / 2 };
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
+    // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
+    const key = s.ball.carrier || 'loose';
+    if (this.roles?.key === key) { for (const [id, job] of Object.entries(this.roles.jobs)) { const d = s.a(id); if (!free(d)) continue; const t = job === 'press' ? ball : s.a(job); const p = gs(t, job === 'press' ? 1 : 1.1); s.go(id, p.x, p.y, job === 'press' ? 3.6 : 3.8); } return; }
+    const jobs = {};
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
     let pressing = ours.some(d => !free(d) && dist(d, ball) < 2.5);
     for (const d of ours) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
     const freeOurs = ours.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
     for (const d of freeOurs) {
-      if (!pressing) { pressing = true; const p = gs(ball, 1); s.go(d.id, p.x, p.y, 3.6); continue; }
+      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); s.go(d.id, p.x, p.y, 3.6); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
-      if (mark) { taken.add(mark.id); const p = gs(mark, 1.1); s.go(d.id, p.x, p.y, 3.8); }
+      if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); s.go(d.id, p.x, p.y, 3.8); }
       else { const p = gs(ball, 4); s.go(d.id, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
     }
+    this.roles = { key, jobs };
   }
 
   // ---------- flows ----------
@@ -417,7 +424,7 @@ export class Game {
         return { firstTry: attempt === 1, stars: 3 };
       }
       if (rating === 'safe') {
-        const tip = 'Safe! But ' + this.cue().replace(/!$/, '.');
+        const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
         this.say(tip);
         if (await this.hud.rate(2, tip, true) === 'watch') {
           this.sim.restore(save); this.reset(); this.camMode = 'player';
@@ -486,7 +493,7 @@ export class Game {
   }
   lookEnd() { this.drag = null; }
   // Shooting is offered when he is close enough to goal to have a real chance.
-  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && this.sc?.kind !== 'defense' && !!h && h.x > L - 13; }
+  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && this.sc?.kind !== 'defense' && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); }
   shoot() { if (this.canAct && this.canShoot && !this.locked) this.choose('shoot'); }
   // PASS and DRIBBLE are always on screen; tapping one switches to it, tapping it again un-picks it.
   pass() {
