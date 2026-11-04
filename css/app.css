@@ -236,3 +236,28 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #sheetClose{display:block;margin:0 auto}
 .lessonbox{align-items:flex-start}
 #lessonBtn{width:auto;max-width:calc(100% - 12px)}
+
+/* Sound button (home: left of the gear; in game: right of home) and its popover. */
+.soundBtn{position:absolute;top:12px;z-index:5}
+.home-sound{right:calc(70px + var(--safe-r))}
+.hud-sound{left:calc(70px + var(--safe-l))}
+.soundBtn.off{color:var(--ink-soft)}
+#soundPop{position:fixed;top:66px;z-index:60;width:min(400px,86vw);box-sizing:border-box;background:var(--cream);border:3px solid #fff;border-radius:20px;padding:10px 14px 12px;
+  box-shadow:0 7px 0 rgba(36,25,58,.18),0 16px 30px rgba(0,0,0,.28);animation:pop .2s cubic-bezier(.3,1.5,.5,1)}
+#soundPop.from-right{right:calc(64px + var(--safe-r))}
+#soundPop.from-left{left:calc(64px + var(--safe-l))}
+#soundPop .sp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+#soundPop .sp-head b{font-size:18px}
+#soundPop #muteAll{padding:5px 12px;font-size:14px}
+#soundPop #muteAll.on{--top:#ffd0d0;--bot:#f5a3a3;--edge:#c86b6b}
+#soundPop .sp-row{display:grid;grid-template-columns:auto 128px 1fr;align-items:center;gap:10px;padding:6px 0;border-top:2px solid var(--line)}
+#soundPop .sp-row span{font-size:15px;font-weight:600}
+#soundPop .sp-row input[type=range]{width:100%;accent-color:var(--green-d);height:26px;margin:0}
+#soundPop.muted .sp-row{opacity:.45}
+#soundPop .sp-row.off input[type=range]{opacity:.4}
+.sw{position:relative;width:44px;height:26px;display:inline-block}
+.sw input{position:absolute;opacity:0;inset:0;margin:0}
+.sw i{position:absolute;inset:0;border-radius:999px;background:#d6cbbd;transition:background .15s}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
+.sw input:checked + i{background:var(--green-d)}
+.sw input:checked + i::after{transform:translateX(18px)}

@@ -5,7 +5,7 @@ import { TEAMS, teamById, displayName } from './teams.js';
 import { PATH, skillById, pickRounds } from './skills.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
-import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, duck, loadVoice, canSpeak, speakClips, stopVoice, preloadClips } from './sound.js';
+import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, setMuted, setVolumes, voiceVolume, duck, loadVoice, canSpeak, speakClips, stopVoice, preloadClips } from './sound.js';
 import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
@@ -32,7 +32,7 @@ const pickVoice = () => {
 if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 loadVoice();
 function say(text) {
-  if (!P.settings.voice) return;
+  if (!P.settings.voice || P.settings.muted) return;
   const line = text.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '');
   // Recorded clips first: they play through the speakers like the game sounds (loud in the car too).
   const keys = pieces(line).map(clipKey);
@@ -40,7 +40,7 @@ function say(text) {
   if (!('speechSynthesis' in window)) return;
   stopVoice();
   const u = new SpeechSynthesisUtterance(line);
-  if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12; u.volume = 1;
+  if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12; u.volume = voiceVolume();
   // The music dips while he talks, so the words stand out (in the car the voice can come through quieter).
   u.onstart = () => duck(true); u.onend = u.onerror = () => duck(false);
   speechSynthesis.cancel(); speechSynthesis.speak(u);
@@ -106,7 +106,43 @@ const hud = {
 };
 
 const game = new Game({ world, hud, say, sfx });
-setSoundOn(P.settings.sound !== false); setMusicOn(P.settings.music !== false);
+// ---------- sound button + popover ----------
+const SPEAKER = on => `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>${on
+  ? '<path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'
+  : '<path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'}</svg>`;
+function applySound() {
+  const st = P.settings;
+  setSoundOn(st.sound !== false); setMusicOn(st.music !== false); setMuted(!!st.muted);
+  setVolumes({ sfx: st.sfxVol ?? 1, music: st.musicVol ?? 1, voice: st.voiceVol ?? 1 });
+  const silent = st.muted || (st.sound === false && st.music === false && !st.voice);
+  document.querySelectorAll('.soundBtn').forEach(b => { b.innerHTML = SPEAKER(!silent); b.classList.toggle('off', silent); });
+  const pop = $('#soundPop'); pop.classList.toggle('muted', !!st.muted);
+  $('#muteAll').classList.toggle('on', !!st.muted); $('#muteAll').textContent = st.muted ? 'Unmute' : 'Mute all';
+  pop.querySelectorAll('.sp-row').forEach(r => {
+    const on = r.dataset.k === 'voice' ? !!st.voice : st[r.dataset.k] !== false;
+    r.querySelector('input[type=checkbox]').checked = on; r.classList.toggle('off', !on);
+    r.querySelector('input[type=range]').value = Math.round((st[r.dataset.v] ?? 1) * 100);
+  });
+}
+function toggleSoundPop(btn) {
+  const pop = $('#soundPop'), open = pop.classList.contains('hidden');
+  pop.classList.toggle('hidden', !open);
+  if (open) { pop.classList.toggle('from-left', btn.classList.contains('hud-sound')); pop.classList.toggle('from-right', !btn.classList.contains('hud-sound')); applySound(); }
+}
+document.querySelectorAll('.soundBtn').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); unlockSound(); toggleSoundPop(b); }));
+// Tapping anywhere outside closes it.
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#soundPop, .soundBtn')) $('#soundPop').classList.add('hidden'); }, true);
+$('#soundPop').addEventListener('pointerdown', e => e.stopPropagation());
+$('#muteAll').onclick = () => { P.settings.muted = !P.settings.muted; save(P); applySound(); };
+$('#soundPop').querySelectorAll('.sp-row').forEach(r => {
+  const k = r.dataset.k, v = r.dataset.v;
+  r.querySelector('input[type=checkbox]').onchange = e => { P.settings[k] = e.target.checked; if (e.target.checked) P.settings.muted = false; save(P); applySound(); };
+  const range = r.querySelector('input[type=range]');
+  range.oninput = () => { P.settings[v] = range.value / 100; applySound(); };
+  // Let go of the slider: save it and play a sample at the new level.
+  range.onchange = () => { save(P); if (k === 'sound') sfx('kick'); if (k === 'voice') say('Nice pass! You looked up!'); };
+});
+applySound();
 // Sound can only start after a tap; every chunky button also clicks.
 document.addEventListener('pointerdown', e => { unlockSound(); if (e.target.closest('.btn,.chip')) sfx('click'); }, true);
 
@@ -307,7 +343,7 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; setSoundOn(P.settings.sound); P.settings.music = $('#musicChk').checked; setMusicOn(P.settings.music);
+  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; P.settings.music = $('#musicChk').checked; applySound();
   const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
   save(P); show('#home');
 };

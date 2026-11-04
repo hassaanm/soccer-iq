@@ -23,6 +23,7 @@
 
 <div id="hud" class="hidden" data-phase="idle" data-step="none" data-mode="home">
   <button id="homeBtn" class="btn btn-glass btn-icon top-left" aria-label="Home"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9.8V19a1 1 0 0 0 1 1h3.5v-5h3v5H17a1 1 0 0 0 1-1V9.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></svg></button>
+  <button class="btn btn-glass btn-icon soundBtn hud-sound" aria-label="Sound"></button>
   <button id="skipBtn" class="btn btn-glass top-right">Skip ⏭</button>
   <div id="topbar"><div id="dots"></div><div id="score" class="hidden"></div></div>
   <div id="prompt"></div>
@@ -42,6 +43,7 @@
   <header class="brand"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs><clipPath id="ballclip"><circle cx="50" cy="50" r="45"/></clipPath><radialGradient id="ballshade" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".75" stop-color="#f1ece6"/><stop offset="1" stop-color="#d8d0c8"/></radialGradient></defs><circle cx="50" cy="50" r="45" fill="url(#ballshade)"/><g clip-path="url(#ballclip)"><polygon points="50.0,35.0 64.3,45.4 58.8,62.1 41.2,62.1 35.7,45.4" fill="#24193a"/><polygon points="50.0,27.0 36.7,17.3 41.8,1.7 58.2,1.7 63.3,17.3" fill="#24193a"/><polygon points="71.9,42.9 77.0,27.2 93.4,27.2 98.5,42.9 85.2,52.6" fill="#24193a"/><polygon points="63.5,68.6 80.0,68.6 85.1,84.3 71.7,93.9 58.4,84.3" fill="#24193a"/><polygon points="36.5,68.6 41.6,84.3 28.3,93.9 14.9,84.3 20.0,68.6" fill="#24193a"/><polygon points="28.1,42.9 14.8,52.6 1.5,42.9 6.6,27.2 23.0,27.2" fill="#24193a"/><g stroke="#24193a" stroke-width="2.4" stroke-linecap="round"><line x1="50.0" y1="35.0" x2="50.0" y2="27.0"/><line x1="63.3" y1="17.3" x2="77.0" y2="27.2"/><line x1="64.3" y1="45.4" x2="71.9" y2="42.9"/><line x1="85.2" y1="52.6" x2="80.0" y2="68.6"/><line x1="58.8" y1="62.1" x2="63.5" y2="68.6"/><line x1="58.4" y1="84.3" x2="41.6" y2="84.3"/><line x1="41.2" y1="62.1" x2="36.5" y2="68.6"/><line x1="20.0" y1="68.6" x2="14.8" y2="52.6"/><line x1="35.7" y1="45.4" x2="28.1" y2="42.9"/><line x1="23.0" y1="27.2" x2="36.7" y2="17.3"/></g></g><circle cx="50" cy="50" r="45" fill="none" stroke="#24193a" stroke-width="5"/></svg><h1>Heads Up! <span>Soccer</span></h1></header>
   <button id="gear" class="btn btn-glass btn-icon top-right" aria-label="Grown-ups: hold"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.5 7.5 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.4 1 2-3.4Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></button>
   <div id="gearTip">Grown-ups: hold for 1 second</div>
+  <button class="btn btn-glass btn-icon soundBtn home-sound" aria-label="Sound"></button>
   <div class="matchup">
     <div class="team" data-side="us">
       <div class="tag">YOUR TEAM</div>
@@ -74,6 +76,13 @@
     <div class="freebox"><button id="freeBtn" class="btn btn-blue">⚽ Free play</button></div>
   </div>
 </section>
+
+<div id="soundPop" class="hidden" role="dialog" aria-label="Sound">
+  <div class="sp-head"><b>Sound</b><button id="muteAll" class="btn btn-ghost">Mute all</button></div>
+  <div class="sp-row" data-k="sound" data-v="sfxVol"><label class="sw"><input type="checkbox"><i></i></label><span>🔊 Game sounds</span><input type="range" min="0" max="100" step="5"></div>
+  <div class="sp-row" data-k="music" data-v="musicVol"><label class="sw"><input type="checkbox"><i></i></label><span>🎵 Music</span><input type="range" min="0" max="100" step="5"></div>
+  <div class="sp-row" data-k="voice" data-v="voiceVol"><label class="sw"><input type="checkbox"><i></i></label><span>🗣️ Voice</span><input type="range" min="0" max="100" step="5"></div>
+</div>
 
 <section id="lessonSheet" class="screen hidden"><div class="panel wide sheet">
   <h2>Pick a lesson</h2>

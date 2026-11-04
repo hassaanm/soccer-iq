@@ -2,26 +2,37 @@
 // The browser only allows audio after a tap, so `unlock()` runs on the first touch.
 // iPhones mute Web Audio when the ring/silent switch is on silent (speech still plays). Marking the page as
 // media playback (iOS 17+) makes the effects play anyway.
-let ctx = null, master = null, musicGain = null, enabled = true, musicOn = true, noiseBuf = null, ducked = false;
-const MUSIC_VOL = .05;
+// Mixing: effects (master), music and voice each have their own volume, and all three go through `out`,
+// which the mute-all switch turns off.
+let ctx = null, out = null, master = null, musicGain = null, enabled = true, musicOn = true, noiseBuf = null, ducked = false, muted = false;
+const MUSIC_VOL = .05, vol = { sfx: 1, music: 1, voice: 1 };
 
-export function setSoundOn(on) { enabled = on; if (master) master.gain.value = on ? 1 : 0; }
+export function setSoundOn(on) { enabled = on; applyVolumes(); }
 export function setMusicOn(on) { musicOn = on; fadeMusic(); }
+export function setMuted(m) { muted = m; applyVolumes(); }
+export function setVolumes(v) { Object.assign(vol, v); applyVolumes(); }
+export const voiceVolume = () => (muted ? 0 : vol.voice); // for the built-in speech fallback
+function applyVolumes() {
+  if (!ctx) return;
+  out.gain.value = muted ? 0 : 1; master.gain.value = enabled ? vol.sfx : 0;
+  if (voiceGain) voiceGain.gain.value = vol.voice;
+  fadeMusic();
+}
 // While the voice talks, the tune drops almost to silence so the words are easy to hear.
 export function duck(on) { ducked = on; fadeMusic(); }
 function fadeMusic() {
   if (!musicGain) return; const t = now(), g = musicGain.gain;
-  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(musicOn ? (ducked ? MUSIC_VOL * .15 : MUSIC_VOL) : 0, t + .4);
+  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(musicOn ? MUSIC_VOL * vol.music * (ducked ? .15 : 1) : 0, t + .4);
 }
 
 export function unlock() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  ctx = new AC(); master = ctx.createGain(); master.gain.value = enabled ? 1 : 0; master.connect(ctx.destination);
+  ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination); master = ctx.createGain(); master.connect(out);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  startMusic();
+  startMusic(); applyVolumes();
 }
 
 const now = () => ctx.currentTime;
@@ -60,7 +71,7 @@ function scheduleMusic() {
   }
 }
 function startMusic() {
-  musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(master); fadeMusic();
+  musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(out); fadeMusic();
   nextBar = now() + .1; scheduleMusic(); setInterval(scheduleMusic, 500);
 }
 // A short cheer for goals and good plays (it fades out on its own).
@@ -113,7 +124,7 @@ export async function speakClips(keys) {
   const token = ++voiceToken; stopVoice();
   const bufs = await Promise.all(keys.map(clip));
   if (token !== voiceToken || bufs.some(b => !b)) return;
-  if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = 1; voiceGain.connect(ctx.destination); }
+  if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = vol.voice; voiceGain.connect(out); }
   let t = now() + .05;
   duck(true);
   bufs.forEach((b, i) => {
