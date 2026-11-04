@@ -237,15 +237,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .lessonbox{align-items:flex-start}
 #lessonBtn{width:auto;max-width:calc(100% - 12px)}
 
-/* Sound button (home: left of the gear; in game: right of home) and its popover. */
+/* Sound button (top right: on home left of the gear; in game in the corner, with Skip beside it in demos) and its popover. */
 .soundBtn{position:absolute;top:12px;z-index:5}
 .home-sound{right:calc(70px + var(--safe-r))}
-.hud-sound{left:calc(70px + var(--safe-l))}
+.hud-sound{right:calc(14px + var(--safe-r))}
+#hud #skipBtn{right:calc(70px + var(--safe-r))}
 .soundBtn.off{color:var(--ink-soft)}
 #soundPop{position:fixed;top:66px;z-index:60;width:min(400px,86vw);box-sizing:border-box;background:var(--cream);border:3px solid #fff;border-radius:20px;padding:10px 14px 12px;
   box-shadow:0 7px 0 rgba(36,25,58,.18),0 16px 30px rgba(0,0,0,.28);animation:pop .2s cubic-bezier(.3,1.5,.5,1)}
 #soundPop.from-right{right:calc(64px + var(--safe-r))}
-#soundPop.from-left{left:calc(64px + var(--safe-l))}
+#soundPop.in-game{right:calc(14px + var(--safe-r))}
 #soundPop .sp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 #soundPop .sp-head b{font-size:18px}
 #soundPop #muteAll{padding:5px 12px;font-size:14px}

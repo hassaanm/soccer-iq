@@ -127,7 +127,7 @@ function applySound() {
 function toggleSoundPop(btn) {
   const pop = $('#soundPop'), open = pop.classList.contains('hidden');
   pop.classList.toggle('hidden', !open);
-  if (open) { pop.classList.toggle('from-left', btn.classList.contains('hud-sound')); pop.classList.toggle('from-right', !btn.classList.contains('hud-sound')); applySound(); }
+  if (open) { pop.classList.toggle('in-game', btn.classList.contains('hud-sound')); applySound(); }
 }
 document.querySelectorAll('.soundBtn').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); unlockSound(); toggleSoundPop(b); }));
 // Tapping anywhere outside closes it.
