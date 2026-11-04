@@ -27,7 +27,7 @@ const PASS_TO = new Set(['one-open', 'marked', 'trap', 'two-open']);
 const ANYWHERE = new Set(['trap-one', 'trap', 'marked', 'one-open', 'space-behind', 'give-go', 'give-go-ahead']);
 // Lessons whose answer is a pass or a dribble: a layout with a clear shot belongs to "Shoot!", so it's skipped.
 const NO_SHOT = new Set(['trap-one', 'trap', 'marked', 'one-open', 'two-open', 'forward', 'carry', 'none-open', 'space-behind', 'space-far', 'space-near', 'give-go', 'give-go-ahead', 'counter', 'counter-pass']);
-const inPitch = ([x, y], m = 1.5) => x > m && x < L - m && y > m && y < W - m;
+export const inPitch = ([x, y], m = 1.5) => x > m && x < L - m && y > m && y < W - m;
 const P = ([x, y]) => ({ x, y });
 export function pushEnd(from, dir) {
   const [dx, dy] = rot(PUSH_LEN, 0, DRIBBLE_DIRS[dir]);
@@ -345,9 +345,9 @@ function defense(r, pattern) {
 // m1 has the ball with a defender right in front of him, so he needs a pass. The child (hero) has no ball and
 // picks where to run. Right spot: a clear path for the pass and no defender near. Wrong spots: hiding behind a
 // defender (the pass gets cut out) or running next to the ball (his defender follows and they trap both).
-const laneClear = (from, to, opps) => opps.every(o => closestOnLane(P(o), P(from), P(to), .1).d > 1.3 && dist(P(o), P(to)) > 2.2);
+export const laneClear = (from, to, opps) => opps.every(o => closestOnLane(P(o), P(from), P(to), .1).d > 1.3 && dist(P(o), P(to)) > 2.2);
 const laneRoom = (from, to, opps) => Math.min(...opps.map(o => closestOnLane(P(o), P(from), P(to), .1).d));
-const laneBlocked = (from, to, opps) => opps.some(o => closestOnLane(P(o), P(from), P(to), .1).d < .7);
+export const laneBlocked = (from, to, opps) => opps.some(o => closestOnLane(P(o), P(from), P(to), .1).d < .7);
 function support(r, pattern) {
   const c = [8 + r() * 8, 6 + r() * 8], side = c[1] < W / 2 ? 1 : -1;   // the open side of the pitch
   const o1 = [c[0] + 1.5, c[1] - side * (.5 + r() * .3)];                 // presser in front of the carrier (forward passes are blocked)

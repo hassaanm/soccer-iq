@@ -175,7 +175,7 @@ results say little about potential. Lots of free play and other sports matter mo
 | Mechanism | What it does | Source |
 |---|---|---|
 | **Three levels per lesson** | Level 1 learns with the main pattern and hints. Level 2 mixes every pattern, contrast rounds included, with no hints. Level 3 also mixes in rounds from other learned lessons. | Challenge point (Guadagnoli & Lee 2004); start stable, then vary (Horst et al. 2011) |
-| **Levels need separate days** | A good session (75%+ right first try) raises a lesson one level, at most once per day. | Spacing works in children (Vlach et al. 2008, 2014) |
+| **Levels need separate days** | A good session (4 of 6 right first try) raises a lesson one level, at most once per day. The first one passes the lesson. | Spacing works in children (Vlach et al. 2008, 2014) |
 | **Spaced review** | Learned lessons come back as 2 review rounds after 1, 3, 7, 14 and 30 days. Lessons are never retired. | Karpicke & Roediger 2008; Rawson & Dunlosky 2022 |
 | **Coach's pick** | PLAY picks the lesson to do now: a lesson still at Level 1, then the next new lesson, then the most overdue one. He can still pick any open lesson. | |
 | **Fixed first session** | The first time through a lesson uses the same scenes every time; later sessions are freshly generated. | Horst et al. 2011 |
@@ -251,3 +251,25 @@ some never happened near their goal. Added only where the situation is real and 
 - **Field position:** about 3 in 10 scenes for take him on, two shirts, pass to the open friend, pass and go, and
   peek then turn now happen near their goal. Any layout there with a clear shot is skipped, because a clear shot
   belongs to "Shoot!" and would muddle a passing or dribbling lesson.
+
+## Lessons are skills that change matches (v34)
+
+A lesson is passed when he gets at least 4 of 6 rounds right on the first try. Passing it opens the next
+lesson and adds that lesson's part to mini matches and free play. If he doesn't pass, PLAY brings the lesson
+back (up to twice a day), and the mini-match card tells him how many to get right next time.
+
+| Passed lesson | What it adds to matches |
+|---|---|
+| Look up! | Matches: look up, pass, dribble (shooting is always there) |
+| Run into space | Big pushes |
+| Win it back! | After losing the ball he picks where to run (before that, his team defends for him) |
+| Steal it! | After he gets in front of the attacker, sometimes a 1v1 STEAL moment |
+| Won it? Go! | After he wins the ball, play goes straight on into the counter (before that, a fresh start) |
+| Peek, then turn! | A pass back to him waits in the air for a peek and a turn |
+| Get open! | After a good pass, he sometimes stays himself and picks where to run for the ball back |
+| Pass and go! | That run goes past his defender when it can |
+| Only one bee chases / Guard the open player | "Guard" spots when defending |
+| Every lesson | Its own situations in free play |
+
+The off-ball moments only come up some of the time (after about 6 in 10 good passes, and in about 6 in 10
+of the plays where he gets in front of the attacker), so play keeps flowing.

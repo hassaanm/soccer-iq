@@ -6,12 +6,13 @@ import { allScenarios } from '../js/skills.js';
 import { TEAMS } from '../js/teams.js';
 import { OPTIONS } from './harness.js';
 
-function makeGame() {
+const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first']);
+function makeGame(skills = ALL) {
   const events = [];
   const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] };
   const hud = new Proxy({}, { get: (_, k) => (...a) => events.push([k, ...a]) });
   const g = new Game({ world, hud, say: () => {} });
-  g.setTeams(TEAMS[3], TEAMS[13]);
+  g.setTeams(TEAMS[3], TEAMS[13]); g.skills = new Set(skills);
   return { g, events };
 }
 // Runs frames until the promise settles; pick(g) is called whenever a choice is possible.
@@ -222,4 +223,29 @@ test('peek, then turn: the pass waits in the air while he decides; turning away 
   const r = await drive(g, g.round(sc, { hint: false }), gm => gm.sc.best);
   assert.equal(r.firstTry, true);
   assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'GOAL!' || e[1] === 'Kept the ball!')));
+});
+
+test('matches grow with his skills: with every lesson passed, live runs, peeks and 1v1s all happen', async () => {
+  const real = Math.random; let x = 11; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+  const kinds = {}; let s;
+  try {
+    const { g } = makeGame();
+    s = await drive(g, g.match([...ALL], [], 6, 'free'), gm => {
+      const k = (gm.sc.live ? 'live-' : '') + gm.sc.kind; kinds[k] = (kinds[k] || 0) + 1;
+      if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
+      return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back');
+    }, 4000);
+  } finally { Math.random = real; }
+  for (const k of ['live-support', 'live-receive', 'live-tackle', 'live-defense']) assert.ok(kinds[k] > 0, `never got a ${k} choice (${JSON.stringify(kinds)})`);
+  assert.ok(s.us === 6 || s.them === 6 || Object.values(kinds).reduce((a, b) => a + b) > 100, 'match did not finish');
+});
+
+test('before any lesson is passed, matches have no live runs, peeks, 1v1s or defending choices', async () => {
+  const real = Math.random; let x = 5; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+  const kinds = {};
+  try {
+    const { g } = makeGame([]);
+    await drive(g, g.match(['look-up'], [], 3, 'free'), gm => { const k = (gm.sc.live ? 'live-' : '') + gm.sc.kind; kinds[k] = (kinds[k] || 0) + 1; return gm.sc.best || 'drib:back'; }, 2500);
+  } finally { Math.random = real; }
+  for (const k of ['live-support', 'live-receive', 'live-tackle', 'live-defense']) assert.ok(!kinds[k], `${k} showed up without its lesson (${JSON.stringify(kinds)})`);
 });

@@ -36,7 +36,10 @@ The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson
 
 ## Replay
 
-- **Levels 1–3 per lesson.** A good session (75%+ first try) raises a level, at most once a day. Level 1 plays
+- **Lessons are skills.** Passing a lesson (4 of 6 right first try) opens the next one and adds its part to
+  matches: big pushes, defending choices, 1v1 steals, counters, peek-and-turn, runs after a pass, guard spots.
+  See the table in `research/curriculum-plan.md`.
+- **Levels 1–3 per lesson.** A good session (4 of 6 right first try) raises a level, at most once a day. Level 1 plays
   mostly the main pattern with hints; Level 2 gives every pattern the same share, without hints; Level 3
   mixes in a third review lesson. The level shown never drops.
 - **Reviews.** Played lessons come back as one review round each after 1, 3, 7, 14 and 30 days.

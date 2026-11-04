@@ -18,7 +18,7 @@ export function spokenLines() {
     'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!']) cues.add(c);
   const lines = [
     ...PATH.flatMap(s => [s.kid, s.tip]),
-    'Your turn!', 'Mini match!', 'Free play!',
+    'Your turn!', 'Mini match!', 'Free play!', 'New in matches!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
     'See who is open?', 'Where is the space?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!',

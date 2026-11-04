@@ -2,7 +2,7 @@
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds, skillById } from './skills.js';
 import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
-import { grade, pushEnd, goalSide, exploit, DEF_RUN } from './generate.js';
+import { grade, pushEnd, goalSide, exploit, DEF_RUN, laneClear, laneBlocked, inPitch } from './generate.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -40,13 +40,13 @@ function liveScenario(s, skill, pushAllowed) {
 // A defending decision built from wherever play is right now (after we lose the ball in a match). Spots: get in
 // front of the ball, guard each attacker, or chase from behind. A spot is right when it leaves the attackers no
 // open run or pass (the same check the defense lessons use). null when no spot can stop them.
-function liveDefense(s) {
+function liveDefense(s, guard = true) {
   const c = s.a(s.ball.carrier); if (!c || c.team !== 'them') return null;
   const P = a => [a.x, a.y], h = s.a('hero'), others = s.team('them').filter(o => o.id !== c.id);
   const mates = [P(s.a('m1')), P(s.a('m2'))], near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
   const ok = ([x, y]) => x > 1 && x < L - 1 && y > 1 && y < W - 1;
   const cand = [{ id: 'home', p: goalSide(P(c), 2.6), label: 'In front' },
-    ...others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })),
+    ...(guard ? others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with Only one bee / Guard the open player
     { id: 'chase', p: [c.x + 1.3, c.y], label: 'Behind him' }];
   const spots = [];
   for (const sp of cand) if (ok(sp.p) && dist({ x: sp.p[0], y: sp.p[1] }, h) > 1 && spots.every(t => Math.hypot(t.x - sp.p[0], t.y - sp.p[1]) > 2.2)) spots.push({ id: sp.id, x: sp.p[0], y: sp.p[1], label: sp.label });
@@ -79,6 +79,7 @@ export class Game {
     this.sim = new Sim();
     this.sim.on = (ev, v) => sfx(ev === 'kick' ? (v >= 15 ? 'shot' : 'kick') : ev === 'touch' ? 'tap' : 'step');
     this.tweens = [];
+    this.skills = new Set(); // lessons he has passed: each adds its part to matches (see has())
     this.reset();
     this.mode = 'home';
     this.sim.setup(demoScenario('look-up'));
@@ -123,6 +124,7 @@ export class Game {
   // If no spot could stop them, the play just runs on and the geometry decides what happens.
   async continueDefense() {
     const s = this.sim, c = s.a(s.ball.carrier);
+    const choose = this.has('get-goal-side'), guard = this.has('one-goes') || this.has('mark-the-free-one');
     Object.assign(this, { phase: 'pre', step: null, seen: new Set(), lookUp: false, turn: 0, drag: null, scanned: false, lines: [], aimAt: null,
       roles: null, ai: true, scripted: new Set(['hero', c.id]), camMode: 'player', follow: null, grades: null, ballTeam: 'them' });
     const h = s.a('hero');
@@ -130,7 +132,7 @@ export class Game {
     this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)];
     s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 2.4); s.go('hero', h.x - 1.2, h.y, 2.4);
     await this.delay(1.1); this.ai = false; s.stopAll();
-    const sc = liveDefense(s);
+    const sc = choose ? liveDefense(s, guard) : null;
     if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
     const stay = { kind: 'defense', live: true, id: 'live-stay', carrier: c.id, oppIds: [c.id, ...s.team('them').filter(o => o.id !== c.id).map(o => o.id)],
@@ -168,7 +170,15 @@ export class Game {
     return hi - lo < 1.25 ? wrap(toC + (lo + hi) / 2) : toC;
   }
   // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
-  get pushAllowed() { return this.mode === 'free' || this.sc?.skill === 'dribble-to-space' || this.sc?.skill === 'won-it-go' || (this.mode === 'match' && !!this.pushUnlocked); }
+  get pushAllowed() { return this.sc?.skill === 'dribble-to-space' || this.sc?.skill === 'won-it-go' || this.has('dribble-to-space'); }
+  // In matches and free play, what he can do grows with the lessons he has passed:
+  //   Run into space → big pushes; Win it back! → he picks where to run after losing the ball (otherwise his team
+  //   defends for him); Steal it! → 1v1 STEAL moments; Won it? Go! → play goes straight on after he wins it;
+  //   Peek, then turn! → a pass to him waits in the air for a peek and a turn; Get open! → after a pass he
+  //   sometimes stays himself and picks where to run; Pass and go! → that run goes past his defender;
+  //   Only one bee / Guard the open player → "Guard" spots when defending. Every passed lesson also adds its
+  //   own situations to free play.
+  has(id) { return (this.mode === 'match' || this.mode === 'free') && this.skills.has(id); }
   // Short run-up: he dribbles forward head-down while defenders close in.
   async pre() {
     this.phase = 'pre';
@@ -413,6 +423,8 @@ export class Game {
         yield* this.strike(c.id, cut.x, cut.y, { speed: 10, arc: .1 });
         yield () => s.ball.state === 'loose' || (s.ball.z < .9 && dist(h, s.ball) < .5); // he takes it the moment it reaches him
         s.give('hero');
+      } else if (this.duelOK) { // in a match, once he has "Steal it!": now it's 1v1, and he picks the moment
+        this.duelOK = false; this.result = 'duel'; return;
       } else { // pressure or recovery: he is now in front of the ball, so the carrier runs into him and loses it
         const [gx, gy] = toGoal(c);
         this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.8);          // keeps going at goal, facing it
@@ -457,19 +469,21 @@ export class Game {
   // Getting open: he runs to his spot while his defender follows a step behind. Open space: his friend passes
   // and he plays on. Behind a defender: the pass gets cut out. Next to the ball: both defenders close in and win it.
   *supportGen(spotId, good) {
-    const s = this.sim, sp = this.sc.spots.find(x => x.id === spotId), h = s.a('hero'), c = s.a('m1'), o1 = s.a('o1'), o2 = s.a('o2');
+    const s = this.sim, sp = this.sc.spots.find(x => x.id === spotId), h = s.a('hero'), c = s.a(this.sc.carrier || 'm1');
+    const o1 = s.a(this.sc.pressId || 'o1'), o2 = s.a(this.sc.markId || 'o2'), o2id = o2.id;
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
     const t0 = s.time;
-    yield () => { s.go('o2', h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); return dist(h, sp) < .4 || s.time - t0 > 1.8; };
-    s.stop('hero'); s.stop('o2');
+    yield () => { s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); return dist(h, sp) < .4 || s.time - t0 > 1.8; };
+    s.stop('hero'); s.stop(o2id);
     if (sp.crowd) { // two defenders on two players right together: they win it
-      const t1 = s.time; yield () => { s.go('o1', c.x, c.y, 4); s.go('o2', lerp(h.x, c.x, .5), lerp(h.y, c.y, .5), 3.5); return dist(o1, c) < .9 || s.time - t1 > 1.5; };
+      const t1 = s.time; yield () => { s.go(o1.id, c.x, c.y, 4); s.go(o2id, lerp(h.x, c.x, .5), lerp(h.y, c.y, .5), 3.5); return dist(o1, c) < .9 || s.time - t1 > 1.5; };
       yield* this.steal(o1); return;
     }
     const l = Math.hypot(c.x - h.x, c.y - h.y) || 1; h.face = [(c.x - h.x) / l, (c.y - h.y) / l]; yield .25;
     if (good) {
-      yield* this.strike('m1', h.x, h.y, { speed: 11, arc: .15 });
+      if (this.has('peek-and-turn')) { yield* this.strike(c.id, h.x - .3, h.y, { speed: 8, arc: .05 }); this.result = 'incoming'; return; } // he'll peek and turn
+      yield* this.strike(c.id, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
       s.give('hero'); this.scripted = new Set(['hero']); this.ai = true; yield .2;
       yield* this.finish('hero'); return;
@@ -477,7 +491,7 @@ export class Game {
     // The pass goes, but the defender standing in its path cuts it out.
     const them = s.team('them'), cut = them.map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((a, b) => a.d - b.d)[0];
     s.go(cut.opp.id, cut.x, cut.y, 4);
-    yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
+    yield* this.strike(c.id, cut.x, cut.y, { speed: 11, arc: .1 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(cut.opp);
   }
@@ -522,6 +536,7 @@ export class Game {
           const tilt = last ? .75 : len > 1.2 ? .35 : 0, sd = sc.passSide * (tk.i % 2 ? 1 : -1) * (last ? 1 : .6);
           const dx = ax * Math.cos(tilt * sd) - ay * Math.sin(tilt * sd), dy = ax * Math.sin(tilt * sd) + ay * Math.cos(tilt * sd);
           const to = { x: clamp(b.x + dx * len * (last ? 2.2 : 1), 1, L - 1), y: clamp(b.y + dy * len * (last ? 2.2 : 1), 1, W - 1) };
+          for (const a of s.agents.values()) if (a.id !== c.id && a.id !== 'hero' && closestOnLane(a, b, to, 0).d < 1) this.giveWay(a, b, to); // nobody stands in its path
           s.kick(to.x, to.y, { speed: len > 1.2 ? 3.4 : 2.4, arc: 0, touch: true });
           tk.to = to; tk.wait = len > 1.2 ? .05 : .25; tk.big = len > 1.2;
         }
@@ -579,6 +594,7 @@ export class Game {
       s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good); this.ai = false; return;
     }
     if (good && this.sc.then && opt === this.sc.best) { yield* this.passOnly(MATE[opt]); this.ai = false; return; }
+    if (good && this.offBall && MATE[opt]) { this.offBall = false; yield* this.passOnly(MATE[opt]); this.result = 'support'; this.ai = false; return; }
     if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); this.ai = false; return; }
     if (opt.startsWith('spot:')) { yield* (this.sc.kind === 'support' ? this.supportGen(opt.slice(5), good) : this.defendGen(opt.slice(5), good)); this.ai = false; return; }
     if (opt.startsWith('push:')) { yield* this.pushGen(opt.slice(5), good); this.ai = false; return; }
@@ -812,12 +828,15 @@ export class Game {
       else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
       const opt = await this.decide(), good = this.isGood(opt);
       this.praise(opt);
+      // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
+      this.offBall = !this.sc.then && this.has('get-open') && Math.random() < .6;
+      this.duelOK = this.has('steal-it') && Math.random() < .6;
       await this.outcome(opt, good);
-      if (this.result === 'passed' && this.sc.then) { await this.toStep2(); const o2 = await this.decide(); await this.outcome(o2, this.isGood(o2)); }
+      await this.chain(); this.offBall = this.duelOK = false;
       tally();
       // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
       streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
-      live = streak > 0 && streak <= 4;
+      live = streak > 0 && streak <= 4 && (this.result !== 'won' || this.has('won-it-go')); // play on after winning it: Won it? Go!
       if (i >= toWin * 25) break; // safety: don't let a match run forever
     }
     return score;
@@ -829,6 +848,79 @@ export class Game {
     const k = this.sc.kind, word = k === 'receive' ? (this.peeked ? 'Nice peek! 👀' : 'Nice turn!') : k === 'support' ? 'Great run!' : k === 'defense' ? 'Good defending!'
       : k === 'tackle' ? null : opt === 'shoot' ? null : opt.startsWith('pass:') ? 'Nice pass!' : opt.startsWith('push:') ? 'Into space! 💨' : 'Great dribble!';
     if (word) this.hud.toast(word);
+  }
+
+  // Follow-on decisions inside one play: the second step of a give-and-go, where to run after a pass, the pass
+  // back to him (peek and turn), or a 1v1 once he's in front of the attacker.
+  async chain() {
+    const s = this.sim;
+    for (let k = 0; k < 4; k++) {
+      if (this.result === 'passed' && this.sc.then) await this.toStep2();
+      else if (this.result === 'support') { if (!(await this.toSupport())) { this.result = 'kept'; return; } }
+      else if (this.result === 'incoming') { if (!(await this.toReceive())) { await this.until(() => s.ball.state !== 'flying'); s.give('hero'); this.result = 'kept'; return; } }
+      else if (this.result === 'duel') await this.toDuel();
+      else return;
+      const o = await this.decide(); this.praise(o); await this.outcome(o, this.isGood(o));
+    }
+  }
+  // After his pass: he stays himself and picks where to run, from where everyone is right now. Spots: open space
+  // with a clear path for the pass back (past his defender once he has "Pass and go!"), staying put, or running
+  // to the ball. False when there's no fair choice (then he just takes over his friend, as before).
+  async toSupport() {
+    const s = this.sim, c = s.a(s.ball.carrier), h = s.a('hero'); if (!c || c.team !== 'us' || c.id === 'hero') return false;
+    const opps = s.team('them'), O = opps.map(o => [o.x, o.y]), C = [c.x, c.y];
+    const press = [...opps].sort((a, b) => dist(a, c) - dist(b, c))[0], mark = opps.filter(o => o !== press).sort((a, b) => dist(a, h) - dist(b, h))[0];
+    const room = p => Math.min(...O.map(o => Math.hypot(o[0] - p[0], o[1] - p[1]))), past = this.has('give-and-go');
+    let space = null, top = -1e9;
+    for (let a = 0; a < 16; a++) for (const d of [3.5, 5]) {
+      const p = [h.x + Math.cos(a * Math.PI / 8) * d, h.y + Math.sin(a * Math.PI / 8) * d];
+      if (!inPitch(p, 1.2) || p[0] < c.x - 1 || Math.hypot(p[0] - c.x, p[1] - c.y) < 3.5 || !laneClear(C, p, O) || room(p) < 2.4) continue;
+      const score = p[0] - Math.hypot(p[0] - h.x, p[1] - h.y) * .3 + (past && p[0] > press.x + 1.2 ? 4 : 0);
+      if (score > top) { top = score; space = p; }
+    }
+    const H = [h.x, h.y], stayOpen = laneClear(C, H, O) && Math.hypot(h.x - c.x, h.y - c.y) > 2.6, stayBlocked = laneBlocked(C, H, O);
+    const toH = Math.hypot(h.x - c.x, h.y - c.y) || 1, crowd = [c.x + (h.x - c.x) / toH * 1.6, c.y + (h.y - c.y) / toH * 1.6];
+    const spots = [];
+    if (space) spots.push({ id: 'space', x: space[0], y: space[1] });
+    if (stayOpen || stayBlocked) spots.push({ id: 'stay', x: h.x, y: h.y });
+    spots.push({ id: 'ball', x: crowd[0], y: crowd[1], crowd: true });
+    if (spots.length < 2 || !(space || stayOpen) || spots.some((p, i) => spots.some((q, j) => j > i && Math.hypot(p.x - q.x, p.y - q.y) < 2.2))) return false;
+    const best = space ? 'space' : 'stay';
+    this.sc = { kind: 'support', live: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
+      best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : 'Move to open space so your friend can pass to you!' };
+    Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null, seen: new Set(), lookUp: false, turn: 0, drag: null });
+    s.stopAll(); this.yaw = this.frameYaw(this.sc, h, c); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)];
+    await this.delay(.35);
+    return true;
+  }
+  // A friend's pass is on its way to him: the ball waits in the air while he peeks, then he picks a turn. His left
+  // and right turns lean up the field. False when neither turn is open (then he just takes the ball).
+  async toReceive() {
+    const s = this.sim, h = s.a('hero'), b = s.ball, face = Math.atan2(b.fy - h.y, b.fx - h.x);
+    const nearest = ang => Object.entries(DRIBBLE_DIRS).sort((p, q) => Math.abs(wrap(p[1] - ang)) - Math.abs(wrap(q[1] - ang)))[0][0];
+    const lean = side => Math.atan2(Math.sin(side), Math.cos(side) + 1);
+    const turns = { L: nearest(lean(face + Math.PI / 2)), R: nearest(lean(face - Math.PI / 2)) };
+    if (turns.L === turns.R) return false;
+    const P = a => [a.x, a.y], mates = ['m1', 'm2'].map(id => P(s.a(id))), opps = s.team('them').map(P);
+    const sc = { kind: 'receive', live: true, id: 'live-recv', skill: this.sc?.skill, carrier: s.team('us').find(a => a.id !== 'hero' && dist(a, { x: b.fx, y: b.fy }) < 1.5)?.id || 'm1',
+      hero: P(h), heroTo: P(h), mates, opps, oppsTo: opps, turns };
+    const g = grade(sc), goods = ['L', 'R'].filter(k => g['drib:' + turns[k]] === 'good').sort((p, q) => dribbleEnd(h, turns[q], L, W).x - dribbleEnd(h, turns[p], L, W).x);
+    if (!goods.length) return false;
+    Object.assign(sc, { best: 'turn:' + goods[0], ok: goods.slice(1).map(k => 'turn:' + k), cue: goods.length > 1 ? 'Nobody was behind you. Peek, then turn and go!' : 'A defender was behind you! Peek first, then turn away from him.' });
+    this.sc = sc;
+    Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null, lookUp: false, turn: 0, drag: null });
+    s.stopAll(); this.yaw = face; h.face = [Math.cos(face), Math.sin(face)];
+    return true;
+  }
+  // He got in front of the attacker: now it's a 1v1, and he taps STEAL at the right moment.
+  async toDuel() {
+    const s = this.sim, c = s.a(s.ball.carrier), h = s.a('hero');
+    const big = Math.random() < .5;
+    this.sc = { kind: 'tackle', live: true, id: 'live-duel', skill: this.sc?.skill, carrier: c.id, touches: big ? [.3, 1.9, .3, 1.7] : [.3, .3, 1.8, .3, 1.6], speed: 3,
+      passSide: Math.random() < .5 ? 1 : -1, best: 'tackle:good', ok: [], cue: 'Wait in front of him. Steal it when it rolls away from his feet!' };
+    Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null, tk: null });
+    s.stopAll(); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)];
+    await this.delay(.3);
   }
 
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }

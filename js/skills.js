@@ -43,6 +43,26 @@ export const PATH = [
 ];
 export const skillById = id => PATH.find(s => s.id === id);
 
+// What passing each lesson adds to matches and free play (shown when it unlocks). Every lesson also adds its
+// own situations to free play.
+export const UNLOCKS = {
+  'look-up': 'Look up, pass and dribble',
+  'dribble-to-space': 'Big pushes into space',
+  'take-him-on': '1v1 chances',
+  'shoot-close': 'Chances to shoot',
+  'get-goal-side': 'You pick where to run when they have the ball',
+  'steal-it': 'STEAL when you get in front of him',
+  'won-it-go': 'Win it, then go! Play keeps going',
+  'peek-and-turn': 'Peek and turn when a friend passes to you',
+  'see-the-trap': 'Two-defender traps',
+  'get-open': 'After you pass, you pick where to run',
+  'pass-to-open': 'More passing chances',
+  'give-and-go': 'Pass and go: run past him for the ball back',
+  'one-goes': 'Guard the open player',
+  'mark-the-free-one': 'Find the free player',
+  'forward-first': 'Forward-first chances',
+};
+
 // A fixed sample of generated scenarios per lesson (tests, the audit, and the mini match's starting plays).
 export function allScenarios(skillId) {
   return generates(skillId) ? Array.from({ length: 10 }, (_, i) => generate(skillId, 101 + i)).filter(Boolean) : [];

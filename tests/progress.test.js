@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed } from '../js/progress.js';
+import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed, isOpen, skills } from '../js/progress.js';
 import { PATH } from '../js/skills.js';
 
 const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
@@ -75,4 +75,15 @@ test('a review round counts as practice: the lesson waits for its next gap; a mi
   reviewed(p, 'look-up', false, 107);
   assert.equal(p.skills['look-up'].box, 1); assert.equal(level(p, 'look-up'), 2);
   assert.deepEqual(reviewsDue(p, PATH, null, 108), ['look-up']);
+});
+
+test('a lesson is a skill once passed (4 of 6): that opens the next lesson; a miss means play it again', () => {
+  const p = defaultProgress();
+  let r = finishSession(p, 'look-up', 3, 6, 100);
+  assert.equal(level(p, 'look-up'), 0); assert.equal(r.unlocked, false);
+  assert.equal(isOpen(p, PATH, 1), false, 'next lesson stays locked');
+  assert.equal(nextSkill(p, PATH, 100), 'look-up', 'PLAY repeats it');
+  r = finishSession(p, 'look-up', 4, 6, 100);
+  assert.equal(r.unlocked, true); assert.equal(level(p, 'look-up'), 1);
+  assert.ok(isOpen(p, PATH, 1)); assert.deepEqual([...skills(p, PATH)], ['look-up']);
 });

@@ -2,13 +2,13 @@
 import { World } from './world.js';
 import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
-import { PATH, CHAPTERS, skillById, sessionRounds } from './skills.js';
+import { PATH, CHAPTERS, UNLOCKS, skillById, sessionRounds } from './skills.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
 import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, setMuted, setVolumes, voiceVolume, duck, loadVoice, canSpeak, speakClips, stopVoice, preloadClips } from './sound.js';
 import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
-import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, defaultProgress } from './progress.js';
+import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, skills, defaultProgress } from './progress.js';
 
 const $ = s => document.querySelector(s);
 const P = load();
@@ -298,12 +298,14 @@ async function runSession() {
     results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
     if (rounds[i].skill !== skillId) { reviewed(P, rounds[i].skill, r.firstTry && r.stars === 3); save(P); }
   }
-  world.setEnv('crowd');
-  await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  game.pushUnlocked = level(P, 'dribble-to-space') > 0; // big pushes once he has played "Run into space"
+  // Score the lesson before the mini match, so a skill passed just now is already in it.
+  const firstTry = results.filter(Boolean).length, st = finishSession(P, skillId, firstTry, rounds.length); P.pick = null; save(P);
+  world.setEnv('crowd'); game.skills = skills(P, PATH);
+  await card(st.unlocked ? { emoji: '🔓', title: 'New in matches!', sub: `${UNLOCKS[skillId]}. First to 2 goals wins.`, button: 'Kick off' }
+    : !st.passedNow && level(P, skillId) === 0 ? { emoji: '🏟️', title: 'Mini match!', sub: `Get ${Math.ceil(rounds.length * 2 / 3)} right next time to unlock this in matches. First to 2 goals wins.`, button: 'Kick off' }
+    : { emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
-  const firstTry = results.filter(Boolean).length, won = score.us > score.them;
-  const st = finishSession(P, skillId, firstTry, rounds.length); P.pick = null;
+  const won = score.us > score.them;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
   showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
@@ -311,10 +313,10 @@ async function runSession() {
   $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
   $('#results .roundsnote').textContent = `${firstTry} of ${rounds.length} right on the first try`;
   // Level news, then a backyard game for the grown-up.
-  $('#results .levelup').textContent = st.leveledUp ? `${'⭐'.repeat(st.level)} Level ${st.level}!` : '';
+  $('#results .levelup').textContent = st.unlocked ? `🔓 Unlocked: ${UNLOCKS[skillId]}` : st.leveledUp ? `${'⭐'.repeat(st.level)} Level ${st.level}!` : !level(P, skillId) ? `Get ${Math.ceil(rounds.length * 2 / 3)} right to unlock the next lesson` : '';
   $('#results .outside').innerHTML = sk.outside ? `<b>Try it outside:</b> ${sk.outside}` : '';
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
-  $('#nextLessonBtn').classList.toggle('hidden', !nextSk);
+  $('#nextLessonBtn').classList.toggle('hidden', !nextSk || !lessonOpen(i + 1)); // the next lesson opens once this one is passed
   $('#nextLessonBtn').onclick = () => { P.pick = nextSk.id; save(P); runSession(); };
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
@@ -325,7 +327,8 @@ $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
 // Free play: a match to 3 goals mixing every lesson he has played (attack and defense), with big pushes allowed.
 async function runFreePlay() {
   if (running) return; running = true; unlockAudio();
-  const learned = PATH.filter(s => P.skills[s.id]?.sessions).map(s => s.id), ids = learned.length ? learned : ['look-up'];
+  // Free play: every situation from the lessons he has passed, with everything those lessons unlock.
+  const has = skills(P, PATH), ids = has.size ? [...has] : ['look-up']; game.skills = has;
   const us = teamById(P.us), them = teamById(P.them);
   game.setTeams(us, them); world.setEnv('crowd'); show(null); hud.dots([], 0);
   await card({ emoji: '⚽', title: 'Free play!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
