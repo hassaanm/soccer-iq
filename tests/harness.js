@@ -7,8 +7,12 @@ export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d =
 // Every choice a scenario offers: spots on defense; passes, dribbles (and big pushes in the dribble lesson) on attack.
 export function optionsFor(sc) {
   if (sc.kind === 'defense' || sc.kind === 'support') return sc.spots.map(s => 'spot:' + s.id);
-  const push = sc.skill === 'dribble-to-space' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
-  return [...OPTIONS, ...push, ...(sc.skill === 'shoot-close' ? ['shoot'] : [])];
+  if (sc.kind === 'tackle') return ['tackle:good', 'tackle:early', 'tackle:tight', 'tackle:none'];
+  const push = sc.skill === 'dribble-to-space' || sc.skill === 'won-it-go' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
+  const shoot = sc.skill === 'shoot-close' || sc.heroTo[0] > 17; // the SHOOT button shows from 13 m out
+  // Give-and-go: after the right pass, each run he could make (written then:spot:<id>).
+  const then = sc.then ? sc.then.spots.filter(s => 'spot:' + s.id !== sc.then.best).map(s => 'then:spot:' + s.id) : [];
+  return [...OPTIONS, ...push, ...(shoot ? ['shoot'] : []), ...then];
 }
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
 
@@ -38,6 +42,9 @@ export async function playOption(sc, opt) {
   const { g, events } = makeGame();
   g.mode = 'lesson'; g.load(sc);
   await drive(g, g.pre());
+  // A give-and-go option: the right pass first, then this run (or the right run, after a plain right pass).
+  let step2 = null;
+  if (sc.then && opt.startsWith('then:')) { step2 = opt.slice(5); opt = sc.best; } else if (sc.then && opt === sc.best) step2 = sc.then.best;
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
   const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y } };
   const nearestDef = s.team(sc.kind === 'defense' ? 'us' : 'them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
@@ -50,7 +57,12 @@ export async function playOption(sc, opt) {
     if (x < 1 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     return kick(x, y, o);
   };
-  await drive(g, g.outcome(opt, good), {
+  let gStep2 = null;
+  const play = async () => {
+    await g.outcome(opt, good);
+    if (step2 && g.result === 'passed') { await g.toStep2(); gStep2 = g.isGood(step2); await g.outcome(step2, gStep2); }
+  };
+  await drive(g, play(), {
     onFrame: () => {
       m.frames++;
       const list = [...s.agents.values()];
@@ -62,8 +74,8 @@ export async function playOption(sc, opt) {
     },
   });
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
-  return { sc: sc.id, opt, good, defense: sc.kind === 'defense', banners, ...m, seconds: m.frames / 30,
-    mateStart: start.mate ? dist(start.mate, start.ball) : null };
+  return { sc: sc.id, opt: step2 && step2 !== sc.then?.best ? 'then:' + step2 : opt, good: gStep2 ?? good, defense: sc.kind === 'defense' || sc.kind === 'tackle', banners, ...m, seconds: m.frames / 30,
+    mateStart: start.mate && !step2 ? dist(start.mate, start.ball) : null };
 }
 
 // The rules a play has to follow to look like real soccer. Returns a list of broken rules.

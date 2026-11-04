@@ -42,9 +42,9 @@ export class Sim {
   give(id) { Object.assign(this.ball, { state: 'carried', carrier: id, z: 0 }); }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
   windup(id) { const a = this.a(id); if (a) a.kickAt = this.time; }
-  kick(x, y, { speed = 11, arc = 0.3, z1 = 0 } = {}) {
+  kick(x, y, { speed = 11, arc = 0.3, z1 = 0, touch = false } = {}) {
     const b = this.ball;
-    this.on('kick', speed);
+    this.on(touch ? 'touch' : 'kick', speed);
     Object.assign(b, { state: 'flying', carrier: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
       dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
   }

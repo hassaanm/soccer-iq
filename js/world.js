@@ -381,6 +381,9 @@ export class World {
     }));
     this.glows = new Map();
     this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = '';
+    // A soft pulse under the ball when it is loose (hint for the 1v1 "Steal it!" lesson).
+    this.ballGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.ballGlow.visible = false; this.scene.add(this.ballGlow);
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
     this.spotPool = Array.from({ length: 4 }, () => {
       const g = new THREE.Group();
@@ -439,6 +442,8 @@ export class World {
     for (const [id, g] of this.rigs) {
       const a = sim.a(id), glow = this.glows.get(id);
       g.visible = !!a; glow.visible = false; if (!a) continue;
+      // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture.
+      if (Math.hypot(a.x - cam.eye[0], a.y - cam.eye[1]) < 1.7 && cam.eye[2] < 5) { g.visible = false; continue; }
       animate(g, a, sim, time);
       const s = ui.glow?.[id] || 0;
       for (const m of g.userData.mats) { m.emissive.setRGB(1, .78, .2); m.emissiveIntensity = s * pulse * .22; }
@@ -462,6 +467,7 @@ export class World {
       if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / .2));
     }
     this.ballPrev = { x: b.x, y: b.y };
+    this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
     this.ball.position.set(b.x, b.y, .2 + (b.z || 0));
     this.renderer.render(this.scene, c);
   }

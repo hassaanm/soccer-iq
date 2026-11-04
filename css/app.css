@@ -179,14 +179,20 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessonBtn b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #lessonBtn .caret{font-size:14px;color:var(--ink-soft)}
 #lessonSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-.sheet{padding:14px 18px 16px;width:min(760px,94vw);box-sizing:border-box}
-.sheet h2{font-size:clamp(22px,4vw,30px)!important;margin:0 0 10px!important}
-#lessons{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
-#lessons .tile{position:relative;border:0;border-radius:16px;background:#fff;padding:8px 4px 6px;font:inherit;color:var(--ink);cursor:pointer;
-  box-shadow:0 0 0 2px var(--line),0 4px 0 rgba(36,25,58,.15);display:flex;flex-direction:column;align-items:center;gap:2px;min-height:84px}
-#lessons .tile .e{font-size:28px;line-height:1.1}
-#lessons .tile .k{font-size:12.5px;font-weight:700;line-height:1.15}
+.sheet{padding:10px 16px 10px;width:min(780px,96vw);box-sizing:border-box;position:relative}
+.sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
+.sheet #sheetClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0}
+#lessons{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px 3px 5px}
+#lessons .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
+#lessons .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
+#lessons .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
+#lessons .row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+#lessons .tile{position:relative;border:0;border-radius:14px;background:#fff;padding:5px 4px 4px;font:inherit;color:var(--ink);cursor:pointer;
+  box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-height:56px}
+#lessons .tile .e{font-size:20px;line-height:1.1}
+#lessons .tile .k{font-size:11.5px;font-weight:700;line-height:1.12}
 #lessons .tile .st{font-size:11px;color:var(--gold-d);letter-spacing:1px;min-height:13px}
+#lessons .tile .st i{font-style:normal;color:rgba(36,25,58,.15)}
 #lessons .tile.def{background:#eef4ff}
 #lessons .tile.def::after{content:"defense";position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#4a6fb0;text-transform:uppercase}
 #lessons .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
@@ -196,6 +202,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
 .team .kind button.on{background:var(--ink);color:#fff}
 #shootBtn{right:calc(116px + var(--safe-r));bottom:calc(112px + var(--safe-b))}
+/* 1v1 "Steal it!": one big button under the right thumb; looking is automatic, so LOOK/PASS/DRIBBLE hide. */
+#stealBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:14px}
+#stealBtn i{font-size:46px}
+#hud:is([data-mode=lesson],[data-mode=match],[data-mode=free])[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
+#hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
+.levelup{font-size:18px;font-weight:700;color:var(--gold-d);min-height:0}
+.levelup:empty,.outside:empty{display:none}
+.outside{font-size:12.5px;color:var(--ink-soft);max-width:440px;margin:6px auto 0;line-height:1.3}
 #hud.shoot #shootBtn{display:flex}
 .roundsrow{display:flex;gap:8px;justify-content:center;margin:6px 0 2px}
 .roundsrow span{width:20px;height:20px;border-radius:50%;background:#d9d0c4}

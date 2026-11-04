@@ -42,7 +42,8 @@ test('a right first choice counts as first try', async () => {
 test('a wrong choice shows feedback, replays, then accepts the retry', async () => {
   const { g, events } = makeGame();
   let tries = 0;
-  const r = await drive(g, g.round(allScenarios('look-up').find(s => s.id === 'lu-space'), { hint: false }), gm => (tries++ ? gm.sc.best : 'pass:0'));
+  const sc = allScenarios('look-up').find(s => s.pattern === 'none-open');
+  const r = await drive(g, g.round(sc, { hint: false }), gm => (tries++ ? gm.sc.best : 'pass:0'));
   assert.equal(r.firstTry, false);
   assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'Stolen!'));
   assert.ok(events.some(e => e[0] === 'caption' && /Nobody was open/.test(e[1])));
@@ -83,7 +84,10 @@ test('a match flows on after kept-the-ball and still ends', async () => {
   assert.ok(live > 0, 'play never continued from a live position');
 });
 
+// Matches shuffle with Math.random; a fixed sequence makes these runs repeatable.
+function seeded(seed) { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; }
 test('after losing the ball in a match he gets to defend from right there', async () => {
+  const real = Math.random; Math.random = seeded(7);
   const { g, events } = makeGame();
   let liveDef = 0, decisions = 0;
   const pick = gm => {
@@ -92,7 +96,99 @@ test('after losing the ball in a match he gets to defend from right there', asyn
     const all = ['pass:0', 'pass:1', 'drib:fwd', 'drib:fl', 'drib:fr', 'drib:left', 'drib:right'];
     return all.find(o => gm.rating(o) === 'bad') || gm.sc.best || 'drib:fwd';
   };
-  await drive(g, g.match(['look-up', 'pass-to-open'], [], 3, 'free'), pick, 1500);
+  try { await drive(g, g.match(['look-up', 'pass-to-open'], [], 5, 'free'), pick, 2500); } finally { Math.random = real; }
   assert.ok(liveDef > 0, 'never got a defending choice after losing the ball');
   assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'Stopped him!' || e[1] === 'Stole it!')), 'defending never stopped them');
+});
+
+test('give-and-go: the pass, then the run, both count', async () => {
+  const { g, events } = makeGame();
+  const sc = allScenarios('give-and-go')[0];
+  const r = await drive(g, g.round(sc, { hint: false }), gm => gm.sc.best);
+  assert.equal(r.firstTry, true); assert.equal(r.stars, 3);
+  assert.equal(g.sc.kind, 'support', 'the second choice is where to run');
+  assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'GOAL!' || e[1] === 'Kept the ball!')));
+});
+
+test('give-and-go: a wrong run is retried on its own, without redoing the pass', async () => {
+  const { g } = makeGame();
+  const sc = allScenarios('give-and-go')[0]; let passes = 0, runs = 0;
+  const r = await drive(g, g.round(sc, { hint: false }), gm => {
+    if (gm.sc.kind !== 'support') { passes++; return gm.sc.best; }
+    return runs++ ? gm.sc.best : 'spot:stay';
+  });
+  assert.equal(r.firstTry, false); assert.equal(passes, 1); assert.equal(runs, 2);
+});
+
+// The real STEAL button grades the moment he taps it.
+test('steal it: tapping when the ball rolls away wins it; tapping early lets him past', async () => {
+  for (const mode of ['good', 'early']) {
+    const { g, events } = makeGame();
+    const sc = allScenarios('steal-it')[0]; let tries = 0;
+    const p = g.round(sc, { hint: true });
+    let done = false, value; p.then(v => { done = true; value = v; });
+    for (let t = 0; t < 120 && !done; t += 1 / 30) {
+      g.tick(1 / 30, t);
+      if (g.canAct && g._choose && g.sc.kind === 'tackle') {
+        const st = g.tackleState();
+        if (tries === 0 && (mode === 'early' ? true : st === 'good')) { tries++; g.stealTap(); }
+        else if (tries > 0 && st === 'good') { tries++; g.stealTap(); }
+      }
+      await null;
+    }
+    assert.ok(done, 'round did not finish');
+    assert.equal(value.firstTry, mode === 'good', `${mode}: firstTry ${value.firstTry}`);
+    assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'Stole it!'));
+    if (mode === 'early') assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'They scored'));
+  }
+});
+
+test('won it? go!: he takes the ball off their player before deciding', async () => {
+  const { g } = makeGame();
+  const sc = allScenarios('won-it-go')[0];
+  g.mode = 'lesson'; g.load(sc);
+  const p = g.pre(); let done = false; p.then(() => { done = true; });
+  for (let t = 0; t < 10 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
+  assert.equal(g.sim.ball.carrier, 'hero');
+  assert.ok(g.sim.a('o1').x < g.sim.a('hero').x, 'the player he beat ends up behind him');
+});
+
+test('steal it: a tap a moment after the ball was loose still counts (reaction time)', async () => {
+  const { g, events } = makeGame();
+  const sc = allScenarios('steal-it')[0];
+  const p = g.round(sc, { hint: false });
+  let done = false, value, closedAt = null, tapped = false; p.then(v => { done = true; value = v; });
+  let wasGood = false;
+  for (let t = 0; t < 120 && !done; t += 1 / 30) {
+    g.tick(1 / 30, t);
+    if (!tapped && g.canAct && g._choose && g.sc.kind === 'tackle') {
+      const good = g.tackleState() === 'good';
+      if (wasGood && !good && closedAt == null) closedAt = t;
+      if (closedAt != null && t - closedAt >= .2) { tapped = true; g.stealTap(); }
+      wasGood = good;
+    } else if (tapped && g.canAct && g._choose) g.choose(g.sc.best);
+    await null;
+  }
+  assert.ok(done); assert.equal(value.firstTry, true);
+  assert.ok(events.some(e => e[0] === 'banner' && e[1] === 'Stole it!'));
+});
+
+test('free play with every lesson (1v1s and give-and-gos included) runs to the end', async () => {
+  const { PATH } = await import('../js/skills.js');
+  const { generate } = await import('../js/generate.js');
+  const ids = PATH.map(s => s.id), extra = ids.flatMap((id, i) => [generate(id, 500 + i), generate(id, 900 + i)]).filter(Boolean);
+  const { g } = makeGame(); let decisions = 0; const kinds = new Set();
+  const s = await drive(g, g.match(ids, extra, 3, 'free'), gm => { decisions++; kinds.add(gm.sc.kind); return gm.sc.best || (gm.sc.kind === 'defense' ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); }, 1500);
+  assert.ok(s.us === 3 || s.them === 3 || decisions > 60, `match did not finish (${JSON.stringify(s)})`);
+  assert.ok(decisions > 3);
+});
+
+test('give-and-go: anything but the pass in step 1 is a miss, never a skip to step 2', async () => {
+  const { g } = makeGame();
+  const sc = allScenarios('give-and-go')[0]; let first = true, step2 = 0;
+  const r = await drive(g, g.round(sc, { hint: false }), gm => {
+    if (gm.sc.kind === 'support') { step2++; return gm.sc.best; }
+    const o = first ? 'drib:back' : gm.sc.best; first = false; return o;
+  });
+  assert.equal(r.firstTry, false); assert.equal(step2, 1);
 });

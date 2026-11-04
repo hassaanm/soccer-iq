@@ -2,13 +2,13 @@
 import { World } from './world.js';
 import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
-import { PATH, skillById, pickRounds } from './skills.js';
+import { PATH, CHAPTERS, skillById, sessionRounds } from './skills.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
 import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, setMuted, setVolumes, voiceVolume, duck, loadVoice, canSpeak, speakClips, stopVoice, preloadClips } from './sound.js';
 import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
-import { load, save, nextSkill, reviewsDue, finishSession, skillState, isMastered, defaultProgress } from './progress.js';
+import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, defaultProgress } from './progress.js';
 
 const $ = s => document.querySelector(s);
 const P = load();
@@ -193,17 +193,19 @@ function renderPickers(flip) {
   renderLessons();
 }
 // A lesson unlocks after the one before it has been played once (or once it has been played itself).
-const lessonOpen = i => i === 0 || (P.skills[PATH[i - 1].id]?.sessions || 0) > 0 || (P.skills[PATH[i].id]?.sessions || 0) > 0;
-// Lesson chips on the home screen: each unlocks after the one before it has been played once.
+const lessonOpen = i => isOpen(P, PATH, i);
+// The lesson sheet: one row per chapter. Stars show the level reached (1–3); each level needs a good session
+// on a new day. Picking a tile plays it next (once); otherwise PLAY uses the coach's pick.
 function renderLessons() {
   const cur = nextSkill(P, PATH), sk = skillById(cur);
-  $('#lessons').innerHTML = PATH.map((l, i) => {
-    const st = P.skills[l.id], open = lessonOpen(i);
+  const tile = l => {
+    const i = PATH.indexOf(l), open = lessonOpen(i), lv = level(P, l.id);
     return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
-      <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${st?.sessions ? '★'.repeat(Math.max(1, Math.min(3, st.box))) : ''}</span></button>`;
-  }).join('');
+      <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
+  };
+  $('#lessons').innerHTML = CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(tile).join('')}</div></div>`).join('');
   $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
-  document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.settings.skill = c.dataset.id; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
+  document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.pick = c.dataset.id; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
 }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 $('#sheetClose').onclick = () => $('#lessonSheet').classList.add('hidden');
@@ -252,7 +254,9 @@ const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floo
 let running = false;
 async function runSession() {
   if (running) return; running = true;
-  const skillId = nextSkill(P, PATH), sk = skillById(skillId), reviews = reviewsDue(P, PATH, skillId).slice(0, 2);
+  const skillId = nextSkill(P, PATH), sk = skillById(skillId), lvl = level(P, skillId);
+  // Reviews: 1 round in a lesson's first session, 2 at Levels 1–2, 3 at Level 3 (mixing in more old lessons).
+  const reviews = reviewsDue(P, PATH, skillId).slice(0, lvl === 0 ? 1 : lvl >= 3 ? 3 : 2);
   const us = teamById(P.us), them = teamById(P.them), hero = displayName(us.players[0].name);
   game.setTeams(us, them);
   preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
@@ -263,34 +267,44 @@ async function runSession() {
   const watch = await card({ emoji: sk.emoji, title: sk.kid, sub: firstTime ? `Watch ${hero} first` : `Want to watch ${hero} first?`,
     button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
   if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
-  await card({ emoji: '⭐', title: 'Your turn!', sub: sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.` : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`, button: 'Play' });
-  // First session: the hand-made scenarios. After that, about two thirds are freshly generated so no two sessions match.
-  // "Look up" starts with its hand-made rounds; everything else (and later sessions) is freshly generated.
-  const n = P.settings.rounds, gen = skillId === 'look-up' && firstTime ? 0 : skillId === 'look-up' ? Math.round(n * 2 / 3) : n;
-  const rounds = shuffle([...pickRounds([skillId, ...reviews], n - gen), ...fresh(gen, [skillId])]), results = [];
+  const how = sk.id === 'steal-it' ? `You are ${hero}, defending. Tap STEAL when the ball rolls away from his feet.`
+    : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
+    : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
+    : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
+  await card({ emoji: '⭐', title: 'Your turn!', sub: how, button: 'Play' });
+  // This lesson's rounds (the same scenes the first time, fresh ones after), with one review round from each
+  // lesson that is due mixed in after the first two.
+  const n = P.settings.rounds, own = sessionRounds(skillId, n - reviews.length, { first: firstTime, level: Math.max(1, lvl) });
+  const rev = reviews.map(id => generate(id, Math.floor(Math.random() * 1e9), { even: true })).filter(Boolean);
+  const rounds = [...own.slice(0, 2), ...shuffle([...own.slice(2), ...rev])], results = [];
   let misses = 0;
-  hud.dots(results, n);
+  hud.dots(results, rounds.length);
   for (let i = 0; i < rounds.length; i++) {
-    const r = await game.round(rounds[i], { hint: i < 2 || misses >= 2 });
-    results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, n);
+    // Hints (the glowing cue, LOOK pulsing) for the first two rounds at Level 1, and after two misses in a row.
+    const r = await game.round(rounds[i], { hint: (i < 2 && lvl <= 1) || misses >= 2 });
+    results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
+    if (rounds[i].skill !== skillId) { reviewed(P, rounds[i].skill, r.firstTry && r.stars === 3); save(P); }
   }
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  game.pushUnlocked = lessonOpen(PATH.findIndex(s => s.id === 'dribble-to-space'));
+  game.pushUnlocked = level(P, 'dribble-to-space') > 0; // big pushes once he has played "Run into space"
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const firstTry = results.filter(Boolean).length, won = score.us > score.them;
-  finishSession(P, skillId, firstTry, rounds.length);
+  const st = finishSession(P, skillId, firstTry, rounds.length); P.pick = null;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
   showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
   // One circle per round, like the dots during the lesson: gold = right on the first try.
   $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
   $('#results .roundsnote').textContent = `${firstTry} of ${rounds.length} right on the first try`;
+  // Level news, then a backyard game for the grown-up.
+  $('#results .levelup').textContent = st.leveledUp ? `${'⭐'.repeat(st.level)} Level ${st.level}!` : '';
+  $('#results .outside').innerHTML = sk.outside ? `<b>Try it outside:</b> ${sk.outside}` : '';
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   $('#nextLessonBtn').classList.toggle('hidden', !nextSk);
-  $('#nextLessonBtn').onclick = () => { P.settings.skill = nextSk.id; save(P); runSession(); };
+  $('#nextLessonBtn').onclick = () => { P.pick = nextSk.id; save(P); runSession(); };
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
-  $('#againBtn').onclick = () => runSession();
+  $('#againBtn').onclick = () => { P.pick = skillId; runSession(); };
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
@@ -305,13 +319,14 @@ async function runFreePlay() {
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
   if (won) showSticker('🏆', true); else { $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden'); $('#results .emoji').textContent = '⚽'; }
   $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
-  $('#results .roundsrow').innerHTML = ''; $('#results .roundsnote').textContent = ''; $('#nextLessonBtn').classList.add('hidden'); $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
+  $('#results .roundsrow').innerHTML = ''; $('#results .roundsnote').textContent = ''; $('#results .levelup').textContent = ''; $('#results .outside').textContent = ''; $('#nextLessonBtn').classList.add('hidden'); $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won the match!' : 'Good game!');
   $('#againBtn').onclick = runFreePlay;
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#freeBtn').onclick = runFreePlay;
 $('#shootBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.shoot(); });
+$('#stealBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.stealTap(); });
 $('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
 $('#touchBig').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('big'); });
 $('#resultsHome').onclick = () => show('#home');
@@ -338,7 +353,7 @@ function openMenu() {
   $('#voiceChk').checked = P.settings.voice; $('#recordedChk').checked = P.settings.recorded !== false; $('#soundChk').checked = P.settings.sound !== false; $('#musicChk').checked = P.settings.music !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
-    return `<div><span>${s.emoji} ${s.adult}</span><span>${!s.ready ? 'not built yet' : !st ? 'not started' : isMastered(P, s.id) ? 'mastered ✓' : `box ${st.box}/4 · ${st.firstTry}/${st.rounds} first try`}</span></div>`;
+    return `<div><span>${s.emoji} ${s.adult}</span><span>${!s.ready ? 'not built yet' : !st ? 'not started' : `Level ${level(P, s.id)} · ${st.days || 1} day${(st.days || 1) > 1 ? 's' : ''} · ${st.firstTry}/${st.rounds} first try`}</span></div>`;
   }).join('') + `<div><span>Sessions played</span><span>${P.sessions}</span></div>`;
   show('#menu');
 }
@@ -386,3 +401,4 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 window.__game = game; // for debugging in the console
+try { sessionStorage.removeItem('healed'); } catch { /* storage blocked */ } // booted fine (see index.html)

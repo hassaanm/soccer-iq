@@ -11,8 +11,8 @@ export const clean = t => t.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '').trim();
 export function spokenLines() {
   const cues = new Set();
   for (const sk of PATH) {
-    for (const sc of allScenarios(sk.id)) if (sc.cue) cues.add(sc.cue);
-    for (let seed = 1; seed <= 400; seed++) { const sc = generate(sk.id, seed); if (sc?.cue) cues.add(sc.cue); }
+    for (const sc of allScenarios(sk.id)) for (const c of [sc.cue, sc.then?.cue]) if (c) cues.add(c);
+    for (let seed = 1; seed <= 400; seed++) { const sc = generate(sk.id, seed); for (const c of [sc?.cue, sc?.then?.cue]) if (c) cues.add(c); }
   }
   for (const c of ['{m0} was open!', '{m1} was open!', 'That was a tough spot!', 'Lots of space! Push it and go!', 'There was space to run into!',
     'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!']) cues.add(c);
@@ -21,6 +21,7 @@ export function spokenLines() {
     'Your turn!', 'Mini match!', 'Free play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
     'See who is open?', 'Where is the space?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
+    'You won the ball!', 'Watch the ball.', 'Now run past him!',
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
   ];
   for (const c of cues) {

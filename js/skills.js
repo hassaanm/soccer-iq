@@ -1,55 +1,64 @@
-// The learning path (see research/skill-tree.md) and the scenarios for each skill that is ready.
-import { mirrorScenario, shuffle, PITCH } from './geom.js';
+// The learning path (see research/curriculum-plan.md) and the scenarios for each lesson.
+import { shuffle, PITCH } from './geom.js';
 import { generate, generates, demoFor } from './generate.js';
 export { PITCH };
 
-// side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one idea, said to him.
+// Four chapters in the order the federations teach them: me and the ball, winning it back, playing with
+// friends, then the team.
+export const CHAPTERS = ['Me and the ball', 'Win it back', 'Me and my friends', 'Our team'];
+
+// side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one cue, said to him.
+// outside: a backyard game for the grown-up (shown on the results screen, not spoken).
 export const PATH = [
-  { id: 'look-up', emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding', ready: true, tip: 'Look up before you decide.' },
-  { id: 'dribble-to-space', emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true, tip: 'Lots of space? Push it and go! Defender close? Keep it close.' },
-  { id: 'take-him-on', emoji: '⚡', kid: 'Take him on!', side: 'attack', adult: '1v1: stay on the ball and dribble past a lone defender', ready: true, tip: 'Only one defender? Dribble past him!' },
-  { id: 'shoot-close', emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true, tip: 'Close to the goal and nobody in the way? Shoot!' },
-  { id: 'get-goal-side', emoji: '🏠', kid: 'Get in front!', side: 'defense', adult: 'Nobody on the ball? Recover goal-side of it and win it from the front', ready: true, tip: 'Nobody on the ball? Get in front of it. Stop him going to your goal!' },
-  { id: 'one-goes', emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true, tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.' },
-  { id: 'see-the-trap', emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball', ready: true, tip: 'Two defenders coming? Pass before they trap you.' },
-  { id: 'get-open', emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true, tip: 'Your friend has the ball? Find open space where they can pass to you.' },
-  { id: 'mark-the-free-one', emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true, tip: 'Guard the open player. Stand between him and your goal.' },
-  { id: 'pass-to-open', emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true, tip: 'Pass to the friend with nobody right next to him.' },
-  { id: 'forward-first', emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Look forward, then sideways, then back', ready: true, tip: 'Look to the goal first!' },
+  { id: 'look-up', ch: 0, emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding: space, goal, then friends', ready: true,
+    tip: 'Look up before you decide. Where is the space?', outside: 'Dribble around the yard. Hold up some fingers: he shouts how many without stopping.' },
+  { id: 'dribble-to-space', ch: 0, emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true,
+    tip: 'Lots of space? Push it and go! Defender close? Keep it close.', outside: 'Open grass: he pushes it far and races after it. You stand close: he keeps it close and goes around you.' },
+  { id: 'take-him-on', ch: 0, emoji: '⚡', kid: 'Take him on!', side: 'attack', adult: '1v1: stay on the ball and dribble past a lone defender', ready: true,
+    tip: 'Only one defender? Dribble past him!', outside: 'Play 1v1 to a small goal. A goal only counts if he dribbles past you first.' },
+  { id: 'shoot-close', ch: 0, emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true,
+    tip: 'Close to the goal and nobody in the way? Shoot!', outside: 'Mark a line near the goal. Goals only count from inside the line, so he dribbles closer first.' },
+  { id: 'get-goal-side', ch: 1, emoji: '💪', kid: 'Win it back!', side: 'defense', adult: 'Lost the ball: the closest player gets between the ball and goal and wins it back', ready: true,
+    tip: 'Lost the ball? Get in front of it and win it back!', outside: 'Take the ball off him and dribble to his goal. He races to get in front of you before you shoot.' },
+  { id: 'won-it-go', ch: 1, emoji: '🚀', kid: 'Won it? Go!', side: 'attack', adult: 'Transition: after winning the ball, attack fast while the other team is out of place', ready: true,
+    tip: 'You won the ball? Go forward fast!', outside: 'Dribble at him. When he wins the ball, he races to your end line before you can turn around.' },
+  { id: 'one-goes', ch: 1, emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true,
+    tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.', outside: 'With a friend: only one of them may chase you. The other guards a cone you want to pass to.' },
+  { id: 'see-the-trap', ch: 2, emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball to a free friend', ready: true,
+    tip: 'Two defenders coming? Pass to a friend who is free.', outside: 'Play 2v1 with a friend on his team. When you and another grown-up close in on him, he passes.' },
+  { id: 'get-open', ch: 2, emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true,
+    tip: 'Your friend has the ball? Find open space where they can pass to you.', outside: 'You have the ball and a cone stands between you. He moves until you can pass to him.' },
+  { id: 'pass-to-open', ch: 2, emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true,
+    tip: 'Pass to the friend with nobody right next to him.', outside: 'Two cones are friends. Stand next to one: he passes to the other.' },
+  { id: 'give-and-go', ch: 2, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
+    tip: 'Pass it, then run past your defender to get it back!', outside: 'Be a wall: he passes to you, runs past a cone, and you pass it back in front of him.' },
+  { id: 'mark-the-free-one', ch: 3, emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true,
+    tip: 'Guard the open player. Stand between him and your goal.', outside: 'Two cones are your players. You pass to whichever cone he is not standing in front of.' },
+  { id: 'steal-it', ch: 3, emoji: '🦶', kid: 'Steal it!', side: 'defense', adult: '1v1 defending: stay in front, wait, and tackle when the touch is loose', ready: true,
+    tip: 'Stay in front of him. Steal it when the ball rolls away from his feet!', outside: 'Dribble slowly at him with some big touches. He waits in front and pokes the ball away after a big touch.' },
+  { id: 'forward-first', ch: 3, emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Play forward (shoot, dribble or pass); nothing forward: keep the ball', ready: true,
+    tip: 'Look to the goal first! Nothing forward? Keep the ball.', outside: 'Before he plays the ball, he points to the goal, then to a friend ahead.' },
 ];
 export const skillById = id => PATH.find(s => s.id === id);
 
-// Positions are meters on a 30 x 20 pitch; we attack toward x = 30.
-// hero/opps move to heroTo/oppsTo before the freeze. Options: 'pass:0', 'pass:1', 'drib:fwd|left|right|back'.
-// {m0}/{m1} in a cue become teammate names.
-const LOOK_UP = [
-  { id: 'lu-wide', hero: [6, 10], heroTo: [9, 10], mates: [[14, 3.5], [16, 13]],
-    opps: [[13, 10.5], [15.5, 13.5], [22, 9]], oppsTo: [[10.8, 10.3], [15, 12.3], null],
-    best: 'pass:0', cue: '{m0} was open out wide!' },
-  { id: 'lu-ahead', hero: [6, 10], heroTo: [9, 10], mates: [[16, 10], [12, 3]],
-    opps: [[11, 14], [11.5, 5], [24, 10]], oppsTo: [[9.8, 11.9], [11.6, 4.2], null],
-    best: 'pass:0', ok: ['drib:fwd'], cue: '{m0} was open in front of you!' },
-  { id: 'lu-space', hero: [6, 10], heroTo: [9, 10], mates: [[14, 4], [14, 16]],
-    opps: [[10, 15], [16, 6], [16, 14]], oppsTo: [[9.6, 12.4], [13.6, 4.9], [13.6, 15.1]],
-    best: 'drib:fwd', cue: 'Nobody was open. Run into the space!' },
-  { id: 'lu-behind', hero: [9, 10], heroTo: [12, 10], mates: [[8, 4], [18, 15]],
-    opps: [[17, 10.5], [16, 13], [18, 13.6]], oppsTo: [[13.6, 10.3], [13.2, 11.9], [17.6, 14.3]],
-    best: 'pass:0', cue: 'Two defenders were close to you, so pass it away! {m0} was open behind you.' },
-  { id: 'lu-forward', hero: [6, 10], heroTo: [9, 10], mates: [[8, 16], [17, 6]],
-    opps: [[12, 11], [14, 16.5], [24, 12]], oppsTo: [[10.9, 10.6], null, null],
-    best: 'pass:1', ok: ['pass:0'], cue: '{m1} was open and closer to the goal!' },
-];
-
-const BANK = { 'look-up': LOOK_UP };
-
-// Hand-made scenarios (and their mirror images) plus a fixed sample of generated ones.
+// A fixed sample of generated scenarios per lesson (tests, the audit, and the mini match's starting plays).
 export function allScenarios(skillId) {
-  const base = (BANK[skillId] || []).flatMap(sc => [{ ...sc, skill: skillId }, { ...mirrorScenario(sc, PITCH.W), skill: skillId }]);
-  const gen = generates(skillId) && !BANK[skillId] ? Array.from({ length: 10 }, (_, i) => generate(skillId, 101 + i)).filter(Boolean) : [];
-  return [...base, ...gen];
+  return generates(skillId) ? Array.from({ length: 10 }, (_, i) => generate(skillId, 101 + i)).filter(Boolean) : [];
 }
 
-export const demoScenario = skillId => BANK[skillId] ? { ...BANK[skillId][0], skill: skillId } : demoFor(skillId);
+export const demoScenario = skillId => demoFor(skillId);
+
+// The rounds for one lesson session. The first time through, the same scenes every time (seeds 1..n), so the
+// lesson starts familiar; after that, fresh scenes. Level 1 mostly plays the main pattern; Level 2 and up give
+// every pattern (contrast rounds included) the same share.
+export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math.random } = {}) {
+  const out = [];
+  for (let i = 0; out.length < n && i < n * 4; i++) {
+    const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { even: !first && level >= 2 });
+    if (sc) out.push(sc);
+  }
+  return out;
+}
 
 // A round list: n scenarios, no repeats until the bank runs out, never the same base twice in a row.
 export function pickRounds(skillIds, n, rnd = Math.random) {

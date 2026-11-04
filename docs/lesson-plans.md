@@ -13,18 +13,36 @@ The skill order comes from `research/skill-tree.md`; the teaching rules come fro
 
 ## Lessons (all built)
 
-Each lesson has a generator in `js/generate.js` with one or more teaching patterns. Every generated play is checked by `npm run audit:gen`.
+The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson has a generator in
+`js/generate.js`; every generated play is checked by the tests and `npm run audit:gen`.
 
-| Lesson | Side | Patterns | The right answer |
-|---|---|---|---|
-| Look up 👀 | attack | one open / nobody open / two open | look first, then the open friend or the space |
-| Run home first 🏠 | defense | goal-side | run to the spot between the ball and your goal |
-| Run into space 💨 | attack | space-far / space-near | lots of space: big push; defender near: small touches around him |
-| Only one bee chases 🐝 | defense | one-goes / you-go | a friend is on the ball: guard the open player; nobody is: you go |
-| Two shirts? Let it go! 🚧 | attack | trap | pass before two defenders close you in |
-| Guard the open player 🛡️ | defense | mark-free | stand goal-side of the free attacker, not behind him |
-| Pass to the open friend 🎯 | attack | marked / one open | the friend with nobody right next to him |
-| Forward first ⬆️ | attack | forward / two open | forward open friend (3★) beats the safe back pass (2★) |
+| # | Lesson | Side | Patterns | The right answer |
+|---|---|---|---|---|
+| 1 | Look up! 👀 | attack | carry / none-open / one-open / shot-open | look first, then space, goal, or the open friend |
+| 2 | Run into space 💨 | attack | space-far / space-near / space-behind | lots of space: big push; defender near: small touches around him |
+| 3 | Take him on ⚡ | attack | trap-one / carry / trap | one defender: dribble past him |
+| 4 | Shoot when close! 🥅 | attack | shot-open / shot-blocked / shot-far | close and clear: shoot; blocked: go around; far: get closer |
+| 5 | Win it back! 💪 | defense | goal-side / you-go | nobody on the ball: get in front of it |
+| 6 | Won it? Go! 🚀 | attack | counter / counter-shot | just won it: push forward fast, or shoot if close |
+| 7 | Only one bee chases 🐝 | defense | one-goes / you-go / gs-covered | a friend is on the ball: guard the open player; nobody is: you go |
+| 8 | Two shirts? Let it go! 🚧 | attack | trap / trap-one | two defenders: pass to the free friend |
+| 9 | Get open! 🙋 | off the ball | shadow / spread / stay-open | move to where a pass can reach you |
+| 10 | Pass to the open friend 🎯 | attack | marked / one-open / carry | the friend with nobody next to him |
+| 11 | Pass and go! 🔁 | attack, then off the ball | give-go | pass to the wall friend, then run past the defender |
+| 12 | Guard the open player 🛡️ | defense | mark-free / gs-covered | stand goal-side of the free attacker |
+| 13 | Steal it! 🦶 | defense (1v1, real time) | steal / steal-fast / steal-big | wait, then STEAL when the ball rolls away from his feet |
+| 14 | Forward first ⬆️ | attack | forward / two-open / carry | forward open friend (3★) beats the safe back pass (2★) |
+
+## Replay
+
+- **Levels 1–3 per lesson.** A good session (75%+ first try) raises a level, at most once a day. Level 1 plays
+  mostly the main pattern with hints; Level 2 gives every pattern the same share, without hints; Level 3
+  mixes in a third review lesson. The level shown never drops.
+- **Reviews.** Played lessons come back as one review round each after 1, 3, 7, 14 and 30 days.
+- **Coach's pick (PLAY).** The grown-up's locked lesson, then the lesson he picked, then a Level 1 lesson not
+  finished today, then the next new lesson, then the most overdue one.
+- **Same scenes the first time.** A lesson's first session uses fixed seeds; later sessions are fresh.
+- **Mini match and free play** mix every lesson he has played.
 
 ## Original notes
 

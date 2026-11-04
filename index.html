@@ -37,6 +37,7 @@
   <button class="btn btn-gold btn-round" id="lookBtn"><i>👀</i><span>LOOK UP</span></button>
   <button class="btn btn-blue btn-round" id="passBtn"><i>⚽</i><span>PASS</span></button>
   <button class="btn btn-gold btn-round" id="shootBtn"><i>🥅</i><span>SHOOT</span></button>
+  <button class="btn btn-gold btn-round" id="stealBtn"><i>🦶</i><span>STEAL</span></button>
   <button class="btn btn-green btn-round" id="dribBtn"><i>👟</i><span>DRIBBLE</span></button>
 </div>
 
@@ -94,7 +95,7 @@
 <section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><div class="btns"><button id="cardMain" class="btn btn-green btn-lg"></button><button id="cardAlt" class="btn btn-ghost"></button></div></div></section>
 
 <section id="results" class="screen hidden"><div class="panel">
-  <div class="emoji"></div><div class="sticker hidden"><div class="face"><span></span><i></i></div><b>New sticker!</b></div><h2></h2><div class="roundsrow"></div><div class="roundsnote"></div><p></p>
+  <div class="emoji"></div><div class="sticker hidden"><div class="face"><span></span><i></i></div><b>New sticker!</b></div><h2></h2><div class="roundsrow"></div><div class="roundsnote"></div><div class="levelup"></div><p></p><div class="outside"></div>
   <div class="btns"><button id="nextLessonBtn" class="btn btn-green btn-lg">Next lesson ▶</button><button id="againBtn" class="btn btn-blue">↺ Play again</button><button id="resultsHome" class="btn btn-ghost">Home</button></div>
 </div></section>
 
@@ -114,6 +115,16 @@
 </div></section>
 
 <div id="rotate"><div>📱↻</div><p>Turn your phone sideways</p></div>
+<script>
+// Right after an update the phone can mix new files with cached old ones, and the game fails to start.
+// If that happens, fetch every file fresh once, then reload.
+addEventListener('error', e => {
+  if (!/export|import|module/i.test(e.message || '')) return;
+  try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
+  const files = ['main', 'game', 'skills', 'generate', 'progress', 'sim', 'world', 'sound', 'voice', 'geom', 'teams', 'version'].map(f => 'js/' + f + '.js').concat('css/app.css');
+  Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
+});
+</script>
 <script type="module" src="js/main.js"></script>
 </body>
 </html>

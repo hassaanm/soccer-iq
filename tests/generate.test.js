@@ -34,7 +34,7 @@ test('every lesson makes every pattern, each with 3 defenders, 2 teammates, a ri
       assert.ok(sc.best && sc.cue, `${sc.id}: no right answer or cue`);
       assert.ok(optionsFor(sc).includes(sc.best), `${sc.id}: right answer ${sc.best} is not an option`);
     }
-    assert.ok(seen.size >= 2 || sk.id === 'mark-the-free-one', `${sk.id}: only ${[...seen]}`);
+    assert.ok(seen.size >= 2 || sk.id === 'give-and-go', `${sk.id}: only ${[...seen]}`);
   }
 });
 
