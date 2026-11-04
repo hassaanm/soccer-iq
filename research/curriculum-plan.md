@@ -71,17 +71,17 @@ check was dropped in the first pass and added back in the second (see below).
 | **Chapter 2: Win it back (5–7)** | | | | |
 | 5 | Win it back! 💪 | defense | goal-side, you-go, goal-side | "Lost it? Get in front of the ball and win it back!" |
 | 6 | Steal it! 🦶 | defense, 1v1 timing | steal, steal-fast, steal-big | "Stay in front. Steal it when it rolls away from his feet!" |
-| 7 | Won it? Go! 🚀 | attack | counter, counter, counter-shot | "You won it! Go forward fast!" |
+| 7 | Won it? Go! 🚀 | attack | counter, counter, counter-pass, counter-shot | "You won it! Go forward fast!" |
 | **Chapter 3: Me and my friends (6–8)** | | | | |
 | 8 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Ball coming? Peek over your shoulder, then turn away from him." |
 | 9 | Two shirts? Let it go 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to a free friend." |
 | 10 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
 | 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
-| 12 | Pass and go! 🔁 | attack, then off the ball | give-go | "Pass it, then run past him to get it back!" |
+| 12 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past him to get it back!" |
 | **Chapter 4: Our team (7–8)** | | | | |
 | 13 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
 | 14 | Guard the open player 🛡️ | defense | mark-free, mark-free, gs-covered | "Find the player nobody is guarding." |
-| 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry | "Look to the goal first! Nothing forward? Keep the ball." |
+| 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
 
 **Why this order**
 
@@ -239,3 +239,15 @@ Nov 4 session. Where sources are thin (scanning under 12, screen-to-pitch transf
   on one side; the first touch (TURN ↩️ or ↪️) should take him away from that defender. Peeking earns "You peeked!".
 - **Chapters reordered:** Steal it! is in Win it back; Only one bee chases is in Our team.
 - **Camera:** spot rounds start framed on the ball and every spot when they fit on screen.
+
+## More situations (v33)
+
+Layouts were already unlimited (every scene is generated fresh), but each lesson had only 1–4 situations, and
+some never happened near their goal. Added only where the situation is real and teaches the same cue:
+- **Won it? Go!:** counter-pass. He wins it, a defender gets back in his way, and a friend is already running
+  ahead: the fast way forward is the pass.
+- **Pass and go!:** give-go-ahead. The wall friend is ahead and to one side (a forward one-two), not only beside him.
+- **Forward first:** shot-open. "Look to the goal first" now sometimes means shooting.
+- **Field position:** about 3 in 10 scenes for take him on, two shirts, pass to the open friend, pass and go, and
+  peek then turn now happen near their goal. Any layout there with a clear shot is skipped, because a clear shot
+  belongs to "Shoot!" and would muddle a passing or dribbling lesson.
