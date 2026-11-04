@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+  <radialGradient id="shade" cx="40%" cy="35%" r="70%"><stop offset="60%" stop-color="#fff"/><stop offset="100%" stop-color="#d9d4e4"/></radialGradient>
+  <clipPath id="ball"><circle cx="512" cy="522" r="350"/></clipPath>
+</defs>
+<rect width="1024" height="1024" fill="#ffc89a"/>
+<ellipse cx="512" cy="906" rx="280" ry="34" fill="#e8a777"/>
+<circle cx="512" cy="522" r="350" fill="url(#shade)"/>
+<g clip-path="url(#ball)" fill="#2c2039" stroke="#2c2039" stroke-width="16" stroke-linejoin="round" stroke-linecap="round">
+  <polygon points="512.0,417.0 611.9,489.6 573.7,606.9 450.3,606.9 412.1,489.6"/><polygon points="512.0,312.0 412.1,239.4 450.3,122.1 573.7,122.1 611.9,239.4"/><polygon points="711.7,457.1 749.9,339.7 873.3,339.7 911.4,457.1 811.6,529.7"/><polygon points="635.4,691.9 758.9,691.9 797.0,809.3 697.2,881.8 597.3,809.3"/><polygon points="388.6,691.9 426.7,809.3 326.8,881.8 227.0,809.3 265.1,691.9"/><polygon points="312.3,457.1 212.4,529.7 112.6,457.1 150.7,339.7 274.1,339.7"/><path d="M512.0,417.0 L512.0,312.0 M611.9,489.6 L711.7,457.1 M573.7,606.9 L635.4,691.9 M450.3,606.9 L388.6,691.9 M412.1,489.6 L312.3,457.1 " fill="none"/>
+</g>
+<circle cx="512" cy="522" r="350" fill="none" stroke="#2c2039" stroke-width="26"/>
+</svg>
