@@ -181,12 +181,27 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessonSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .sheet{padding:10px 16px 10px;width:min(780px,96vw);box-sizing:border-box;position:relative}
 .sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
-.sheet #sheetClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0}
+.sheet :is(#sheetClose,#albumClose){position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
+/* Sticker album: one row per chapter, a sticker per lesson. The ring shows the level: none, bronze, silver, gold. */
+#albumSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#album{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px}
+#album .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
+#album .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
+#album .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
+#album .row{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+#album .st{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;font-weight:700;color:var(--ink-soft)}
+#album .st .f{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:25px;background:#fff;box-shadow:0 0 0 3px var(--line),0 3px 0 rgba(36,25,58,.15)}
+#album .st.l1 .f{box-shadow:0 0 0 4px #d39a6a,0 3px 0 rgba(36,25,58,.15)}
+#album .st.l2 .f{box-shadow:0 0 0 4px #b9c2cf,0 3px 0 rgba(36,25,58,.15)}
+#album .st.l3 .f{box-shadow:0 0 0 4px var(--gold),0 0 12px var(--gold),0 3px 0 rgba(36,25,58,.15)}
+#album .st.none .f{background:rgba(36,25,58,.08);filter:grayscale(1);opacity:.45}
+#album .trophies{font-size:13px;font-weight:700;color:var(--ink);padding:2px 0 0}
+#albumBtn{font-size:22px}
 #lessons{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px 3px 5px}
 #lessons .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
 #lessons .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
 #lessons .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
-#lessons .row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+#lessons .row{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
 #lessons .tile{position:relative;border:0;border-radius:14px;background:#fff;padding:5px 4px 4px;font:inherit;color:var(--ink);cursor:pointer;
   box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-height:56px}
 #lessons .tile .e{font-size:20px;line-height:1.1}
@@ -207,6 +222,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #stealBtn i{font-size:46px}
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free])[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
 #hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
+/* "Peek, then turn": two big turn buttons (his left, his right) under the right thumb. */
+#turnL{right:calc(128px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
+#turnR{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
+.turnBtn i{font-size:36px}
+#hud:is([data-mode=lesson],[data-mode=match],[data-mode=free])[data-phase=decide][data-kind=receive] .turnBtn{display:flex}
+#hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 .levelup{font-size:18px;font-weight:700;color:var(--gold-d);min-height:0}
 .levelup:empty,.outside:empty{display:none}
 .outside{font-size:12.5px;color:var(--ink-soft);max-width:440px;margin:6px auto 0;line-height:1.3}

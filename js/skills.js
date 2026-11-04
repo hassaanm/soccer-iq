@@ -3,8 +3,8 @@ import { shuffle, PITCH } from './geom.js';
 import { generate, generates, demoFor } from './generate.js';
 export { PITCH };
 
-// Four chapters in the order the federations teach them: me and the ball, winning it back, playing with
-// friends, then the team.
+// Four chapters in the order the federations and the top academies teach them: me and the ball, winning it
+// back on my own, playing with friends (starting with looking before the ball comes), then the team.
 export const CHAPTERS = ['Me and the ball', 'Win it back', 'Me and my friends', 'Our team'];
 
 // side: 'attack' (he has the ball) or 'defense' (the other team has it). tip: the one cue, said to him.
@@ -20,10 +20,12 @@ export const PATH = [
     tip: 'Close to the goal and nobody in the way? Shoot!', outside: 'Mark a line near the goal. Goals only count from inside the line, so he dribbles closer first.' },
   { id: 'get-goal-side', ch: 1, emoji: '💪', kid: 'Win it back!', side: 'defense', adult: 'Lost the ball: the closest player gets between the ball and goal and wins it back', ready: true,
     tip: 'Lost the ball? Get in front of it and win it back!', outside: 'Take the ball off him and dribble to his goal. He races to get in front of you before you shoot.' },
+  { id: 'steal-it', ch: 1, emoji: '🦶', kid: 'Steal it!', side: 'defense', adult: '1v1 defending: stay in front, wait, and tackle when the touch is loose', ready: true,
+    tip: 'Stay in front of him. Steal it when the ball rolls away from his feet!', outside: 'Dribble slowly at him with some big touches. He waits in front and pokes the ball away after a big touch.' },
   { id: 'won-it-go', ch: 1, emoji: '🚀', kid: 'Won it? Go!', side: 'attack', adult: 'Transition: after winning the ball, attack fast while the other team is out of place', ready: true,
     tip: 'You won the ball? Go forward fast!', outside: 'Dribble at him. When he wins the ball, he races to your end line before you can turn around.' },
-  { id: 'one-goes', ch: 1, emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true,
-    tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.', outside: 'With a friend: only one of them may chase you. The other guards a cone you want to pass to.' },
+  { id: 'peek-and-turn', ch: 2, emoji: '🔄', kid: 'Peek, then turn!', side: 'attack', adult: 'Scan before receiving (shoulder check) and turn away from pressure with the first touch', ready: true,
+    tip: 'The ball is coming? Peek over your shoulder first. Then turn away from the defender.', outside: 'Pass to him while you creep up behind him on one side. He peeks, then turns the other way with his first touch.' },
   { id: 'see-the-trap', ch: 2, emoji: '🚧', kid: 'Two shirts? Let it go!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball to a free friend', ready: true,
     tip: 'Two defenders coming? Pass to a friend who is free.', outside: 'Play 2v1 with a friend on his team. When you and another grown-up close in on him, he passes.' },
   { id: 'get-open', ch: 2, emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true,
@@ -32,10 +34,10 @@ export const PATH = [
     tip: 'Pass to the friend with nobody right next to him.', outside: 'Two cones are friends. Stand next to one: he passes to the other.' },
   { id: 'give-and-go', ch: 2, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
     tip: 'Pass it, then run past your defender to get it back!', outside: 'Be a wall: he passes to you, runs past a cone, and you pass it back in front of him.' },
+  { id: 'one-goes', ch: 3, emoji: '🐝', kid: 'Only one bee chases', side: 'defense', adult: 'One presses, the others mark', ready: true,
+    tip: 'Only one bee chases the ball. If a friend is on it, guard the open player.', outside: 'With a friend: only one of them may chase you. The other guards a cone you want to pass to.' },
   { id: 'mark-the-free-one', ch: 3, emoji: '🛡️', kid: 'Guard the open player', side: 'defense', adult: 'Mark the free attacker, goal-side', ready: true,
     tip: 'Guard the open player. Stand between him and your goal.', outside: 'Two cones are your players. You pass to whichever cone he is not standing in front of.' },
-  { id: 'steal-it', ch: 3, emoji: '🦶', kid: 'Steal it!', side: 'defense', adult: '1v1 defending: stay in front, wait, and tackle when the touch is loose', ready: true,
-    tip: 'Stay in front of him. Steal it when the ball rolls away from his feet!', outside: 'Dribble slowly at him with some big touches. He waits in front and pokes the ball away after a big touch.' },
   { id: 'forward-first', ch: 3, emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Play forward (shoot, dribble or pass); nothing forward: keep the ball', ready: true,
     tip: 'Look to the goal first! Nothing forward? Keep the ball.', outside: 'Before he plays the ball, he points to the goal, then to a friend ahead.' },
 ];

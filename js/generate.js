@@ -302,7 +302,9 @@ function defense(r, pattern) {
     const o2 = [c[0] - 2 - r() * 3, c[1] - sgn * (4 + r() * 2)], o3 = [c[0] - 4 - r() * 3, c[1] + sgn * (5 + r() * 2)];
     addOpp(o2); addOpp(o3);
     mates.push(goalSide(c, 1.1), goalSide(o2, 1.1));
-    hero = [o3[0] + 2 + r() * 2, o3[1] - sgn * (2 + r() * 2)];
+    // Half the time he got caught up the field (the free attacker is behind him: turn and find him); half the
+    // time he is hanging around near goal without a player (the free attacker is in front of him).
+    hero = r() < .5 ? [o3[0] + 2 + r() * 2, o3[1] - sgn * (2 + r() * 2)] : [Math.max(3, o3[0] - 2.5 - r() * 2), W / 2 + (r() - .5) * 3];
     const dbl = goalSide(o2, .9);
     spots.push({ id: 'o3', p: goalSide(o3, 1.3), label: 'Guard' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] + sgn * 1.4], label: 'Help guard' }, { id: 'press', p: [goalSide(c, 1.1)[0] - .3, goalSide(c, 1.1)[1] - sgn * .9], label: 'Chase the ball' });
     best = 'o3'; cue = 'A friend was on the ball. Nobody was guarding him — you guard him!';
@@ -396,6 +398,28 @@ function tackle(r, pattern) {
     passSide: pick(r, [1, -1]), best: 'tackle:good', ok: [], cue: 'Wait in front of him. Steal it when it rolls away from his feet!' };
 }
 
+// ---------- receiving: peek before it comes ----------
+// A friend behind him (toward our goal) passes to him; the ball is on its way. In 'peek-turn' a defender is close
+// behind him on one side, where he can only see him by peeking over his shoulder. The first touch should turn
+// him up the field away from that defender; turning into him loses it. In 'peek-open' nobody is close behind,
+// so either turn works. Facing the passer (down the field), his left is the -y side.
+function receive(r, pattern) {
+  const H = [9 + r() * 8, 5 + r() * 10], s = pick(r, [1, -1]);
+  const m1 = [H[0] - 6 - r() * 1.5, H[1] + (r() - .5) * 3];
+  const o1 = pattern === 'peek-turn' ? [H[0] + 1.9 + r() * .6, H[1] + s * (1.1 + r() * .5)] : [H[0] + 8 + r() * 3, H[1] + s * (3 + r() * 2)];
+  const m2 = [H[0] + 5 + r() * 3, clamp(H[1] - s * (5 + r() * 1.5), 2, W - 2)], o2 = goalSideOf(m2, 1.1), o3 = [L - 4 - r() * 3, W / 2 + (r() - .5) * 6];
+  const sc = { kind: 'receive', carrier: 'm1', hero: [H[0] + .8, H[1]], heroTo: H, mates: [m1, m2], opps: [o1, o2, o3], oppsTo: [o1, o2, o3], turns: { L: 'fr', R: 'fl' } };
+  if (![H, m1, m2, o1, o2, o3].every(p => inPitch(p, 1.2))) return null;
+  const g = grade(sc), good = k => g['drib:' + sc.turns[k]] === 'good', bad = k => g['drib:' + sc.turns[k]] === 'bad';
+  if (pattern === 'peek-turn') {
+    const away = s > 0 ? 'L' : 'R', toward = away === 'L' ? 'R' : 'L';
+    if (!good(away) || !bad(toward)) return null;
+    return { ...sc, best: 'turn:' + away, ok: [], cue: 'A defender was behind you! Peek first, then turn away from him.' };
+  }
+  if (!good('L') || !good('R')) return null;
+  return { ...sc, best: 'turn:' + (s > 0 ? 'L' : 'R'), ok: ['turn:' + (s > 0 ? 'R' : 'L')], cue: 'Nobody was behind you. Peek, then turn and go!' };
+}
+
 const goalSideOf = (p, k) => { const dx = L - p[0], dy = W / 2 - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + dx / l * k, p[1] + dy / l * k]; }; // their goal is at x = L
 
 const PATTERNS = {
@@ -411,6 +435,7 @@ const PATTERNS = {
   'one-goes': ['one-goes', 'you-go', 'gs-covered'],
   'mark-the-free-one': ['mark-free', 'mark-free', 'gs-covered'],
   'give-and-go': ['give-go'],
+  'peek-and-turn': ['peek-turn', 'peek-turn', 'peek-open'],
   'steal-it': ['steal', 'steal-fast', 'steal-big'],
   'get-open': ['shadow', 'shadow', 'spread', 'stay-open'],
 };
@@ -420,7 +445,7 @@ function swapMates(sc) {
   return { ...sc, mates: [sc.mates[1], sc.mates[0]], best: swap(sc.best), ok: (sc.ok || []).map(swap), safe: (sc.safe || []).map(swap),
     cue: sc.cue.replace(/\{m([01])\}/g, (_, i) => `{m${1 - i}}`) };
 }
-const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']), SUPPORT = new Set(['shadow', 'spread', 'stay-open']), TACKLE = new Set(['steal', 'steal-fast', 'steal-big']);
+const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']), SUPPORT = new Set(['shadow', 'spread', 'stay-open']), TACKLE = new Set(['steal', 'steal-fast', 'steal-big']), RECEIVE = new Set(['peek-turn', 'peek-open']);
 export const generates = id => !!PATTERNS[id];
 export const mainPattern = id => PATTERNS[id]?.[0];
 // The demo for a lesson: always its main pattern (never a contrast round), and for passes, a friend ahead or wide
@@ -445,8 +470,8 @@ export function generate(skill, seed, { even = false } = {}) {
   const first = Math.floor(r() * pats.length);
   for (let i = 0; i < 4000; i++) {
     const pattern = i < 3000 ? pats[first] : pats[Math.floor(r() * pats.length)];
-    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : TACKLE.has(pattern) ? tackle(r, pattern) : attack(r, pattern);
-    const fixed = DEFENSE.has(pattern) || SUPPORT.has(pattern) || TACKLE.has(pattern) || pattern === 'give-go'; // give-and-go's step 2 depends on which friend is the wall
+    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : TACKLE.has(pattern) ? tackle(r, pattern) : RECEIVE.has(pattern) ? receive(r, pattern) : attack(r, pattern);
+    const fixed = DEFENSE.has(pattern) || SUPPORT.has(pattern) || TACKLE.has(pattern) || RECEIVE.has(pattern) || pattern === 'give-go'; // give-and-go's step 2 depends on which friend is the wall
     if (sc) return { ...(fixed || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
   }
   return null;

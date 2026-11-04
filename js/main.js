@@ -208,6 +208,18 @@ function renderLessons() {
   document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.pick = c.dataset.id; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
 }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
+// Sticker album: a sticker per lesson, ringed by the level reached (bronze, silver, gold), with how many he has.
+// Lessons not played yet show a grey sticker, so he can see what is still to come.
+function renderAlbum() {
+  const count = id => P.stickers.filter(s => s.skill === id).length, cups = P.stickers.filter(s => s.emoji === '🏆').length;
+  const cell = l => { const lv = level(P, l.id), n = count(l.id);
+    return `<div class="st ${lv ? 'l' + lv : 'none'}"><div class="f">${l.emoji}</div><span>${lv ? '★'.repeat(lv) : '–'}${n ? ' ×' + n : ''}</span></div>`; };
+  $('#album').innerHTML = CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(cell).join('')}</div></div>`).join('')
+    + `<div class="trophies">🏆 × ${cups} match${cups === 1 ? '' : 'es'} won</div>`;
+}
+$('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
+$('#albumClose').onclick = () => $('#albumSheet').classList.add('hidden');
+$('#albumSheet').onclick = e => { if (e.target.id === 'albumSheet') $('#albumSheet').classList.add('hidden'); };
 $('#sheetClose').onclick = () => $('#lessonSheet').classList.add('hidden');
 $('#lessonSheet').onclick = e => { if (e.target.id === 'lessonSheet') $('#lessonSheet').classList.add('hidden'); };
 function cycle(side, dir) {
@@ -260,7 +272,7 @@ async function runSession() {
   const us = teamById(P.us), them = teamById(P.them), hero = displayName(us.players[0].name);
   game.setTeams(us, them);
   preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
-  world.setEnv('crowd');
+  world.setEnv('park'); // practice at the park; the mini match is in the stadium
   show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
   // The demo plays the first time a lesson is played; after that it's one tap away.
   const firstTime = !P.skills[skillId]?.sessions;
@@ -268,6 +280,7 @@ async function runSession() {
     button: firstTime ? 'Watch' : 'Play', alt: firstTime ? 'Skip' : 'Watch' });
   if (firstTime ? watch === 'main' : watch === 'alt') await game.demo(skillId);
   const how = sk.id === 'steal-it' ? `You are ${hero}, defending. Tap STEAL when the ball rolls away from his feet.`
+    : sk.id === 'peek-and-turn' ? `You are ${hero}. A friend passes to you. Drag to peek behind you, then pick which way to turn.`
     : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
     : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
     : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
@@ -285,6 +298,7 @@ async function runSession() {
     results.push(r.firstTry && r.stars === 3); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
     if (rounds[i].skill !== skillId) { reviewed(P, rounds[i].skill, r.firstTry && r.stars === 3); save(P); }
   }
+  world.setEnv('crowd');
   await card({ emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
   game.pushUnlocked = level(P, 'dribble-to-space') > 0; // big pushes once he has played "Run into space"
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
@@ -327,6 +341,7 @@ async function runFreePlay() {
 $('#freeBtn').onclick = runFreePlay;
 $('#shootBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.shoot(); });
 $('#stealBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.stealTap(); });
+document.querySelectorAll('.turnBtn').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.turnTap(b.dataset.side); }));
 $('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
 $('#touchBig').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('big'); });
 $('#resultsHome').onclick = () => show('#home');

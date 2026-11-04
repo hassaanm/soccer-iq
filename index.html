@@ -38,6 +38,8 @@
   <button class="btn btn-blue btn-round" id="passBtn"><i>⚽</i><span>PASS</span></button>
   <button class="btn btn-gold btn-round" id="shootBtn"><i>🥅</i><span>SHOOT</span></button>
   <button class="btn btn-gold btn-round" id="stealBtn"><i>🦶</i><span>STEAL</span></button>
+  <button class="btn btn-green btn-round turnBtn" id="turnL" data-side="L"><i>↩️</i><span>TURN</span></button>
+  <button class="btn btn-green btn-round turnBtn" id="turnR" data-side="R"><i>↪️</i><span>TURN</span></button>
   <button class="btn btn-green btn-round" id="dribBtn"><i>👟</i><span>DRIBBLE</span></button>
 </div>
 
@@ -46,6 +48,7 @@
   <button id="gear" class="btn btn-glass btn-icon top-right" aria-label="Grown-ups: hold"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.5 7.5 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.4 1 2-3.4Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></button>
   <div id="gearTip">Grown-ups: hold for 1 second</div>
   <button class="btn btn-glass btn-icon soundBtn home-sound" aria-label="Sound"></button>
+  <button id="albumBtn" class="btn btn-glass btn-icon top-left" aria-label="My stickers">📒</button>
   <div class="matchup">
     <div class="team" data-side="us">
       <div class="tag">YOUR TEAM</div>
@@ -90,6 +93,12 @@
   <h2>Pick a lesson</h2>
   <div id="lessons"></div>
   <button id="sheetClose" class="btn btn-ghost">Done</button>
+</div></section>
+
+<section id="albumSheet" class="screen hidden"><div class="panel wide sheet">
+  <h2>My stickers</h2>
+  <div id="album"></div>
+  <button id="albumClose" class="btn btn-ghost">Done</button>
 </div></section>
 
 <section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><div class="btns"><button id="cardMain" class="btn btn-green btn-lg"></button><button id="cardAlt" class="btn btn-ghost"></button></div></div></section>

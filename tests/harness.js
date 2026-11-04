@@ -8,6 +8,7 @@ export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d =
 export function optionsFor(sc) {
   if (sc.kind === 'defense' || sc.kind === 'support') return sc.spots.map(s => 'spot:' + s.id);
   if (sc.kind === 'tackle') return ['tackle:good', 'tackle:early', 'tackle:tight', 'tackle:none'];
+  if (sc.kind === 'receive') return ['turn:L', 'turn:R'];
   const push = sc.skill === 'dribble-to-space' || sc.skill === 'won-it-go' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
   const shoot = sc.skill === 'shoot-close' || sc.heroTo[0] > 17; // the SHOOT button shows from 13 m out
   // Give-and-go: after the right pass, each run he could make (written then:spot:<id>).

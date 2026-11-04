@@ -192,3 +192,34 @@ test('give-and-go: anything but the pass in step 1 is a miss, never a skip to st
   });
   assert.equal(r.firstTry, false); assert.equal(step2, 1);
 });
+
+test('every lesson demo plays to the end and shows how the play ended', async () => {
+  const { PATH } = await import('../js/skills.js');
+  for (const sk of PATH) {
+    const { g, events } = makeGame();
+    await drive(g, g.demo(sk.id), () => null, 60);
+    const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
+    assert.ok(ends.some(b => ['GOAL!', 'Kept the ball!', 'Stole it!', 'Stopped him!'].includes(b)), `${sk.id} demo ended with ${ends.join(',') || 'nothing'}`);
+    assert.equal(g.mode, 'between', `${sk.id}: Skip still showing after the demo`);
+  }
+});
+
+test('peek, then turn: the pass waits in the air while he decides; turning away keeps it, into the defender loses it', async () => {
+  const sc = allScenarios('peek-and-turn').find(s => s.pattern === 'peek-turn');
+  const { g, events } = makeGame();
+  g.mode = 'lesson'; g.load(sc);
+  let done = false; g.pre().then(() => { done = true; });
+  for (let t = 0; t < 5 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
+  assert.equal(g.sim.ball.state, 'flying', 'the pass is on its way at the freeze');
+  const p = g.decide(); const at = { ...g.sim.ball };
+  for (let i = 0; i < 30; i++) g.tick(1 / 30, 9 + i / 30);
+  assert.ok(Math.hypot(g.sim.ball.x - at.x, g.sim.ball.y - at.y) < .01, 'the ball waits while he decides');
+  g.yaw += 2; for (let i = 0; i < 3; i++) g.tick(1 / 30, 10 + i / 30);
+  assert.ok(g.peeked, 'looking over his shoulder counts as a peek');
+  const wrong = sc.best === 'turn:L' ? 'turn:R' : 'turn:L';
+  assert.equal(g.rating(sc.best), 'best'); assert.equal(g.rating(wrong), 'bad');
+  g.choose(sc.best); await p;
+  const r = await drive(g, g.round(sc, { hint: false }), gm => gm.sc.best);
+  assert.equal(r.firstTry, true);
+  assert.ok(events.some(e => e[0] === 'banner' && (e[1] === 'GOAL!' || e[1] === 'Kept the ball!')));
+});

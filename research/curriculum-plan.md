@@ -1,16 +1,18 @@
 # Curriculum plan: ages 5–8
 
 The lesson path, what each lesson teaches, and how lessons come back over months. It builds on
-`skill-tree.md` (the full concept tree), `dribble-vs-pass.md` (the dribble/pass balance) and two research
-passes made on Nov 4, 2026 (federation curricula, and learning design). Sources are listed at the end.
+`skill-tree.md` (the full concept tree), `dribble-vs-pass.md` (the dribble/pass balance) and three research
+passes made on Nov 4, 2026: federation curricula, learning design, and the elite academies (second review,
+below). Sources are listed at the end.
 
 ## The short version
 
 - **The schools agree on the order.** At 5–6 a child learns "me, the ball and the goal." Teammates and
   space come in at about 6–8. Team defending, transitions and positions become formal topics only after 8.
 - **The path has four chapters in that order:** Me and the ball → Win it back → Me and my friends → Our team.
-- **Three lessons are new:** "Won it? Go!" (transition), "Pass and go!" (give-and-go) and "Steal it!"
-  (1v1 defending timing). One lesson ("Get in front") is reframed as "Win it back!".
+- **Four lessons are new:** "Won it? Go!" (transition), "Pass and go!" (give-and-go), "Steal it!" (1v1
+  defending timing) and "Peek, then turn!" (look before the ball comes). "Get in front" is now "Win it back!".
+- **The second review (elite academies) kept the order** and added the receiving lesson, its one big gap.
 - **Each lesson teaches one thing to notice (a cue), not a rule.** Every option is graded; brave dribbles
   and close shots score well; mistakes cost nothing.
 - **Lessons come back.** Each lesson has three levels that need separate days to climb, due lessons come
@@ -44,6 +46,7 @@ Concepts that several schools teach at 5–8 and that a child can decide in a fr
 | Won it? Go forward fast | FA ("run to that line"), DFB | 6–8 | Won it? Go! (new) |
 | Only one goes to the ball; others guard | US Soccer (compact), JFA ("defend with friends") | 6–8 | Only one bee chases |
 | Two defenders on you and a friend is free? Pass | US Soccer U7–U8, JFA | 6–8 | Two shirts? Let it go |
+| Peek before the ball comes, then turn away from pressure | Barça (Vila: "learning how to look"), futsal research | 5–8 | Peek, then turn! (new) |
 | Don't stand by the ball; go where a pass can reach you | JFA, US Soccer, DFB, Wein | 6–8 | Get open! |
 | Pass to the free friend | US Soccer, JFA, RBFA (5v5) | 7–8 | Pass to the open friend |
 | Pass and move (simple combinations) | FA ("combine"), US Soccer ("short combinations") | 7–8 | Pass and go! (new) |
@@ -52,9 +55,9 @@ Concepts that several schools teach at 5–8 and that a child can decide in a fr
 | Play forward; can't go forward? Keep the ball | US Soccer U7–U8 game model | 7–8 | Forward first (capstone) |
 
 **Dropped:** "which goal is ours" and "teammate or opponent" (the game always attacks the same way and kits
-are clear), switching to the other goal (needs Funino's four goals), shielding (mostly technique), receiving
-with a shoulder check (needs first-touch control the game doesn't model), and everything from age 9+
-(offside, build-out, lines, zonal defending, third-man runs).
+are clear), switching to the other goal (needs Funino's four goals), shielding (mostly technique), and
+everything from age 9+ (offside, build-out, lines, zonal defending, third-man runs). Receiving with a shoulder
+check was dropped in the first pass and added back in the second (see below).
 
 ## The path
 
@@ -64,42 +67,49 @@ with a shoulder check (needs first-touch control the game doesn't model), and ev
 | 1 | Look up! 👀 | attack | carry, none-open, carry, one-open, shot-open | "Look up! Where is the space?" |
 | 2 | Run into space 💨 | attack | space-far, space-near, space-behind | "Lots of space? Push it! Defender close? Keep it close." |
 | 3 | Take him on ⚡ | attack | trap-one, trap-one, carry, trap | "Only one defender? Dribble past him!" |
-| 4 | Shoot! 🥅 | attack | shot-open, shot-open, shot-blocked, shot-far | "Close and nobody in the way? Shoot!" |
+| 4 | Shoot when close! 🥅 | attack | shot-open, shot-open, shot-blocked, shot-far | "Close and nobody in the way? Shoot!" |
 | **Chapter 2: Win it back (5–7)** | | | | |
-| 5 | Win it back! 🏠 | defense | goal-side, you-go, goal-side | "Lost it? Get in front of the ball and win it back!" |
-| 6 | Won it? Go! 🚀 (new) | attack | counter, counter, counter-shot | "You won it! Go forward fast!" |
-| 7 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
+| 5 | Win it back! 💪 | defense | goal-side, you-go, goal-side | "Lost it? Get in front of the ball and win it back!" |
+| 6 | Steal it! 🦶 | defense, 1v1 timing | steal, steal-fast, steal-big | "Stay in front. Steal it when it rolls away from his feet!" |
+| 7 | Won it? Go! 🚀 | attack | counter, counter, counter-shot | "You won it! Go forward fast!" |
 | **Chapter 3: Me and my friends (6–8)** | | | | |
-| 8 | Two shirts? Let it go 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to a free friend." |
-| 9 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
-| 10 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
-| 11 | Pass and go! 🔁 (new) | attack, then off the ball | give-go | "Pass it, then run past him to get it back!" |
+| 8 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Ball coming? Peek over your shoulder, then turn away from him." |
+| 9 | Two shirts? Let it go 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to a free friend." |
+| 10 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
+| 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
+| 12 | Pass and go! 🔁 | attack, then off the ball | give-go | "Pass it, then run past him to get it back!" |
 | **Chapter 4: Our team (7–8)** | | | | |
-| 12 | Guard the open player 🛡️ | defense | mark-free, gs-covered | "Find the player nobody is guarding." |
-| 13 | Steal it! 🦶 (new) | defense, 1v1 timing | steal (slow, fast, big touch) | "Stay in front. Steal it when it rolls away from his feet!" |
-| 14 | Forward first ⬆️ | attack | forward, forward, two-open, carry | "Look to the goal first! Nothing forward? Keep the ball." |
+| 13 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
+| 14 | Guard the open player 🛡️ | defense | mark-free, mark-free, gs-covered | "Find the player nobody is guarding." |
+| 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry | "Look to the goal first! Nothing forward? Keep the ball." |
 
 **Why this order**
 
 - **Chapter 1** is the "me and the ball" stage (RBFA U6, FA foundation, JFA preschool): no passing focus.
   Look up comes first because every later cue needs it, but now it rewards space and the goal first.
-- **Chapter 2** puts defending early because "win it back" has the widest support at 5–8 and fixes swarming.
-  "Won it? Go!" follows straight after winning the ball, so attack and defense alternate.
+- **Chapter 2** is winning the ball on his own: get in front (approach), steal it (the tackle), then go
+  (the transition). "Win it back" has the widest support at 5–8, from federations and from Barça ("lose the
+  ball, step forward, apply pressure"). Each lesson is one child's own job, not a team plan.
 - **Chapter 3** brings in friends at 6–8 (US Soccer "introduce short passing" at U7–U8, JFA grades 1–2).
-  Passing is taught as the answer to a cue (two defenders, a blocked path), never as the default.
-- **Chapter 4** is the 7–8 team layer. "Forward first" is the capstone: it uses the whole attacking ladder.
+  It opens with receiving, because a friend's pass is where looking first matters most (Barça). Passing is
+  taught as the answer to a cue (two defenders, a blocked path), never as the default.
+- **Chapter 4** is the 7–8 team layer: who goes to the ball, who guards whom, and "Forward first", the
+  capstone that uses the whole attacking ladder. The FA says bunching is normal up to 7–9, so these come last.
 
 **The attacking ladder** (the order every attack lesson fits into, and what free play rewards):
 1. Can you see the goal, close up? **Shoot.**
 2. Space ahead? **Run with it.**
 3. Only one defender? **Take him on.**
-4. Two defenders, or the way is blocked, and a friend is free? **Pass, forward first.**
+4. Two defenders, or the way is blocked, and a friend is free? **Pass, forward if it's open.**
 5. Nothing on? **Turn away and keep it** (2 stars: it keeps the ball, but look for the better choice).
 
 **The defending ladder:**
 1. Nobody on the ball and you're closest? **Go win it: get in front of it.**
-2. A friend is on the ball? **Guard the open player.**
-3. One against one? **Stay in front and steal it when it's loose.**
+2. One against one? **Stay in front and steal it when it's loose.**
+3. A friend is on the ball? **Guard the open player.**
+
+**The receiving habit:** before the ball comes, **peek** over your shoulder; then **turn away** from the
+defender with the first touch.
 
 **Contradiction check (resolved):**
 - "Take him on" vs "Two shirts": one defender → dribble; two defenders and a free friend → pass.
@@ -109,6 +119,56 @@ with a shoulder check (needs first-touch control the game doesn't model), and ev
   friend is already on the ball.
 - "Win it back" (go now) vs "Steal it" (wait): run to him fast, then pick the moment to tackle.
 - "Pass to the open friend" vs "Take him on": with one presser, dribbling around him still earns 3 stars.
+- "Won it? Go!" vs Barça's "there is no rush": the counter rounds only reward going fast when the space
+  ahead is clearly open. "Forward first" says forward *if it's open*; keeping the ball is always safe.
+
+## Second review: the elite academies (Nov 4)
+
+**Question:** do the clubs that actually produce the most elite players teach young children the same things?
+
+**Who produces players.** The CIES Football Observatory counts a club as a player's "training club" only for
+ages 15–21, so its rankings say nothing about ages 5–10. Its leaders are Benfica, River Plate, Boca Juniors,
+Vélez, Ajax, Barça, Sporting, Real Madrid and Defensor (Oct 2026). Even Xavi, Iniesta and Messi joined Barça
+at 11–13; their ages 5–10 were in neighborhood clubs and baby fútbol. Early academy entry does not predict
+success (Dugdale et al. 2021; Güllich 2014), and world-class adults played more sports as children (Güllich et
+al. 2022). La Masia is genuinely strong: it peaked in 2009–12, dipped while the club bought players, and is
+producing again (Gavi, Balde, Yamal, Cubarsí).
+
+**What they teach young children:**
+- **Barça:** "learning how to look" is the most important thing to improve in young players, before, during and
+  after the action (Joan Vila, methodology director 2011–18). Also: lose the ball, step forward, press; don't
+  run without a purpose; there is no rush.
+- **Sporting:** "tema zero", the child's bond with the ball ("an extension of the body"), and street-football
+  spirit from age 6–7.
+- **Brazil and futsal:** tight spaces and constant 1v1s; futsal players scan more while receiving.
+- **Argentina and Uruguay:** small-sided competitive play (baby fútbol) from age 4, with no written method.
+- **Horst Wein (Funino):** the game is the teacher; small games with several goals build reading of the game.
+
+**Verdict:** the order (ball → win it back → friends → team) matches what these schools do. Three changes:
+1. **Added "Peek, then turn!"** The one big gap was the moment before the ball arrives. Every other lesson
+   froze after he already had the ball.
+2. **Moved "Steal it!" into Chapter 2** next to "Win it back!". It is a skill for one child, not a team plan.
+3. **Moved "Only one bee chases" into Chapter 4** with "Guard the open player". These are team concepts, and
+   the FA says bunching is normal up to 7–9.
+
+**How the concepts translate to this game:**
+
+| Concept | Fits the game? |
+|---|---|
+| Head up while dribbling; run into space; take him on; shoot when it's on | Yes: Chapter 1 |
+| Win it back at once; get goal-side; steal timing; won it, go forward if open | Yes: Chapter 2 |
+| Peek before receiving; first touch away from pressure | Yes, with the new "ball coming" freeze and turn buttons |
+| Find the free friend; get open; give-and-go | Yes: Chapter 3 |
+| One presses, the others guard | Yes, but a team concept: Chapter 4 |
+| Open body shape (stand sideways to receive) | Partly: the peek covers the looking; body shape is technique |
+| "Pausa" (hold it a second when nothing is on) | Partly: keeping the ball is a safe 2-star option; a HOLD button would be for 8+ |
+| Switch to the open goal (Funino) | Not yet: needs a pitch with two small goals at each end |
+| Feints, sole-of-foot control, rondos, team shape | No: technique or whole-team play, better learned on the field |
+| Third-man runs, positional play | No: age 10+ |
+
+**For the grown-up:** with an August birthday he may be one of the younger players in his age group. Relative
+age effects are strong even at Barça (46% of its players born January–March; Doncaster et al. 2020), so early
+results say little about potential. Lots of free play and other sports matter more than early selection.
 
 ## How lessons come back (replay)
 
@@ -136,6 +196,16 @@ Federation and club:
 - US Soccer: [U7–U8 game model](https://www.ussoccer.com/us-way/player-development/game/game-models/u7-u8), [U7–U8 age guide](https://www.ussoccer.com/us-way/player-development/environment/age-group-guide/u7-u8), [U6 guide](https://www.ussoccer.com/us-way/player-development/environment/age-group-guide/u6)
 - Futsal and decisions: Machado et al. 2023, Psychology of Sport and Exercise (abstract only)
 
+Elite academies (second review):
+- CIES Football Observatory: [training clubs, Oct 2026 (via Inside World Football)](https://www.insideworldfootball.com/2026/10/22/benfica-academy-production-tops-latest-cies-football-observatory/), [20-year study](https://www.cies.ch/cies/news/news-detail/article/twenty-years-of-the-observatory-tribute-studies-on-training-clubs)
+- Barça: [Joan Vila, NSCAA 2015 talk notes](https://norcal.gotsport.com/Content/directors/upimg/dir5343/barca%20methodology-2015.pdf) (attendee notes), [Sky Sports on La Masia, 2023](https://www.skysports.com/football/news/11096/13008649/how-barcelonas-talent-factory-continues-to-thrive)
+- Sporting: [Raúl Ribeiro on street football (Flashscore.pt)](https://www.flashscore.pt/noticias/futebol-liga-portugal-betclic-do-futebol-de-rua-a-equipa-a-o-metodo-que-molda-o-talento-em-alcochete/COw5W8le/)
+- Futsal scanning: Oppici et al. 2017, Frontiers in Psychology (peer-reviewed)
+- Scanning in the Premier League: Jordet et al. 2020, Frontiers in Psychology (peer-reviewed)
+- Academy entry and success: Dugdale et al. 2021 (peer-reviewed); Güllich 2014; Güllich, Macnamara & Hambrick 2022 (meta-analysis)
+- Relative age at Barça: Doncaster et al. 2020, Frontiers in Sports and Active Living (peer-reviewed)
+- Horst Wein: [interview](https://www.childrensfootballalliance.com/?p=748) (advocacy site)
+
 Learning design (peer-reviewed unless noted):
 - Araújo, Davids & Hristovski 2006 (ecological dynamics); Chow et al. 2007 (nonlinear pedagogy); Pinder et al. 2011 (representative design)
 - Memmert & Furley 2007 (tactical instructions narrow attention)
@@ -161,3 +231,11 @@ Nov 4 session. Where sources are thin (scanning under 12, screen-to-pitch transf
 - **Results card:** level-up news and a "Try it outside" game for the grown-up.
 - **Look up** no longer starts with hand-made rounds (4 of 5 were passes, one a pass back). Its first session
   uses fixed generated scenes instead, mostly about space and the goal.
+
+## What changed in the second review (v32)
+
+- **New lesson "Peek, then turn!":** a friend passes; the ball waits in the air while he decides. He drags to
+  peek behind him (a peek is a glance: let go and his head turns back to the ball). A defender may be coming
+  on one side; the first touch (TURN ↩️ or ↪️) should take him away from that defender. Peeking earns "You peeked!".
+- **Chapters reordered:** Steal it! is in Win it back; Only one bee chases is in Our team.
+- **Camera:** spot rounds start framed on the ball and every spot when they fit on screen.

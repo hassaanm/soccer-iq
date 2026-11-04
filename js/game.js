@@ -10,7 +10,7 @@ const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
 // Rounds where he picks a spot to run to: defending, or getting open while a friend has the ball.
 const spotKind = sc => sc?.kind === 'defense' || sc?.kind === 'support';
 // Rounds where he faces the ball carrier instead of the goal: picking a spot, or the 1v1 steal.
-const facesBall = sc => spotKind(sc) || sc?.kind === 'tackle';
+const facesBall = sc => spotKind(sc) || sc?.kind === 'tackle' || sc?.kind === 'receive';
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
@@ -87,7 +87,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, turn: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false });
   }
 
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
@@ -131,7 +131,7 @@ export class Game {
     s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 2.4); s.go('hero', h.x - 1.2, h.y, 2.4);
     await this.delay(1.1); this.ai = false; s.stopAll();
     const sc = liveDefense(s);
-    if (sc) { this.sc = sc; this.yaw = Math.atan2(c.y - h.y, c.x - h.x); return true; }
+    if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
     const stay = { kind: 'defense', live: true, id: 'live-stay', carrier: c.id, oppIds: [c.id, ...s.team('them').filter(o => o.id !== c.id).map(o => o.id)],
       mates: [[s.a('m1').x, s.a('m1').y], [s.a('m2').x, s.a('m2').y]], spots: [{ id: 'stay', x: h.x, y: h.y }] };
@@ -156,7 +156,16 @@ export class Game {
   load(sc) {
     this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null;
     this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
-    if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = Math.atan2(c.y - h.y, c.x - h.x); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
+    if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
+  }
+  // Which way he faces at the start of a spot round: toward the ball, turned so the ball and every spot are on
+  // screen when they fit. Otherwise the right spot would often be the one he has to turn to find, and he could
+  // learn "the answer is always behind me".
+  frameYaw(sc, h, c) {
+    const toC = Math.atan2(c.y - h.y, c.x - h.x);
+    if (!sc.spots?.length) return toC;
+    const angs = [0, ...sc.spots.map(p => wrap(Math.atan2(p.y - h.y, p.x - h.x) - toC))], lo = Math.min(...angs), hi = Math.max(...angs);
+    return hi - lo < 1.25 ? wrap(toC + (lo + hi) / 2) : toC;
   }
   // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
   get pushAllowed() { return this.mode === 'free' || this.sc?.skill === 'dribble-to-space' || this.sc?.skill === 'won-it-go' || (this.mode === 'match' && !!this.pushUnlocked); }
@@ -165,6 +174,7 @@ export class Game {
     this.phase = 'pre';
     const sc = this.sc, s = this.sim;
     if (sc.intro === 'won') return this.wonIntro();
+    if (sc.kind === 'receive') return this.passIn();
     s.go('hero', ...sc.heroTo, 3.6);
     if (sc.kind === 'defense') s.go(sc.carrier, ...sc.oppsTo[0], 3);
     (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
@@ -184,11 +194,21 @@ export class Game {
     await this.delay(.9);
     s.stopAll(); this.hud.caption('');
   }
+  // "Peek, then turn": he checks toward his friend, the friend passes, and the play freezes with the ball on its way.
+  async passIn() {
+    const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo;
+    s.go('hero', hx, hy, 2.5); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
+    await this.delay(.5);
+    const l = Math.hypot(hx - m.x, hy - m.y) || 1; m.face = [(hx - m.x) / l, (hy - m.y) / l]; s.windup('m1'); await this.delay(.2);
+    s.kick(hx - .45, hy, { speed: 6.5, arc: .05 }); await this.delay(.4);
+    s.stopAll();
+  }
   // Waits (in game time) until `f` is true.
   until(f) { return this.skipping ? Promise.resolve() : new Promise(res => this.tweens.push({ t: 0, dur: 1e9, f: null, res, until: f })); }
 
   decide() {
     this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
+    if (this.sc.kind === 'receive') { this.step = 'turn'; this.yaw0 = this.yaw; this.peeked = false; } // the ball waits in the air
     if (this.sc.kind === 'tackle') { // the attacker comes at him; he taps STEAL (or the attacker gets past)
       this.step = 'tackle'; this.lookUp = true; this.scanned = true;
       const g = this; this.sim.run((function* () { if (!(yield* g.approach(false))) g.choose('tackle:none'); })());
@@ -202,6 +222,7 @@ export class Game {
   rating(opt) {
     if (this.sc.best && opt === this.sc.best) return 'best';
     if (this.sc.kind === 'tackle' || this.sc.then) return 'bad'; // a give-and-go step 1 has one right answer: the pass
+    if (opt.startsWith('turn:')) return grade(this.sc)['drib:' + this.sc.turns[opt[5]]] === 'good' ? 'ok' : 'bad';
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
     if (spotKind(this.sc)) return 'bad';
@@ -214,6 +235,7 @@ export class Game {
   target(opt) {
     const h = this.sim.a('hero');
     if (opt.startsWith('tackle:')) return { x: this.sim.ball.x, y: this.sim.ball.y };
+    if (opt.startsWith('turn:')) return dribbleEnd({ x: this.sc.heroTo[0], y: this.sc.heroTo[1] }, this.sc.turns[opt[5]], L, W);
     if (opt.startsWith('spot:')) { const sp = this.sc.spots.find(x => x.id === opt.slice(5)); return { x: sp.x, y: sp.y }; }
     if (opt.startsWith('push:')) return pushEnd(h, opt.slice(5));
     return MATE[opt] ? { ...this.sim.a(MATE[opt]) } : dribbleEnd(h, opt.slice(5), L, W);
@@ -551,6 +573,11 @@ export class Game {
 
   *outcomeGen(opt, good) {
     if (opt.startsWith('tackle:')) { yield* this.tackleGen(opt); this.ai = false; return; }
+    if (opt.startsWith('turn:')) { // the ball arrives, and his first touch turns him that way
+      const s = this.sim; this.scripted.add('hero'); s.stop('hero');
+      const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
+      s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good); this.ai = false; return;
+    }
     if (good && this.sc.then && opt === this.sc.best) { yield* this.passOnly(MATE[opt]); this.ai = false; return; }
     if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); this.ai = false; return; }
     if (opt.startsWith('spot:')) { yield* (this.sc.kind === 'support' ? this.supportGen(opt.slice(5), good) : this.defendGen(opt.slice(5), good)); this.ai = false; return; }
@@ -663,6 +690,13 @@ export class Game {
       await this.lookAround(wrap(Math.atan2(m.y - h.y, m.x - h.x)));
       this.step = 'pass'; this.seen.add(mateId); this.hint = true;
       const open = `${this.name(mateId)} is open!`; this.hud.caption(open); this.say(open); await this.delay(1.4);
+    } else if (sc.kind === 'receive') {
+      this.step = 'turn'; this.yaw0 = this.yaw;
+      this.hud.caption('Peek! 👀'); this.say('Peek over your shoulder.');
+      const o = this.sim.a('o1'), h = this.sim.a('hero'), side = wrap(Math.atan2(o.y - h.y, o.x - h.x) - this.yaw) > 0 ? 1 : -1;
+      const y0 = this.yaw; await this.tween(1.1, t => { this.yaw = y0 + side * 2.5 * smooth(t); }); await this.delay(.7);
+      const saw = sc.pattern === 'peek-turn' ? 'A defender is behind you! Turn away!' : 'Nobody behind you! Turn and go!';
+      this.hud.caption(saw); this.say(saw); await this.tween(.6, t => { this.yaw = y0 + side * 2.5 * (1 - smooth(t)); }); await this.delay(.8);
     } else if (sc.kind === 'tackle') {
       this.step = 'tackle'; this.hint = true;
       this.hud.caption('Watch the ball… 👀'); this.say('Watch the ball.'); await this.delay(.6);
@@ -693,7 +727,7 @@ export class Game {
     this.sc = { ...t, skill: base.skill, id: base.id + '-2', pattern: base.pattern };
     Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null, seen: new Set(), lookUp: false, turn: 0, drag: null });
     s.stopAll(); s.go('o1', ...t.move.o1, 3.2); s.go('o2', ...t.move.o2, 2.6);
-    const h = s.a('hero'), m = s.a('m1'); this.yaw = Math.atan2(m.y - h.y, m.x - h.x);
+    const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(this.sc, { x: base.heroTo[0], y: base.heroTo[1] }, m);
     await this.delay(.8); s.stopAll();
   }
 
@@ -720,7 +754,7 @@ export class Game {
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
-      const praise = sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : 'Great choice!';
+      const praise = sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good ? { stars: 3, text: sc.praise || `${sc.kind === 'tackle' ? 'Great steal!' : praise} ${this.cue()}` } // say why it was right, so the idea sticks
@@ -777,6 +811,7 @@ export class Game {
       } else if (live) await this.continueLive();
       else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
       const opt = await this.decide(), good = this.isGood(opt);
+      this.praise(opt);
       await this.outcome(opt, good);
       if (this.result === 'passed' && this.sc.then) { await this.toStep2(); const o2 = await this.decide(); await this.outcome(o2, this.isGood(o2)); }
       tally();
@@ -786,6 +821,14 @@ export class Game {
       if (i >= toWin * 25) break; // safety: don't let a match run forever
     }
     return score;
+  }
+
+  // In matches, a good choice gets a quick word that names what he did (the play doesn't stop for stars).
+  praise(opt) {
+    const r = this.rating(opt); if (r !== 'best' && r !== 'ok') return;
+    const k = this.sc.kind, word = k === 'receive' ? (this.peeked ? 'Nice peek! 👀' : 'Nice turn!') : k === 'support' ? 'Great run!' : k === 'defense' ? 'Good defending!'
+      : k === 'tackle' ? null : opt === 'shoot' ? null : opt.startsWith('pass:') ? 'Nice pass!' : opt.startsWith('push:') ? 'Into space! 💨' : 'Great dribble!';
+    if (word) this.hud.toast(word);
   }
 
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
@@ -804,7 +847,12 @@ export class Game {
     const dx = x - this.drag.x0;
     if (Math.abs(dx) > 12) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   }
-  lookEnd() { this.drag = null; }
+  // On a receive, a peek is a quick glance: when he lets go, his head turns back to the ball.
+  lookEnd() {
+    this.drag = null;
+    if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null) { const y0 = this.yaw; this.tween(.35, t => { this.yaw = y0 + wrap(this.yaw0 - y0) * smooth(t); }); }
+  }
+  turnTap(side) { if (this.canAct && this.sc?.kind === 'receive') this.choose('turn:' + side); }
   // Shooting is offered when he is close enough to goal to have a real chance.
   get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !facesBall(this.sc) && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); }
   shoot() { if (this.canAct && this.canShoot && !this.locked) this.choose('shoot'); }
@@ -878,13 +926,15 @@ export class Game {
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
     if (this.ai) this.teamAI();
-    if (this.phase !== 'feedback') this.sim.step(dt);
+    const held = this.phase === 'feedback' || (this.sc?.kind === 'receive' && this.phase === 'decide'); // a pass on its way waits while he peeks
+    if (!held) this.sim.step(dt);
+    if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null && Math.abs(wrap(this.yaw - this.yaw0)) > 1.4) this.peeked = true;
     const s = this.sim, h = s.a('hero');
 
     if (this.lookUp && this.turn) this.yaw = wrap(this.yaw + this.turn * TURN_SPEED * dt);
     this.look = clamp(this.look + (this.lookUp ? 1 : -1) * dt / .3, 0, 1);
     // While deciding with his head up, his body turns with his head (the ball stays at his feet).
-    if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble') {
+    if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble' && this.sc?.kind !== 'receive') {
       const f = Math.atan2(h.face[1], h.face[0]) + wrap(this.yaw - Math.atan2(h.face[1], h.face[0])) * Math.min(1, dt * 10);
       h.face = [Math.cos(f), Math.sin(f)];
     }
@@ -952,9 +1002,10 @@ export class Game {
     const hud = this.hud, s = this.sim;
     let prompt = '';
     if (this.mode === 'lesson' || this.mode === 'match' || this.mode === 'free') {
-      if (this.phase === 'pre') prompt = this.lookUp || this.sc?.kind === 'tackle' ? '' : 'Tap 👀 to look up';
+      if (this.phase === 'pre') prompt = this.lookUp || this.sc?.kind === 'tackle' || this.sc?.kind === 'receive' ? '' : 'Tap 👀 to look up';
       else if (this.phase === 'decide') prompt =
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
+        this.step === 'turn' ? (this.peeked ? 'Which way will you turn?' : 'Ball coming! Drag to peek behind you') :
         this.step === 'spot' ? (this.lookUp ? 'Tap where to run' : 'Watch the ball… tap 👀 to look up') :
         this.pendingDir ? 'Small touches or big push?' :
         this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Drag to look for a friend') :

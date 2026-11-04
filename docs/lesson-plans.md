@@ -23,15 +23,16 @@ The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson
 | 3 | Take him on ⚡ | attack | trap-one / carry / trap | one defender: dribble past him |
 | 4 | Shoot when close! 🥅 | attack | shot-open / shot-blocked / shot-far | close and clear: shoot; blocked: go around; far: get closer |
 | 5 | Win it back! 💪 | defense | goal-side / you-go | nobody on the ball: get in front of it |
-| 6 | Won it? Go! 🚀 | attack | counter / counter-shot | just won it: push forward fast, or shoot if close |
-| 7 | Only one bee chases 🐝 | defense | one-goes / you-go / gs-covered | a friend is on the ball: guard the open player; nobody is: you go |
-| 8 | Two shirts? Let it go! 🚧 | attack | trap / trap-one | two defenders: pass to the free friend |
-| 9 | Get open! 🙋 | off the ball | shadow / spread / stay-open | move to where a pass can reach you |
-| 10 | Pass to the open friend 🎯 | attack | marked / one-open / carry | the friend with nobody next to him |
-| 11 | Pass and go! 🔁 | attack, then off the ball | give-go | pass to the wall friend, then run past the defender |
-| 12 | Guard the open player 🛡️ | defense | mark-free / gs-covered | stand goal-side of the free attacker |
-| 13 | Steal it! 🦶 | defense (1v1, real time) | steal / steal-fast / steal-big | wait, then STEAL when the ball rolls away from his feet |
-| 14 | Forward first ⬆️ | attack | forward / two-open / carry | forward open friend (3★) beats the safe back pass (2★) |
+| 6 | Steal it! 🦶 | defense (1v1, real time) | steal / steal-fast / steal-big | wait, then STEAL when the ball rolls away from his feet |
+| 7 | Won it? Go! 🚀 | attack | counter / counter-shot | just won it: push forward fast, or shoot if close |
+| 8 | Peek, then turn! 🔄 | receiving | peek-turn / peek-open | peek behind before the ball comes; turn away from the defender |
+| 9 | Two shirts? Let it go! 🚧 | attack | trap / trap-one | two defenders: pass to the free friend |
+| 10 | Get open! 🙋 | off the ball | shadow / spread / stay-open | move to where a pass can reach you |
+| 11 | Pass to the open friend 🎯 | attack | marked / one-open / carry | the friend with nobody next to him |
+| 12 | Pass and go! 🔁 | attack, then off the ball | give-go | pass to the wall friend, then run past the defender |
+| 13 | Only one bee chases 🐝 | defense | one-goes / you-go / gs-covered | a friend is on the ball: guard the open player; nobody is: you go |
+| 14 | Guard the open player 🛡️ | defense | mark-free / gs-covered | stand goal-side of the free attacker |
+| 15 | Forward first ⬆️ | attack | forward / two-open / carry | forward open friend (3★) beats the safe back pass (2★) |
 
 ## Replay
 
@@ -43,6 +44,10 @@ The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson
   finished today, then the next new lesson, then the most overdue one.
 - **Same scenes the first time.** A lesson's first session uses fixed seeds; later sessions are fresh.
 - **Mini match and free play** mix every lesson he has played.
+- **Sticker album** (📒 on the home screen): one sticker per lesson, ringed bronze, silver or gold by level,
+  with how many he has collected, and a count of matches won. Lessons not played yet show grey, so he can see
+  what is still to come.
+- **Places:** lessons are practice at the park; the mini match and free play are in the stadium.
 
 ## Original notes
 
