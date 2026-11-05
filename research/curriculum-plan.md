@@ -236,7 +236,9 @@ Nov 4 session. Where sources are thin (scanning under 12, screen-to-pitch transf
 
 - **New lesson "Peek, then turn!":** a friend passes; the ball waits in the air while he decides. He drags to
   peek behind him (a peek is a glance: let go and his head turns back to the ball). A defender may be coming
-  on one side; the first touch (TURN ↩️ or ↪️) should take him away from that defender. Peeking earns "You peeked!".
+  on one side; he taps one of two curved arrows on the grass around his feet (v35; they replaced TURN buttons
+  whose left/right flipped as the view turned). Each arrow sweeps from facing the ball around his shoulder to
+  where that turn takes him. Peeking earns "You peeked!".
 - **Chapters reordered:** Steal it! is in Win it back; Only one bee chases is in Our team.
 - **Camera:** spot rounds start framed on the ball and every spot when they fit on screen.
 

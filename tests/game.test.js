@@ -249,3 +249,55 @@ test('before any lesson is passed, matches have no live runs, peeks, 1v1s or def
   } finally { Math.random = real; }
   for (const k of ['live-support', 'live-receive', 'live-tackle', 'live-defense']) assert.ok(!kinds[k], `${k} showed up without its lesson (${JSON.stringify(kinds)})`);
 });
+
+test('won it? go!: their player dribbles right up to him and the ball never jumps', async () => {
+  const { generate } = await import('../js/generate.js');
+  for (let seed = 1; seed <= 30; seed++) {
+    const sc = generate('won-it-go', seed * 7919), { g } = makeGame();
+    g.mode = 'lesson'; g.load(sc);
+    let prev = null, worst = 0, closest = 9, done = false; g.pre().then(() => { done = true; });
+    for (let t = 0; t < 8 && !done; t += 1 / 30) {
+      g.tick(1 / 30, t); await null;
+      const b = g.sim.ball; if (prev) worst = Math.max(worst, Math.hypot(b.x - prev.x, b.y - prev.y)); prev = { x: b.x, y: b.y };
+      closest = Math.min(closest, Math.hypot(g.sim.a('hero').x - g.sim.a('o1').x, g.sim.a('hero').y - g.sim.a('o1').y));
+    }
+    assert.ok(done && g.sim.ball.carrier === 'hero', `${sc.id}: he doesn't have the ball`);
+    assert.ok(worst < .4, `${sc.id}: the ball jumped ${worst.toFixed(2)} m in one frame`);
+    assert.ok(closest < 1.4, `${sc.id}: their player never got near him (${closest.toFixed(2)} m)`);
+  }
+});
+
+test('demos wait for a sentence to finish before moving on', async () => {
+  const { g } = makeGame(); let release = null;
+  g.say = () => new Promise(res => { release = res; });
+  let done = false; g.talk('Short.', 0).then(() => { done = true; });
+  for (let t = 0; t < 10; t += 1 / 30) { g.tick(1 / 30, t); await null; }
+  assert.equal(done, false, 'moved on while the line was still being said');
+  release(); for (let i = 0; i < 10; i++) { g.tick(1 / 30, 11 + i / 30); await new Promise(r => setImmediate(r)); }
+  assert.equal(done, true);
+});
+
+test('peek, then turn: two curved turn arrows show from the start and stay put while he peeks', async () => {
+  const sc = allScenarios('peek-and-turn').find(s => s.pattern === 'peek-turn');
+  const { g } = makeGame(); g.mode = 'lesson'; g.load(sc);
+  let done = false; g.pre().then(() => { done = true; });
+  for (let t = 0; t < 5 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
+  g.decide(); g.tick(1 / 30, 6);
+  const before = JSON.stringify(g.ui.turnArrows);
+  assert.equal(g.ui.turnArrows.length, 2);
+  assert.deepEqual([...new Set(g.targets().map(t => t.opt))].sort(), ['turn:L', 'turn:R']);
+  g.lookStart(400, 800); g.lookMove(400 - 600); g.tick(1 / 30, 6.1);
+  assert.ok(g.peeked); assert.equal(JSON.stringify(g.ui.turnArrows), before, 'arrows moved while he peeked');
+  // Each arrow sweeps through his own shoulder: left counterclockwise from facing the ball, right clockwise.
+  const [L, R] = ['L', 'R'].map(id => g.ui.turnArrows.find(t => t.id === id));
+  assert.ok(L.a1 > L.a0 && R.a1 < R.a0);
+});
+
+test('after a wrong turn and the replay, the retry still faces the incoming pass (not up the field)', async () => {
+  const sc = allScenarios('peek-and-turn').find(s => s.pattern === 'peek-turn');
+  const { g } = makeGame(); let tries = 0, yaws = [];
+  const wrong = sc.best === 'turn:L' ? 'turn:R' : 'turn:L';
+  await drive(g, g.round(sc, { hint: false }), gm => { yaws.push(gm.yaw); return tries++ ? gm.sc.best : wrong; });
+  assert.equal(yaws.length, 2);
+  assert.ok(Math.abs(Math.atan2(Math.sin(yaws[1] - yaws[0]), Math.cos(yaws[1] - yaws[0]))) < .05, `facing changed from ${yaws[0].toFixed(2)} to ${yaws[1].toFixed(2)}`);
+});

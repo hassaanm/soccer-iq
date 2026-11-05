@@ -196,6 +196,18 @@ function animate(g, a, sim) {
   u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
 }
 
+// A curved arrow lying on the ground: a band of radius r and width w from angle a0 to a1 (either direction),
+// ending in an arrowhead at a1. Angles are in the pitch's x/y plane, around the player's feet.
+function turnArrowGeo(a0, a1, r, w) {
+  const sh = new THREE.Shape(), dir = Math.sign(a1 - a0) || 1, head = Math.min(.55 / r, Math.abs(a1 - a0) * .45) * dir, aEnd = a1 - head;
+  const P = (rad, a) => [Math.cos(a) * rad, Math.sin(a) * rad];
+  sh.moveTo(...P(r + w / 2, a0));
+  sh.absarc(0, 0, r + w / 2, a0, aEnd, dir < 0);
+  sh.lineTo(...P(r + w * 1.15, aEnd)); sh.lineTo(...P(r, a1)); sh.lineTo(...P(r - w * 1.15, aEnd)); sh.lineTo(...P(r - w / 2, aEnd));
+  sh.absarc(0, 0, r - w / 2, aEnd, a0, dir > 0);
+  return new THREE.ShapeGeometry(sh, 32);
+}
+
 // Soccer ball: a smooth sphere painted per pixel as a truncated icosahedron (12 black pentagons, 20 white hexagons).
 // Each pixel takes the panel whose face plane its direction hits first; seams go where the two best panels are close.
 function makeBall(r) {
@@ -380,6 +392,9 @@ export class World {
       m.rotation.z = a; m.visible = false; this.scene.add(m); return [k, m];
     }));
     this.glows = new Map();
+    // "Peek, then turn": two curved arrows on the grass around him, each sweeping from facing the ball around to
+    // the way that turn takes him. Gold with a white edge; rebuilt only when the angles change.
+    this.turnArrows = new Map();
     this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = '';
     // A soft pulse under the ball when it is loose (hint for the 1v1 "Steal it!" lesson).
     this.ballGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -455,6 +470,23 @@ export class World {
       const s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
       if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = s >= 1 ? .92 + .08 * Math.sin(time * 5) : s * .9; }
     }
+    const seenTurns = new Set();
+    for (const t of ui.turnArrows || []) {
+      seenTurns.add(t.id);
+      let a = this.turnArrows.get(t.id);
+      const key = `${t.a0.toFixed(2)}:${t.a1.toFixed(2)}`;
+      if (!a || a.key !== key) {
+        if (a) { this.scene.remove(a.g); a.g.children.forEach(c => c.geometry.dispose()); }
+        const g = new THREE.Group();
+        const edge = new THREE.Mesh(turnArrowGeo(t.a0, t.a1, 1.35, .46), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, depthWrite: false, toneMapped: false }));
+        const fill = new THREE.Mesh(turnArrowGeo(t.a0, t.a1, 1.35, .3), new THREE.MeshBasicMaterial({ color: 0xffc21a, transparent: true, depthWrite: false, toneMapped: false }));
+        fill.position.z = .004; g.add(edge, fill); this.scene.add(g);
+        a = { g, key }; this.turnArrows.set(t.id, a);
+      }
+      a.g.visible = !!h; if (h) a.g.position.set(h.x, h.y, .03);
+      a.g.children[1].material.opacity = .85 + .15 * Math.sin(time * 5);
+    }
+    for (const [id, a] of this.turnArrows) if (!seenTurns.has(id)) a.g.visible = false;
     this.spotPool.forEach((g, i) => {
       const sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) return;
       g.position.set(sp.x, sp.y, .035); g.scale.setScalar(1 + .1 * Math.sin(time * 5 + i));

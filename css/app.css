@@ -222,11 +222,6 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #stealBtn i{font-size:46px}
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free])[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
 #hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
-/* "Peek, then turn": two big turn buttons (his left, his right) under the right thumb. */
-#turnL{right:calc(128px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
-#turnR{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
-.turnBtn i{font-size:36px}
-#hud:is([data-mode=lesson],[data-mode=match],[data-mode=free])[data-phase=decide][data-kind=receive] .turnBtn{display:flex}
 #hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 .levelup{font-size:18px;font-weight:700;color:var(--gold-d);min-height:0}
 .levelup:empty,.outside:empty{display:none}

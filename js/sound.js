@@ -118,20 +118,24 @@ function clip(key) {
 }
 // True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
 export const canSpeak = keys => !!(ctx && voiceIndex && keys.every(k => voiceIndex.clips[k]));
-export function stopVoice() { for (const s of voicePlaying) try { s.stop(); } catch { /* already stopped */ } voicePlaying = []; }
+let voiceDone = null; // resolves the line that is playing now (when it ends, or is cut off)
+export function stopVoice() { for (const s of voicePlaying) try { s.stop(); } catch { /* already stopped */ } voicePlaying = []; voiceDone?.(); voiceDone = null; }
 let voiceToken = 0;
+// Plays a line from its clips; the promise resolves when the line has been said (or was cut off by another one).
 export async function speakClips(keys) {
   const token = ++voiceToken; stopVoice();
   const bufs = await Promise.all(keys.map(clip));
   if (token !== voiceToken || bufs.some(b => !b)) return;
+  const done = new Promise(res => { voiceDone = res; });
   if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = vol.voice; voiceGain.connect(out); }
   let t = now() + .05;
   duck(true);
   bufs.forEach((b, i) => {
     const src = ctx.createBufferSource(); src.buffer = b; src.connect(voiceGain); src.start(t); voicePlaying.push(src);
     t += b.duration + .04;
-    if (i === bufs.length - 1) src.onended = () => { if (token === voiceToken) duck(false); };
+    if (i === bufs.length - 1) src.onended = () => { if (token === voiceToken) { duck(false); voiceDone?.(); voiceDone = null; } };
   });
+  return done;
 }
 // Preload a few clips (e.g. this team's names) so the first line plays without a pause.
 export function preloadClips(keys) { if (ctx && voiceIndex) keys.forEach(clip); }
