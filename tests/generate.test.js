@@ -72,3 +72,25 @@ test('a dribble or push onto a friend only keeps the ball (2 stars): space means
   assert.equal(g['drib:fl'], 'safe'); assert.equal(g['push:fl'], 'safe');
   assert.equal(g['drib:fr'], 'good');
 });
+
+test('lesson rounds mix the other situations in from round 2 (never the same situation 3 times in a row)', async () => {
+  const { sessionRounds } = await import('../js/skills.js');
+  for (const sk of PATH) for (const opts of [{ first: true }, { level: 1 }, { level: 2 }]) {
+    const pats = sessionRounds(sk.id, 6, opts).map(s => s.pattern);
+    assert.equal(pats.length, 6, sk.id);
+    if (new Set(pats).size > 1) assert.notEqual(pats[1], pats[0], `${sk.id}: round 2 repeats round 1 (${pats})`);
+    for (let i = 2; i < 6; i++) assert.ok(!(pats[i] === pats[i - 1] && pats[i] === pats[i - 2]), `${sk.id}: ${pats}`);
+  }
+});
+
+test('"space-friend": the friend stands right in front, so straight ahead only keeps it and the best goes around him', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    const sc = generate('dribble-to-space', seed, { pattern: 'space-friend' }); if (!sc) continue;
+    const h = sc.heroTo, front = sc.mates.find(m => m[0] > h[0] + 2.5 && Math.abs(m[1] - h[1]) < 1.6);
+    assert.ok(front, `seed ${seed}: no friend in front`);
+    assert.ok(!/fwd/.test(sc.best), sc.best);
+    assert.ok(sc.safe.includes('drib:fwd'), `seed ${seed}: straight ahead should be 2 stars`);
+    const away = front[1] > h[1] ? /fr|right/ : /fl|left/;
+    assert.ok(away.test(sc.best), `seed ${seed}: ${sc.best} goes toward the friend`);
+  }
+});

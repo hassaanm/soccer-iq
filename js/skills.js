@@ -1,6 +1,6 @@
 // The learning path (see research/curriculum-plan.md) and the scenarios for each lesson.
 import { shuffle, PITCH } from './geom.js';
-import { generate, generates, demoFor } from './generate.js';
+import { generate, generates, demoFor, patternsOf } from './generate.js';
 export { PITCH };
 
 // Four chapters in the order the federations and the top academies teach them: me and the ball, winning it
@@ -70,13 +70,20 @@ export function allScenarios(skillId) {
 
 export const demoScenario = skillId => demoFor(skillId);
 
-// The rounds for one lesson session. The first time through, the same scenes every time (seeds 1..n), so the
-// lesson starts familiar; after that, fresh scenes. Level 1 mostly plays the main pattern; Level 2 and up give
-// every pattern (contrast rounds included) the same share.
+// The rounds for one lesson session. The other situations are mixed in from the second round on, so one answer
+// never gets drilled in before he sees when it doesn't fit (interleaved practice). Level 1 starts with the main
+// situation (the one the demo showed) and comes back to it every other round; Level 2 and up give every
+// situation the same share. The first time through, the same scenes every time (seeds 1..n), so the lesson
+// starts familiar; after that, fresh scenes.
 export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math.random } = {}) {
+  const pats = patternsOf(skillId); if (!pats.length) return [];
+  const [main, ...others] = pats, mix = first ? others : shuffle(others, rnd);
+  const order = [];
+  if (level >= 2 || !others.length) { let bag = []; while (order.length < n) { if (!bag.length) bag = first ? [...pats] : shuffle([...pats], rnd); const k = bag.findIndex(p => p !== order[order.length - 1]); order.push(bag.splice(k < 0 ? 0 : k, 1)[0]); } }
+  else for (let i = 0; order.length < n; i++) order.push(i % 2 === 0 ? main : mix[(i >> 1) % mix.length]);
   const out = [];
   for (let i = 0; out.length < n && i < n * 4; i++) {
-    const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { even: !first && level >= 2 });
+    const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { pattern: order[out.length] });
     if (sc) out.push(sc);
   }
   return out;

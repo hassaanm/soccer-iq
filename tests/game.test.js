@@ -303,3 +303,36 @@ test('after a wrong turn and the replay, the retry still faces the incoming pass
   assert.equal(yaws.length, 2);
   assert.ok(Math.abs(Math.atan2(Math.sin(yaws[1] - yaws[0]), Math.cos(yaws[1] - yaws[0]))) < .05, `facing changed from ${yaws[0].toFixed(2)} to ${yaws[1].toFixed(2)}`);
 });
+
+test('every lesson demo shows the taps with the hand: LOOK UP first, then the play\'s button or target', async () => {
+  const { PATH } = await import('../js/skills.js');
+  for (const sk of PATH) {
+    const { g, events } = makeGame();
+    await drive(g, g.demo(sk.id), () => null, 60);
+    const hands = events.filter(e => e[0] === 'hand' && e[1]);
+    const taps = new Set(hands.map(e => e[2]).filter(Boolean));
+    assert.ok(hands.length && taps.size, `${sk.id}: the hand never tapped`);
+    const btns = hands.map(e => e[1]).filter(p => typeof p === 'string');
+    if (!['steal-it', 'peek-and-turn'].includes(sk.id)) assert.equal(btns[0], 'lookBtn', `${sk.id}: first tap should be LOOK UP`);
+    if (sk.id === 'steal-it') assert.ok(btns.includes('stealBtn'));
+    assert.equal(g.showing, false); assert.equal(g.handAt, null);
+  }
+});
+
+test('"Watch this way!" replays show the taps, and he can\'t tap while the hand plays', async () => {
+  const { g, events } = makeGame();
+  const sc = allScenarios('look-up').find(s => s.best.startsWith('pass:'));
+  let wrong = true;
+  const bad = gm => ['drib:fwd', 'drib:fl', 'drib:fr', 'drib:left', 'drib:right', 'pass:0', 'pass:1'].find(o => gm.rating(o) === 'bad');
+  await drive(g, g.round(sc, { hint: false }), gm => { assert.ok(!gm.showing); if (wrong) { wrong = false; return bad(gm); } return gm.sc.best; });
+  const btns = events.filter(e => e[0] === 'hand' && typeof e[1] === 'string').map(e => e[1]);
+  assert.ok(btns.includes('passBtn'), 'the replay should tap PASS');
+});
+
+test('after the hand taps Small touches or Big push, those buttons go away when the play starts', async () => {
+  const { g, events } = makeGame();
+  await drive(g, g.demo('dribble-to-space'), () => null, 60);
+  const states = events.filter(e => e[0] === 'state');
+  assert.ok(states.some(e => e[1].touchPick), 'the demo should show the Small/Big choice');
+  assert.ok(states.filter(e => e[1].phase === 'outcome').every(e => !e[1].touchPick));
+});

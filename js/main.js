@@ -10,6 +10,17 @@ import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, skills, defaultProgress } from './progress.js';
 
+// On iPad, a home-screen app can get a page a little shorter than the screen, which leaves a peach strip under
+// the field. When the app fills the whole screen, size the field (and the screens) to the screen itself.
+function fitScreen() {
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const short = Math.min(screen.width, screen.height), long = Math.max(screen.width, screen.height);
+  const land = innerWidth > innerHeight, sw = land ? long : short, sh = land ? short : long;
+  const gap = sh - innerHeight, full = standalone && Math.abs(innerWidth - sw) < 2 && gap > 0 && gap < 80;
+  document.documentElement.style.setProperty('--app-h', full ? sh + 'px' : '100dvh');
+}
+fitScreen(); addEventListener('resize', fitScreen); addEventListener('orientationchange', () => setTimeout(fitScreen, 300));
+
 const $ = s => document.querySelector(s);
 const P = load();
 const canvas = $('#view');
@@ -60,8 +71,9 @@ const flash = (el, cls, text, ms) => {
 };
 const tunnel = $('#tunnel');
 const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot, showing }) {
     const d = hudEl.dataset;
+    hudEl.classList.toggle('showing', !!showing);
     if (d.phase !== phase) d.phase = phase;
     if (d.step !== (step || 'none')) d.step = step || 'none';
     if (d.mode !== mode) d.mode = mode;
@@ -99,6 +111,23 @@ const hud = {
   },
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.
   seen(text) { flash($('#seenNote'), '', text, 1400); sfx('ping'); },
+  // The teaching hand: `pos` is a button id or a screen point [x, y]; null hides it. A new `tap` number taps once.
+  hand(pos, tap) {
+    const el = $('#hand'), old = hudEl.querySelector('.pointed');
+    const btn = typeof pos === 'string' ? $('#' + pos) : null;
+    if (old && old !== btn) old.classList.remove('pointed');
+    let xy = pos;
+    if (btn) { const r = btn.getBoundingClientRect(); xy = r.width ? [r.left + r.width / 2, r.top + r.height * .55] : null; }
+    if (!xy) { el.classList.remove('show', 'tap'); el.dataset.tap = ''; return; }
+    btn?.classList.add('pointed');
+    const at = `translate(${Math.round(xy[0])}px,${Math.round(xy[1])}px)`;
+    if (!el.classList.contains('show')) { // come in from below the target
+      el.style.transition = 'none'; el.style.transform = `translate(${Math.round(xy[0] + 60)}px,${Math.round(xy[1] + 120)}px)`;
+      void el.offsetWidth; el.style.transition = ''; el.classList.add('show');
+    }
+    if (el.style.transform !== at) el.style.transform = at;
+    if (tap && el.dataset.tap !== String(tap)) { el.dataset.tap = tap; el.classList.remove('tap'); void el.offsetWidth; el.classList.add('tap'); }
+  },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
   caption(text) { const c = $('#caption'); c.textContent = text; c.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
   dots(results, n) {

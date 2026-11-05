@@ -88,7 +88,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, turn: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, turnPick: false });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, turnPick: false, showing: false, handAt: null });
   }
 
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
@@ -574,6 +574,7 @@ export class Game {
     if (opt === 'tackle:good') {
       const got = this.tk?.graceTap || (yield* this.approach(true));
       if (got !== false) {
+        if (this.showing) { this.handTap = (this.handTap || 0) + 1; this.sfx('click'); } // the hand taps STEAL now
         // He pokes it away from the attacker, then turns with it, facing up the field.
         s.stop(c.id); const t0 = s.time;
         yield () => { s.go('hero', s.ball.x, s.ball.y, 5); return dist(h, s.ball) < .5 || s.time - t0 > .8; };
@@ -627,9 +628,10 @@ export class Game {
   }
   async outcome(opt, good) {
     const h = this.sim.a('hero');
+    if (this.sc?.kind !== 'tackle') this.handAt = null;
     // A "safe" dribble or push forward (onto a friend) keeps the ball and stops there; it doesn't run on to score.
     this.keepOnly = good && (opt.startsWith('drib:') || opt.startsWith('push:')) && this.sc.kind !== 'receive' && this.rating(opt) === 'safe';
-    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: this.sc?.kind === 'tackle' ? 'player' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, turn: 0, camMode: this.sc?.kind === 'tackle' ? 'player' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good));
   }
@@ -720,6 +722,68 @@ export class Game {
     await turnTo(aim, 1.2);
   }
 
+  // ---------- the teaching hand ----------
+  // In demos and replays a hand shows the taps that make the play: LOOK UP, then PASS and the friend, DRIBBLE and
+  // the arrow (and small touches or big push), SHOOT, a spot to run to, a turn arrow, or STEAL. So he learns
+  // which buttons do what along with the idea. `handAt` is a button id, a point on the field {x, y, z}, or a
+  // point on the screen {sx, sy} (fractions of its size).
+  async tapAt(target, wait = .8) {
+    if (this.skipping) return;
+    this.handAt = target; await this.delay(wait);
+    if (this.skipping) return;
+    this.handTap = (this.handTap || 0) + 1; this.sfx('click'); await this.delay(.4);
+  }
+  // A drag on the screen turns his head: the hand slides the way a finger would (see lookMove).
+  async dragTo(yaw, sec = 1) {
+    if (this.skipping) { this.yaw = yaw; return; }
+    const y0 = this.yaw, d = wrap(yaw - y0), sx = .5 + clamp(-d / 3.2 * .5, -.3, .3);
+    this.handAt = { sx: .5, sy: .62 }; await this.delay(.6);
+    this.lookUp = true; this.scanned = true; this.handAt = { sx, sy: .62 };
+    await this.tween(sec, t => { this.yaw = y0 + d * smooth(t); });
+    await this.delay(.2);
+  }
+  onScreen(p) {
+    const q = this.world.project(p.x, p.y, p.z ?? 0), cw = this.world.canvas.clientWidth, ch = this.world.canvas.clientHeight;
+    return !!q && q[0] > cw * .1 && q[0] < cw * .9 && q[1] > ch * .12 && q[1] < ch * .85;
+  }
+  // Acts out the taps for `opt` (the decision is not made here: outcome() plays it right after).
+  async showTaps(opt) {
+    const sc = this.sc, h = this.sim.a('hero');
+    this.showing = true; this.phase = 'decide'; this.pendingDir = null;
+    if (this.skipping || !h) return;
+    if (sc.kind === 'tackle') { this.step = 'tackle'; this.lookUp = true; this.handAt = 'stealBtn'; await this.delay(.6); return; } // tapped when the ball rolls loose (tackleGen)
+    if (sc.kind === 'receive') this.step = 'turn';
+    else if (!this.lookUp) { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); await this.delay(.5); }
+    const face = p => wrap(Math.atan2(p.y - h.y, p.x - h.x));
+    if (MATE[opt]) {
+      const m = this.sim.a(MATE[opt]);
+      if (!this.onScreen({ ...m, z: .9 })) await this.dragTo(face(m));
+      this.seen.add(MATE[opt]);
+      await this.tapAt('passBtn'); this.step = 'pass'; await this.delay(.3);
+      await this.tapAt({ x: m.x, y: m.y, z: .9 });
+    } else if (opt === 'shoot') {
+      if (Math.abs(wrap(this.yaw)) > .5) await this.dragTo(0, .8);
+      await this.tapAt('shootBtn');
+    } else if (/^(drib|push):/.test(opt)) {
+      const d = opt.slice(5);
+      await this.tapAt('dribBtn'); this.step = 'dribble'; await this.delay(.5); // the camera rises to show the arrows
+      const t = this.targets().find(x => x.opt === 'drib:' + d);
+      if (t) await this.tapAt(t);
+      if (this.pushAllowed) { this.pendingDir = d; await this.delay(.3); await this.tapAt(opt.startsWith('push:') ? 'touchBig' : 'touchSmall'); }
+    } else if (opt.startsWith('spot:') || opt.startsWith('turn:')) {
+      this.step = opt.startsWith('spot:') ? 'spot' : 'turn';
+      const t = this.targets().find(x => x.opt === opt);
+      if (t && opt.startsWith('spot:') && !this.onScreen(t)) await this.dragTo(face(t));
+      if (t) await this.tapAt(t);
+    }
+  }
+  // Shows the taps, then plays the choice. Used by demos and by every replay of the better play.
+  async showPlay(opt) {
+    await this.showTaps(opt);
+    await this.outcome(opt, true);
+    this.showing = false; this.handAt = null;
+  }
+
   async demo(skillId) {
     return this.demoGeneric(skillId);
   }
@@ -730,8 +794,11 @@ export class Game {
     const hero = this.name('hero'), tip = skillById(skillId)?.tip || '';
     const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`);
     await this.pre(); await intro;
-    this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null;
-    await this.delay(.4); this.lookUp = true; await this.delay(.9);
+    this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.showing = true;
+    await this.delay(.4);
+    if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
+    else { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; }
+    await this.delay(.9);
     await this.talk(tip, 1.8); // the lesson's one idea: let it sit before anything moves
     // He looks around first, so the choice doesn't come out of nowhere. For a pass he ends up facing the open
     // friend; otherwise he turns back to the space ahead (or to the ball on defense).
@@ -739,15 +806,15 @@ export class Game {
     if (mateId) {
       const m = this.sim.a(mateId);
       await this.lookAround(wrap(Math.atan2(m.y - h.y, m.x - h.x)));
-      this.step = 'pass'; this.seen.add(mateId); this.hint = true;
+      this.seen.add(mateId); this.hint = true;
       await this.talk(`${this.name(mateId)} is open!`, 1);
     } else if (sc.kind === 'receive') {
       this.step = 'turn'; this.yaw0 = this.yaw;
       await this.talk('Peek over your shoulder.', .2, 'Peek! 👀');
       const o = this.sim.a('o1'), h = this.sim.a('hero'), side = wrap(Math.atan2(o.y - h.y, o.x - h.x) - this.yaw) > 0 ? 1 : -1;
-      const y0 = this.yaw; await this.tween(1.1, t => { this.yaw = y0 + side * 2.5 * smooth(t); }); await this.delay(.6);
+      const y0 = this.yaw; await this.dragTo(y0 + side * 2.5, 1.1); await this.delay(.6);
       await this.talk(sc.pattern === 'peek-turn' ? 'A defender is behind you! Turn away!' : 'Nobody behind you! Turn and go!', .6);
-      await this.tween(.6, t => { this.yaw = y0 + side * 2.5 * (1 - smooth(t)); });
+      this.handAt = null; await this.tween(.6, t => { this.yaw = y0 + side * 2.5 * (1 - smooth(t)); }); // let go: his head comes back to the ball
       await this.talk(sc.pattern === 'peek-turn' ? 'Turn away from him!' : 'Turn and go!', .8); // the curved arrows show both turns
     } else if (sc.kind === 'tackle') {
       this.step = 'tackle'; this.hint = true;
@@ -762,16 +829,16 @@ export class Game {
       await this.talk(saw.replace(/ \S+$/u, ''), .8, saw);
     }
     this.hud.caption('');
-    await this.outcome(sc.best, true);
+    await this.showPlay(sc.best);
     if (sc.then && !this.skipping) { // give-and-go: now the run
       await this.toStep2(); this.phase = 'decide'; this.step = 'spot'; this.lookUp = true;
       await this.talk('Now run past him!', .6); this.hud.caption('');
-      await this.outcome(this.sc.best, true);
+      await this.showPlay(this.sc.best);
     }
     // Then say why it worked, with a moment to take it in.
     await this.delay(.8); // let the GOAL! (or the steal) land first
     if (!this.skipping) await this.talk(this.cue(), 2.5); // why it worked: the most important line, so it gets the longest pause
-    this.hud.caption(''); this.skipping = false; this.mode = 'between'; // the Skip button goes away
+    this.hud.caption(''); this.skipping = false; this.showing = false; this.handAt = null; this.mode = 'between'; // the Skip button goes away
   }
 
   // Give-and-go, step 2: the friend has the ball; the defender who was on him turns to press the friend.
@@ -824,14 +891,14 @@ export class Game {
       if (rating === 'safe') {
         if (answer === 'watch') {
           restart();
-          await this.talk('Here is the 3-star play!', .2); await this.outcome(sc.best, true); await this.delay(.8); this.hud.caption('');
+          await this.talk('Here is the 3-star play!', .2); await this.showPlay(sc.best); await this.delay(.8); this.hud.caption('');
         }
         return { firstTry: false, stars: 2 };
       }
       await this.feedback(save, opt);
       restart();
       await this.talk('Watch this way!', .2);
-      await this.outcome(sc.best, true);
+      await this.showPlay(sc.best);
       await this.delay(.8); // let the better play land before resetting
       restart();
       this.hud.caption('Your turn!'); this.say('Your turn!');
@@ -965,8 +1032,8 @@ export class Game {
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
 
   // ---------- input ----------
-  get canAct() { return this.phase === 'decide' && this.mode !== 'demo'; }
-  get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo'; }
+  get canAct() { return this.phase === 'decide' && this.mode !== 'demo' && !this.showing; }
+  get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo' && !this.showing; }
   // LOOK is a toggle: head up to see the field, head down to watch the ball.
   toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) this.scanned = true; else this.turn = 0; }
   // Turning stays where he leaves it, so he can turn all the way around to find someone behind him.
@@ -1148,7 +1215,7 @@ export class Game {
   updateHud() {
     const hud = this.hud, s = this.sim;
     let prompt = '';
-    if (this.mode === 'lesson' || this.mode === 'match' || this.mode === 'free') {
+    if ((this.mode === 'lesson' || this.mode === 'match' || this.mode === 'free') && !this.showing) {
       if (this.phase === 'pre') prompt = this.lookUp || this.sc?.kind === 'tackle' || this.sc?.kind === 'receive' ? '' : 'Tap 👀 to look up';
       else if (this.phase === 'decide') prompt =
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
@@ -1161,7 +1228,12 @@ export class Game {
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
     const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && s.time - this.decideAt > 5)) ? 'look' : null;
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: this.canAct && this.canShoot });
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: (this.canAct || this.showing) && this.canShoot, showing: !!this.showing });
+    // The teaching hand follows its target (a spot on the field moves on screen as the camera moves).
+    const at = this.handAt, cv = this.world.canvas;
+    const pos = !at ? null : typeof at === 'string' ? at : at.sx != null ? [at.sx * cv.clientWidth, at.sy * cv.clientHeight] : this.world.project(at.x, at.y, at.z ?? 0);
+    const key = at ? JSON.stringify(pos) + this.handTap : '';
+    if (key !== this.handKey) { this.handKey = key; hud.hand(pos, this.handTap); }
     const glow = {}, arrows = {};
     if (this.phase === 'decide' && this.step === 'pass') for (const id of this.seen) glow[id] = .8;
     if (this.phase === 'decide' && this.step === 'dribble') for (const d of Object.keys(DRIBBLE_DIRS)) arrows[d] = !this.pendingDir || this.pendingDir === d ? 1 : .3;

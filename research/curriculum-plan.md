@@ -290,3 +290,9 @@ of the plays where he gets in front of the attacker), so play keeps flowing.
   Measured in free play: good dribbles ending on a friend went from 2% to 0%; a teammate within 2.5 m of the
   dribbler went from 11% to 9% of the time, and what's left is mostly the moment right after winning the ball
   while teammates were still marking nearby.
+
+## Showing the taps, mixing situations, friend in the way (v37)
+
+- **The teaching hand.** Demos, "Watch the 3★ play" and "Watch this way!" replays now act out the taps with a pointing hand: LOOK UP, then PASS and the friend, DRIBBLE and the arrow (then Small touches or Big push), SHOOT, a spot to run to, a turn arrow, or STEAL at the loose touch. He can't tap while the hand plays. A child learns the controls by watching them used, not from words.
+- **Interleaved rounds.** A lesson used to pick situations at random, so the main one could repeat 3–4 times before the contrasts showed up. Now round 1 is the main situation (the one the demo showed), and the others alternate with it from round 2 (Level 1); Level 2 and up rotate every situation evenly, never the same one twice in a row. Mixing related cases early (interleaved practice) builds "when does this apply?" instead of one drilled answer.
+- **Friend in the way.** In "Run into space", the friend now stands right in front, between him and the goal. Straight ahead runs into the friend (2★); the 3★ answer cuts diagonally away from the friend's side.

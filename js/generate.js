@@ -100,18 +100,18 @@ function attack(r, pattern, high = false) {
   const fside = pick(r, [1, -1]);
   if (pattern === 'forward') angles = [-fside * (.1 + r() * .5), fside * (2.3 + r() * .6)];
   if (pattern === 'carry') angles = [pick(r, [1, -1]) * (1.5 + r() * 1.2), pick(r, [1, -1]) * (1.8 + r() * 1)];
-  if (pattern === 'space-friend') angles = [pick(r, [1, -1]) * (.5 + r() * .3), pick(r, [1, -1]) * (2.4 + r() * .5)]; // a friend standing in one forward lane
+  if (pattern === 'space-friend') angles = [pick(r, [1, -1]) * (.08 + r() * .2), pick(r, [1, -1]) * (2.4 + r() * .5)]; // a friend standing right in front of him, between him and the goal
   if (pattern === 'counter') angles = [pick(r, [1, -1]) * (.6 + r() * .5), pick(r, [1, -1]) * (2.3 + r() * .6)];   // one friend ahead and wide, one behind
   if (pattern === 'give-go') angles = [pick(r, [1, -1]) * (1.05 + r() * .4), (r() - .5) * .6];                     // a wall friend to the side, one far ahead
   if (pattern === 'give-go-ahead') angles = [pick(r, [1, -1]) * (.7 + r() * .35), (r() - .5) * .6];                // the wall friend ahead and to one side
   if (pattern === 'counter-pass') angles = [pick(r, [1, -1]) * (.45 + r() * .5), pick(r, [1, -1]) * (2.3 + r() * .6)]; // a friend already running ahead
   if ((pattern.startsWith('space') && pattern !== 'space-friend') || pattern.startsWith('shot') || pattern === 'counter-shot') angles = [pick(r, [1, -1]) * (2.2 + r() * .7), pick(r, [1, -1]) * (2.2 + r() * .7)];
   if (PASS_TO.has(pattern)) { const a0 = openAngle(r, pattern); let a1; do a1 = r() * 5.6 - 2.8; while (Math.abs(a1 - a0) < .9); angles = [a0, a1]; }
-  else if (r() < .5 && pattern !== 'forward') angles.reverse();
+  else if (r() < .5 && pattern !== 'forward' && pattern !== 'space-friend') angles.reverse();
   // The presser comes from the side away from the open friend, so a pass ahead or out wide really is on.
   const s0 = Math.sign(angles[0]), ahead0 = Math.abs(angles[0]) < 1.25;
   const wall = pattern === 'give-go' || pattern === 'give-go-ahead';
-  for (const [k, a] of angles.entries()) mates.push(at(a, wall ? (k ? (up ? 6.5 : 10) + r() * 2 : 4.5 + r() * 1.5) : pattern === 'counter-pass' && !k ? 6.5 + r() * 2.5 : pattern === 'space-friend' && !k ? 4.4 + r() * 1 : up ? 4.5 + r() * 2.5 : 5.5 + r() * 4));
+  for (const [k, a] of angles.entries()) mates.push(at(a, wall ? (k ? (up ? 6.5 : 10) + r() * 2 : 4.5 + r() * 1.5) : pattern === 'counter-pass' && !k ? 6.5 + r() * 2.5 : pattern === 'space-friend' && !k ? 3.6 + r() * .9 : up ? 4.5 + r() * 2.5 : 5.5 + r() * 4));
   if (!mates.every(p => inPitch(p))) return null;
   const sidePt = (m, k) => { const dx = m[0] - ball[0], dy = m[1] - ball[1], l = Math.hypot(dx, dy); return [m[0] - dy / l * k + dx / l * .4, m[1] + dx / l * k + dy / l * .4]; };
 
@@ -166,7 +166,7 @@ function attack(r, pattern, high = false) {
     add([heroTo[0] - 3 - r() * 3, heroTo[1] + (r() - .5) * 6]);
   } else if (pattern === 'space-friend') {                    // open grass one way, a friend standing in the other
     const fs = Math.sign(angles[0]);
-    add([mates[0][0] + 3 + r() * 1.5, mates[0][1] + fs * (1 + r())]);                  // the friend's defender, a few steps off him
+    add([mates[0][0] + 2.5 + r() * 1.5, mates[0][1] + fs * (1 + r())]);                // the friend's defender, goal-side of him on his side
     add([heroTo[0] - 2.5 - r() * 2, heroTo[1] + (r() - .5) * 4]);                     // chasing from behind
     add([Math.min(L - 3, heroTo[0] + 13 + r() * 3), clamp(heroTo[1] + fs * (3 + r() * 2), 2.5, W - 2.5)]); // their last defender
   } else if (pattern === 'space-near') {                      // a defender lurks ahead: keep it close and go around
@@ -274,13 +274,14 @@ function attack(r, pattern, high = false) {
     return { ...sc, best, ok: goods.filter(o => o.startsWith('drib:') && o !== best && !BACKWARD.has(o.slice(5))), safe: ['pass:0', 'pass:1'].filter(k => g[k] === 'good'), cue };
   } else if (pattern === 'space-friend') {
     // Space means nobody there, not even a friend: the way toward him only keeps it (two stars).
-    const toward = angles[0] > 0 ? 'fl' : 'fr', away = angles[0] > 0 ? ['fr', 'fwd', 'right'] : ['fl', 'fwd', 'left'];
-    if (g['push:' + toward] !== 'safe' && g['drib:' + toward] !== 'safe') return null;
+    // The friend stands right in front of him, so straight ahead runs into him: go around, away from his side.
+    const toward = angles[0] > 0 ? 'fl' : 'fr', away = angles[0] > 0 ? ['fr', 'right'] : ['fl', 'left'];
+    if (g['drib:fwd'] === 'good' || g['push:fwd'] === 'good' || (g['push:fwd'] !== 'safe' && g['drib:fwd'] !== 'safe')) return null;
     const opens = away.flatMap(d => ['push:' + d, 'drib:' + d]).filter(o => g[o] === 'good');
     if (!opens.length || g['pass:0'] === 'good' && !opens.some(o => o.startsWith('push:'))) return null;
     const pushes = opens.filter(o => o.startsWith('push:')).sort((a, b) => pushEnd(P(heroTo), b.slice(5)).x - pushEnd(P(heroTo), a.slice(5)).x);
     best = pushes[0] || opens[0];
-    return { ...sc, best, ok: opens.filter(o => o !== best), safe: ['push:' + toward, 'drib:' + toward, 'pass:0', 'pass:1'].filter(o => g[o] === 'safe' || g[o] === 'good'),
+    return { ...sc, best, ok: opens.filter(o => o !== best), safe: ['push:fwd', 'drib:fwd', 'push:' + toward, 'drib:' + toward, 'pass:0', 'pass:1'].filter(o => g[o] === 'safe' || g[o] === 'good'),
       cue: 'Space means nobody there, not even your friend. Run into the open space!' };
   } else if (pattern === 'space-near') {
     if (g['push:fwd'] !== 'bad' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
@@ -521,9 +522,9 @@ export function demoFor(skill) {
 
 // A fresh, clean scenario for a lesson. Same seed, same scenario (handy for tests). `even` gives every pattern
 // the same share (Level 2 and up), instead of mostly the main one.
-export function generate(skill, seed, { even = false } = {}) {
-  const r = rng(seed), pats = even ? [...new Set(PATTERNS[skill] || [])] : PATTERNS[skill];
-  if (!pats) return null;
+export function generate(skill, seed, { even = false, pattern: want = null } = {}) {
+  const r = rng(seed), pats = want ? [want] : even ? [...new Set(PATTERNS[skill] || [])] : PATTERNS[skill];
+  if (!PATTERNS[skill]) return null;
   // Pick the pattern once, then retry only its layout, so patterns that are harder to build still come up as often.
   const first = Math.floor(r() * pats.length), high = r() < .3; // about 3 in 10 scenes happen near their goal (where it fits)
   for (let i = 0; i < 4000; i++) {
@@ -534,4 +535,6 @@ export function generate(skill, seed, { even = false } = {}) {
   }
   return null;
 }
+// The situations a lesson teaches: the main one first, then the others that contrast with it.
+export const patternsOf = skill => [...new Set(PATTERNS[skill] || [])];
 export const generateLookUp = seed => generate('look-up', seed);
