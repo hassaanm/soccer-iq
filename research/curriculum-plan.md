@@ -275,3 +275,18 @@ back (up to twice a day), and the mini-match card tells him how many to get righ
 
 The off-ball moments only come up some of the time (after about 6 in 10 good passes, and in about 6 in 10
 of the plays where he gets in front of the attacker), so play keeps flowing.
+
+## Dribbling the right way (v36)
+
+- **Take him on = a cut past him.** With one defender close in front, the right dribble now cuts diagonally
+  past him on his open side (away from the side he stands on); the defender bites toward where the ball was.
+  Before, the engine counted any diagonal as "runs into him", so the only "good" dribbles went sideways, which
+  doesn't beat anyone. A sideways dribble now only keeps the ball (2 stars).
+- **Space means nobody there, not even a friend.** A dribble or push that ends on a teammate keeps the ball but
+  takes his space and brings his defender over, so it earns 2 stars and stops there. "Run into space" adds the
+  situation: a friend in one forward lane, open grass in the other.
+- **The AI players show it too.** Supporting players (both teams) now stay out of the dribbler's path, at least
+  4.5 m from where he is going, and apart from each other: one ahead and wide, one behind on the other side.
+  Measured in free play: good dribbles ending on a friend went from 2% to 0%; a teammate within 2.5 m of the
+  dribbler went from 11% to 9% of the time, and what's left is mostly the moment right after winning the ball
+  while teammates were still marking nearby.

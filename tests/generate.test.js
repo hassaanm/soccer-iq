@@ -52,3 +52,23 @@ test('demos show each lesson\'s main idea, and tips never show a {name} placehol
     assert.ok(!/\{m\d\}/.test(g.cue()), `${sc.id}: "${g.cue()}"`);
   }
 });
+
+test('take him on: with one defender in front, the right dribble cuts diagonally past him on his open side', () => {
+  let n = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const sc = generate('take-him-on', seed * 7919); if (sc.pattern !== 'trap-one') continue; n++;
+    assert.ok(sc.best === 'drib:fl' || sc.best === 'drib:fr', `${sc.id}: best is ${sc.best}`);
+    const o = sc.oppsTo.map(([x, y]) => ({ x, y })).sort((a, b) => Math.hypot(a.x - sc.heroTo[0], a.y - sc.heroTo[1]) - Math.hypot(b.x - sc.heroTo[0], b.y - sc.heroTo[1]))[0];
+    const side = sc.best === 'drib:fl' ? 1 : -1, off = o.y - sc.heroTo[1];
+    assert.ok(Math.abs(off) < .15 || Math.sign(off) !== side, `${sc.id}: cut toward the defender's side`);
+    assert.ok(!(sc.ok || []).includes('drib:left') && !(sc.ok || []).includes('drib:right'), `${sc.id}: a sideways dribble counted as beating him`);
+  }
+  assert.ok(n > 50);
+});
+
+test('a dribble or push onto a friend only keeps the ball (2 stars): space means nobody there', () => {
+  const sc = { heroTo: [10, 10], mates: [[13.2, 13.2], [4, 4]], opps: [[25, 4], [26, 16], [4, 16]] }; // friend right where the fl dribble ends
+  const g = grade(sc);
+  assert.equal(g['drib:fl'], 'safe'); assert.equal(g['push:fl'], 'safe');
+  assert.equal(g['drib:fr'], 'good');
+});

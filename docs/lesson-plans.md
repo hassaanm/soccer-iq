@@ -19,8 +19,8 @@ The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson
 | # | Lesson | Side | Patterns | The right answer |
 |---|---|---|---|---|
 | 1 | Look up! 👀 | attack | carry / none-open / one-open / shot-open | look first, then space, goal, or the open friend |
-| 2 | Run into space 💨 | attack | space-far / space-near / space-behind | lots of space: big push; defender near: small touches around him |
-| 3 | Take him on ⚡ | attack | trap-one / carry / trap | one defender: dribble past him |
+| 2 | Run into space 💨 | attack | space-far / space-near / space-behind / space-friend | lots of space: big push; defender near: small touches around him; space means nobody there, not even a friend |
+| 3 | Take him on ⚡ | attack | trap-one / carry / trap | one defender: cut diagonally past him on his open side (sideways only keeps it) |
 | 4 | Shoot when close! 🥅 | attack | shot-open / shot-blocked / shot-far | close and clear: shoot; blocked: go around; far: get closer |
 | 5 | Win it back! 💪 | defense | goal-side / you-go | nobody on the ball: get in front of it |
 | 6 | Steal it! 🦶 | defense (1v1, real time) | steal / steal-fast / steal-big | wait, then STEAL when the ball rolls away from his feet |

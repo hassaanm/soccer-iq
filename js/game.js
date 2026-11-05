@@ -2,7 +2,7 @@
 import { Sim } from './sim.js';
 import { PITCH, demoScenario, pickRounds, skillById } from './skills.js';
 import { lerp, clamp, smooth, rot, dist, interceptor, dribbleEnd, closestOnLane, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
-import { grade, pushEnd, goalSide, exploit, DEF_RUN, laneClear, laneBlocked, inPitch } from './generate.js';
+import { grade, pushEnd, goalSide, exploit, DEF_RUN, laneClear, laneBlocked, inPitch, takeOn } from './generate.js';
 import { displayName } from './teams.js';
 
 const { L, W, gy0, gy1 } = PITCH;
@@ -253,7 +253,7 @@ export class Game {
     if (spotKind(this.sc)) return 'bad';
     const g = (this.grades ||= this.sc.grades || grade(this.sc))[opt];
     if ((opt.startsWith('drib:') || opt.startsWith('push:') || opt === 'shoot') && g === 'good') return 'ok';
-    if (opt.startsWith('drib:') && g === 'safe') return 'safe';
+    if ((opt.startsWith('drib:') || opt.startsWith('push:')) && g === 'safe') return 'safe';
     return 'bad';
   }
   isGood(opt) { return this.rating(opt) !== 'bad'; }
@@ -311,7 +311,7 @@ export class Game {
   *strike(id, x, y, opts) {
     const s = this.sim, a = s.a(id), dx = x - a.x, dy = y - a.y, l = Math.hypot(dx, dy) || 1;
     const to = { x, y };
-    for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && dist(p, to) > 1 && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
+    for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
     a.face = [dx / l, dy / l]; s.windup(id); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   }
@@ -359,12 +359,14 @@ export class Game {
     yield* this.steal(ic.opp);
   }
   *dribbleGen(dir, good) {
-    const s = this.sim, h = s.a('hero'), end = dribbleEnd(h, dir, L, W);
+    const s = this.sim, h = s.a('hero'), end = dribbleEnd(h, dir, L, W), cut = good && takeOn(h, dir, s.team('them'));
     this.scripted.add('hero'); s.go('hero', end.x, end.y, 4.4);
     const t0 = s.time;
+    // A take-on: the defender bites, stepping in toward where the ball was, and he cuts past him on the open side.
+    if (cut?.good) { const f = cut.foe; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
     if (good) {
       yield () => dist(h, end) < .3 || s.time - t0 > 2.5;
-      if (BACKWARD.has(dir)) { s.stop('hero'); this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
+      if (BACKWARD.has(dir) || this.keepOnly) { s.stop('hero'); this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
       yield* this.finish('hero');
     } else {
       const opps = s.team('them').sort((a, b) => dist(a, end) - dist(b, end)).slice(0, 2);
@@ -380,7 +382,7 @@ export class Game {
     // Defenders hold still for the moment of the kick (they rejoin the team AI once the ball lands).
     for (const o of opps) if (!this.scripted.has(o.id)) { this.scripted.add(o.id); s.stop(o.id); this.frozen.push(o.id); }
     // A bad push straight at a defender is his ball: he stops it where it reaches him.
-    const inLane = !good && opps.map(o => ({ opp: o, ...closestOnLane(o, s.ball, end, .05) })).filter(c => c.d < .8).sort((a, b) => a.t - b.t)[0];
+    const inLane = !good && opps.map(o => ({ opp: o, ...closestOnLane(o, s.ball, end, .05) })).filter(c => c.d < 1).sort((a, b) => a.t - b.t)[0];
     if (inLane) {
       const o = inLane.opp; this.scripted.add(o.id); s.go(o.id, inLane.x, inLane.y, 4);
       yield* this.strike('hero', inLane.x, inLane.y, { speed: 8.5, arc: .1 });
@@ -393,12 +395,16 @@ export class Game {
     // The nearest defender always races for it too. A push is only "good" when he clearly gets there first,
     // so the defender arrives a step late (and pulls up instead of running into him).
     const racer = opps.sort((a, b) => dist(a, end) - dist(b, end))[0];
-    this.scripted.add(racer.id); s.go(racer.id, end.x, end.y, good ? DEF_RUN : 5);
+    // He runs to just beside where it stops, on his own side of its line, so he chases it instead of running down the ball's path.
+    const ex = end.x - s.ball.x, ey = end.y - s.ball.y, el = Math.hypot(ex, ey) || 1, rs = Math.sign(ex * (racer.y - s.ball.y) - ey * (racer.x - s.ball.x)) || 1;
+    this.scripted.add(racer.id); s.go(racer.id, end.x - ey / el * .6 * rs, end.y + ex / el * .6 * rs, good ? DEF_RUN : 5);
     const t0 = s.time; yield () => s.ball.state === 'loose' && (dist(h, end) < .6 || (!good && dist(racer, end) < .6)) || s.time - t0 > 3;
     if (good) {
       s.give('hero');
       const back = Math.max(1.4, dist(racer, h)); s.go(racer.id, h.x + (racer.x - h.x) / (dist(racer, h) || 1) * back, h.y + (racer.y - h.y) / (dist(racer, h) || 1) * back, 2);
-      yield .1; this.scripted.delete(racer.id); yield* this.finish('hero');
+      yield .1; this.scripted.delete(racer.id);
+      if (this.keepOnly) { this.result = 'kept'; this.ai = false; s.stopAll(); this.emit('kept'); yield 1.1; return; }
+      yield* this.finish('hero');
     } else yield* this.steal(racer);
   }
   // Defense: he runs to the spot he picked. The right spot closes every way through: usually the attackers
@@ -621,6 +627,8 @@ export class Game {
   }
   async outcome(opt, good) {
     const h = this.sim.a('hero');
+    // A "safe" dribble or push forward (onto a friend) keeps the ball and stops there; it doesn't run on to score.
+    this.keepOnly = good && (opt.startsWith('drib:') || opt.startsWith('push:')) && this.sc.kind !== 'receive' && this.rating(opt) === 'safe';
     Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, drag: null, turn: 0, camMode: this.sc?.kind === 'tackle' ? 'player' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good));
@@ -656,14 +664,26 @@ export class Game {
       s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
     });
     }
-    // Support shape: the attacker nearer the goal runs ahead into a wide lane; the other stays a bit behind
-    // the ball on the other side, as an outlet. Nobody runs to the same spot.
-    const goalAhead = (p, q) => (q.x - p.x) * dir;
-    attackers.filter(free).sort(goalAhead).forEach((a, i) => {
-      const lane = a.y < W / 2 ? W * .22 : W * .78;
-      if (i === 0) s.go(a.id, clamp(ball.x + dir * 4.5, 2, L - 3), lerp(a.y, lane, .5), 3.8);
-      else s.go(a.id, clamp(ball.x - dir * 2, 2, L - 3), lerp(a.y, ball.y > W / 2 ? W * .25 : W * .75, .4), 3.4);
-    });
+    // Support shape: spread out. The attacker nearer the goal gives a target ahead and wide; the other is an
+    // outlet a little behind, on the other side. Both stay out of the dribbler's path, at least 4.5 m from where
+    // he is going, and apart from each other, so nobody runs into him or takes his space (what the AI players do
+    // teaches too: space means nobody there, not even a friend).
+    const goalAhead = (p, q) => (q.x - p.x) * dir, mover = carrier && carrier.team === atk ? carrier : null;
+    const from = mover ? { x: mover.x, y: mover.y } : ball, fut = mover ? { x: mover.tx, y: mover.ty } : ball;
+    const clearOf = p => {
+      for (let k = 0; k < 3; k++) {
+        const c = closestOnLane(p, from, fut, 0);
+        if (c.d < 2.5) { const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy); const ny = l > .05 ? dy / l : (p.y < W / 2 ? -1 : 1), nx = l > .05 ? dx / l : 0; p.x = c.x + nx * 2.5; p.y = c.y + ny * 2.5; }
+        const d = dist(p, fut); if (d < 4.5) { const l = d || 1; p.x = fut.x + (p.x - fut.x) / l * 4.5; p.y = fut.y + (p.y - fut.y) / l * 4.5; }
+        p.x = clamp(p.x, 2, L - 2); p.y = clamp(p.y, 1.5, W - 1.5);
+      }
+      return p;
+    };
+    const sup = attackers.filter(free).sort(goalAhead), side0 = sup[0] && sup[0].y < fut.y ? -1 : 1;
+    const wide = sgn => { const y = clamp(fut.y + sgn * 5, 2, W - 2); return Math.abs(y - fut.y) < 3.5 ? clamp(fut.y - sgn * 5, 2, W - 2) : y; };
+    const spots = sup.map((a, i) => clearOf(i === 0 ? { x: clamp(fut.x + dir * 5, 2, L - 3), y: wide(side0) } : { x: clamp(fut.x - dir * 3, 2, L - 2), y: wide(-side0) }));
+    if (spots.length === 2 && dist(spots[0], spots[1]) < 4) { spots[1].y = wide(spots[0].y > fut.y ? -1 : 1); clearOf(spots[1]); }
+    sup.forEach((a, i) => s.go(a.id, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
   }
 
   // Our team on defense does what the lessons teach: only one player (the closest) pressures the ball,
@@ -1046,7 +1066,7 @@ export class Game {
     const fb = this.sim.ball;
     if (fb.state === 'flying') for (const p of this.sim.agents.values()) {
       const to = { x: fb.tx, y: fb.ty }, c = closestOnLane(p, fb, to, 0);
-      if (this.scripted.has(p.id) || dist(p, to) <= 1 || c.d >= 1) continue;
+      if (this.scripted.has(p.id) || c.d >= 1) continue; // the receiver and the interceptor are scripted; everyone else gets out of the way
       this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, fb, to, fb.z < .9);
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
