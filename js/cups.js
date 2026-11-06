@@ -9,7 +9,7 @@ const club = zone => t => t.type === 'club' && (!zone || zone.includes(t.zone));
 export const CUPS = [
   { id: 'worldcup', name: 'World Cup', emoji: '🏆', teams: country(), home: 'spain' },
   { id: 'ucl', name: 'Champions League', emoji: '⭐', teams: club(['eng', 'esp', 'ita', 'ger', 'fra', 'por']), home: 'barca' },
-  { id: 'clubworld', name: 'Club World Cup', emoji: '🌍', teams: club(), home: 'barca' },
+  { id: 'clubworld', name: 'Club World Cup', emoji: '🏅', teams: club(), home: 'barca' },
   { id: 'euros', name: 'Euros', emoji: '🇪🇺', teams: country(['europe']), home: 'spain' },
   { id: 'copa', name: 'Copa América', emoji: '🌎', teams: country(['americas']), home: 'argentina' },
   { id: 'facup', name: 'FA Cup', emoji: '🦁', teams: club(['eng']), home: 'arsenal' },

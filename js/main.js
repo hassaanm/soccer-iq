@@ -435,24 +435,34 @@ async function runTraining() {
 }
 
 // ---------- cups ----------
-// The cup sheet: every cup, with the trophies won and how far the current run has got.
+// The cup sheet: every cup as a same-size tile. Dots show the rounds (green = won, gold = next);
+// a badge counts the trophies won.
 function openCups() {
   show('#home');
   $('#cups').innerHTML = CUPS.map(c => {
     const won = (P.trophies || []).filter(t => t.cup === c.id).length, run = P.cup?.id === c.id ? P.cup : null;
-    const note = run ? `${roundsOf(c)[run.round]} · ${teamById(run.team).short}` : won ? `${'🏆'.repeat(Math.min(won, 3))}${won > 3 ? ' ×' + won : ''}` : `${roundsOf(c).length} wins`;
-    return `<button class="tile ${run ? 'on' : ''}" data-id="${c.id}"><span class="e">${c.emoji}</span><span class="k">${c.name}</span><span class="st">${note}</span></button>`;
+    const dots = roundsOf(c).map((_, i) => `<i class="${run && i < run.round ? 'done' : run && i === run.round ? 'now' : ''}"></i>`).join('');
+    return `<button class="tile ${run ? 'on' : ''}" data-id="${c.id}">${won ? `<span class="won">🏆${won > 1 ? won : ''}</span>` : ''}`
+      + `<span class="e">${c.emoji}</span><span class="k">${c.name}</span><span class="dots">${dots}</span></button>`;
   }).join('');
   document.querySelectorAll('#cups .tile').forEach(t => t.onclick = () => { $('#cupSheet').classList.add('hidden'); runCup(t.dataset.id); });
   $('#cupSheet').classList.remove('hidden');
 }
 $('#cupClose').onclick = () => $('#cupSheet').classList.add('hidden');
 $('#cupSheet').onclick = e => { if (e.target.id === 'cupSheet') $('#cupSheet').classList.add('hidden'); };
-// The road to the trophy: one step per round (done, now, still to come), then the cup.
+// A team's shirt as a small image, for the cup path.
+const shirts = {};
+function shirtImg(t) {
+  if (!shirts[t.id]) { const cv = document.createElement('canvas'); cv.width = cv.height = 96; drawShirt(cv, t.kit, t.players[0].num); shirts[t.id] = cv.toDataURL(); }
+  return shirts[t.id];
+}
+// The road to the trophy: one same-size step per round (won, next, still to come), then the cup.
+const STEP = { 'Quarter-final': 'Quarters', 'Semi-final': 'Semis', Final: 'Final' };
 function cupPath(run) {
   const cup = cupById(run.id);
-  return `<span class="cuppath">${roundsOf(cup).map((name, i) => { const t = teamById(run.opps[i]);
-    return `<span class="${i < run.round ? 'done' : i === run.round ? 'now' : ''}"><small>${name}</small><i style="--c:${t.kit.colors[0]}"></i><b>${i < run.round ? '✓ ' : ''}${t.short}</b></span>`; }).join('<em>›</em>')}<em>›</em><span class="prize"><i>${cup.emoji}</i></span></span>`;
+  const steps = roundsOf(cup).map((name, i) => { const t = teamById(run.opps[i]), st = i < run.round ? 'done' : i === run.round ? 'now' : '';
+    return `<span class="step ${st}"><small>${STEP[name]}</small><span class="pic"><img src="${shirtImg(t)}" alt="">${st === 'done' ? '<em>✓</em>' : ''}</span><b>${t.short}</b></span>`; });
+  return `<span class="cuppath">${steps.join('<span class="link"></span>')}<span class="link"></span><span class="step prize"><small>Win</small><span class="pic">${cup.emoji}</span><b>Cup!</b></span></span>`;
 }
 async function runCup(cupId) {
   if (running) return; running = true; unlockAudio();
@@ -463,7 +473,7 @@ async function runCup(cupId) {
   game.setTeams(us, them);
   preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
   world.setEnv('crowd'); show(null); hud.dots([], 0);
-  await card({ emoji: cup.emoji, title: cup.name, html: `<b>${names[run.round]}:</b> ${us.name} vs ${them.name} · first to ${goalsToWin(run)}${cupPath(run)}`, lines: [final ? 'The final!' : ''].filter(Boolean), button: 'Kick off' });
+  await card({ emoji: cup.emoji, title: cup.name, html: `<b>${names[run.round]}</b> · ${us.name} vs ${them.name} · first to ${goalsToWin(run)} goals${cupPath(run)}`, lines: [final ? 'The final!' : ''].filter(Boolean), button: 'Kick off' });
   const score = await game.match(ids, fresh(24, ids), goalsToWin(run), 'free'), won = score.us > score.them;
   if (won && final) { (P.trophies ||= []).push({ cup: cup.id, team: run.team, at: Date.now() }); P.cup = null; }
   else if (won) run.round++;

@@ -217,27 +217,34 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .freebox .btn{position:relative}
 .freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
 .freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
-/* Cup sheet */
+/* Cup sheet: same-size tiles, 4 to a row, and a short last row stays centered. */
 #cupSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-#cups{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:9px;padding:4px 3px 6px;max-height:calc(100vh - 80px);overflow-y:auto}
-#cups .tile{border:0;border-radius:16px;background:#fff;padding:8px 6px;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;
-  box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15)}
-#cups .tile .e{font-size:34px;line-height:1.1}
-#cups .tile .k{font-size:14px;font-weight:700;line-height:1.1}
-#cups .tile .st{font-size:11.5px;font-weight:600;color:var(--ink-soft);min-height:14px}
+#cups{--gap:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap);padding:8px 4px 6px;max-height:calc(100vh - 80px);overflow-y:auto}
+#cups .tile{flex:0 0 calc((100% - 3 * var(--gap)) / 4);box-sizing:border-box;position:relative;border:0;border-radius:18px;background:#fff;padding:10px 6px 9px;font:inherit;color:var(--ink);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15)}
+@media (max-width:520px){#cups .tile{flex-basis:calc((100% - var(--gap)) / 2)}}
+#cups .tile .e{font-size:36px;line-height:1}
+#cups .tile .k{font-size:14.5px;font-weight:700;line-height:1.1;white-space:nowrap}
+#cups .tile .dots{display:flex;gap:5px;margin-top:2px}
+#cups .tile .dots i{width:10px;height:10px;border-radius:50%;background:rgba(36,25,58,.14)}
+#cups .tile .dots i.done{background:var(--green,#3bb54a)}
+#cups .tile .dots i.now{background:#fff;box-shadow:0 0 0 2.5px var(--gold-d)}
+#cups .tile .won{position:absolute;top:-8px;right:-6px;padding:2px 7px 2px 5px;border-radius:12px;background:var(--gold);box-shadow:0 0 0 2px #fff,0 2px 0 var(--gold-e);font-size:13px;font-weight:700;line-height:1.3}
 #cups .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
 #cupClose{display:block;margin:0 auto}
 .sheet #cupClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
-/* Road to the cup: rounds, then the trophy. */
-.cuppath{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 2px;flex-wrap:wrap}
-.cuppath > span{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 9px;border-radius:14px;background:rgba(36,25,58,.06);min-width:62px}
-.cuppath small{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em}
-.cuppath i{width:20px;height:20px;border-radius:50%;background:var(--c,#ccc);box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.3);font-style:normal}
-.cuppath b{font-size:13px}
-.cuppath .done{opacity:.6}
+/* Road to the cup: same-size steps joined by a line; won steps get a check, the next one is gold. */
+.cuppath{display:flex;align-items:center;justify-content:center;margin:12px 0 2px}
+.cuppath .step{flex:0 0 74px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 7px;border-radius:14px;background:rgba(36,25,58,.06)}
+.cuppath small{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;line-height:1}
+.cuppath .pic{position:relative;width:40px;height:40px;display:grid;place-items:center;font-size:32px;line-height:1}
+.cuppath .pic img{width:40px;height:40px}
+.cuppath .pic em{position:absolute;right:-5px;bottom:-3px;width:18px;height:18px;border-radius:50%;background:var(--green,#3bb54a);color:#fff;font:700 12px/18px system-ui;font-style:normal;text-align:center;box-shadow:0 0 0 2px #fff}
+.cuppath b{font-size:13px;line-height:1}
+.cuppath .done{opacity:.65}
 .cuppath .now{background:var(--gold);box-shadow:0 0 0 2px var(--gold-d)}
-.cuppath .prize i{width:auto;height:auto;background:none;box-shadow:none;font-size:30px}
-.cuppath em{font-style:normal;color:var(--ink-soft);font-weight:700}
+.cuppath .now small{color:var(--ink)}
+.cuppath .link{flex:0 0 14px;height:3px;border-radius:2px;background:rgba(36,25,58,.18)}
 /* Today's training: the 3 ideas, as a reminder before the mix. */
 .remind{display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap}
 .remind > span{display:flex;flex-direction:column;align-items:center;width:150px;padding:8px 8px 9px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px var(--line)}
