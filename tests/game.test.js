@@ -16,9 +16,10 @@ function makeGame(skills = ALL) {
   return { g, events };
 }
 // Runs frames until the promise settles; pick(g) is called whenever a choice is possible.
-async function drive(g, promise, pick, maxSec = 120) {
+async function drive(g, promise, pick, maxSec = 120, each = null) {
   let done = false, value; promise.then(v => { done = true; value = v; });
   for (let t = 0; t < maxSec && !done; t += 1 / 30) {
+    each?.(g);
     g.tick(1 / 30, t);
     if (g.canAct && g._choose) { const o = pick(g); if (o) { g.seen.add('m1'); g.seen.add('m2'); g.choose(o); } }
     await null;
@@ -228,11 +229,12 @@ test('peek, then turn: the pass waits in the air while he decides; turning away 
 test('matches grow with his skills: with every lesson passed, live runs, peeks and 1v1s all happen', async () => {
   const real = Math.random, kinds = {}, need = ['live-support', 'live-receive', 'live-tackle', 'live-defense'];
   try {
-    for (let seed = 1; seed <= 8 && !need.every(k => kinds[k]); seed++) {
+    for (let seed = 1; seed <= 16 && !need.every(k => kinds[k]); seed++) {
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame();
       await drive(g, g.match([...ALL], [], 4, 'free'), gm => {
         const k = (gm.sc.live ? 'live-' : '') + gm.sc.kind; kinds[k] = (kinds[k] || 0) + 1;
+        if (gm.sc.kind === 'receive') for (const t of gm.turnArcs()) assert.ok(Math.abs(t.a1 - t.a0) > 1, `live turn arrow ${t.id} is a stub`);
         if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
         // Sometimes the wrong choice, so the other team gets the ball and he has to defend.
         return Math.random() < .3 ? (gm.sc.spots ? 'spot:' + gm.sc.spots.at(-1).id : 'pass:1') : gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back');
@@ -335,4 +337,23 @@ test('after the hand taps Small touches or Big push, those buttons go away when 
   const states = events.filter(e => e[0] === 'state');
   assert.ok(states.some(e => e[1].touchPick), 'the demo should show the Small/Big choice');
   assert.ok(states.filter(e => e[1].phase === 'outcome').every(e => !e[1].touchPick));
+});
+
+test('peek and turn: the arrows go around his body, even if he looked away before the pass', async () => {
+  const { generate } = await import('../js/generate.js');
+  for (let seed = 1; seed <= 12; seed++) {
+    const sc = generate('peek-and-turn', seed), { g } = makeGame();
+    const p = g.round(sc, { hint: false });
+    let checked = false;
+    await drive(g, p, gm => {
+      if (!checked) {
+        const h = gm.sim.a('hero'), c = gm.sim.a(gm.sc.carrier), face = Math.atan2(c.y - h.y, c.x - h.x);
+        assert.ok(Math.abs(Math.atan2(Math.sin(gm.yaw0 - face), Math.cos(gm.yaw0 - face))) < .01, 'arrows not centered on him facing the passer');
+        for (const t of gm.turnArcs()) assert.ok(Math.abs(t.a1 - t.a0) > 1, `arrow ${t.id} is a stub`);
+        checked = true;
+      }
+      return gm.sc.best;
+    }, 60, g2 => { if (g2.phase === 'pre') g2.yaw = 1.2; }); // he looks away while the pass comes
+    assert.ok(checked);
+  }
 });

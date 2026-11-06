@@ -233,13 +233,23 @@ export class Game {
 
   decide() {
     this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
-    if (this.sc.kind === 'receive') { this.step = 'turn'; this.yaw0 = this.yaw; this.peeked = false; } // the ball waits in the air
+    if (this.sc.kind === 'receive') { // the ball waits in the air
+      this.step = 'turn'; this.peeked = false; this.drag = null; this.turn = 0; this.facePasser();
+    }
     if (this.sc.kind === 'tackle') { // the attacker comes at him; he taps STEAL (or the attacker gets past)
       this.step = 'tackle'; this.lookUp = true; this.scanned = true;
       const g = this; this.sim.run((function* () { if (!(yield* g.approach(false))) g.choose('tackle:none'); })());
     }
     this.delay(1.2).then(() => { if (this.phase === 'decide') this.hud.caption(''); });
     return new Promise(res => { this._choose = res; });
+  }
+  // On a pass to him, he faces the passer, wherever he was looking before the kick, and the turn arrows go around
+  // his body from there (yaw0). They used to follow the camera, so a look around before the pass left one arrow a
+  // stub. The view swings back to the ball if he was looking away.
+  facePasser() {
+    const h = this.sim.a('hero'), c = this.sim.a(this.sc.carrier), f = h && c ? Math.atan2(c.y - h.y, c.x - h.x) : this.yaw;
+    this.yaw0 = f; if (h) h.face = [Math.cos(f), Math.sin(f)];
+    const y = this.yaw; if (Math.abs(wrap(f - y)) > .02) this.tween(.35, t => { this.yaw = y + wrap(f - y) * smooth(t); });
   }
   // How good a choice is: 'best' (the star answer), 'ok' (just as good), 'safe' (keeps the ball but there was
   // a better choice) or 'bad' (loses it). Dribbles are graded by the real space on the field, so any of the
@@ -503,7 +513,8 @@ export class Game {
     }
     const l = Math.hypot(c.x - h.x, c.y - h.y) || 1; h.face = [(c.x - h.x) / l, (c.y - h.y) / l]; yield .25;
     if (good) {
-      if (this.has('peek-and-turn')) { yield* this.strike(c.id, h.x - .3, h.y, { speed: 8, arc: .05 }); this.result = 'incoming'; return; } // he'll peek and turn
+      // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
+      if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { yield* this.strike(c.id, h.x - .3, h.y, { speed: 8, arc: .05 }); this.result = 'incoming'; return; }
       yield* this.strike(c.id, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
       s.give('hero'); this.scripted = new Set(['hero']); this.ai = true; yield .2;
@@ -752,7 +763,7 @@ export class Game {
     this.showing = true; this.phase = 'decide'; this.pendingDir = null;
     if (this.skipping || !h) return;
     if (sc.kind === 'tackle') { this.step = 'tackle'; this.lookUp = true; this.handAt = 'stealBtn'; await this.delay(.6); return; } // tapped when the ball rolls loose (tackleGen)
-    if (sc.kind === 'receive') this.step = 'turn';
+    if (sc.kind === 'receive') { this.step = 'turn'; this.facePasser(); await this.delay(.4); }
     else if (!this.lookUp) { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); await this.delay(.5); }
     const face = p => wrap(Math.atan2(p.y - h.y, p.x - h.x));
     if (MATE[opt]) {
@@ -809,7 +820,7 @@ export class Game {
       this.seen.add(mateId); this.hint = true;
       await this.talk(`${this.name(mateId)} is open!`, 1);
     } else if (sc.kind === 'receive') {
-      this.step = 'turn'; this.yaw0 = this.yaw;
+      this.step = 'turn'; this.facePasser();
       await this.talk('Peek over your shoulder.', .2, 'Peek! 👀');
       const o = this.sim.a('o1'), h = this.sim.a('hero'), side = wrap(Math.atan2(o.y - h.y, o.x - h.x) - this.yaw) > 0 ? 1 : -1;
       const y0 = this.yaw; await this.dragTo(y0 + side * 2.5, 1.1); await this.delay(.6);
@@ -1003,6 +1014,7 @@ export class Game {
   // and right turns lean up the field. False when neither turn is open (then he just takes the ball).
   async toReceive() {
     const s = this.sim, h = s.a('hero'), b = s.ball, face = Math.atan2(b.fy - h.y, b.fx - h.x);
+    if (Math.abs(face) < 2) return false; // the pass isn't from behind him: no turn needed
     const nearest = ang => Object.entries(DRIBBLE_DIRS).sort((p, q) => Math.abs(wrap(p[1] - ang)) - Math.abs(wrap(q[1] - ang)))[0][0];
     const lean = side => Math.atan2(Math.sin(side), Math.cos(side) + 1);
     const turns = { L: nearest(lean(face + Math.PI / 2)), R: nearest(lean(face - Math.PI / 2)) };
@@ -1063,7 +1075,7 @@ export class Game {
       // His left is counterclockwise from where he faces (the pitch's y axis points to the left of +x).
       const to = DRIBBLE_DIRS[d], left = id === 'L', T = 2 * Math.PI, mod = v => ((v % T) + T) % T;
       const sweep = left ? mod(to - f) : -mod(f - to);
-      out.push({ id, a0: f + (left ? .4 : -.4), a1: f + (left ? Math.max(.8, sweep) : Math.min(-.8, sweep)) });
+      out.push({ id, a0: f + (left ? .4 : -.4), a1: f + (left ? Math.max(1.4, sweep) : Math.min(-1.4, sweep)) }); // never a stub
     }
     return out;
   }
