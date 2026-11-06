@@ -10,16 +10,6 @@ import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
 import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, skills, defaultProgress } from './progress.js';
 
-// On iPad, a home-screen app can get a page a little shorter than the screen, which leaves a peach strip under
-// the field. When the app fills the whole screen, size the field (and the screens) to the screen itself.
-function fitScreen() {
-  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  const short = Math.min(screen.width, screen.height), long = Math.max(screen.width, screen.height);
-  const land = innerWidth > innerHeight, sw = land ? long : short, sh = land ? short : long;
-  const gap = sh - innerHeight, full = standalone && Math.abs(innerWidth - sw) < 2 && gap > 0 && gap < 80;
-  document.documentElement.style.setProperty('--app-h', full ? sh + 'px' : '100dvh');
-}
-fitScreen(); addEventListener('resize', fitScreen); addEventListener('orientationchange', () => setTimeout(fitScreen, 300));
 
 const $ = s => document.querySelector(s);
 const P = load();
@@ -448,7 +438,27 @@ let last = performance.now(), time = 0;
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now; time += dt;
   requestAnimationFrame(frame);
-  try { game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
+  try { game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); matchStrip(now); } catch (e) { console.error(e); }
+}
+// On iPad, a home-screen app can leave a thin strip under the page that the page can't draw into. iPadOS paints
+// it with the page's background color, so while he plays, that color follows the grass along the bottom edge of
+// the field (read from the frame just drawn, twice a second). On the menus it stays peach.
+const themeMeta = document.querySelector('meta[name="theme-color"]'), PEACH = '#ffc89a';
+let tint = PEACH, tintAt = 0;
+function matchStrip(now) {
+  if (now - tintAt < 500) return; tintAt = now;
+  let c = PEACH;
+  if (!hudEl.classList.contains('hidden')) {
+    const gl = world.renderer.getContext(), w = gl.drawingBufferWidth, px = new Uint8Array(w * 4);
+    gl.readPixels(0, 0, w, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // the bottom row (WebGL rows start at the bottom)
+    const mid = k => { const v = []; for (let i = 1; i < 16; i++) v.push(px[Math.floor(w * i / 16) * 4 + k]); return v.sort((a, b) => a - b)[7]; }; // median: a player's boot doesn't change it
+    // Head down, the screen edges are dimmed (the tunnel: brightness .8, saturation .75), so dim the strip to match.
+    const o = +tunnel.style.opacity || 0, rgb = [0, 1, 2].map(mid), gray = .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+    const dimmed = rgb.map(v => Math.round(Math.min(255, (gray + (v - gray) * (1 - .25 * o)) * (1 - .2 * o))));
+    if (px.some(v => v)) c = '#' + dimmed.map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  if (c === tint) return;
+  tint = c; document.documentElement.style.backgroundColor = c; document.body.style.backgroundColor = c; themeMeta?.setAttribute('content', c);
 }
 requestAnimationFrame(frame);
 window.__game = game; // for debugging in the console
