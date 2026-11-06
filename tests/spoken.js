@@ -2,6 +2,7 @@
 // Names don't matter here: lines are cut at player names, and each name has its own clip.
 import { PATH, allScenarios } from '../js/skills.js';
 import { generate } from '../js/generate.js';
+import { CUPS } from '../js/cups.js';
 
 const A = 'Saka', B = 'Rice';
 const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B);
@@ -18,10 +19,12 @@ export function spokenLines() {
     'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!']) cues.add(c);
   const lines = [
     ...PATH.flatMap(s => [s.kid, s.tip]),
-    'Your turn!', 'Mini match!', 'Free play!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
+    'Your turn!', 'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
     'See who is open?', 'Where is the space?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
+    "Today's training!", 'Training done!', 'Train first!', 'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!',
+    ...CUPS.map(c => c.name),
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
   ];
   for (const c of cues) {

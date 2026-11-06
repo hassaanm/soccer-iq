@@ -87,3 +87,59 @@ test('a lesson is a skill once passed (4 of 6): that opens the next lesson; a mi
   assert.equal(r.unlocked, true); assert.equal(level(p, 'look-up'), 1);
   assert.ok(isOpen(p, PATH, 1)); assert.deepEqual([...skills(p, PATH)], ['look-up']);
 });
+
+// ---------- daily training ----------
+import { graduated, playOpen, trainingPlan, trained, sureness } from '../js/progress.js';
+import { BUILDS } from '../js/skills.js';
+const passAll = (p, day) => { for (const s of PATH) finishSession(p, s.id, 6, 6, day); };
+const seq = (...v) => { let i = 0; return () => v[i++ % v.length]; };
+
+test('training starts once every lesson is passed; Match and Cup open after a session that day', () => {
+  const p = defaultProgress();
+  assert.equal(graduated(p, PATH), false);
+  passAll(p, 100);
+  assert.equal(graduated(p, PATH), true);
+  assert.equal(playOpen(p, 100), false);
+  p.openDay = 100;
+  assert.equal(playOpen(p, 100), true); assert.equal(playOpen(p, 101), false, 'a new day needs a new session');
+  p.settings.alwaysOpen = true; assert.equal(playOpen(p, 101), true);
+});
+
+test('training picks 3 different lessons, favoring the ones he keeps missing', () => {
+  const p = defaultProgress(); passAll(p, 100);
+  for (let k = 0; k < 4; k++) trained(p, 'see-the-trap', [false, false], { day: 101 + k });
+  let trap = 0;
+  for (let i = 0; i < 300; i++) {
+    const plan = trainingPlan(p, PATH, { day: 106, builds: BUILDS });
+    assert.equal(plan.length, 3); assert.equal(new Set(plan).size, 3);
+    if (plan.includes('see-the-trap')) trap++;
+  }
+  assert.equal(trap, 300, `missed lesson picked in ${trap} of 300`);
+  assert.ok(sureness(p, 'see-the-trap') < .2);
+});
+
+test('basic lessons inside later ones (Look up) rarely get their own turn', () => {
+  const p = defaultProgress(); passAll(p, 100);
+  let look = 0;
+  for (let i = 0; i < 400; i++) if (trainingPlan(p, PATH, { day: 101, builds: BUILDS }).includes('look-up')) look++;
+  assert.ok(look < 40, `look-up picked ${look} of 400 times`);
+});
+
+test('training moves a due lesson up a star when all right, down when all missed, and refreshes what it builds on', () => {
+  const p = defaultProgress(); passAll(p, 100);
+  const r = trained(p, 'forward-first', [true, true], { day: 101, builds: BUILDS });
+  assert.ok(r.leveledUp); assert.equal(level(p, 'forward-first'), 2);
+  assert.equal(p.skills['look-up'].day, 101, 'look-up counts as practiced');
+  assert.equal(trained(p, 'forward-first', [true, true], { day: 101, builds: BUILDS }).leveledUp, false, 'once a day');
+  trained(p, 'one-goes', [false, false], { day: 101, builds: BUILDS });
+  assert.equal(p.skills['one-goes'].box, 0); assert.equal(level(p, 'one-goes'), 1, 'stars never go down');
+});
+
+test('once everything is gold and sure, training is still a full mix', () => {
+  const p = defaultProgress(); passAll(p, 100); passAll(p, 101); passAll(p, 102);
+  for (const s of PATH) p.skills[s.id].recent = [1, 1, 1, 1, 1, 1, 1, 1];
+  const seen = new Set();
+  for (let i = 0; i < 200; i++) trainingPlan(p, PATH, { day: 103, builds: BUILDS }).forEach(id => seen.add(id));
+  assert.ok(seen.size >= 12, `${seen.size} lessons seen`);
+  assert.equal(trainingPlan(p, PATH, { day: 103, builds: BUILDS, rnd: seq(0) }).length, 3);
+});

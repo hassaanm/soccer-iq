@@ -77,7 +77,7 @@
   <div class="home-foot">
     <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
-    <div class="freebox"><button id="freeBtn" class="btn btn-blue">⚽ Free play</button></div>
+    <div class="freebox"><button id="freeBtn" class="btn btn-blue">⚽ Match</button><button id="cupBtn" class="btn btn-gold">🏆 Cup</button></div>
   </div>
 </section>
 
@@ -92,6 +92,12 @@
   <h2>Pick a lesson</h2>
   <div id="lessons"></div>
   <button id="sheetClose" class="btn btn-ghost">Done</button>
+</div></section>
+
+<section id="cupSheet" class="screen hidden"><div class="panel wide sheet">
+  <h2>Pick a cup</h2>
+  <div id="cups"></div>
+  <button id="cupClose" class="btn btn-ghost">Done</button>
 </div></section>
 
 <section id="albumSheet" class="screen hidden"><div class="panel wide sheet">
@@ -111,6 +117,7 @@
   <h2>Grown-ups</h2>
   <label>Lesson <select id="skillSel"></select></label>
   <label>Art style <select id="artSel"><option value="lowpoly">Low-poly (faceted)</option><option value="smooth">Smooth (more detail)</option></select></label>
+  <label class="chk"><input type="checkbox" id="openChk"> Match and Cup always open (skip today's training)</label>
   <label>Rounds per session <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
   <label class="chk"><input type="checkbox" id="voiceChk"> Voice narration</label>
   <label class="chk"><input type="checkbox" id="recordedChk"> Recorded voice (plays loud in the car)</label>
@@ -129,7 +136,7 @@
 addEventListener('error', e => {
   if (!/export|import|module/i.test(e.message || '')) return;
   try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
-  const files = ['main', 'game', 'skills', 'generate', 'progress', 'sim', 'world', 'sound', 'voice', 'geom', 'teams', 'version'].map(f => 'js/' + f + '.js').concat('css/app.css');
+  const files = ['main', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'sound', 'voice', 'geom', 'teams', 'version'].map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });
 </script>

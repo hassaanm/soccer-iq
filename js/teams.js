@@ -111,9 +111,72 @@ export const TEAMS = [
   { id: 'usa', name: 'USA', short: 'USA', type: 'country',
     kit: { pattern: 'solid', colors: ['#f6f6f4'], shorts: '#1b2a5a', socks: '#f6f6f4', num: '#1b2a5a', trim: '#c8102e' },
     players: [{ name: 'PULISIC', num: 10, skin: S.light, hair: '#6b4a2b' }, { name: 'MCKENNIE', num: 8, skin: S.brown, hair: '#120c08' }, { name: 'ADAMS', num: 4, skin: S.mid, hair: '#1b1410' }] },
+  // Added in v40 for the cups.
+  { id: 'uruguay', name: 'Uruguay', short: 'URU', type: 'country',
+    kit: { pattern: 'solid', colors: ['#5cbfeb'], shorts: '#1b1b1f', socks: '#1b1b1f', num: '#1b1b1f', trim: '#1b1b1f' },
+    players: [{ name: 'VALVERDE', num: 15, skin: S.light, hair: '#2a1c12' }, { name: 'NÚÑEZ', num: 9, skin: S.mid, hair: '#1b1410' }, { name: 'ARAÚJO', num: 4, skin: S.dark, hair: '#120c08' }] },
+  { id: 'colombia', name: 'Colombia', short: 'COL', type: 'country',
+    kit: { pattern: 'solid', colors: ['#fcd116'], shorts: '#1e3a8a', socks: '#c8102e', num: '#1e3a8a', trim: '#c8102e' },
+    players: [{ name: 'DÍAZ', num: 7, skin: S.mid, hair: '#1b1410' }, { name: 'JAMES', num: 10, skin: S.tan, hair: '#2a1c12' }, { name: 'LERMA', num: 16, skin: S.dark, hair: '#120c08' }] },
+  { id: 'ecuador', name: 'Ecuador', short: 'ECU', type: 'country',
+    kit: { pattern: 'solid', colors: ['#ffdd00'], shorts: '#034ea2', socks: '#ffdd00', num: '#034ea2', trim: '#ed1c24' },
+    players: [{ name: 'VALENCIA', num: 13, skin: S.dark, hair: '#120c08' }, { name: 'CAICEDO', num: 23, skin: S.dark, hair: '#120c08' }, { name: 'HINCAPIÉ', num: 3, skin: S.mid, hair: '#1b1410' }] },
+  { id: 'canada', name: 'Canada', short: 'CAN', type: 'country',
+    kit: { pattern: 'solid', colors: ['#d80621'], shorts: '#d80621', socks: '#d80621', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'DAVIES', num: 19, skin: S.dark, hair: '#120c08' }, { name: 'DAVID', num: 20, skin: S.dark, hair: '#120c08' }, { name: 'EUSTÁQUIO', num: 7, skin: S.light, hair: '#3a2a1c' }] },
+  { id: 'senegal', name: 'Senegal', short: 'SEN', type: 'country',
+    kit: { pattern: 'solid', colors: ['#f6f6f4'], shorts: '#f6f6f4', socks: '#f6f6f4', num: '#00853f', trim: '#00853f' },
+    players: [{ name: 'MANÉ', num: 10, skin: S.dark, hair: '#120c08' }, { name: 'JACKSON', num: 11, skin: S.dark, hair: '#120c08' }, { name: 'KOULIBALY', num: 3, skin: S.dark, hair: '#120c08' }] },
+  { id: 'nigeria', name: 'Nigeria', short: 'NGA', type: 'country',
+    kit: { pattern: 'solid', colors: ['#008751'], shorts: '#008751', socks: '#008751', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'OSIMHEN', num: 9, skin: S.dark, hair: '#120c08' }, { name: 'LOOKMAN', num: 18, skin: S.dark, hair: '#120c08' }, { name: 'NDIDI', num: 4, skin: S.dark, hair: '#120c08' }] },
+  { id: 'egypt', name: 'Egypt', short: 'EGY', type: 'country',
+    kit: { pattern: 'solid', colors: ['#c8102e'], shorts: '#f6f6f4', socks: '#1b1b1f', num: '#ffffff', trim: '#1b1b1f' },
+    players: [{ name: 'SALAH', num: 10, skin: S.mid, hair: '#1b1410' }, { name: 'MARMOUSH', num: 22, skin: S.tan, hair: '#1b1410' }, { name: 'TREZEGUET', num: 7, skin: S.mid, hair: '#1b1410' }] },
+  { id: 'korea', name: 'Korea', short: 'KOR', type: 'country',
+    kit: { pattern: 'solid', colors: ['#d4213d'], shorts: '#1b1b1f', socks: '#d4213d', num: '#ffffff', trim: '#1b1b1f' },
+    players: [{ name: 'SON', num: 7, skin: S.light, hair: '#120c08' }, { name: 'LEE', num: 18, skin: S.light, hair: '#120c08' }, { name: 'KIM', num: 4, skin: S.light, hair: '#120c08' }] },
+  { id: 'denmark', name: 'Denmark', short: 'DEN', type: 'country',
+    kit: { pattern: 'solid', colors: ['#c60c30'], shorts: '#f6f6f4', socks: '#c60c30', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'ERIKSEN', num: 10, skin: S.light, hair: '#c9a46a' }, { name: 'HØJLUND', num: 9, skin: S.light, hair: '#c9a46a' }, { name: 'HJULMAND', num: 21, skin: S.light, hair: '#5a4330' }] },
+  { id: 'switzerland', name: 'Switzerland', short: 'SUI', type: 'country',
+    kit: { pattern: 'solid', colors: ['#d52b1e'], shorts: '#d52b1e', socks: '#d52b1e', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'XHAKA', num: 10, skin: S.light, hair: '#1b1410' }, { name: 'AKANJI', num: 5, skin: S.dark, hair: '#120c08' }, { name: 'NDOYE', num: 11, skin: S.dark, hair: '#120c08' }] },
+  { id: 'turkey', name: 'Türkiye', short: 'TUR', type: 'country',
+    kit: { pattern: 'solid', colors: ['#e30a17'], shorts: '#f6f6f4', socks: '#e30a17', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'GÜLER', num: 8, skin: S.light, hair: '#3a2a1c' }, { name: 'ÇALHANOĞLU', num: 10, skin: S.light, hair: '#3a2a1c' }, { name: 'YILDIZ', num: 19, skin: S.light, hair: '#3a2a1c' }] },
+  { id: 'villa', name: 'Aston Villa', short: 'AVL', type: 'club',
+    kit: { pattern: 'sleeves', colors: ['#670e36', '#95bfe5'], shorts: '#f6f6f4', socks: '#95bfe5', num: '#ffffff', trim: '#95bfe5' },
+    players: [{ name: 'WATKINS', num: 11, skin: S.dark, hair: '#120c08' }, { name: 'ROGERS', num: 27, skin: S.brown, hair: '#120c08' }, { name: 'MCGINN', num: 7, skin: S.light, hair: '#b9824a' }] },
+  { id: 'benfica', name: 'Benfica', short: 'BEN', type: 'club',
+    kit: { pattern: 'solid', colors: ['#e30613'], shorts: '#f6f6f4', socks: '#e30613', num: '#ffffff', trim: '#c9a227' },
+    players: [{ name: 'PAVLIDIS', num: 14, skin: S.light, hair: '#3a2a1c' }, { name: 'AURSNES', num: 8, skin: S.light, hair: '#c9a46a' }, { name: 'OTAMENDI', num: 30, skin: S.tan, hair: '#2a1c12' }] },
+  { id: 'porto', name: 'Porto', short: 'POR', type: 'club',
+    kit: { pattern: 'stripes', colors: ['#f6f6f4', '#1b4ea0'], shorts: '#1b4ea0', socks: '#1b4ea0', num: '#f6c344', trim: '#1b4ea0' },
+    players: [{ name: 'SAMU', num: 9, skin: S.dark, hair: '#120c08' }, { name: 'PEPÊ', num: 11, skin: S.mid, hair: '#1b1410' }, { name: 'VARELA', num: 22, skin: S.tan, hair: '#2a1c12' }] },
+  { id: 'athletic', name: 'Athletic Club', short: 'ATH', type: 'club',
+    kit: { pattern: 'stripes', colors: ['#ee2523', '#f6f6f4'], shorts: '#1b1b1f', socks: '#1b1b1f', num: '#1b1b1f', trim: '#1b1b1f' },
+    players: [{ name: 'NICO WILLIAMS', num: 10, skin: S.dark, hair: '#120c08' }, { name: 'SANCET', num: 8, skin: S.light, hair: '#3a2a1c' }, { name: 'IÑAKI WILLIAMS', num: 9, skin: S.dark, hair: '#120c08' }] },
+  { id: 'flamengo', name: 'Flamengo', short: 'FLA', type: 'club',
+    kit: { pattern: 'stripes', colors: ['#c8102e', '#1b1b1f'], shorts: '#f6f6f4', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'ARRASCAETA', num: 10, skin: S.light, hair: '#3a2a1c' }, { name: 'PEDRO', num: 9, skin: S.mid, hair: '#1b1410' }, { name: 'JORGINHO', num: 21, skin: S.light, hair: '#3a2a1c' }] },
+  { id: 'alhilal', name: 'Al Hilal', short: 'HIL', type: 'club',
+    kit: { pattern: 'solid', colors: ['#1f4ea8'], shorts: '#1f4ea8', socks: '#f6f6f4', num: '#ffffff', trim: '#ffffff' },
+    players: [{ name: 'NEVES', num: 8, skin: S.tan, hair: '#2a1c12' }, { name: 'MALCOM', num: 77, skin: S.dark, hair: '#120c08' }, { name: 'THEO', num: 12, skin: S.light, hair: '#3a2a1c' }] },
 ];
 
 export const teamById = id => TEAMS.find(t => t.id === id) || TEAMS[0];
+
+// Where each team plays (for the cups): countries by continent, clubs by league.
+const ZONE = {
+  europe: 'belgium croatia england france germany italy netherlands norway portugal spain denmark switzerland turkey',
+  americas: 'argentina brazil uruguay colombia ecuador mexico usa canada', africa: 'morocco senegal nigeria egypt', asia: 'japan korea',
+  eng: 'arsenal chelsea liverpool city united newcastle spurs villa', esp: 'barca madrid atleti athletic', ita: 'milan inter juventus napoli',
+  ger: 'bayern dortmund leverkusen', fra: 'psg', por: 'benfica porto', sau: 'alnassr alhilal', usa: 'miami', bra: 'flamengo',
+};
+for (const [zone, ids] of Object.entries(ZONE)) for (const id of ids.split(' ')) teamById(id).zone = zone;
+// Teams sorted by name, so the pickers cycle alphabetically.
+TEAMS.sort((a, b) => a.name.localeCompare(b.name));
 
 // Friendly display name, e.g. "LEWANDOWSKI" -> "Lewandowski".
 export const displayName = n => n.split(' ').map(w => w[0] + w.slice(1).toLowerCase()).join(' ');

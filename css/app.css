@@ -212,7 +212,42 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessons .tile.def::after{content:"defense";position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#4a6fb0;text-transform:uppercase}
 #lessons .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
 #lessons .tile.locked{opacity:.5;cursor:default}
-.freebox{display:flex;justify-content:flex-end}
+.freebox{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+/* Match and Cup: locked until today's lesson or training is done. */
+.freebox .btn{position:relative}
+.freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
+.freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+/* Cup sheet */
+#cupSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#cups{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:9px;padding:4px 3px 6px;max-height:calc(100vh - 80px);overflow-y:auto}
+#cups .tile{border:0;border-radius:16px;background:#fff;padding:8px 6px;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;
+  box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15)}
+#cups .tile .e{font-size:34px;line-height:1.1}
+#cups .tile .k{font-size:14px;font-weight:700;line-height:1.1}
+#cups .tile .st{font-size:11.5px;font-weight:600;color:var(--ink-soft);min-height:14px}
+#cups .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
+#cupClose{display:block;margin:0 auto}
+.sheet #cupClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
+/* Road to the cup: rounds, then the trophy. */
+.cuppath{display:flex;align-items:center;justify-content:center;gap:6px;margin:10px 0 2px;flex-wrap:wrap}
+.cuppath > span{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 9px;border-radius:14px;background:rgba(36,25,58,.06);min-width:62px}
+.cuppath small{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em}
+.cuppath i{width:20px;height:20px;border-radius:50%;background:var(--c,#ccc);box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.3);font-style:normal}
+.cuppath b{font-size:13px}
+.cuppath .done{opacity:.6}
+.cuppath .now{background:var(--gold);box-shadow:0 0 0 2px var(--gold-d)}
+.cuppath .prize i{width:auto;height:auto;background:none;box-shadow:none;font-size:30px}
+.cuppath em{font-style:normal;color:var(--ink-soft);font-weight:700}
+/* Today's training: the 3 ideas, as a reminder before the mix. */
+.remind{display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.remind > span{display:flex;flex-direction:column;align-items:center;width:150px;padding:8px 8px 9px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px var(--line)}
+.remind i{font-style:normal;font-size:30px;line-height:1.1}
+.remind b{font-size:15px;line-height:1.15}
+.remind small{font-size:12px;font-weight:500;color:var(--ink-soft);line-height:1.25;margin-top:3px}
+#lessons .tile.train{width:100%;flex-direction:row;gap:8px;min-height:44px;margin-bottom:2px}
+#lessons .tile.train .k{font-size:15px}
+#lessons .tile.train .st{font-size:12px;color:var(--ink-soft);letter-spacing:0}
+#album .row.cups{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))}
 .team .kind{display:flex;justify-content:center;gap:4px;margin:6px 0 0}
 .team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
 .team .kind button.on{background:var(--ink);color:#fff}

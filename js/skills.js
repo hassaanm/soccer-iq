@@ -63,6 +63,23 @@ export const UNLOCKS = {
   'forward-first': 'Forward-first chances',
 };
 
+// The earlier lessons each lesson includes. Daily training treats those as practiced whenever the later lesson
+// comes up (almost everything starts with looking up), so it spends its rounds on the bigger ideas.
+export const BUILDS = {
+  'dribble-to-space': ['look-up'],
+  'take-him-on': ['look-up', 'dribble-to-space'],
+  'shoot-close': ['look-up'],
+  'steal-it': ['get-goal-side'],
+  'won-it-go': ['look-up', 'dribble-to-space'],
+  'peek-and-turn': ['look-up'],
+  'see-the-trap': ['look-up'],
+  'pass-to-open': ['look-up'],
+  'give-and-go': ['look-up', 'pass-to-open', 'get-open'],
+  'one-goes': ['get-goal-side'],
+  'mark-the-free-one': ['get-goal-side'],
+  'forward-first': ['look-up', 'shoot-close', 'pass-to-open', 'dribble-to-space'],
+};
+
 // A fixed sample of generated scenarios per lesson (tests, the audit, and the mini match's starting plays).
 export function allScenarios(skillId) {
   return generates(skillId) ? Array.from({ length: 10 }, (_, i) => generate(skillId, 101 + i)).filter(Boolean) : [];

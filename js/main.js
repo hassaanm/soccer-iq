@@ -2,13 +2,14 @@
 import { World } from './world.js';
 import { Game } from './game.js';
 import { TEAMS, teamById, displayName } from './teams.js';
-import { PATH, CHAPTERS, UNLOCKS, skillById, sessionRounds } from './skills.js';
+import { PATH, CHAPTERS, UNLOCKS, BUILDS, skillById, sessionRounds } from './skills.js';
+import { CUPS, cupById, newCup, roundsOf, goalsToWin } from './cups.js';
 import { generate } from './generate.js';
 import { VERSION } from './version.js';
 import { sfx, unlock as unlockSound, setSoundOn, setMusicOn, setMuted, setVolumes, voiceVolume, duck, loadVoice, canSpeak, speakClips, stopVoice, preloadClips } from './sound.js';
 import { pieces, clipKey } from './voice.js';
 import { shuffle } from './geom.js';
-import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, skills, defaultProgress } from './progress.js';
+import { load, save, nextSkill, reviewsDue, finishSession, reviewed, level, isOpen, skills, defaultProgress, graduated, playOpen, trainingPlan, trained, note, today } from './progress.js';
 
 
 const $ = s => document.querySelector(s);
@@ -220,17 +221,23 @@ function renderPickers(flip) {
 const lessonOpen = i => isOpen(P, PATH, i);
 // The lesson sheet: one row per chapter. Stars show the level reached (1–3); each level needs a good session
 // on a new day. Picking a tile plays it next (once); otherwise PLAY uses the coach's pick.
+// Once every lesson is passed, PLAY is "Today's training" unless he picked a lesson (or a grown-up locked one).
+const trainingNext = () => graduated(P, PATH) && !(P.pick && skillById(P.pick)) && !(P.settings.skill && skillById(P.settings.skill)?.ready);
 function renderLessons() {
-  const cur = nextSkill(P, PATH), sk = skillById(cur);
+  const training = trainingNext(), cur = training ? null : nextSkill(P, PATH), sk = training ? { emoji: '💪', kid: "Today's training" } : skillById(cur);
   const tile = l => {
     const i = PATH.indexOf(l), open = lessonOpen(i), lv = level(P, l.id);
     return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
       <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
   };
-  $('#lessons').innerHTML = CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(tile).join('')}</div></div>`).join('');
+  const top = graduated(P, PATH) ? `<button class="tile train ${training ? 'on' : ''}" data-id=""><span class="e">💪</span><span class="k">Today's training</span><span class="st">a mix of what you need</span></button>` : '';
+  $('#lessons').innerHTML = top + CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(tile).join('')}</div></div>`).join('');
   $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
-  document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.pick = c.dataset.id; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
+  document.querySelectorAll('#lessons .tile').forEach(c => c.onclick = () => { P.pick = c.dataset.id || null; save(P); renderLessons(); $('#lessonSheet').classList.add('hidden'); });
+  renderGate();
 }
+// Match and Cup open for the day once he has done today's lesson or training.
+function renderGate() { for (const b of ['#freeBtn', '#cupBtn']) $(b).classList.toggle('locked', !playOpen(P)); }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 // Sticker album: a sticker per lesson, ringed by the level reached (bronze, silver, gold), with how many he has.
 // Lessons not played yet show a grey sticker, so he can see what is still to come.
@@ -239,7 +246,9 @@ function renderAlbum() {
   const cell = l => { const lv = level(P, l.id), n = count(l.id);
     return `<div class="st ${lv ? 'l' + lv : 'none'}"><div class="f">${l.emoji}</div><span>${lv ? '★'.repeat(lv) : '–'}${n ? ' ×' + n : ''}</span></div>`; };
   $('#album').innerHTML = CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(cell).join('')}</div></div>`).join('')
-    + `<div class="trophies">🏆 × ${cups} match${cups === 1 ? '' : 'es'} won</div>`;
+    + `<div class="chap"><div class="cn"><b>🏆</b>Cups</div><div class="row cups">${CUPS.map(c => { const n = (P.trophies || []).filter(t => t.cup === c.id).length;
+      return `<div class="st ${n ? 'l3' : 'none'}"><div class="f">${c.emoji}</div><span>${c.name}${n > 1 ? ' ×' + n : ''}</span></div>`; }).join('')}</div></div>`
+    + `<div class="trophies">⚽ ${cups} match${cups === 1 ? '' : 'es'} won</div>`;
 }
 $('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
 $('#albumClose').onclick = () => $('#albumSheet').classList.add('hidden');
@@ -266,12 +275,13 @@ document.querySelectorAll('.team').forEach(el => {
 });
 
 // Shows a card and resolves 'main' or 'alt' with the button that was tapped.
-function card({ emoji, title, sub, button, alt }) {
-  $('#card .emoji').textContent = emoji; $('#card h2').textContent = title; $('#card p').textContent = sub || '';
+function card({ emoji, title, sub, html, lines = [], button, alt }) {
+  $('#card .emoji').textContent = emoji; $('#card h2').textContent = title;
+  if (html) $('#card p').innerHTML = html; else $('#card p').textContent = sub || '';
   const main = $('#cardMain'), other = $('#cardAlt');
   main.textContent = button; other.textContent = alt || ''; other.classList.toggle('hidden', !alt);
   $('#card').classList.remove('hidden');
-  say(title);
+  (async () => { await say(title); for (const l of lines) if (!$('#card').classList.contains('hidden')) await say(l); })();
   return new Promise(res => {
     const done = v => { $('#card').classList.add('hidden'); res(v); };
     main.onclick = () => done('main'); other.onclick = () => done('alt');
@@ -285,10 +295,24 @@ function showSticker(emoji, trophy) {
   st.replaceWith(clone); $('#results .emoji').classList.add('hidden'); setTimeout(() => sfx('star', 2), 250);
 }
 
+// Clears the results card before a flow fills it in.
+function resetResults() {
+  $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden');
+  for (const k of ['.roundsrow', '.roundsnote', '.levelup', '.outside']) $('#results ' + k).innerHTML = '';
+  $('#nextLessonBtn').classList.add('hidden'); $('#againBtn').classList.remove('hidden');
+}
+// Match and Cup need today's lesson or training first (a grown-up can open them in the menu).
+async function gated(run) {
+  if (playOpen(P)) return run();
+  const r = await card({ emoji: '🔒', title: 'Train first!', sub: `Do today's ${graduated(P, PATH) ? 'training' : 'lesson'} to open Match and Cup.`, button: '💪 Train', alt: 'Not now' });
+  if (r === 'main') { unlockAudio(); runSession(); }
+}
+
 // ---------- session ----------
 const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floor(Math.random() * ids.length)], Math.floor(Math.random() * 1e9))).filter(Boolean);
 let running = false;
 async function runSession() {
+  if (trainingNext()) return runTraining();
   if (running) return; running = true;
   const skillId = nextSkill(P, PATH), sk = skillById(skillId), lvl = level(P, skillId);
   // Reviews: 1 round in a lesson's first session, 2 at Levels 1–2, 3 at Level 3 (mixing in more old lessons).
@@ -323,14 +347,16 @@ async function runSession() {
     if (rounds[i].skill !== skillId) { reviewed(P, rounds[i].skill, r.firstTry && r.stars === 3); save(P); }
   }
   // Score the lesson before the mini match, so a skill passed just now is already in it.
-  const firstTry = results.filter(Boolean).length, st = finishSession(P, skillId, firstTry, rounds.length); P.pick = null; save(P);
+  const firstTry = results.filter(Boolean).length, st = finishSession(P, skillId, firstTry, rounds.length); P.pick = null;
+  note(P, skillId, results.filter((_, i) => rounds[i].skill === skillId)); P.openDay = today(); save(P);
   world.setEnv('crowd'); game.skills = skills(P, PATH);
   await card(st.unlocked ? { emoji: '🔓', title: 'New in matches!', sub: `${UNLOCKS[skillId]}. First to 2 goals wins.`, button: 'Kick off' }
     : !st.passedNow && level(P, skillId) === 0 ? { emoji: '🏟️', title: 'Mini match!', sub: `Get ${Math.ceil(rounds.length * 2 / 3)} right next time to unlock this in matches. First to 2 goals wins.`, button: 'Kick off' }
     : { emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const won = score.us > score.them;
-  P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P);
+  P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P); resetResults();
+  $('#nextLessonBtn').textContent = 'Next lesson ▶'; $('#againBtn').textContent = '↺ Play again';
   showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
   // One circle per round, like the dots during the lesson: gold = right on the first try.
@@ -348,24 +374,117 @@ async function runSession() {
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
-// Free play: a match to 3 goals mixing every lesson he has played (attack and defense), with big pushes allowed.
+// Match: first to 3 goals, mixing every lesson he has passed (attack and defense), with everything they unlock.
 async function runFreePlay() {
   if (running) return; running = true; unlockAudio();
-  // Free play: every situation from the lessons he has passed, with everything those lessons unlock.
+  // Every situation from the lessons he has passed, with everything those lessons unlock.
   const has = skills(P, PATH), ids = has.size ? [...has] : ['look-up']; game.skills = has;
   const us = teamById(P.us), them = teamById(P.them);
   game.setTeams(us, them); world.setEnv('crowd'); show(null); hud.dots([], 0);
-  await card({ emoji: '⚽', title: 'Free play!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  await card({ emoji: '⚽', title: 'Match time!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
   const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
-  if (won) showSticker('🏆', true); else { $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden'); $('#results .emoji').textContent = '⚽'; }
+  resetResults(); $('#results .emoji').textContent = '⚽'; if (won) showSticker('🏆', true);
   $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
-  $('#results .roundsrow').innerHTML = ''; $('#results .roundsnote').textContent = ''; $('#results .levelup').textContent = ''; $('#results .outside').textContent = ''; $('#nextLessonBtn').classList.add('hidden'); $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
+  $('#againBtn').textContent = '↺ Play again'; $('#nextLessonBtn').textContent = '🏆 Cup ▶'; $('#nextLessonBtn').classList.remove('hidden'); $('#nextLessonBtn').onclick = openCups;
+  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won the match!' : 'Good game!');
   $('#againBtn').onclick = runFreePlay;
   game.home(); show('#results'); renderPickers(); running = false;
 }
-$('#freeBtn').onclick = runFreePlay;
+$('#freeBtn').onclick = () => gated(runFreePlay);
+$('#cupBtn').onclick = () => gated(openCups);
+
+// ---------- today's training ----------
+// Once every lesson is passed, PLAY is a short mixed session: the 3 lessons he needs most today (see trainingPlan),
+// 2 rounds each, mixed so he has to work out which idea fits. It opens with a reminder of the 3 ideas, and
+// finishing it opens Match and Cup for the day.
+async function runTraining() {
+  if (running) return; running = true;
+  const day = today(), plan = trainingPlan(P, PATH, { day, builds: BUILDS }), n = P.settings.rounds;
+  const us = teamById(P.us), them = teamById(P.them), hero = displayName(us.players[0].name);
+  game.setTeams(us, them);
+  preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
+  world.setEnv('park'); show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
+  const sks = plan.map(skillById);
+  await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${k.tip.startsWith(k.kid) ? k.tip.slice(k.kid.length).replace(/^[.!?\s]+/, '') : k.tip}</small></span>`).join('')}</span>`,
+    lines: sks.map(k => k.kid), button: 'Play' });
+  const order = Array.from({ length: n }, (_, i) => plan[i % plan.length]);
+  const rounds = order.map(id => { for (let k = 0; k < 8; k++) { const sc = generate(id, Math.floor(Math.random() * 1e9), { even: true }); if (sc) return sc; } return null; }).filter(Boolean);
+  const results = [], per = {};
+  let misses = 0;
+  hud.dots(results, rounds.length);
+  for (const sc of rounds) {
+    const r = await game.round(sc, { hint: misses >= 2 }), right = r.firstTry && r.stars === 3;
+    results.push(right); (per[sc.skill] ||= []).push(right); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
+  }
+  const ups = plan.filter(id => per[id] && trained(P, id, per[id], { day, builds: BUILDS }).leveledUp);
+  P.openDay = day; P.sessions++; P.pick = null; save(P);
+  resetResults(); $('#results .emoji').textContent = '💪';
+  $('#results h2').textContent = 'Training done!';
+  $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
+  $('#results .roundsnote').textContent = `${results.filter(Boolean).length} of ${results.length} right on the first try`;
+  $('#results .levelup').textContent = ups.map(id => `${'⭐'.repeat(level(P, id))} ${skillById(id).kid}`).join(' · ');
+  const weak = plan.find(id => per[id]?.some(ok => !ok)) || plan[0];
+  $('#results .outside').innerHTML = skillById(weak).outside ? `<b>Try it outside:</b> ${skillById(weak).outside}` : '';
+  $('#results p').textContent = '⚽ Match and 🏆 Cup are open!';
+  $('#nextLessonBtn').textContent = '🏆 Cup ▶'; $('#nextLessonBtn').classList.remove('hidden'); $('#nextLessonBtn').onclick = openCups;
+  $('#againBtn').textContent = '⚽ Match'; $('#againBtn').onclick = runFreePlay;
+  say('Training done!');
+  game.home(); show('#results'); renderPickers(); running = false;
+}
+
+// ---------- cups ----------
+// The cup sheet: every cup, with the trophies won and how far the current run has got.
+function openCups() {
+  show('#home');
+  $('#cups').innerHTML = CUPS.map(c => {
+    const won = (P.trophies || []).filter(t => t.cup === c.id).length, run = P.cup?.id === c.id ? P.cup : null;
+    const note = run ? `${roundsOf(c)[run.round]} · ${teamById(run.team).short}` : won ? `${'🏆'.repeat(Math.min(won, 3))}${won > 3 ? ' ×' + won : ''}` : `${roundsOf(c).length} wins`;
+    return `<button class="tile ${run ? 'on' : ''}" data-id="${c.id}"><span class="e">${c.emoji}</span><span class="k">${c.name}</span><span class="st">${note}</span></button>`;
+  }).join('');
+  document.querySelectorAll('#cups .tile').forEach(t => t.onclick = () => { $('#cupSheet').classList.add('hidden'); runCup(t.dataset.id); });
+  $('#cupSheet').classList.remove('hidden');
+}
+$('#cupClose').onclick = () => $('#cupSheet').classList.add('hidden');
+$('#cupSheet').onclick = e => { if (e.target.id === 'cupSheet') $('#cupSheet').classList.add('hidden'); };
+// The road to the trophy: one step per round (done, now, still to come), then the cup.
+function cupPath(run) {
+  const cup = cupById(run.id);
+  return `<span class="cuppath">${roundsOf(cup).map((name, i) => { const t = teamById(run.opps[i]);
+    return `<span class="${i < run.round ? 'done' : i === run.round ? 'now' : ''}"><small>${name}</small><i style="--c:${t.kit.colors[0]}"></i><b>${i < run.round ? '✓ ' : ''}${t.short}</b></span>`; }).join('<em>›</em>')}<em>›</em><span class="prize"><i>${cup.emoji}</i></span></span>`;
+}
+async function runCup(cupId) {
+  if (running) return; running = true; unlockAudio();
+  const cup = cupById(cupId);
+  if (P.cup?.id !== cupId) { P.cup = newCup(cup, P.us); save(P); }
+  const run = P.cup, names = roundsOf(cup), us = teamById(run.team), them = teamById(run.opps[run.round]), final = run.round === names.length - 1;
+  const has = skills(P, PATH), ids = has.size ? [...has] : ['look-up']; game.skills = has;
+  game.setTeams(us, them);
+  preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
+  world.setEnv('crowd'); show(null); hud.dots([], 0);
+  await card({ emoji: cup.emoji, title: cup.name, html: `<b>${names[run.round]}:</b> ${us.name} vs ${them.name} · first to ${goalsToWin(run)}${cupPath(run)}`, lines: [final ? 'The final!' : ''].filter(Boolean), button: 'Kick off' });
+  const score = await game.match(ids, fresh(24, ids), goalsToWin(run), 'free'), won = score.us > score.them;
+  if (won && final) { (P.trophies ||= []).push({ cup: cup.id, team: run.team, at: Date.now() }); P.cup = null; }
+  else if (won) run.round++;
+  save(P);
+  resetResults(); $('#results .emoji').textContent = cup.emoji;
+  $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
+  $('#nextLessonBtn').classList.remove('hidden'); $('#againBtn').textContent = '🏆 Cups'; $('#againBtn').onclick = openCups;
+  if (won && final) {
+    showSticker(cup.emoji, true); $('#results h2').textContent = 'Champions!';
+    $('#results .levelup').textContent = `You won the ${cup.name}!`;
+    $('#nextLessonBtn').textContent = '🏆 Another cup'; $('#nextLessonBtn').onclick = openCups; $('#againBtn').classList.add('hidden');
+    say('You won the cup!');
+  } else {
+    $('#results h2').textContent = won ? 'You won!' : 'So close!';
+    $('#results .levelup').textContent = won ? `On to the ${names[run.round].toLowerCase()}!` : `Play the ${names[run.round].toLowerCase()} again!`;
+    $('#results .outside').innerHTML = cupPath(run);
+    $('#nextLessonBtn').textContent = won ? `${names[run.round]} ▶` : 'Try again ▶'; $('#nextLessonBtn').onclick = () => runCup(cupId);
+    say(won ? 'You won! On to the next round!' : 'So close! Try again!');
+  }
+  game.home(); show('#results'); renderPickers(); running = false;
+}
 $('#shootBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.shoot(); });
 $('#stealBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.stealTap(); });
 $('#touchSmall').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); game.touch('small'); });
@@ -388,7 +507,7 @@ function openMenu() {
   $('#gear').classList.remove('holding');
   $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
     PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
-  $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
+  $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
   if ('speechSynthesis' in window) pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#voiceChk').checked = P.settings.voice; $('#recordedChk').checked = P.settings.recorded !== false; $('#soundChk').checked = P.settings.sound !== false; $('#musicChk').checked = P.settings.music !== false;
@@ -399,9 +518,9 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; P.settings.music = $('#musicChk').checked; applySound();
+  P.settings.skill = $('#skillSel').value || null; P.settings.alwaysOpen = $('#openChk').checked; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; P.settings.music = $('#musicChk').checked; applySound();
   const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
-  save(P); show('#home');
+  save(P); renderPickers(); show('#home');
 };
 $('#voiceSel').onchange = () => { P.settings.voiceName = $('#voiceSel').value; pickVoice(); say('Nice pass! You looked up!'); };
 $('#voiceTest').onclick = () => say('Nice pass! You looked up!');
