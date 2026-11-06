@@ -47,7 +47,7 @@
   <button id="gear" class="btn btn-glass btn-icon top-right" aria-label="Grown-ups: hold"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.5 7.5 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.5 7.5 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.5 7.5 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 2.6-1.5l2.4 1 2-3.4Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg></button>
   <div id="gearTip">Grown-ups: hold for 1 second</div>
   <button class="btn btn-glass btn-icon soundBtn home-sound" aria-label="Sound"></button>
-  <button id="albumBtn" class="btn btn-glass btn-icon top-left" aria-label="My stickers">📒</button>
+  <button id="albumBtn" class="btn btn-glass btn-icon top-left" aria-label="My stickers">📖</button>
   <div class="matchup">
     <div class="team" data-side="us">
       <div class="tag">YOUR TEAM</div>
@@ -77,7 +77,7 @@
   <div class="home-foot">
     <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
-    <div class="freebox"><button id="freeBtn" class="btn btn-blue">⚽ Match</button><button id="cupBtn" class="btn btn-gold">🏆 Cup</button></div>
+    <div class="freebox"><button id="freeBtn" class="btn btn-blue"><i class="ico">⚽</i>Match</button><button id="cupBtn" class="btn btn-gold"><i class="ico">🏆</i>Cup</button></div>
   </div>
 </section>
 
@@ -113,20 +113,24 @@
   <div class="btns"><button id="nextLessonBtn" class="btn btn-green btn-lg">Next lesson ▶</button><button id="againBtn" class="btn btn-blue">↺ Play again</button><button id="resultsHome" class="btn btn-ghost">Home</button></div>
 </div></section>
 
-<section id="menu" class="screen hidden"><div class="panel wide">
+<section id="menu" class="screen hidden"><div class="panel wide sheet">
   <h2>Grown-ups</h2>
+  <button id="menuClose" class="btn btn-ghost">Done</button>
+  <div class="menubody">
+  <h3>Playing</h3>
   <label>Lesson <select id="skillSel"></select></label>
+  <label>Rounds per lesson <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
+  <label class="chk"><span>Match and Cup always open<small>Skips today's training</small></span><span class="sw"><input type="checkbox" id="openChk"><i></i></span></label>
+  <h3>Voice</h3>
+  <label class="chk"><span>Recorded voice<small>Loud and clear, even in the car</small></span><span class="sw"><input type="checkbox" id="recordedChk"><i></i></span></label>
+  <label>Phone voice <span class="pick"><select id="voiceSel"></select><button id="voiceTest" class="btn btn-ghost btn-sm" type="button">▶ Test</button></span></label>
+  <p class="hint">Used when the recorded voice is off. For a nicer one on the iPhone, go to Settings › Accessibility › Spoken Content › Voices › English. Download an "Enhanced" or "Premium" voice (Ava or Zoe sound friendly), then pick it here. Sound, music and voice on/off are under the 🔊 button.</p>
+  <h3>Look</h3>
   <label>Art style <select id="artSel"><option value="lowpoly">Low-poly (faceted)</option><option value="smooth">Smooth (more detail)</option></select></label>
-  <label class="chk"><input type="checkbox" id="openChk"> Match and Cup always open (skip today's training)</label>
-  <label>Rounds per session <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
-  <label class="chk"><input type="checkbox" id="voiceChk"> Voice narration</label>
-  <label class="chk"><input type="checkbox" id="recordedChk"> Recorded voice (plays loud in the car)</label>
-  <label>Voice <select id="voiceSel"></select> <button id="voiceTest" class="btn btn-ghost btn-sm" type="button">▶ Test</button></label>
-  <p class="hint">Used when the recorded voice is off. Nicer voices: on the iPhone, Settings › Accessibility › Spoken Content › Voices › English. Download an "Enhanced" or "Premium" voice (Ava or Zoe sound friendly), then pick it here.</p>
-  <label class="chk"><input type="checkbox" id="soundChk"> Sounds</label>
-  <label class="chk"><input type="checkbox" id="musicChk"> Background music</label>
+  <h3>Progress</h3>
   <div id="progressList"></div>
-  <div class="btns"><button id="menuClose" class="btn btn-green btn-lg">Done</button><button id="resetBtn" class="btn btn-ghost danger">Reset progress</button></div>
+  <div class="btns"><button id="resetBtn" class="btn btn-ghost danger btn-sm">Reset progress</button></div>
+  </div>
 </div></section>
 
 <div id="rotate"><div>📱↻</div><p>Turn your phone sideways</p></div>

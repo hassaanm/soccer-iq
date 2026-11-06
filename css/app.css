@@ -345,3 +345,65 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .sw i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s}
 .sw input:checked + i{background:var(--green-d)}
 .sw input:checked + i::after{transform:translateX(18px)}
+
+/* ---------- polish pass (v42) ---------- */
+/* An emoji at the start of a button label, with a little space after it. */
+.btn .ico{font-style:normal;margin-right:.3em;text-shadow:none;display:inline-block}
+/* Home footer: Match and Cup are a matching pair; the lesson icon sits on white so any emoji reads. */
+.freebox .btn{min-width:116px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+#lessonBtn .le{background:#fff;box-shadow:0 0 0 2px var(--line),inset 0 -3px 0 rgba(36,25,58,.08)}
+/* Results: a little more room above the buttons; the backyard game is its own small card. */
+#results .btns{margin-top:12px}
+.outside{font-size:14px;line-height:1.35;max-width:460px;margin:10px auto 0;color:var(--ink)}
+.outside:has(> b){padding:8px 12px;background:#fff;border-radius:14px;box-shadow:0 0 0 2px var(--line);text-align:left}
+.outside > b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--green-e);margin-bottom:2px}
+.roundsrow span.done{background:#d9d0c4}
+/* Sticker album: every row (lessons and cups) uses the same column width, with the name under each sticker. */
+#album .row,#album .row.cups{grid-template-columns:repeat(auto-fill,76px);justify-content:start;row-gap:8px}
+#album .chap{padding:4px 0;border-bottom:2px solid var(--line)}
+#album .chap:last-of-type{border-bottom:0}
+#album .st .nm{margin-top:5px;font-size:10.5px;line-height:1.1;color:var(--ink);text-align:center;width:76px;min-height:2.2em;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#album .st .lv{font-size:11px;color:var(--gold-d);min-height:13px;line-height:1.2}
+#album .trophies{text-align:center;padding:6px 0 2px}
+/* Grown-ups: grouped settings that scroll under a fixed title and Done button. */
+#menu .panel{overflow:hidden;display:flex;flex-direction:column}
+#menu .menubody{overflow-y:auto;min-height:0;padding:0 6px 8px}
+.sheet #menuClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0;font-size:17px}
+#menu h3{margin:14px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+#menu h3:first-child{margin-top:4px}
+#menu label{margin:0;padding:8px 0;min-height:44px;border-bottom:2px solid var(--line)}
+#menu label.chk{justify-content:space-between}
+#menu label small{display:block;font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.2}
+#menu .pick{display:flex;gap:8px;align-items:center;flex:1;justify-content:flex-end;max-width:70%}
+#menu .pick select{max-width:none;flex:1;min-width:0}
+#menu .hint{margin:6px 0 0}
+#menu .btns{justify-content:flex-start;margin-top:4px}
+#progressList{margin:4px 0 12px;border-top:0;padding-top:0}
+/* Short screens (a phone held sideways): tighter cards, so the buttons always show without scrolling. */
+@media (max-height:500px){
+  .panel{padding:12px 26px 16px}
+  .panel .emoji{font-size:38px}
+  .panel h2{font-size:30px;margin:0 0 2px}
+  .panel p{font-size:16px;margin:2px 0 8px}
+  .roundsrow{margin:2px 0 0}
+  .roundsrow span{width:16px;height:16px}
+  .roundsnote{font-size:13px;margin-bottom:2px}
+  .levelup{font-size:16px}
+  .outside{font-size:13px;margin-top:4px}
+  .outside:has(> b){padding:6px 10px}
+  #results .btns{margin-top:8px}
+  .sticker{margin:0}
+  .sticker .face{width:66px;border-width:4px}
+  .sticker b{font-size:11px;padding:2px 10px;margin-top:-8px}
+  .sticker .face span{font-size:36px}
+  .btn-lg{font-size:20px;padding:11px 28px}
+}
+/* Narrow phones: the home footer stays one row (lesson, PLAY, then Match and Cup side by side). */
+.freebox{flex-wrap:nowrap}
+.home-foot{gap:10px}
+@media (max-width:760px){
+  .home-foot .btn-xl{padding:13px 38px;font-size:24px}
+  .freebox{gap:6px}
+  .freebox .btn{min-width:0;padding:10px 12px;font-size:16px}
+}

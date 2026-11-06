@@ -244,11 +244,11 @@ $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 function renderAlbum() {
   const count = id => P.stickers.filter(s => s.skill === id).length, cups = P.stickers.filter(s => s.emoji === '🏆').length;
   const cell = l => { const lv = level(P, l.id), n = count(l.id);
-    return `<div class="st ${lv ? 'l' + lv : 'none'}"><div class="f">${l.emoji}</div><span>${lv ? '★'.repeat(lv) : '–'}${n ? ' ×' + n : ''}</span></div>`; };
+    return `<div class="st ${lv ? 'l' + lv : 'none'}"><div class="f">${l.emoji}</div><span class="nm">${l.kid}</span><span class="lv">${lv ? '★'.repeat(lv) : ''}${n ? ' ×' + n : ''}</span></div>`; };
   $('#album').innerHTML = CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(cell).join('')}</div></div>`).join('')
     + `<div class="chap"><div class="cn"><b>🏆</b>Cups</div><div class="row cups">${CUPS.map(c => { const n = (P.trophies || []).filter(t => t.cup === c.id).length;
-      return `<div class="st ${n ? 'l3' : 'none'}"><div class="f">${c.emoji}</div><span>${c.name}${n > 1 ? ' ×' + n : ''}</span></div>`; }).join('')}</div></div>`
-    + `<div class="trophies">⚽ ${cups} match${cups === 1 ? '' : 'es'} won</div>`;
+      return `<div class="st ${n ? 'l3' : 'none'}"><div class="f">${c.emoji}</div><span class="nm">${c.name}</span><span class="lv">${n ? '🏆' + (n > 1 ? ' ×' + n : '') : ''}</span></div>`; }).join('')}</div></div>`
+    + (cups ? `<div class="trophies">⚽ ${cups} match${cups === 1 ? '' : 'es'} won</div>` : '');
 }
 $('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
 $('#albumClose').onclick = () => $('#albumSheet').classList.add('hidden');
@@ -300,6 +300,17 @@ function resetResults() {
   $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden');
   for (const k of ['.roundsrow', '.roundsnote', '.levelup', '.outside']) $('#results ' + k).innerHTML = '';
   $('#nextLessonBtn').classList.add('hidden'); $('#againBtn').classList.remove('hidden');
+}
+// Results buttons: the main one is big, in its activity's color (lesson green, match blue, cup gold), and ends in ▶.
+// The other one is plain white. With no main button, the other one takes its place.
+const KIND = { lesson: 'btn-green', match: 'btn-blue', cup: 'btn-gold' };
+function resultsButtons(main, other) {
+  const set = (el, b, big, arrow) => {
+    el.className = `btn ${big ? 'btn-lg ' + KIND[b?.kind] : 'btn-ghost'}${b ? '' : ' hidden'}`; if (!b) return;
+    el.innerHTML = `${b.icon ? `<i class="ico">${b.icon}</i>` : ''}${b.text}${arrow ? ' ▶' : ''}`; el.onclick = b.go;
+  };
+  if (main) { set($('#nextLessonBtn'), main, true, true); set($('#againBtn'), other, false); }
+  else { set($('#nextLessonBtn'), other, true, false); set($('#againBtn'), null); }
 }
 // Match and Cup need today's lesson or training first (a grown-up can open them in the menu).
 async function gated(run) {
@@ -356,7 +367,6 @@ async function runSession() {
   const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]));
   const won = score.us > score.them;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P); resetResults();
-  $('#nextLessonBtn').textContent = 'Next lesson ▶'; $('#againBtn').textContent = '↺ Play again';
   showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
   // One circle per round, like the dots during the lesson: gold = right on the first try.
@@ -364,13 +374,13 @@ async function runSession() {
   $('#results .roundsnote').textContent = `${firstTry} of ${rounds.length} right on the first try`;
   // Level news, then a backyard game for the grown-up.
   $('#results .levelup').textContent = st.unlocked ? `🔓 Unlocked: ${UNLOCKS[skillId]}` : st.leveledUp ? `${'⭐'.repeat(st.level)} Level ${st.level}!` : !level(P, skillId) ? `Get ${Math.ceil(rounds.length * 2 / 3)} right to unlock the next lesson` : '';
-  $('#results .outside').innerHTML = sk.outside ? `<b>Try it outside:</b> ${sk.outside}` : '';
+  $('#results .outside').innerHTML = sk.outside ? `<b>🏡 Try it outside</b>${sk.outside}` : '';
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
-  $('#nextLessonBtn').classList.toggle('hidden', !nextSk || !lessonOpen(i + 1)); // the next lesson opens once this one is passed
-  $('#nextLessonBtn').onclick = () => { P.pick = nextSk.id; save(P); runSession(); };
+  // The next lesson opens once this one is passed.
+  resultsButtons(nextSk && lessonOpen(i + 1) ? { kind: 'lesson', text: 'Next lesson', go: () => { P.pick = nextSk.id; save(P); runSession(); } } : null,
+    { kind: 'lesson', icon: '↺', text: 'Play again', go: () => { P.pick = skillId; runSession(); } });
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won! You got a new sticker!' : 'Great try! You got a new sticker!');
-  $('#againBtn').onclick = () => { P.pick = skillId; runSession(); };
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#playBtn').onclick = () => { unlockAudio(); runSession(); };
@@ -386,10 +396,9 @@ async function runFreePlay() {
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
   resetResults(); $('#results .emoji').textContent = '⚽'; if (won) showSticker('🏆', true);
   $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
-  $('#againBtn').textContent = '↺ Play again'; $('#nextLessonBtn').textContent = '🏆 Cup ▶'; $('#nextLessonBtn').classList.remove('hidden'); $('#nextLessonBtn').onclick = openCups;
+  resultsButtons({ kind: 'cup', icon: '🏆', text: 'Cup', go: openCups }, { kind: 'match', icon: '↺', text: 'Play again', go: runFreePlay });
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   say(won ? 'You won the match!' : 'Good game!');
-  $('#againBtn').onclick = runFreePlay;
   game.home(); show('#results'); renderPickers(); running = false;
 }
 $('#freeBtn').onclick = () => gated(runFreePlay);
@@ -399,6 +408,9 @@ $('#cupBtn').onclick = () => gated(openCups);
 // Once every lesson is passed, PLAY is a short mixed session: the 3 lessons he needs most today (see trainingPlan),
 // 2 rounds each, mixed so he has to work out which idea fits. It opens with a reminder of the 3 ideas, and
 // finishing it opens Match and Cup for the day.
+// The tip without the lesson name, when the tip opens with it as its own sentence ("Get open! Move to…").
+const tipAfterName = k => { const rest = k.tip.startsWith(k.kid) ? k.tip.slice(k.kid.length) : null;
+  return rest !== null && (/[.!?]$/.test(k.kid) || /^[.!?]/.test(rest)) ? rest.replace(/^[.!?\s]+/, '') : k.tip; };
 async function runTraining() {
   if (running) return; running = true;
   const day = today(), plan = trainingPlan(P, PATH, { day, builds: BUILDS }), n = P.settings.rounds;
@@ -407,7 +419,7 @@ async function runTraining() {
   preloadClips([...us.players, ...them.players].map(p => 'name:' + pieces(displayName(p.name))[0]?.name));
   world.setEnv('park'); show(null); $('#score').classList.add('hidden'); hud.dots([], 0);
   const sks = plan.map(skillById);
-  await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${k.tip.startsWith(k.kid) ? k.tip.slice(k.kid.length).replace(/^[.!?\s]+/, '') : k.tip}</small></span>`).join('')}</span>`,
+  await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${tipAfterName(k)}</small></span>`).join('')}</span>`,
     lines: sks.map(k => k.kid), button: 'Play' });
   const order = Array.from({ length: n }, (_, i) => plan[i % plan.length]);
   const rounds = order.map(id => { for (let k = 0; k < 8; k++) { const sc = generate(id, Math.floor(Math.random() * 1e9), { even: true }); if (sc) return sc; } return null; }).filter(Boolean);
@@ -426,10 +438,9 @@ async function runTraining() {
   $('#results .roundsnote').textContent = `${results.filter(Boolean).length} of ${results.length} right on the first try`;
   $('#results .levelup').textContent = ups.map(id => `${'⭐'.repeat(level(P, id))} ${skillById(id).kid}`).join(' · ');
   const weak = plan.find(id => per[id]?.some(ok => !ok)) || plan[0];
-  $('#results .outside').innerHTML = skillById(weak).outside ? `<b>Try it outside:</b> ${skillById(weak).outside}` : '';
+  $('#results .outside').innerHTML = skillById(weak).outside ? `<b>🏡 Try it outside</b>${skillById(weak).outside}` : '';
   $('#results p').textContent = '⚽ Match and 🏆 Cup are open!';
-  $('#nextLessonBtn').textContent = '🏆 Cup ▶'; $('#nextLessonBtn').classList.remove('hidden'); $('#nextLessonBtn').onclick = openCups;
-  $('#againBtn').textContent = '⚽ Match'; $('#againBtn').onclick = runFreePlay;
+  resultsButtons({ kind: 'cup', icon: '🏆', text: 'Cup', go: openCups }, { kind: 'match', icon: '⚽', text: 'Match', go: runFreePlay });
   say('Training done!');
   game.home(); show('#results'); renderPickers(); running = false;
 }
@@ -480,17 +491,16 @@ async function runCup(cupId) {
   save(P);
   resetResults(); $('#results .emoji').textContent = cup.emoji;
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
-  $('#nextLessonBtn').classList.remove('hidden'); $('#againBtn').textContent = '🏆 Cups'; $('#againBtn').onclick = openCups;
   if (won && final) {
     showSticker(cup.emoji, true); $('#results h2').textContent = 'Champions!';
     $('#results .levelup').textContent = `You won the ${cup.name}!`;
-    $('#nextLessonBtn').textContent = '🏆 Another cup'; $('#nextLessonBtn').onclick = openCups; $('#againBtn').classList.add('hidden');
+    resultsButtons({ kind: 'cup', icon: '🏆', text: 'Another cup', go: openCups }, null);
     say('You won the cup!');
   } else {
     $('#results h2').textContent = won ? 'You won!' : 'So close!';
     $('#results .levelup').textContent = won ? `On to the ${names[run.round].toLowerCase()}!` : `Play the ${names[run.round].toLowerCase()} again!`;
     $('#results .outside').innerHTML = cupPath(run);
-    $('#nextLessonBtn').textContent = won ? `${names[run.round]} ▶` : 'Try again ▶'; $('#nextLessonBtn').onclick = () => runCup(cupId);
+    resultsButtons({ kind: 'cup', icon: '⚽', text: won ? names[run.round] : 'Try again', go: () => runCup(cupId) }, { kind: 'cup', icon: '🏆', text: 'All cups', go: openCups });
     say(won ? 'You won! On to the next round!' : 'So close! Try again!');
   }
   game.home(); show('#results'); renderPickers(); running = false;
@@ -515,12 +525,12 @@ for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('#gear').addE
 });
 function openMenu() {
   $('#gear').classList.remove('holding');
-  $('#skillSel').innerHTML = `<option value="">Automatic (${skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
+  $('#skillSel').innerHTML = `<option value="">Automatic (${graduated(P, PATH) ? "Today's training" : skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid})</option>` +
     PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
   $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
   if ('speechSynthesis' in window) pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
-  $('#voiceChk').checked = P.settings.voice; $('#recordedChk').checked = P.settings.recorded !== false; $('#soundChk').checked = P.settings.sound !== false; $('#musicChk').checked = P.settings.music !== false;
+  $('#recordedChk').checked = P.settings.recorded !== false;
   $('#progressList').innerHTML = PATH.map(s => {
     const st = P.skills[s.id];
     return `<div><span>${s.emoji} ${s.adult}</span><span>${!s.ready ? 'not built yet' : !st ? 'not started' : `Level ${level(P, s.id)} · ${st.days || 1} day${(st.days || 1) > 1 ? 's' : ''} · ${st.firstTry}/${st.rounds} first try`}</span></div>`;
@@ -528,7 +538,7 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  P.settings.skill = $('#skillSel').value || null; P.settings.alwaysOpen = $('#openChk').checked; P.settings.rounds = +$('#roundsSel').value; P.settings.voice = $('#voiceChk').checked; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); P.settings.sound = $('#soundChk').checked; P.settings.music = $('#musicChk').checked; applySound();
+  P.settings.skill = $('#skillSel').value || null; P.settings.alwaysOpen = $('#openChk').checked; P.settings.rounds = +$('#roundsSel').value; P.settings.recorded = $('#recordedChk').checked; P.settings.voiceName = $('#voiceSel').value; if ('speechSynthesis' in window) pickVoice(); applySound();
   const art = $('#artSel').value; if (art !== (P.settings.art || 'lowpoly')) { P.settings.art = art; save(P); location.reload(); return; }
   save(P); renderPickers(); show('#home');
 };
