@@ -26,10 +26,14 @@ function fadeMusic() {
 }
 
 export function unlock() {
-  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  if (ctx) { if (ctx.state !== 'running') ctx.resume().catch(() => {}); return; }
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  ctx = new AC(); out = ctx.createGain(); out.connect(ctx.destination); master = ctx.createGain(); master.connect(out);
+  // 'playback' asks for bigger audio buffers. Sound starts a moment later, but it doesn't break up when the
+  // phone is busy drawing the game or the sound goes over the air (CarPlay, AirPlay, Bluetooth).
+  try { ctx = new AC({ latencyHint: 'playback' }); } catch { ctx = new AC(); }
+  // iOS pauses the audio for a call, Siri or a CarPlay switch; the next tap starts it again (see the top of unlock).
+  out = ctx.createGain(); out.connect(ctx.destination); master = ctx.createGain(); master.connect(out);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   startMusic(); applyVolumes();
@@ -51,28 +55,45 @@ function tone(freq, dur, { type = 'sine', vol = .15, f1 = freq, at = 0, attack =
 }
 
 // Background tune: a slow four-chord loop (C, G, Am, F) of soft pads, a gentle bass, and a few bell notes from
-// the pentatonic scale. Every note fades in and out, so nothing cuts off. Notes are scheduled a little ahead.
+// the pentatonic scale. Every note fades in and out, so nothing cuts off.
+// The tune is recorded once into a buffer (8 bars, about 19 s) and looped. Playing it live took about 20
+// oscillators at a time, and on a busy phone that made all the sound stutter.
 const CHORDS = [[261.6, 329.6, 392], [246.9, 293.7, 392], [220, 261.6, 329.6], [220, 261.6, 349.2]];
-const BASS = [130.8, 98, 110, 87.3], BELLS = [523.3, 587.3, 659.3, 784, 880], BAR = 2.4;
-let nextBar = 0, bar = 0;
-function pad(freq, t, dur, vol, type = 'triangle') {
-  const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+const BASS = [130.8, 98, 110, 87.3], BELLS = [523.3, 587.3, 659.3, 784, 880], BAR = 2.4, BARS = 8;
+function pad(c, dest, freq, t, dur, vol, type = 'triangle') {
+  const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
   o.type = type; o.frequency.value = freq; f.type = 'lowpass'; f.frequency.value = 1400;
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + dur * .3); g.gain.linearRampToValueAtTime(vol * .8, t + dur * .7); g.gain.linearRampToValueAtTime(0, t + dur);
-  o.connect(f).connect(g).connect(musicGain); o.start(t); o.stop(t + dur + .05);
+  o.connect(f).connect(g).connect(dest); o.start(t); o.stop(t + dur + .05);
 }
-function scheduleMusic() {
-  while (nextBar < now() + 1.5) {
-    const t = nextBar, i = bar % 4;
-    for (const f of CHORDS[i]) pad(f, t, BAR * 1.25, .22);                 // overlapping pads blend into each other
-    pad(BASS[i], t, BAR, .3, 'sine');
-    for (let k = 0; k < 4; k++) if (Math.random() < .55) pad(BELLS[Math.floor(Math.random() * BELLS.length)], t + k * BAR / 4, .9, .16, 'sine');
-    nextBar += BAR; bar++;
+function bars(c, dest, t0, from, n) {
+  for (let bar = from; bar < from + n; bar++) {
+    const t = t0 + (bar - from) * BAR, i = bar % 4;
+    for (const f of CHORDS[i]) pad(c, dest, f, t, BAR * 1.25, .22);              // overlapping pads blend into each other
+    pad(c, dest, BASS[i], t, BAR, .3, 'sine');
+    for (let k = 0; k < 4; k++) if (Math.random() < .55) pad(c, dest, BELLS[Math.floor(Math.random() * BELLS.length)], t + k * BAR / 4, .9, .16, 'sine');
   }
+}
+// Renders the loop. The notes that ring past the end are added back onto the start, so the seam can't be heard.
+async function renderLoop() {
+  const sr = ctx.sampleRate, len = Math.round(BARS * BAR * sr);
+  const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, len + Math.round(BAR * 1.5 * sr), sr);
+  bars(oc, oc.destination, 0, 0, BARS);
+  const d = (await oc.startRendering()).getChannelData(0), loop = ctx.createBuffer(1, len, sr), l = loop.getChannelData(0);
+  l.set(d.subarray(0, len)); for (let i = len; i < d.length; i++) l[i - len] += d[i];
+  return loop;
+}
+// If recording fails (an old browser), the tune is played live instead, a little ahead of time.
+function liveMusic() {
+  let next = now() + .1, bar = 0;
+  const go = () => { while (next < now() + 1.5) { bars(ctx, musicGain, next, bar, 1); next += BAR; bar++; } };
+  go(); setInterval(go, 500);
 }
 function startMusic() {
   musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(out); fadeMusic();
-  nextBar = now() + .1; scheduleMusic(); setInterval(scheduleMusic, 500);
+  renderLoop().then(buf => {
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(musicGain); src.start(now() + .05);
+  }).catch(liveMusic);
 }
 // A short cheer for goals and good plays (it fades out on its own).
 function cheer(vol, dur) { noise(dur, { f0: 700, f1: 500, q: .5, vol, attack: .25 }); }
