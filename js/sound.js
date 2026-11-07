@@ -1,42 +1,60 @@
-// All sounds are made on the fly with Web Audio (no files): short effects plus a soft background tune.
+// Sound effects are made on the fly with Web Audio. The background tune is made the same way but recorded once,
+// and it plays with the recorded voice through ordinary audio players (see unlock for why).
 // The browser only allows audio after a tap, so `unlock()` runs on the first touch.
-// iPhones mute Web Audio when the ring/silent switch is on silent (speech still plays). Marking the page as
-// media playback (iOS 17+) makes the effects play anyway.
-// Mixing: effects (master), music and voice each have their own volume, and all three go through `out`,
-// which the mute-all switch turns off.
-let ctx = null, out = null, master = null, musicGain = null, enabled = true, musicOn = true, noiseBuf = null, ducked = false, muted = false;
+// Marking the page as media playback (iOS 17+) makes everything play even with the silent switch on.
+// Effects, music and voice each have their own volume; the mute-all switch turns off all three.
+let ctx = null, out = null, master = null, enabled = true, musicOn = true, noiseBuf = null, ducked = false, muted = false;
 const MUSIC_VOL = .05, vol = { sfx: 1, music: 1, voice: 1 };
 
 export function setSoundOn(on) { enabled = on; applyVolumes(); }
-export function setMusicOn(on) { musicOn = on; fadeMusic(); }
+export function setMusicOn(on) { musicOn = on; playMusic(); }
 export function setMuted(m) { muted = m; applyVolumes(); }
 export function setVolumes(v) { Object.assign(vol, v); applyVolumes(); }
 export const voiceVolume = () => (muted ? 0 : vol.voice); // for the built-in speech fallback
+let builtVol = null, rebuildTimer = 0;
 function applyVolumes() {
   if (!ctx) return;
   out.gain.value = muted ? 0 : 1; master.gain.value = enabled ? vol.sfx : 0;
-  if (voiceGain) voiceGain.gain.value = vol.voice;
-  fadeMusic();
+  if (voiceEl) voiceEl.muted = muted;
+  // The music's volume is part of its recording (iPhones ignore volume changes on audio players), so a new
+  // volume means a new recording. The wait lets a slider settle first.
+  if (tune && builtVol !== vol.music) { clearTimeout(rebuildTimer); rebuildTimer = setTimeout(buildMusic, 300); }
+  playMusic();
 }
 // While the voice talks, the tune drops almost to silence so the words are easy to hear.
-export function duck(on) { ducked = on; fadeMusic(); }
-function fadeMusic() {
-  if (!musicGain) return; const t = now(), g = musicGain.gain;
-  g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(musicOn ? MUSIC_VOL * vol.music * (ducked ? .15 : 1) : 0, t + .4);
-}
+export function duck(on) { ducked = on; playMusic(); }
 
+// Music and voice play through ordinary audio players, like a podcast. Safari's Web Audio breaks up over
+// CarPlay and Bluetooth (about a second on, a second off); audio players don't. Web Audio is kept only for
+// the short sound effects. Each player has to be started once by a tap, so unlock() starts them on silence.
+let musicEls = null, voiceEl = null;
+function player() { const el = new Audio(wav(new Float32Array(800), 8000)); el.preload = 'auto'; return el; }
 export function unlock() {
-  if (ctx) { if (ctx.state !== 'running') ctx.resume().catch(() => {}); return; }
+  if (ctx) { if (ctx.state !== 'running') ctx.resume().catch(() => {}); playMusic(); return; }
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-  // 'playback' asks for bigger audio buffers. Sound starts a moment later, but it doesn't break up when the
-  // phone is busy drawing the game or the sound goes over the air (CarPlay, AirPlay, Bluetooth).
   try { ctx = new AC({ latencyHint: 'playback' }); } catch { ctx = new AC(); }
-  // iOS pauses the audio for a call, Siri or a CarPlay switch; the next tap starts it again (see the top of unlock).
   out = ctx.createGain(); out.connect(ctx.destination); master = ctx.createGain(); master.connect(out);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  musicEls = [player(), player()]; voiceEl = player();
+  [...musicEls, voiceEl].forEach(el => el.play().catch(() => {}));
   startMusic(); applyVolumes();
+}
+// Nothing plays while the game is in the background.
+document.addEventListener('visibilitychange', () => {
+  if (!musicEls) return;
+  if (document.hidden) { musicEls.forEach(el => el.pause()); stopVoice(); } else playMusic();
+});
+// Float samples (mono) to a WAV file the audio players can play.
+function wav(data, sr) {
+  const n = data.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 
 const now = () => ctx.currentTime;
@@ -55,46 +73,48 @@ function tone(freq, dur, { type = 'sine', vol = .15, f1 = freq, at = 0, attack =
 }
 
 // Background tune: a slow four-chord loop (C, G, Am, F) of soft pads, a gentle bass, and a few bell notes from
-// the pentatonic scale. Every note fades in and out, so nothing cuts off.
-// The tune is recorded once into a buffer (8 bars, about 19 s) and looped. Playing it live took about 20
-// oscillators at a time, and on a busy phone that made all the sound stutter.
+// the pentatonic scale. Every note fades in and out, so nothing cuts off. It is recorded once (8 bars, about
+// 19 s) and looped by two audio players: one at full volume and one quieter, for while the voice talks.
 const CHORDS = [[261.6, 329.6, 392], [246.9, 293.7, 392], [220, 261.6, 329.6], [220, 261.6, 349.2]];
-const BASS = [130.8, 98, 110, 87.3], BELLS = [523.3, 587.3, 659.3, 784, 880], BAR = 2.4, BARS = 8;
+const BASS = [130.8, 98, 110, 87.3], BELLS = [523.3, 587.3, 659.3, 784, 880], BAR = 2.4, BARS = 8, MUSIC_SR = 22050;
 function pad(c, dest, freq, t, dur, vol, type = 'triangle') {
   const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
   o.type = type; o.frequency.value = freq; f.type = 'lowpass'; f.frequency.value = 1400;
   g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + dur * .3); g.gain.linearRampToValueAtTime(vol * .8, t + dur * .7); g.gain.linearRampToValueAtTime(0, t + dur);
   o.connect(f).connect(g).connect(dest); o.start(t); o.stop(t + dur + .05);
 }
-function bars(c, dest, t0, from, n) {
-  for (let bar = from; bar < from + n; bar++) {
-    const t = t0 + (bar - from) * BAR, i = bar % 4;
-    for (const f of CHORDS[i]) pad(c, dest, f, t, BAR * 1.25, .22);              // overlapping pads blend into each other
-    pad(c, dest, BASS[i], t, BAR, .3, 'sine');
-    for (let k = 0; k < 4; k++) if (Math.random() < .55) pad(c, dest, BELLS[Math.floor(Math.random() * BELLS.length)], t + k * BAR / 4, .9, .16, 'sine');
-  }
-}
 // Renders the loop. The notes that ring past the end are added back onto the start, so the seam can't be heard.
-async function renderLoop() {
-  const sr = ctx.sampleRate, len = Math.round(BARS * BAR * sr);
-  const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, len + Math.round(BAR * 1.5 * sr), sr);
-  bars(oc, oc.destination, 0, 0, BARS);
-  const d = (await oc.startRendering()).getChannelData(0), loop = ctx.createBuffer(1, len, sr), l = loop.getChannelData(0);
+async function renderTune() {
+  const len = Math.round(BARS * BAR * MUSIC_SR);
+  const oc = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, len + Math.round(BAR * 1.5 * MUSIC_SR), MUSIC_SR);
+  for (let bar = 0; bar < BARS; bar++) {
+    const t = bar * BAR, i = bar % 4;
+    for (const f of CHORDS[i]) pad(oc, oc.destination, f, t, BAR * 1.25, .22);   // overlapping pads blend into each other
+    pad(oc, oc.destination, BASS[i], t, BAR, .3, 'sine');
+    for (let k = 0; k < 4; k++) if (Math.random() < .55) pad(oc, oc.destination, BELLS[Math.floor(Math.random() * BELLS.length)], t + k * BAR / 4, .9, .16, 'sine');
+  }
+  const d = (await oc.startRendering()).getChannelData(0), l = new Float32Array(len);
   l.set(d.subarray(0, len)); for (let i = len; i < d.length; i++) l[i - len] += d[i];
-  return loop;
+  return l;
 }
-// If recording fails (an old browser), the tune is played live instead, a little ahead of time.
-function liveMusic() {
-  let next = now() + .1, bar = 0;
-  const go = () => { while (next < now() + 1.5) { bars(ctx, musicGain, next, bar, 1); next += BAR; bar++; } };
-  go(); setInterval(go, 500);
+let tune = null, musicUrls = [];
+function buildMusic() {
+  builtVol = vol.music; musicUrls.forEach(u => URL.revokeObjectURL(u));
+  musicUrls = [1, .15].map(k => { const g = MUSIC_VOL * vol.music * k; return wav(tune.map(x => x * g), MUSIC_SR); });
+  musicEls.forEach((el, i) => { el.pause(); el.src = musicUrls[i]; el.loop = true; });
+  playMusic();
 }
-function startMusic() {
-  musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(out); fadeMusic();
-  renderLoop().then(buf => {
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(musicGain); src.start(now() + .05);
-  }).catch(liveMusic);
+// Starts or stops the tune, and picks the loud or the quiet player. Both run together so they stay in step.
+function playMusic() {
+  if (!musicEls || !tune || document.hidden) return;
+  const on = musicOn && !muted;
+  musicEls.forEach((el, i) => {
+    el.muted = !on || (i === 0 ? ducked : !ducked);
+    if (on && el.paused) { if (i === 1) el.currentTime = musicEls[0].currentTime; el.play().catch(() => {}); }
+    if (!on && !el.paused) el.pause();
+  });
 }
+function startMusic() { renderTune().then(t => { tune = t; buildMusic(); }).catch(() => { /* no tune on very old browsers */ }); }
 // A short cheer for goals and good plays (it fades out on its own).
 function cheer(vol, dur) { noise(dur, { f0: 700, f1: 500, q: .5, vol, attack: .25 }); }
 
@@ -118,8 +138,8 @@ export function sfx(name, arg) { if (!ctx || !enabled) return; try { SFX[name]?.
 
 // ---------- recorded voice ----------
 // Clips are fetched once and decoded; leading/trailing silence is trimmed so names flow into the sentence.
-// The voice has its own gain straight to the speakers, so it isn't muted by the Sounds switch.
-let voiceIndex = null, voiceGain = null, voicePlaying = [];
+// The voice has its own player, so it isn't muted by the Sounds switch.
+let voiceIndex = null;
 const clipCache = new Map();
 export async function loadVoice(base = 'audio/voice/') {
   try { const r = await fetch(base + 'index.json'); voiceIndex = { base, ...(await r.json()) }; } catch { voiceIndex = null; }
@@ -139,23 +159,27 @@ function clip(key) {
 }
 // True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
 export const canSpeak = keys => !!(ctx && voiceIndex && keys.every(k => voiceIndex.clips[k]));
-let voiceDone = null; // resolves the line that is playing now (when it ends, or is cut off)
-export function stopVoice() { for (const s of voicePlaying) try { s.stop(); } catch { /* already stopped */ } voicePlaying = []; voiceDone?.(); voiceDone = null; }
+let voiceDone = null, voiceUrl = null; // voiceDone resolves the line that is playing now (when it ends, or is cut off)
+export function stopVoice() {
+  if (voiceEl) { voiceEl.onended = null; voiceEl.pause(); }
+  if (voiceDone) { duck(false); voiceDone(); voiceDone = null; }
+}
 let voiceToken = 0;
 // Plays a line from its clips; the promise resolves when the line has been said (or was cut off by another one).
+// The clips are joined into one recording first, so the line plays in one go.
 export async function speakClips(keys) {
   const token = ++voiceToken; stopVoice();
   const bufs = await Promise.all(keys.map(clip));
   if (token !== voiceToken || bufs.some(b => !b)) return;
+  const sr = bufs[0].sampleRate, gap = Math.round(.04 * sr), line = new Float32Array(bufs.reduce((n, b) => n + b.length + gap, 0));
+  let at = Math.round(.05 * sr); // a moment of quiet so the first word isn't clipped
+  for (const b of bufs) { const d = b.getChannelData(0); for (let i = 0; i < d.length && at + i < line.length; i++) line[at + i] = d[i] * vol.voice; at += b.length + gap; }
+  if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+  voiceUrl = wav(line, sr);
   const done = new Promise(res => { voiceDone = res; });
-  if (!voiceGain) { voiceGain = ctx.createGain(); voiceGain.gain.value = vol.voice; voiceGain.connect(out); }
-  let t = now() + .05;
-  duck(true);
-  bufs.forEach((b, i) => {
-    const src = ctx.createBufferSource(); src.buffer = b; src.connect(voiceGain); src.start(t); voicePlaying.push(src);
-    t += b.duration + .04;
-    if (i === bufs.length - 1) src.onended = () => { if (token === voiceToken) { duck(false); voiceDone?.(); voiceDone = null; } };
-  });
+  const finish = () => { if (token === voiceToken && voiceDone) { duck(false); voiceDone(); voiceDone = null; } };
+  duck(true); voiceEl.muted = muted; voiceEl.loop = false; voiceEl.src = voiceUrl; voiceEl.onended = finish;
+  voiceEl.play().catch(finish);
   return done;
 }
 // Preload a few clips (e.g. this team's names) so the first line plays without a pause.
