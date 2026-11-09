@@ -120,9 +120,11 @@ test('training picks 3 different lessons, favoring the ones he keeps missing', (
 
 test('basic lessons inside later ones (Look up) rarely get their own turn', () => {
   const p = defaultProgress(); passAll(p, 100);
-  let look = 0;
-  for (let i = 0; i < 400; i++) if (trainingPlan(p, PATH, { day: 101, builds: BUILDS }).includes('look-up')) look++;
-  assert.ok(look < 40, `look-up picked ${look} of 400 times`);
+  // A fixed sequence of "random" numbers: with real ones, this count went over the limit about 1 run in 20.
+  let seed = 7, look = 0;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t ^= t + Math.imul(t ^ (t >>> 7), 61 | t); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  for (let i = 0; i < 4000; i++) if (trainingPlan(p, PATH, { day: 101, builds: BUILDS, rnd }).includes('look-up')) look++;
+  assert.ok(look < 400, `look-up picked ${look} of 4000 times`);
 });
 
 test('training moves a due lesson up a star when all right, down when all missed, and refreshes what it builds on', () => {
