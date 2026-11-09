@@ -74,10 +74,11 @@ const segDist = (x, y, a, b) => {
 };
 
 export class Game {
-  constructor({ world, hud, say, sfx = () => {} }) {
-    Object.assign(this, { world, hud, say, sfx });
+  // sfx(name) plays a sound; fx(event, value) shows an effect in the 3D scene (see World.fx).
+  constructor({ world, hud, say, sfx = () => {}, fx = () => {} }) {
+    Object.assign(this, { world, hud, say, sfx, fx });
     this.sim = new Sim();
-    this.sim.on = (ev, v) => sfx(ev === 'kick' ? (v >= 15 ? 'shot' : 'kick') : ev === 'touch' ? 'tap' : 'step');
+    this.sim.on = (ev, v) => { sfx(ev === 'kick' ? (v >= 15 ? 'shot' : 'kick') : ev === 'touch' ? 'tap' : 'step'); if (ev !== 'step') fx(ev, v); };
     this.tweens = []; this.speechWaits = [];
     this.skills = new Set(); // lessons he has passed: each adds its part to matches (see has())
     this.reset();
@@ -651,6 +652,7 @@ export class Game {
   emit(ev) {
     const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'] }[ev];
     if (ev === 'goal') this.sfx('net');
+    this.fx(ev);
     const rated = this.rated; this.rated = null;
     this.card = this.hud.banner(title, kind, rated);
     if (rated?.say) this.say(rated.text);

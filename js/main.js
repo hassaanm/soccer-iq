@@ -130,7 +130,7 @@ const hud = {
   },
 };
 
-const game = new Game({ world, hud, say, sfx });
+const game = new Game({ world, hud, say, sfx, fx: (ev, v) => world.fx(ev, v) });
 // ---------- sound button + popover ----------
 const SPEAKER = on => `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>${on
   ? '<path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.8 7.8 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'

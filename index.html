@@ -140,7 +140,7 @@
 addEventListener('error', e => {
   if (!/export|import|module/i.test(e.message || '')) return;
   try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
-  const files = ['main', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'sound', 'voice', 'geom', 'teams', 'version'].map(f => 'js/' + f + '.js').concat('css/app.css');
+  const files = ['main', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'fx', 'sound', 'voice', 'geom', 'teams', 'version'].map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });
 </script>

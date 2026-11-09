@@ -2,10 +2,11 @@
 // All art lives here so another style can replace this file later.
 import * as THREE from 'three';
 import { PITCH } from './skills.js';
-import { DRIBBLE_DIRS } from './geom.js';
+import { DRIBBLE_DIRS, clamp } from './geom.js';
+import { Particles } from './fx.js';
 
 const { L, W, gy0, gy1, gh } = PITCH;
-const CX = L / 2, CY = W / 2;
+const CX = L / 2, CY = W / 2, UP = new THREE.Vector3(0, 0, 1);
 // Art style: 'lowpoly' (faceted, the default) or 'smooth' (more polygons, soft shading). Set once when the World is made.
 const ART = { smooth: false };
 const SEG = n => ART.smooth ? n * 3 : n;
@@ -97,7 +98,7 @@ function makeRig(p, kit, isHero) {
   const blob = new THREE.Mesh(new THREE.CircleGeometry(.42, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
   blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
-  g.userData = { mats, legs, arms, yaw: null };
+  g.userData = { mats, legs, arms, yaw: null, seed: Math.random() * 6 };
   return g;
 }
 
@@ -170,7 +171,8 @@ function addHair(g, p, kit, hz, R, mat, add) {
 // body bob and lean, dribble touches with the laces / inside / outside, and a kick wind-up.
 const STEP = .7, TOUCH = 1.4; // meters per step; one ball touch every two steps (matches sim.js)
 const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
-function animate(g, a, sim) {
+// mood: > 0 while his team celebrates a goal (jumping, arms up), < 0 while the other team does (head down).
+function animate(g, a, sim, mood = 0, moodT = 0) {
   const u = g.userData, run = Math.min(1, a.sp / 4.5), ph = a.dist / STEP * Math.PI;
   const want = Math.atan2(a.face[1], a.face[0]);
   if (u.yaw === null) u.yaw = want;
@@ -194,6 +196,12 @@ function animate(g, a, sim) {
     hip.rotation.set(0, h, turn); knee.rotation.y = k;
   });
   u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
+  if (mood > 0) {
+    const hop = Math.abs(Math.sin(moodT * 7.5 + u.seed));
+    g.position.z += .34 * hop * mood;
+    u.arms.forEach((arm, i) => { arm.rotation.y = lerp(arm.rotation.y, -2.75 + .3 * Math.sin(moodT * 15 + i * 2 + u.seed), mood); });
+    u.legs.forEach(({ knee }) => { knee.rotation.y = lerp(knee.rotation.y, .7 * (1 - hop), mood); });
+  } else if (mood < 0) g.rotation.y = lerp(g.rotation.y, .26, -mood);
 }
 
 // A curved arrow lying on the ground: a band of radius r and width w from angle a0 to a1 (either direction),
@@ -242,7 +250,8 @@ export class World {
     ART.smooth = art === 'smooth';
     this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // sharp enough with antialias, and leaves the phone room for sound r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // sharp enough with antialias, and leaves the phone room for sound
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
     const scene = this.scene = new THREE.Scene();
     scene.background = new THREE.Color('#ffc89a'); scene.fog = new THREE.Fog('#ffd6b0', 45, 170);
@@ -253,35 +262,48 @@ export class World {
     const sky = new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, toneMapped: false }));
     sky.position.set(CX, CY, 0); scene.add(sky);
     const cloudM = new THREE.MeshLambertMaterial({ color: '#fff6ee', flatShading: true, emissive: '#ffe9d6', emissiveIntensity: .45, fog: false });
-    for (let k = 0; k < 9; k++) {
-      const a = k / 9 * Math.PI * 2 + .3, d = 150 + (k % 3) * 25, cl = new THREE.Group();
-      for (let j = 0; j < 4; j++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(9 + (j % 2) * 4, 0), cloudM); b.position.set((j - 1.5) * 10, 0, (j % 2) * 3); b.scale.z = .55; cl.add(b); }
-      cl.position.set(CX + Math.cos(a) * d, CY + Math.sin(a) * d, 38 + (k % 4) * 7); cl.rotation.z = a + Math.PI / 2; scene.add(cl);
+    this.clouds = new THREE.Group(); this.clouds.position.set(CX, CY, 0); scene.add(this.clouds); // they drift slowly around the pitch
+    for (let k = 0; k < 11; k++) {
+      const a = k / 11 * Math.PI * 2 + .3, d = 140 + (k % 3) * 28, cl = new THREE.Group(), n = 3 + k % 3;
+      for (let j = 0; j < n; j++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(8 + ((j + k) % 3) * 3.5, 0), cloudM); b.position.set((j - (n - 1) / 2) * 10, (j % 2) * 4 - 2, (j % 2) * 3); b.scale.z = .55; cl.add(b); }
+      cl.position.set(Math.cos(a) * d, Math.sin(a) * d, 36 + (k % 4) * 8); cl.rotation.z = a + Math.PI / 2; this.clouds.add(cl);
     }
     this.camera = new THREE.PerspectiveCamera(40, 2, .1, 500); this.camera.up.set(0, 0, 1);
     const hemi = new THREE.HemisphereLight('#ffe0c0', '#6e9a5a', .95); hemi.position.set(0, 0, 1); scene.add(hemi);
     const sun = new THREE.DirectionalLight('#ffe6c4', 1.9); sun.position.set(-8, -12, 30); sun.target.position.set(CX, CY, 0); scene.add(sun.target);
-    sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
+    sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.bias = -.0004; Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
+    this.sun = sun;
 
     this.buildPitch(); this.buildEnv(); this.buildMarkers();
     this.ball = makeBall(.2); this.ballPrev = null;
     this.ball.castShadow = true; scene.add(this.ball);
+    this.ballBlob = new THREE.Mesh(new THREE.CircleGeometry(.3, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })); scene.add(this.ballBlob);
+    this.particles = new Particles(scene); this.shake = 0; this.punch = 0; this.mood = null;
     this.rigs = new Map(); this.tmp = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.axis = new THREE.Vector3(); this.camDir = new THREE.Vector3();
   }
 
   buildPitch() {
-    const ppm = 40;
-    const tex = canvasTex((L + 12) * ppm, (W + 12) * ppm, g => {
-      const X = x => Math.round((x + 6) * ppm), Y = y => Math.round((W + 6 - y) * ppm);
-      g.fillStyle = '#a9d67a'; g.fillRect(0, 0, (L + 12) * ppm, (W + 12) * ppm);
-      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8fc75e' : '#9ed46c'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
+    const ppm = 40, TW = (L + 12) * ppm, TH = (W + 12) * ppm;
+    const tex = canvasTex(TW, TH, g => {
+      const X = x => (x + 6) * ppm, Y = y => (W + 6 - y) * ppm;
+      g.fillStyle = '#a9d67a'; g.fillRect(0, 0, TW, TH);
+      // Mown bands along the pitch and lighter ones across it, for a soft checker like a real match pitch.
+      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8cc65b' : '#9dd56a'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
+      for (let j = 0; j < 5; j++) { g.fillStyle = j % 2 ? 'rgba(255,255,215,.085)' : 'rgba(20,80,20,.035)'; g.fillRect(X(0), Y((j + 1) * 4), L * ppm, 4 * ppm); }
+      const pool = g.createRadialGradient(X(CX), Y(CY), 2 * ppm, X(CX), Y(CY), 20 * ppm); // sunlight pooling in the middle
+      pool.addColorStop(0, 'rgba(255,250,200,.13)'); pool.addColorStop(1, 'rgba(255,250,200,0)'); g.fillStyle = pool; g.fillRect(0, 0, TW, TH);
       let sd = 5; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-      for (let k = 0; k < 14000; k++) { g.fillStyle = rr() < .5 ? 'rgba(40,90,30,.10)' : 'rgba(255,255,210,.08)'; g.fillRect(rr() * (L + 12) * ppm, rr() * (W + 12) * ppm, 2, 6); }
-      g.fillStyle = '#ffffff'; const lw = Math.round(.14 * ppm);
-      const hl = (x0, x1, y) => g.fillRect(X(x0), Y(y), X(x1) - X(x0), lw), vl = (x, y0, y1) => g.fillRect(X(x), Y(y1), lw, Y(y0) - Y(y1));
-      hl(0, L, 0); hl(0, L, W); vl(0, 0, W); vl(L, 0, W); vl(CX, 0, W);
-      hl(0, 3, gy0 - 2); hl(0, 3, gy1 + 2); vl(3, gy0 - 2, gy1 + 2); hl(L - 3, L, gy0 - 2); hl(L - 3, L, gy1 + 2); vl(L - 3, gy0 - 2, gy1 + 2);
-      for (let a = 0; a < 360; a += .5) { const q = a * Math.PI / 180; g.fillRect(X(CX + 2.5 * Math.cos(q)), Y(CY + 2.5 * Math.sin(q)), lw, lw); }
+      for (let k = 0; k < 16000; k++) { g.fillStyle = rr() < .5 ? 'rgba(40,90,30,.10)' : 'rgba(255,255,210,.09)'; g.fillRect(rr() * TW, rr() * TH, 2, 6); }
+      // Lines, drawn as strokes so the circle and the corners stay smooth.
+      g.strokeStyle = g.fillStyle = 'rgba(255,255,255,.96)'; g.lineWidth = Math.round(.14 * ppm); g.lineJoin = 'round';
+      const line = (x0, y0, x1, y1) => { g.beginPath(); g.moveTo(X(x0), Y(y0)); g.lineTo(X(x1), Y(y1)); g.stroke(); };
+      const arc = (x, y, r, a0, a1) => { g.beginPath(); g.arc(X(x), Y(y), r * ppm, a0, a1); g.stroke(); };
+      g.strokeRect(X(0), Y(W), L * ppm, W * ppm); line(CX, 0, CX, W);
+      for (const [x0, x1] of [[0, 3], [L, L - 3]]) { line(x0, gy0 - 2, x1, gy0 - 2); line(x0, gy1 + 2, x1, gy1 + 2); line(x1, gy0 - 2, x1, gy1 + 2); }
+      arc(CX, CY, 2.5, 0, Math.PI * 2);
+      g.beginPath(); g.arc(X(CX), Y(CY), .2 * ppm, 0, Math.PI * 2); g.fill();
+      const Q = Math.PI / 2; // corner arcs (canvas y runs down, so the angles are mirrored)
+      arc(0, 0, .8, -Q, 0); arc(L, 0, .8, Math.PI, Math.PI + Q); arc(0, W, .8, 0, Q); arc(L, W, .8, Q, Math.PI);
     });
     const pitch = new THREE.Mesh(new THREE.PlaneGeometry(L + 12, W + 12), new THREE.MeshLambertMaterial({ map: tex }));
     pitch.position.set(CX, CY, 0); pitch.receiveShadow = true; this.scene.add(pitch);
@@ -297,8 +319,9 @@ export class World {
     };
     const depth = 1.1, gw = gy1 - gy0, frame = M('#ffffff'), rear = M('#d9dde3');
     const bar = (len, r, m, axis) => { const g = new THREE.CylinderGeometry(r, r, len, 8); if (axis === 'z') g.rotateX(Math.PI / 2); if (axis === 'x') g.rotateZ(Math.PI / 2); const o = new THREE.Mesh(g, m); o.castShadow = true; return o; };
+    this.nets = [];
     for (const [gx, dir] of [[L, 1], [0, -1]]) {
-      const bx = gx + dir * depth, add = (o, x, y, z) => { o.position.set(x, y, z); this.scene.add(o); };
+      const bx = gx + dir * depth, add = (o, x, y, z) => { o.position.set(x, y, z); this.scene.add(o); return o; };
       for (const y of [gy0, gy1]) {
         add(bar(gh, .07, frame, 'z'), gx, y, gh / 2);           // front posts
         add(bar(gh, .03, rear, 'z'), bx, y, gh / 2);            // back posts
@@ -308,25 +331,56 @@ export class World {
       add(bar(gw, .07, frame), gx, CY, gh);                       // crossbar
       add(bar(gw, .03, rear), bx, CY, gh);
       add(bar(gw, .03, rear), bx, CY, .03);
-      add(new THREE.Mesh(new THREE.PlaneGeometry(gw, gh).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, gh)), bx, CY, gh / 2);
+      // The back net has enough points to bulge when a shot hits it (see `fx('goal')` and `moveNets`).
+      const back = add(new THREE.Mesh(new THREE.PlaneGeometry(gw, gh, 20, 8).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, gh)), bx, CY, gh / 2);
+      this.nets.push({ mesh: back, base: back.geometry.attributes.position.array.slice(), dir, x: gx, t: 9, y: 0, z: 0 });
       for (const y of [gy0, gy1]) add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh)), gx + dir * depth / 2, y, gh / 2);
       add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gw), netMat(depth, gw)), gx + dir * depth / 2, CY, gh);
+    }
+    // Corner flags that wave a little.
+    const poleM = M('#fff8e8'), flagM = new THREE.MeshLambertMaterial({ color: '#ff6b5e', side: THREE.DoubleSide });
+    const flagG = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 1.45, .55, 0, 1.3, 0, 0, 1.15], 3)); flagG.computeVertexNormals();
+    this.flags = [[0, 0], [L, 0], [0, W], [L, W]].map(([x, y]) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 1.5, 5).rotateX(Math.PI / 2), poleM); pole.position.set(x, y, .75); pole.castShadow = true;
+      const flag = new THREE.Mesh(flagG, flagM); flag.position.set(x, y, 0); flag.castShadow = true;
+      this.scene.add(pole, flag); return flag;
+    });
+  }
+  // A shot that hits the net pushes it out around the ball; it swings back and settles.
+  moveNets(dt) {
+    for (const n of this.nets) {
+      if (n.t > 1.8) continue;
+      n.t += dt;
+      const pos = n.mesh.geometry.attributes.position, amp = n.t > 1.8 ? 0 : .6 * Math.min(1, n.t / .05) * Math.exp(-2.6 * n.t) * Math.cos(10 * n.t);
+      for (let i = 0; i < pos.count; i++) {
+        const y = n.base[i * 3 + 1], z = n.base[i * 3 + 2], pin = Math.cos(Math.PI * y / (gy1 - gy0)) * Math.cos(Math.PI * z / gh); // the edges are tied to the frame
+        const d2 = (y - n.y) ** 2 + (z - n.z) ** 2;
+        pos.array[i * 3] = n.base[i * 3] + n.dir * amp * pin * (.35 + Math.exp(-d2 / .7));
+      }
+      pos.needsUpdate = true;
     }
   }
 
   buildEnv() {
     const park = this.park = new THREE.Group(), stands = this.stands = new THREE.Group(), crowd = this.crowd = new THREE.Group();
     let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    const trunkG = new THREE.CylinderGeometry(.18, .25, 1, 5).rotateX(Math.PI / 2), leafG = new THREE.ConeGeometry(1, 2.2, 6).rotateX(Math.PI / 2);
-    const leafM = [M('#5fae7a'), M('#7cc58a'), M('#3f8f6e')], trunkM = M('#7a5434');
-    const tree = (x, y, s, i) => {
-      const tr = new THREE.Mesh(trunkG, trunkM); tr.scale.z = s * .45; tr.position.set(x, y, s * .225);
-      const lf = new THREE.Mesh(leafG, leafM[i % 3]); lf.scale.set(s * .34, s * .34, s * .32); lf.position.set(x, y, s * .75);
-      tr.castShadow = lf.castShadow = true; park.add(tr, lf);
-    };
-    let i = 0;
-    for (let x = -12; x <= L + 12; x += 4) { tree(x + rand() * 2, -11 - rand() * 4, 4 + rand() * 2.5, i++); tree(x + rand() * 2, W + 11 + rand() * 4, 4 + rand() * 2.5, i++); }
-    for (let y = -6; y <= W + 6; y += 4) { tree(-13 - rand() * 4, y + rand() * 2, 4 + rand() * 2.5, i++); tree(L + 13 + rand() * 4, y + rand() * 2, 4 + rand() * 2.5, i++); }
+    // Trees: pines (two cones) and round trees, all drawn as three instanced meshes.
+    const trees = [], tree = (x, y, s) => trees.push({ x, y, s, round: rand() < .3, c: Math.floor(rand() * 3) });
+    for (let x = -12; x <= L + 12; x += 4) { tree(x + rand() * 2, -11 - rand() * 4, 4 + rand() * 2.5); tree(x + rand() * 2, W + 11 + rand() * 4, 4 + rand() * 2.5); }
+    for (let y = -6; y <= W + 6; y += 4) { tree(-13 - rand() * 4, y + rand() * 2, 4 + rand() * 2.5); tree(L + 13 + rand() * 4, y + rand() * 2, 4 + rand() * 2.5); }
+    for (let k = 0; k < 46; k++) { const a = rand() * Math.PI * 2, d = 30 + rand() * 38; tree(CX + Math.cos(a) * d * 1.25, CY + Math.sin(a) * d, 3.5 + rand() * 4); } // a thinner ring further out
+    const pines = trees.filter(t => !t.round), rounds = trees.filter(t => t.round), GREENS = ['#5fae7a', '#7cc58a', '#3f8f6e'], BLOSSOM = ['#7cc58a', '#f6b7c1', '#9ccf86'];
+    const inst = (geo, n) => { const m = new THREE.InstancedMesh(geo, M('#ffffff'), n); m.castShadow = true; park.add(m); return m; };
+    const trunks = inst(new THREE.CylinderGeometry(.18, .25, 1, 5).rotateX(Math.PI / 2), trees.length);
+    const cones = inst(new THREE.ConeGeometry(1, 2.2, 6).rotateX(Math.PI / 2), pines.length * 2), balls = inst(new THREE.IcosahedronGeometry(1, 0), rounds.length);
+    const tm = new THREE.Matrix4(), tq = new THREE.Quaternion(), tv = new THREE.Vector3(), ts = new THREE.Vector3(), tc = new THREE.Color();
+    const put = (mesh, k, x, y, z, sx, sz, color, spin = 0) => { mesh.setMatrixAt(k, tm.compose(tv.set(x, y, z), tq.setFromAxisAngle(UP, spin), ts.set(sx, sx, sz))); mesh.setColorAt(k, tc.set(color)); };
+    trees.forEach((t, k) => put(trunks, k, t.x, t.y, t.s * .225, 1, t.s * .45, '#7a5434'));
+    pines.forEach((t, k) => {
+      put(cones, k * 2, t.x, t.y, t.s * .68, t.s * .36, t.s * .3, GREENS[t.c], k);
+      put(cones, k * 2 + 1, t.x, t.y, t.s * 1.02, t.s * .25, t.s * .24, tc.set(GREENS[t.c]).lerp(new THREE.Color('#d8f0a8'), .22).getStyle(), k + .5);
+    });
+    rounds.forEach((t, k) => put(balls, k, t.x, t.y, t.s * .7, t.s * .34, t.s * .32, BLOSSOM[t.c], k));
     const hillM = [M('#8cc47a'), M('#7ab38a'), M('#9ccf86')];
     for (let k = 0; k < 14; k++) {
       const a = k / 14 * Math.PI * 2, d = 90 + rand() * 30, s = 18 + rand() * 16;
@@ -345,7 +399,7 @@ export class World {
         for (let k = 0; k < n; k++) {
           const t = (k + .5) / n, x = w.a[0] + (w.b[0] - w.a[0]) * t + w.o[0] * off(r), y = w.a[1] + (w.b[1] - w.a[1]) * t + w.o[1] * off(r);
           seats.push({ x, y, z: rz(r), c: r % 2 ? '#6aa6d8' : '#5b93c7' });
-          if (rand() < .3) fans.push({ x, y, z: rz(r), c: ['#e46a5a', '#f2c14e', '#ffffff', '#6aa6d8', '#a36ad8'][Math.floor(rand() * 5)], s: ['#f0c8a6', '#b07a52', '#7a4e30'][Math.floor(rand() * 3)] });
+          if (rand() < .56) fans.push({ x, y, z: rz(r), ph: rand() * 6.3, pick: rand(), c: ['#e46a5a', '#f2c14e', '#ffffff', '#6aa6d8', '#a36ad8'][Math.floor(rand() * 5)], s: ['#f0c8a6', '#b07a52', '#7a4e30'][Math.floor(rand() * 3)] });
         }
       }
       for (let k = 0; k < 8; k++) {
@@ -362,17 +416,41 @@ export class World {
     const heads = new THREE.InstancedMesh(new THREE.SphereGeometry(.14, 6, 5), M('#ffffff'), fans.length);
     fans.forEach((s, k) => { mtx.makeTranslation(s.x, s.y, s.z + .45); bodies.setMatrixAt(k, mtx); bodies.setColorAt(k, col.set(s.c)); mtx.makeTranslation(s.x, s.y, s.z + .85); heads.setMatrixAt(k, mtx); heads.setColorAt(k, col.set(s.s)); });
     crowd.add(bodies, heads);
+    bodies.instanceMatrix.setUsage(THREE.DynamicDrawUsage); heads.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.fans = fans; this.fanMeshes = { bodies, heads }; this.excite = 0;
     // Floodlight towers at the four corners (stadium only).
+    const lampGlow = canvasTex(128, 128, g => {
+      const r = g.createRadialGradient(64, 64, 2, 64, 64, 62); r.addColorStop(0, 'rgba(255,250,225,1)'); r.addColorStop(.3, 'rgba(255,240,190,.5)'); r.addColorStop(1, 'rgba(255,240,190,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+    });
     const poleM = M('#e9e2da'), lampM = new THREE.MeshLambertMaterial({ color: '#fffbe8', emissive: '#fff3c2', emissiveIntensity: 1 });
     for (const [x, y] of [[-10, -10], [L + 10, -10], [-10, W + 10], [L + 10, W + 10]]) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(.25, .35, 16, 6).rotateX(Math.PI / 2), poleM); pole.position.set(x, y, 8);
       const lamp = new THREE.Mesh(new THREE.BoxGeometry(3, 1.6, 2), lampM); lamp.position.set(x, y, 16.5); lamp.lookAt(CX, CY, 0);
-      stands.add(pole, lamp);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: lampGlow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: .8 }));
+      glow.position.set(x, y, 16.5); glow.scale.setScalar(13);
+      stands.add(pole, lamp, glow);
     }
     this.scene.add(park, stands, crowd);
     this.setEnv('crowd');
   }
   setEnv(env) { this.park.visible = env === 'park'; this.stands.visible = env !== 'park'; this.crowd.visible = env === 'crowd'; }
+  // The crowd sways a little all the time and jumps when `excite` is up (a goal, or the ball near a goal).
+  moveCrowd(time) {
+    if (!this.crowd.visible) return;
+    const { bodies, heads } = this.fanMeshes, B = bodies.instanceMatrix.array, H = heads.instanceMatrix.array, e = this.excite;
+    this.fans.forEach((f, k) => {
+      const up = .035 * Math.sin(time * 1.7 + f.ph) + e * .42 * Math.abs(Math.sin(time * 6.5 + f.ph));
+      B[k * 16 + 14] = f.z + .45 + up; H[k * 16 + 14] = f.z + .85 + up;
+    });
+    bodies.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
+  }
+  // Most fans wear our colours, some wear theirs, the rest wear what they like.
+  dressCrowd(us, them) {
+    const { bodies } = this.fanMeshes, col = new THREE.Color(), shirt = t => (t.kit.colors[0].toLowerCase() === '#ffffff' && t.kit.colors[1]) || t.kit.colors[0];
+    this.fans.forEach((f, k) => bodies.setColorAt(k, col.set(f.pick < .55 ? shirt(us) : f.pick < .75 ? shirt(them) : f.c)));
+    bodies.instanceColor.needsUpdate = true;
+  }
 
   buildMarkers() {
     const gold = () => new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: .9, depthWrite: false, toneMapped: false });
@@ -419,6 +497,10 @@ export class World {
       glow.visible = false; this.scene.add(glow); this.glows.get(id) && this.scene.remove(this.glows.get(id)); this.glows.set(id, glow);
     }
     this.home = { rigs: new Map(this.rigs), glows: new Map(this.glows) };
+    this.dressCrowd(us, them);
+    const kitColors = t => [...new Set([...t.kit.colors, t.kit.trim, '#ffd23f', '#ffffff'])];
+    this.confetti = { us: kitColors(us), them: kitColors(them) };
+    this.mood = null;
   }
   // In a continuous match the child takes over whichever teammate has the ball: swap which body each sim id drives.
   swapRigs(a, b) {
@@ -438,6 +520,25 @@ export class World {
     }
   }
 
+  // Game moments that get an effect: 'kick' (v = ball speed), 'touch', and the results of a play.
+  fx(ev, v) {
+    const sim = this.sim, b = sim?.ball; if (!b) return;
+    const P = this.particles;
+    if (ev === 'kick') { P.puff(b.x, b.y, v >= 15 ? 10 : 5); if (v >= 15) { this.shake = Math.max(this.shake, .5); P.sparks(b.x, b.y, .2, 6, ['#ffffff', '#fff3b0']); } }
+    else if (ev === 'touch') P.puff(b.x, b.y, 2);
+    else if (ev === 'goal' || ev === 'goalAgainst') {
+      const net = this.nets[b.x > CX ? 0 : 1], team = ev === 'goal' ? 'us' : 'them', colors = this.confetti?.[team] || ['#ffd23f', '#ffffff'];
+      Object.assign(net, { t: 0, y: clamp(b.y, gy0 + .3, gy1 - .3) - CY, z: clamp(.2 + (b.z || 0), .2, gh - .2) - gh / 2 });
+      for (const y of [gy0 - 1.2, gy1 + 1.2]) P.confetti(net.x, y, .4, colors, team === 'us' ? 70 : 28, [-net.dir * 2.5, (CY - y) * .5]);
+      if (team === 'us') P.confetti(net.x - net.dir * 4, CY, 5, colors, 50);
+      this.excite = 1; this.shake = Math.max(this.shake, team === 'us' ? 1 : .6); this.punch = team === 'us' ? 1 : .4;
+      this.mood = { team, t: 0, hero: sim.a('hero') };
+    }
+    else if (ev === 'won' || ev === 'held') { P.sparks(b.x, b.y, .3, 18); this.excite = Math.max(this.excite, .6); this.shake = Math.max(this.shake, .3); }
+    else if (ev === 'kept') P.sparks(b.x, b.y, .3, 9, ['#ffffff', '#bfe8ff', '#fff3b0']);
+    else if (ev === 'stolen') P.puff(b.x, b.y, 8, ['#c9b38a', '#e6d7b5', '#9ed46c']);
+  }
+
   // Screen position (CSS px) of a world point, for tap targets.
   project(x, y, z) {
     const v = this.tmp.set(x, y, z).project(this.camera);
@@ -453,13 +554,25 @@ export class World {
     const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), c = this.camera;
     c.aspect = Wpx / Hpx; c.fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI; c.updateProjectionMatrix();
     c.position.set(...cam.eye); c.lookAt(...cam.tgt);
+    const dt = Math.min(.05, Math.max(0, time - (this.time ?? time))); this.time = time; this.sim = sim;
+    // A big moment shakes the camera for a moment and pushes in a little.
+    if (this.shake > .01) {
+      const k = this.shake * .09;
+      c.position.x += Math.sin(time * 83) * k; c.position.y += Math.sin(time * 67 + 1) * k; c.position.z += Math.sin(time * 97 + 2) * k;
+      this.shake *= Math.exp(-dt * 7);
+    }
+    if (this.punch > .01) { c.fov *= 1 - .05 * this.punch; c.updateProjectionMatrix(); this.punch *= Math.exp(-dt * 2.2); }
+    // Goal celebration: it ends when the next play is set up (the sim makes new players then).
+    let mood = this.mood;
+    if (mood && (sim.a('hero') !== mood.hero || (mood.t += dt) > 6)) mood = this.mood = null;
+    const moodK = mood ? Math.min(1, mood.t / .18) * Math.min(1, (6 - mood.t) / .5) : 0;
     const pulse = .75 + .25 * Math.sin(time * 6);
     for (const [id, g] of this.rigs) {
       const a = sim.a(id), glow = this.glows.get(id);
       g.visible = !!a; glow.visible = false; if (!a) continue;
       // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture.
       if (Math.hypot(a.x - cam.eye[0], a.y - cam.eye[1]) < 1.7 && cam.eye[2] < 5) { g.visible = false; continue; }
-      animate(g, a, sim, time);
+      animate(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0);
       const s = ui.glow?.[id] || 0;
       for (const m of g.userData.mats) { m.emissive.setRGB(1, .78, .2); m.emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
@@ -498,9 +611,19 @@ export class World {
       const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
       if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / .2));
     }
+    if (bp && dt && b.state === 'flying' && Math.hypot(b.x - bp.x, b.y - bp.y) / dt > 13) this.particles.trail(b.x, b.y, .2 + (b.z || 0)); // a hard shot leaves a trail
     this.ballPrev = { x: b.x, y: b.y };
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
     this.ball.position.set(b.x, b.y, .2 + (b.z || 0));
+    // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.
+    const bz = b.z || 0; this.ballBlob.position.set(b.x, b.y, .014); this.ballBlob.scale.setScalar(1 / (1 + bz * .5)); this.ballBlob.material.opacity = .9 / (1 + bz * .8);
+    // The crowd gets louder as the ball nears a goal and calms down after.
+    const nearGoal = this.crowd.visible ? clamp(1 - Math.min(Math.hypot(b.x - L, b.y - CY), Math.hypot(b.x, b.y - CY)) / 9, 0, 1) * .3 : 0;
+    this.excite = Math.max(nearGoal, this.excite * Math.exp(-dt * .55));
+    this.moveCrowd(time); this.moveNets(dt); this.particles.update(dt, c);
+    this.clouds.rotation.z = time * .0035;
+    this.flags.forEach((f, i) => { f.rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1; });
+    this.heroRing.scale.setScalar(1 + .05 * Math.sin(time * 4));
     this.renderer.render(this.scene, c);
   }
 }
