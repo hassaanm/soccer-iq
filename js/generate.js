@@ -7,12 +7,13 @@ const { L, W } = PITCH;
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
 const FREE = 2.2, MARKED = 1.3;        // receivers: nobody near / a defender right on him
 const PATH_FREE = 2.2, PATH_HIT = 1.8; // small-touch dribbles: clearly free / a defender in the way (measured from a stride ahead)
-export const PUSH_LEN = 7, HERO_RUN = 5.4, DEF_RUN = 4.8; // "big push": knock it 7 m ahead and race for it
-export const OUR_GOAL = { x: 0, y: W / 2 };
+const PUSH_LEN = 7; // "big push": knock it 7 m ahead and race for it
+export const HERO_RUN = 5.4, DEF_RUN = 4.8;
+const OUR_GOAL = { x: 0, y: W / 2 };
 
 // Small seeded random generator. The seed is scrambled and the first values thrown away, because nearby seeds
 // otherwise start with nearly identical (tiny) numbers and always pick the same pattern.
-export function rng(seed) {
+function rng(seed) {
   let s = (Math.abs(Math.floor(seed)) * 2654435761 + 12345) % 2147483647 || 1;
   const next = () => (s = (s * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < 4; i++) next();

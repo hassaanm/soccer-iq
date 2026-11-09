@@ -4,8 +4,8 @@
 // day never takes stars away.
 import { shuffle } from './geom.js';
 const KEY = 'soccer-iq:v1';
-export const INTERVALS = [0, 1, 3, 7, 14, 30]; // days before a lesson in each box comes back as review rounds
-export const MASTER_BOX = 3;
+const INTERVALS = [0, 1, 3, 7, 14, 30]; // days before a lesson in each box comes back as review rounds
+const MASTER_BOX = 3;
 export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds passes a session
 
 export function defaultProgress() {
@@ -29,13 +29,15 @@ export function save(p, storage = globalThis.localStorage) {
 // Today as a whole number of days, in local time (a new day starts at midnight, not at UTC midnight).
 export const today = (now = Date.now()) => Math.floor((now - new Date(now).getTimezoneOffset() * 6e4) / 864e5);
 
-export function skillState(p, id) {
+function skillState(p, id) {
   const s = p.skills[id] || (p.skills[id] = { box: 0, last: -1, sessions: 0, firstTry: 0, rounds: 0 });
   // Fields added in v30; older saves get them here.
   s.top ??= s.box; s.day ??= -1; s.days ??= 0; s.upDay ??= -1; s.today ??= 0;
   s.recent ??= []; // first-try results (1 right, 0 missed) of the last rounds, newest last: how sure he is now
   return s;
 }
+// The first time a lesson is touched on a new day: one more day of practice, and today's count starts again.
+function touchDay(s, day) { if (s.day !== day) { s.days++; s.day = day; s.today = 0; } }
 const played = (p, id) => (p.skills[id]?.sessions || 0) > 0;
 
 // Stars 0–3: 0 = not passed yet (or never played); 1 = passed; 2 and 3 = passed again on later days.
@@ -75,7 +77,7 @@ export function reviewsDue(p, path, current, day = today()) {
 // lesson isn't due again tomorrow; a miss moves it down a box so it comes back sooner. Levels never change here.
 export function reviewed(p, id, right, day = today()) {
   const s = skillState(p, id);
-  if (s.day !== day) { s.days++; s.day = day; s.today = 0; }
+  touchDay(s, day);
   if (!right) s.box = Math.max(0, s.box - 1);
   remember(s, right);
   return s;
@@ -121,14 +123,14 @@ export function trainingPlan(p, path, { day = today(), lessons = 3, builds = {},
 // lessons it includes, so those wait for their next gap.
 export function trained(p, id, results, { day = today(), builds = {} } = {}) {
   const s = skillState(p, id), gap = INTERVALS[Math.min(s.box, INTERVALS.length - 1)], wasDue = day - s.day >= gap;
-  if (s.day !== day) { s.days++; s.day = day; s.today = 0; }
+  touchDay(s, day);
   s.today++; s.firstTry += results.filter(Boolean).length; s.rounds += results.length;
   const before = level(p, id);
   if (results.length && results.every(Boolean) && wasDue && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }
   else if (!results.some(Boolean)) s.box = Math.max(0, s.box - 1);
   s.top = Math.max(s.top, s.box);
   remember(s, ...results);
-  if (results.some(Boolean)) for (const b of builds[id] || []) if (p.skills[b]) { const t = skillState(p, b); if (t.day !== day) { t.days++; t.day = day; t.today = 0; } }
+  if (results.some(Boolean)) for (const b of builds[id] || []) if (p.skills[b]) touchDay(skillState(p, b), day);
   return { leveledUp: level(p, id) > before, level: level(p, id) };
 }
 
@@ -137,7 +139,7 @@ export function trained(p, id, results, { day = today(), builds = {} } = {}) {
 export function finishSession(p, id, firstTry, rounds, day = today()) {
   p.sessions++;
   const s = skillState(p, id), before = level(p, id);
-  if (s.day !== day) { s.days++; s.day = day; s.today = 0; }
+  touchDay(s, day);
   s.today++; s.sessions++; s.last = p.sessions; s.firstTry += firstTry; s.rounds += rounds;
   const rate = rounds ? firstTry / rounds : 0;
   if (rate >= PASS - 1e-9 && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }

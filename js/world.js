@@ -62,6 +62,10 @@ const glowTex = canvasTex(128, 128, g => {
   r.addColorStop(0, 'rgba(255,230,120,1)'); r.addColorStop(.55, 'rgba(255,210,63,.55)'); r.addColorStop(1, 'rgba(255,210,63,0)');
   g.fillStyle = r; g.fillRect(0, 0, 128, 128);
 });
+// The spot under a player is the same for everyone: one shape and one material, shared and never thrown away.
+const BLOB_GEO = new THREE.CircleGeometry(.42, 16), BLOB_MAT = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
+BLOB_GEO.userData.shared = true;
+const IDS = ['hero', 'm1', 'm2', 'o1', 'o2', 'o3']; // the sim's player ids: three of ours, three of theirs
 
 // One-piece body (lathe) with capsule legs and arms and a sphere head. Low segment counts give the faceted look.
 const PROFILE = [[0, 0], [.15, 0], [.185, .05], [.19, .15], [.165, .27], [.17, .36], [.2, .48], [.215, .56], [.2, .63], [.14, .68], [.06, .705], [0, .71]];
@@ -95,12 +99,24 @@ function makeRig(p, kit, isHero) {
   const R = .26, hz = top + R * .78;
   add(g, sph(R), (() => { const m = M('#ffffff', { map: faceTex(p) }); mats.push(m); return m; })()).position.z = hz;
   addHair(g, p, kit, hz, R, mat, add);
-  const blob = new THREE.Mesh(new THREE.CircleGeometry(.42, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false }));
+  const blob = new THREE.Mesh(BLOB_GEO, BLOB_MAT);
   blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
   g.userData = { mats, legs, arms, yaw: null, seed: Math.random() * 6 };
   return g;
 }
+// Frees what one player's body owns: its shapes, its materials and the two painted textures (shirt and face).
+// The canvases behind those textures are emptied too: iOS counts canvas memory until the garbage collector runs.
+// The shared spot under him (BLOB_GEO, BLOB_MAT, blobTex) is left alone.
+function disposeRig(g) {
+  g.traverse(o => { if (o.isMesh && !o.geometry.userData.shared) o.geometry.dispose(); });
+  for (const m of g.userData.mats) {
+    if (m.map) { const cv = m.map.image; m.map.dispose(); cv.width = cv.height = 0; }
+    m.dispose();
+  }
+}
+// Everything about a team that changes how its players look. Same key: the bodies already built can stay.
+const lookKey = team => JSON.stringify([ART.smooth, team.kit, team.players.slice(0, 3)]);
 
 // Hair. Styles are picked from a hash of the name unless the player sets p.hairStyle.
 // The face is painted at +x: eyes ~8 degrees above the equator, brows ~20. Every piece stays above ~23 degrees
@@ -171,6 +187,7 @@ function addHair(g, p, kit, hz, R, mat, add) {
 // body bob and lean, dribble touches with the laces / inside / outside, and a kick wind-up.
 const STEP = .7, TOUCH = 1.4; // meters per step; one ball touch every two steps (matches sim.js)
 const lerp = (a, b, t) => a + (b - a) * Math.min(1, Math.max(0, t));
+const TOUCH_TURN = [0, -.55, .45]; // how far the foot turns for a touch with the laces / inside / outside
 // mood: > 0 while his team celebrates a goal (jumping, arms up), < 0 while the other team does (head down).
 function animate(g, a, sim, mood = 0, moodT = 0) {
   const u = g.userData, run = Math.min(1, a.sp / 4.5), ph = a.dist / STEP * Math.PI;
@@ -182,25 +199,29 @@ function animate(g, a, sim, mood = 0, moodT = 0) {
   const kick = a.kickAt != null ? (sim.time - a.kickAt) / .45 : 9;
   const carrying = sim.ball.state === 'carried' && sim.ball.carrier === a.id;
   const cyc = (a.dist % TOUCH) / TOUCH, touch = Math.floor(a.dist / TOUCH) % 3;
-  u.legs.forEach(({ hip, knee }, i) => {
-    const sgn = i ? 1 : -1, sw = Math.sin(ph + Math.PI / 2) * sgn;
+  const swing = Math.sin(ph + Math.PI / 2);
+  for (let i = 0; i < 2; i++) { // plain loops here and below: this runs for six players every frame
+    const { hip, knee } = u.legs[i], sgn = i ? 1 : -1, sw = swing * sgn;
     // Standing still: a ready stance (defenders crouch a bit more) with a slow breath.
     const ready = (1 - run) * (a.team === 'them' ? .34 : .16) + (1 - run) * .04 * Math.sin(sim.time * 2.2 + a.x);
     let h = -sw * .7 * run - ready * .45, k = run * (.15 + .9 * Math.max(0, -sw)) + ready, turn = 0;
-    if (carrying && i === 1 && run > .2 && cyc < .18) turn = [0, -.55, .45][touch] * run;
+    if (carrying && i === 1 && run > .2 && cyc < .18) turn = TOUCH_TURN[touch] * run;
     if (i === 1 && kick < 1) {
       const t = kick;
       h = t < .4 ? lerp(0, .9, t / .4) : t < .62 ? lerp(.9, -1.25, (t - .4) / .22) : lerp(-1.25, 0, (t - .62) / .38);
       k = t < .4 ? lerp(.1, 1.3, t / .4) : t < .62 ? lerp(1.3, .1, (t - .4) / .22) : .1;
     }
     hip.rotation.set(0, h, turn); knee.rotation.y = k;
-  });
-  u.arms.forEach((arm, i) => { const sgn = i ? 1 : -1; arm.rotation.y = Math.sin(ph + Math.PI / 2) * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); });
+  }
+  for (let i = 0; i < 2; i++) { const sgn = i ? 1 : -1; u.arms[i].rotation.y = swing * sgn * .8 * run + (kick < 1 ? -.6 * sgn : 0); }
   if (mood > 0) {
     const hop = Math.abs(Math.sin(moodT * 7.5 + u.seed));
     g.position.z += .34 * hop * mood;
-    u.arms.forEach((arm, i) => { arm.rotation.y = lerp(arm.rotation.y, -2.75 + .3 * Math.sin(moodT * 15 + i * 2 + u.seed), mood); });
-    u.legs.forEach(({ knee }) => { knee.rotation.y = lerp(knee.rotation.y, .7 * (1 - hop), mood); });
+    for (let i = 0; i < 2; i++) {
+      const arm = u.arms[i], knee = u.legs[i].knee;
+      arm.rotation.y = lerp(arm.rotation.y, -2.75 + .3 * Math.sin(moodT * 15 + i * 2 + u.seed), mood);
+      knee.rotation.y = lerp(knee.rotation.y, .7 * (1 - hop), mood);
+    }
   } else if (mood < 0) g.rotation.y = lerp(g.rotation.y, .26, -mood);
 }
 
@@ -279,7 +300,20 @@ export class World {
     this.ball.castShadow = true; scene.add(this.ball);
     this.ballBlob = new THREE.Mesh(new THREE.CircleGeometry(.3, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })); scene.add(this.ballBlob);
     this.particles = new Particles(scene); this.shake = 0; this.punch = 0; this.mood = null;
-    this.rigs = new Map(); this.tmp = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.axis = new THREE.Vector3(); this.camDir = new THREE.Vector3();
+    this.rigs = new Map(); this.teamKeys = { us: null, them: null }; this.tmp = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.axis = new THREE.Vector3();
+    // The canvas size in CSS px (`width`, `height`) is kept here, so nothing asks the page for it every frame:
+    // reading clientWidth makes the browser lay the page out again. It is measured again whenever the canvas
+    // box, the window or the screen's orientation changes; `render` then resizes the picture to match.
+    this.width = this.height = 0; this.resized = true;
+    const measure = () => this.measure();
+    this.watched = typeof ResizeObserver !== 'undefined'; // an old browser without it: `render` measures every frame, as before
+    if (this.watched) new ResizeObserver(measure).observe(canvas);
+    addEventListener('resize', measure); addEventListener('orientationchange', measure);
+    this.measure();
+  }
+  measure() {
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (w !== this.width || h !== this.height) { this.width = w; this.height = h; this.resized = true; }
   }
 
   buildPitch() {
@@ -439,10 +473,10 @@ export class World {
   moveCrowd(time) {
     if (!this.crowd.visible) return;
     const { bodies, heads } = this.fanMeshes, B = bodies.instanceMatrix.array, H = heads.instanceMatrix.array, e = this.excite;
-    this.fans.forEach((f, k) => {
-      const up = .035 * Math.sin(time * 1.7 + f.ph) + e * .42 * Math.abs(Math.sin(time * 6.5 + f.ph));
+    for (let k = 0; k < this.fans.length; k++) {
+      const f = this.fans[k], up = .035 * Math.sin(time * 1.7 + f.ph) + e * .42 * Math.abs(Math.sin(time * 6.5 + f.ph));
       B[k * 16 + 14] = f.z + .45 + up; H[k * 16 + 14] = f.z + .85 + up;
-    });
+    }
     bodies.instanceMatrix.needsUpdate = heads.instanceMatrix.needsUpdate = true;
   }
   // Most fans wear our colours, some wear theirs, the rest wear what they like.
@@ -469,11 +503,19 @@ export class World {
       const m = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, depthWrite: false, toneMapped: false }));
       m.rotation.z = a; m.visible = false; this.scene.add(m); return [k, m];
     }));
+    this.arrowList = Object.entries(this.arrows); // the same pairs as a list, so `render` makes no new one each frame
+    // A soft gold square under each player, shown when he can be picked. They don't depend on the teams, so they
+    // are made once here and kept.
     this.glows = new Map();
+    const glowGeo = new THREE.PlaneGeometry(2.2, 2.2);
+    for (const id of IDS) {
+      const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      glow.visible = false; this.scene.add(glow); this.glows.set(id, glow);
+    }
     // "Peek, then turn": two curved arrows on the grass around him, each sweeping from facing the ball around to
     // the way that turn takes him. Gold with a white edge; rebuilt only when the angles change.
-    this.turnArrows = new Map();
-    this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = '';
+    this.turnArrows = new Map(); this.frame = 0;
+    this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = ''; this.linesList = null;
     // A soft pulse under the ball when it is loose (hint for the 1v1 "Steal it!" lesson).
     this.ballGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.ballGlow.visible = false; this.scene.add(this.ballGlow);
@@ -487,20 +529,26 @@ export class World {
     });
   }
 
+  // Builds the six players. The home screen calls this on every tap of a team picker, so a side whose team did
+  // not change keeps its bodies, and a body that is replaced gives back its shapes, materials and textures.
   setTeams(us, them) {
-    for (const g of this.rigs.values()) this.scene.remove(g);
-    this.rigs.clear();
-    const ids = [['hero', us, 0], ['m1', us, 1], ['m2', us, 2], ['o1', them, 0], ['o2', them, 1], ['o3', them, 2]];
-    for (const [id, team, i] of ids) {
-      const g = makeRig(team.players[i], team.kit, id === 'hero'); this.scene.add(g); this.rigs.set(id, g);
-      const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-      glow.visible = false; this.scene.add(glow); this.glows.get(id) && this.scene.remove(this.glows.get(id)); this.glows.set(id, glow);
+    this.resetRigs(); // every sim id drives its own body again, as it does with freshly built ones
+    this.mood = null;
+    let changed = false;
+    for (const [side, team, ids] of [['us', us, IDS.slice(0, 3)], ['them', them, IDS.slice(3)]]) {
+      const key = lookKey(team);
+      if (this.teamKeys[side] === key) { for (const id of ids) this.rigs.get(id).userData.yaw = null; continue; } // kept bodies face the new way at once, like new ones
+      this.teamKeys[side] = key; changed = true;
+      ids.forEach((id, i) => {
+        const old = this.rigs.get(id); if (old) { this.scene.remove(old); disposeRig(old); }
+        const g = makeRig(team.players[i], team.kit, id === 'hero'); this.scene.add(g); this.rigs.set(id, g);
+      });
     }
+    if (!changed) return;
     this.home = { rigs: new Map(this.rigs), glows: new Map(this.glows) };
     this.dressCrowd(us, them);
     const kitColors = t => [...new Set([...t.kit.colors, t.kit.trim, '#ffd23f', '#ffffff'])];
     this.confetti = { us: kitColors(us), them: kitColors(them) };
-    this.mood = null;
   }
   // In a continuous match the child takes over whichever teammate has the ball: swap which body each sim id drives.
   swapRigs(a, b) {
@@ -508,10 +556,14 @@ export class World {
   }
   resetRigs() { if (this.home) { this.rigs = new Map(this.home.rigs); this.glows = new Map(this.home.glows); } }
 
+  // Feedback lines on the grass. The game makes a new list whenever the lines change, so the same list as last
+  // frame means nothing to do; a new list is compared by its contents before anything is rebuilt.
   setLines(lines) {
-    const key = JSON.stringify(lines); if (key === this.linesKey) return; this.linesKey = key;
+    if (lines === this.linesList) return; this.linesList = lines;
+    const key = lines?.length ? JSON.stringify(lines) : ''; if (key === this.linesKey) return; this.linesKey = key;
+    for (const m of this.lines.children) { m.geometry.dispose(); m.material.dispose(); } // a bar and its head share one material; freeing it twice is harmless
     this.lines.clear();
-    for (const l of lines) {
+    for (const l of lines || []) {
       const dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, len = Math.hypot(dx, dy), m = new THREE.MeshBasicMaterial({ color: l.color, transparent: true, opacity: .9, depthWrite: false });
       const bar = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(.1, len - .6), .32), m);
       bar.position.set(l.a.x + dx / 2 - dx / len * .3, l.a.y + dy / 2 - dy / len * .3, .05); bar.rotation.z = Math.atan2(dy, dx);
@@ -543,17 +595,18 @@ export class World {
   project(x, y, z) {
     const v = this.tmp.set(x, y, z).project(this.camera);
     if (v.z > 1) return null;
-    return [(v.x + 1) / 2 * this.canvas.clientWidth, (1 - v.y) / 2 * this.canvas.clientHeight];
+    return [(v.x + 1) / 2 * this.width, (1 - v.y) / 2 * this.height];
   }
 
   // ui: { glow: {id: 0..1}, arrows: {dir: 0..1}, lines: [...], heroRing }
   render(sim, cam, ui, time) {
-    const cv = this.canvas, Wpx = cv.clientWidth, Hpx = cv.clientHeight;
-    if (cv.width !== Math.round(Wpx * this.renderer.getPixelRatio())) this.renderer.setSize(Wpx, Hpx, false);
+    if (!this.watched) this.measure();
+    const Wpx = this.width, Hpx = this.height, c = this.camera, eye = cam.eye, tgt = cam.tgt;
+    if (this.resized) { this.resized = false; this.renderer.setSize(Wpx, Hpx, false); }
     // Focal length from height (Ff) and width (Fw) so wide phones don't see extra field.
-    const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), c = this.camera;
-    c.aspect = Wpx / Hpx; c.fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI; c.updateProjectionMatrix();
-    c.position.set(...cam.eye); c.lookAt(...cam.tgt);
+    const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), aspect = Wpx / Hpx;
+    let fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI;
+    c.position.set(eye[0], eye[1], eye[2]); c.lookAt(tgt[0], tgt[1], tgt[2]);
     const dt = Math.min(.05, Math.max(0, time - (this.time ?? time))); this.time = time; this.sim = sim;
     // A big moment shakes the camera for a moment and pushes in a little.
     if (this.shake > .01) {
@@ -561,58 +614,65 @@ export class World {
       c.position.x += Math.sin(time * 83) * k; c.position.y += Math.sin(time * 67 + 1) * k; c.position.z += Math.sin(time * 97 + 2) * k;
       this.shake *= Math.exp(-dt * 7);
     }
-    if (this.punch > .01) { c.fov *= 1 - .05 * this.punch; c.updateProjectionMatrix(); this.punch *= Math.exp(-dt * 2.2); }
+    if (this.punch > .01) { fov *= 1 - .05 * this.punch; this.punch *= Math.exp(-dt * 2.2); }
+    // The lens is worked out again only when the picture's shape or the zoom changed.
+    if (fov !== c.fov || aspect !== c.aspect) { c.fov = fov; c.aspect = aspect; c.updateProjectionMatrix(); }
     // Goal celebration: it ends when the next play is set up (the sim makes new players then).
     let mood = this.mood;
     if (mood && (sim.a('hero') !== mood.hero || (mood.t += dt) > 6)) mood = this.mood = null;
     const moodK = mood ? Math.min(1, mood.t / .18) * Math.min(1, (6 - mood.t) / .5) : 0;
     const pulse = .75 + .25 * Math.sin(time * 6);
-    for (const [id, g] of this.rigs) {
+    for (let i = 0; i < IDS.length; i++) {
+      const id = IDS[i], g = this.rigs.get(id); if (!g) continue; // no players before the first setTeams
       const a = sim.a(id), glow = this.glows.get(id);
       g.visible = !!a; glow.visible = false; if (!a) continue;
       // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture.
-      if (Math.hypot(a.x - cam.eye[0], a.y - cam.eye[1]) < 1.7 && cam.eye[2] < 5) { g.visible = false; continue; }
+      if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
       animate(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0);
-      const s = ui.glow?.[id] || 0;
-      for (const m of g.userData.mats) { m.emissive.setRGB(1, .78, .2); m.emissiveIntensity = s * pulse * .22; }
+      const s = ui.glow?.[id] || 0, mats = g.userData.mats;
+      for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
     }
     const h = sim.a('hero');
     this.heroRing.visible = !!ui.heroRing && !!h; if (h) this.heroRing.position.set(h.x, h.y, .02);
-    for (const [k, m] of Object.entries(this.arrows)) {
-      const s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
+    for (let i = 0; i < this.arrowList.length; i++) {
+      const k = this.arrowList[i][0], m = this.arrowList[i][1], s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
       if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = s >= 1 ? .92 + .08 * Math.sin(time * 5) : s * .9; }
     }
-    const seenTurns = new Set();
-    for (const t of ui.turnArrows || []) {
-      seenTurns.add(t.id);
+    // Turn arrows: each one is stamped with this frame's number when it is asked for; the others are hidden.
+    const turns = ui.turnArrows, frame = ++this.frame;
+    if (turns) for (let i = 0; i < turns.length; i++) {
+      const t = turns[i], a0 = Math.round(t.a0 * 100), a1 = Math.round(t.a1 * 100); // angles to 1/100 radian, as whole numbers
       let a = this.turnArrows.get(t.id);
-      const key = `${t.a0.toFixed(2)}:${t.a1.toFixed(2)}`;
-      if (!a || a.key !== key) {
-        if (a) { this.scene.remove(a.g); a.g.children.forEach(c => c.geometry.dispose()); }
-        const g = new THREE.Group();
-        const edge = new THREE.Mesh(turnArrowGeo(t.a0, t.a1, 1.35, .46), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, depthWrite: false, toneMapped: false }));
-        const fill = new THREE.Mesh(turnArrowGeo(t.a0, t.a1, 1.35, .3), new THREE.MeshBasicMaterial({ color: 0xffc21a, transparent: true, depthWrite: false, toneMapped: false }));
-        fill.position.z = .004; g.add(edge, fill); this.scene.add(g);
-        a = { g, key }; this.turnArrows.set(t.id, a);
+      if (!a || a.a0 !== a0 || a.a1 !== a1) {
+        const edgeGeo = turnArrowGeo(t.a0, t.a1, 1.35, .46), fillGeo = turnArrowGeo(t.a0, t.a1, 1.35, .3);
+        if (a) { a.edge.geometry.dispose(); a.fill.geometry.dispose(); a.edge.geometry = edgeGeo; a.fill.geometry = fillGeo; } // new angles: new shapes on the same meshes
+        else {
+          const g = new THREE.Group();
+          const edge = new THREE.Mesh(edgeGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, depthWrite: false, toneMapped: false }));
+          const fill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: 0xffc21a, transparent: true, depthWrite: false, toneMapped: false }));
+          fill.position.z = .004; g.add(edge, fill); this.scene.add(g);
+          a = { g, edge, fill }; this.turnArrows.set(t.id, a);
+        }
+        a.a0 = a0; a.a1 = a1;
       }
-      a.g.visible = !!h; if (h) a.g.position.set(h.x, h.y, .03);
-      a.g.children[1].material.opacity = .85 + .15 * Math.sin(time * 5);
+      a.seen = frame; a.g.visible = !!h; if (h) a.g.position.set(h.x, h.y, .03);
+      a.fill.material.opacity = .85 + .15 * Math.sin(time * 5);
     }
-    for (const [id, a] of this.turnArrows) if (!seenTurns.has(id)) a.g.visible = false;
-    this.spotPool.forEach((g, i) => {
-      const sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) return;
+    for (const a of this.turnArrows.values()) if (a.seen !== frame) a.g.visible = false;
+    for (let i = 0; i < this.spotPool.length; i++) {
+      const g = this.spotPool[i], sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) continue;
       g.position.set(sp.x, sp.y, .035); g.scale.setScalar(1 + .1 * Math.sin(time * 5 + i));
-    });
-    this.setLines(ui.lines || []);
+    }
+    this.setLines(ui.lines);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
     const b = sim.ball, bp = this.ballPrev;
     if (bp) {
       const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
       if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / .2));
-    }
-    if (bp && dt && b.state === 'flying' && Math.hypot(b.x - bp.x, b.y - bp.y) / dt > 13) this.particles.trail(b.x, b.y, .2 + (b.z || 0)); // a hard shot leaves a trail
-    this.ballPrev = { x: b.x, y: b.y };
+      if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, .2 + (b.z || 0)); // a hard shot leaves a trail
+      bp.x = b.x; bp.y = b.y;
+    } else this.ballPrev = { x: b.x, y: b.y };
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
     this.ball.position.set(b.x, b.y, .2 + (b.z || 0));
     // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.
@@ -622,7 +682,7 @@ export class World {
     this.excite = Math.max(nearGoal, this.excite * Math.exp(-dt * .55));
     this.moveCrowd(time); this.moveNets(dt); this.particles.update(dt, c);
     this.clouds.rotation.z = time * .0035;
-    this.flags.forEach((f, i) => { f.rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1; });
+    for (let i = 0; i < this.flags.length; i++) this.flags[i].rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1;
     this.heroRing.scale.setScalar(1 + .05 * Math.sin(time * 4));
     this.renderer.render(this.scene, c);
   }

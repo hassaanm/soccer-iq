@@ -16,7 +16,7 @@ export const CUPS = [
   { id: 'supercopa', name: 'Supercopa', emoji: '🇪🇸', teams: club(['esp']), home: 'barca', size: 4 },
 ];
 export const cupById = id => CUPS.find(c => c.id === id);
-export const ROUND_NAMES = { 8: ['Quarter-final', 'Semi-final', 'Final'], 4: ['Semi-final', 'Final'] };
+const ROUND_NAMES = { 8: ['Quarter-final', 'Semi-final', 'Final'], 4: ['Semi-final', 'Final'] };
 export const roundsOf = cup => ROUND_NAMES[cup.size || 8];
 
 // The team he plays as: his own if it can enter, else the cup's team with his star in it (Barça's Yamal plays

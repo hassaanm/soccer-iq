@@ -10,7 +10,7 @@ export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const Q = Math.PI / 4;
 export const DRIBBLE_DIRS = { fwd: 0, fl: Q, left: 2 * Q, bl: 3 * Q, back: 4 * Q, br: -3 * Q, right: -2 * Q, fr: -Q };
 export const BACKWARD = new Set(['bl', 'back', 'br']); // away from the goal he attacks
-export const DRIBBLE_LEN = 4.5;
+const DRIBBLE_LEN = 4.5;
 
 export function dribbleEnd(from, dir, L, W) {
   const [dx, dy] = rot(DRIBBLE_LEN, 0, DRIBBLE_DIRS[dir]);
@@ -33,18 +33,6 @@ export function interceptor(a, b, opps) {
     if (!best || c.d < best.d) best = { opp: o, x: c.x, y: c.y, d: c.d };
   }
   return best;
-}
-
-// Flip a scenario top-to-bottom so each one can be played on both sides.
-export function mirrorScenario(sc, W) {
-  const f = p => p && [p[0], W - p[1]];
-  const SWAP = { left: 'right', right: 'left', fl: 'fr', fr: 'fl', bl: 'br', br: 'bl' };
-  const opt = o => o.startsWith('drib:') && SWAP[o.slice(5)] ? 'drib:' + SWAP[o.slice(5)] : o;
-  return {
-    ...sc, id: sc.id + 'm', hero: f(sc.hero), heroTo: f(sc.heroTo),
-    mates: sc.mates.map(f), opps: sc.opps.map(f), oppsTo: (sc.oppsTo || []).map(f),
-    best: opt(sc.best), ok: (sc.ok || []).map(opt),
-  };
 }
 
 export function shuffle(arr, rnd = Math.random) {

@@ -140,9 +140,12 @@ export function sfx(name, arg) { if (!ctx || !enabled) return; try { SFX[name]?.
 // Clips are fetched once and decoded; leading/trailing silence is trimmed so names flow into the sentence.
 // The voice has its own player, so it isn't muted by the Sounds switch.
 let voiceIndex = null;
-const clipCache = new Map();
-export async function loadVoice(base = 'audio/voice/') {
-  try { const r = await fetch(base + 'index.json'); voiceIndex = { base, ...(await r.json()) }; } catch { voiceIndex = null; }
+const clipCache = new Map(), clipFailed = new Set(); // clipFailed: files whose last load failed (see clip)
+// The list of clips. If it can't be fetched (a network blip at start), it is tried again a few times, a little
+// later each time, so the recorded voice isn't lost for the whole session.
+export async function loadVoice(base = 'audio/voice/', tries = 4) {
+  try { const r = await fetch(base + 'index.json'); voiceIndex = { base, ...(await r.json()) }; }
+  catch { voiceIndex = null; if (tries > 0) setTimeout(() => loadVoice(base, tries - 1), (5 - tries) * 4000); }
 }
 function trim(buf) {
   const d = buf.getChannelData(0), th = .01;
@@ -152,13 +155,23 @@ function trim(buf) {
   a = Math.max(0, a - 400); b = Math.min(d.length - 1, b + 1200);
   const out = ctx.createBuffer(1, b - a + 1, buf.sampleRate); out.getChannelData(0).set(d.subarray(a, b + 1)); return out;
 }
+// A clip that fails to load (a network blip, a bad file) is not kept: the next call fetches it again. Until a
+// load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
 function clip(key) {
   const file = voiceIndex?.clips[key]; if (!file) return null;
-  if (!clipCache.has(file)) clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(b => new Promise((res, rej) => ctx.decodeAudioData(b, res, rej))).then(trim).catch(() => null));
+  if (!clipCache.has(file)) clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(b => new Promise((res, rej) => ctx.decodeAudioData(b, res, rej))).then(trim)
+    .then(buf => { clipFailed.delete(file); return buf; }, () => { clipCache.delete(file); clipFailed.add(file); return null; }));
   return clipCache.get(file);
 }
 // True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
-export const canSpeak = keys => !!(ctx && voiceIndex && keys.every(k => voiceIndex.clips[k]));
+// A piece whose clip failed to load last time counts as missing for now, and is fetched again in the background:
+// this line falls back to the built-in voice, and a later one plays the recording once it has loaded.
+export function canSpeak(keys) {
+  if (!(ctx && voiceIndex && keys.every(k => voiceIndex.clips[k]))) return false;
+  const failed = keys.filter(k => clipFailed.has(voiceIndex.clips[k]));
+  failed.forEach(clip);
+  return !failed.length;
+}
 let voiceDone = null, voiceUrl = null; // voiceDone resolves the line that is playing now (when it ends, or is cut off)
 export function stopVoice() {
   if (voiceEl) { voiceEl.onended = null; voiceEl.pause(); }
@@ -166,11 +179,13 @@ export function stopVoice() {
 }
 let voiceToken = 0;
 // Plays a line from its clips; the promise resolves when the line has been said (or was cut off by another one).
-// The clips are joined into one recording first, so the line plays in one go.
+// It resolves with `false` when the line was not played because a clip could not be loaded, so the caller can
+// say it another way. The clips are joined into one recording first, so the line plays in one go.
 export async function speakClips(keys) {
   const token = ++voiceToken; stopVoice();
   const bufs = await Promise.all(keys.map(clip));
-  if (token !== voiceToken || bufs.some(b => !b)) return;
+  if (token !== voiceToken) return;
+  if (bufs.some(b => !b)) return false;
   const sr = bufs[0].sampleRate, gap = Math.round(.04 * sr), line = new Float32Array(bufs.reduce((n, b) => n + b.length + gap, 0));
   let at = Math.round(.05 * sr); // a moment of quiet so the first word isn't clipped
   for (const b of bufs) { const d = b.getChannelData(0); for (let i = 0; i < d.length && at + i < line.length; i++) line[at + i] = d[i] * vol.voice; at += b.length + gap; }

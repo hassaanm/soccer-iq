@@ -2,17 +2,18 @@
 // and outcomes run as generator scripts that yield seconds or "wait until" predicates.
 import { lerp } from './geom.js';
 
-export const SPACE = .75; // meters between two players' centers
+const SPACE = .75; // meters between two players' centers
 const TURN = 9;            // radians per second a player can turn
 // Turn a player's facing toward (fx, fy) at a limited speed, so direction changes look like real turns.
 function turnToward(a, fx, fy, dt) {
   const cur = Math.atan2(a.face[1], a.face[0]), want = Math.atan2(fy, fx);
   const d = Math.atan2(Math.sin(want - cur), Math.cos(want - cur)), step = Math.max(-TURN * dt, Math.min(TURN * dt, d));
-  a.face = [Math.cos(cur + step), Math.sin(cur + step)];
+  a.face[0] = Math.cos(cur + step); a.face[1] = Math.sin(cur + step); // every player has his own `face` list, so it is changed in place
 }
+const SIDE = [0, .14, -.14]; // how far a dribble touch sits to the side: laces / inside / outside
 
 export class Sim {
-  constructor() { this.agents = new Map(); this.ball = {}; this.co = null; this.time = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
+  constructor() { this.agents = new Map(); this.list = []; this.ball = {}; this.co = null; this.time = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
 
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
@@ -35,7 +36,7 @@ export class Sim {
   }
 
   a(id) { return this.agents.get(id); }
-  team(t) { return [...this.agents.values()].filter(a => a.team === t); }
+  team(t) { const out = []; for (const a of this.agents.values()) if (a.team === t) out.push(a); return out; }
   go(id, x, y, speed = 4) { const a = this.a(id); a.tx = x; a.ty = y; a.speed = speed; }
   stop(id) { const a = this.a(id); a.tx = a.x; a.ty = a.y; }
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } }
@@ -63,7 +64,7 @@ export class Sim {
       } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.
-    const list = [...this.agents.values()];
+    const list = this.list; list.length = 0; for (const a of this.agents.values()) list.push(a); // one list, filled again each step
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
       const p = list[i], q = list[j], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
       if (d < SPACE && d > 1e-6) { const push = (SPACE - d) / 2; p.x -= dx / d * push; p.y -= dy / d * push; q.x += dx / d * push; q.y += dy / d * push; }
@@ -73,7 +74,7 @@ export class Sim {
       // Dribbling: each touch (every 1.4 m, matching world.js) pushes the ball ahead, then the player
       // catches up. Touches cycle laces / inside / outside, nudging the ball sideways a little.
       const c = this.a(b.carrier), run = Math.min(1, c.sp / 2.5), k = (c.dist % 1.4) / 1.4, kind = Math.floor(c.dist / 1.4) % 3;
-      const ahead = .34 + run * .55 * (1 - k), side = run * [0, .14, -.14][kind] * (1 - k);
+      const ahead = .34 + run * .55 * (1 - k), side = run * SIDE[kind] * (1 - k);
       // The ball rolls toward its spot at his feet instead of jumping there when he turns or takes it over.
       const wx = c.x + c.face[0] * ahead - c.face[1] * side, wy = c.y + c.face[1] * ahead + c.face[0] * side, roll = Math.min(1, dt * 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;

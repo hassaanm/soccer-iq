@@ -5,6 +5,8 @@ import * as THREE from 'three';
 const MAX = 420;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = list => list[Math.floor(Math.random() * list.length)];
+// What a piece starts as, before `spawn` adds what the caller asked for.
+const BASE = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: -9, drag: 0, size: .1, life: 1, spin: 0, face: false, flutter: 0 };
 const GRASS = ['#7fbf52', '#9ed46c', '#6aa84a', '#c9e89a'], GOLD = ['#ffd23f', '#fff3b0', '#ffffff', '#ffb02e'];
 
 export class Particles {
@@ -25,7 +27,7 @@ export class Particles {
   spawn(o) {
     const i = this.next, p = this.list[i]; this.next = (i + 1) % MAX;
     if (!p.life) this.live++;
-    Object.assign(p, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: -9, drag: 0, size: .1, life: 1, spin: 0, face: false, flutter: 0 }, o);
+    Object.assign(p, BASE, o);
     p.age = 0; p.rx = rnd(0, 6.3); p.ry = rnd(0, 6.3); p.rz = rnd(0, 6.3); p.landed = false;
     this.mesh.setColorAt(i, this.col.set(o.color || '#ffffff')); this.mesh.instanceColor.needsUpdate = true;
   }
@@ -59,11 +61,11 @@ export class Particles {
 
   update(dt, camera) {
     if (!this.live) return;
-    const { mesh, m, pos, q, q2, e, s } = this;
-    this.list.forEach((p, i) => {
-      if (!p.life) return;
+    const { mesh, m, pos, q, q2, e, s, list } = this;
+    for (let i = 0; i < MAX; i++) {
+      const p = list[i]; if (!p.life) continue;
       p.age += dt;
-      if (p.age >= p.life) { p.life = 0; this.live--; mesh.setMatrixAt(i, this.zero); return; }
+      if (p.age >= p.life) { p.life = 0; this.live--; mesh.setMatrixAt(i, this.zero); continue; }
       if (!p.landed) {
         const k = Math.max(0, 1 - p.drag * dt);
         p.vz += p.g * dt; p.vx *= k; p.vy *= k; p.vz *= k;
@@ -76,7 +78,7 @@ export class Particles {
       if (p.face) q.copy(camera.quaternion).multiply(q2.setFromAxisAngle(this.zAxis, p.rz));
       else q.setFromEuler(e.set(p.rx, p.ry, p.rz));
       mesh.setMatrixAt(i, m.compose(pos.set(p.x, p.y, p.z), q, s.setScalar(size)));
-    });
+    }
     mesh.instanceMatrix.needsUpdate = true;
   }
 }

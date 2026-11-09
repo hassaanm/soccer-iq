@@ -7,7 +7,7 @@ import { TEAMS, displayName } from './teams.js';
 export const NAMES = [...new Set(TEAMS.flatMap(t => t.players.map(p => displayName(p.name))))];
 
 // The lookup key for a piece of text: lowercase letters, digits and apostrophes, single spaces.
-export const norm = t => t.normalize('NFC').toLowerCase().replace(/[’]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+const norm = t => t.normalize('NFC').toLowerCase().replace(/[’]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const NAME_RE = new RegExp(`(?<![\\p{L}])(${[...NAMES].sort((a, b) => b.length - a.length).map(esc).join('|')})(?![\\p{L}])`, 'giu'); // whole words only
