@@ -438,7 +438,8 @@ function giveGo(r, sc) {
   if (!laneClear(M, go, opps) || !laneBlocked(M, H, opps) || Math.hypot(ballSpot[0] - M[0], ballSpot[1] - M[1]) > 2.5) return null;
   if (opps.some(o => dist(P(o), P(go)) < 2.4)) return null;
   return { kind: 'support', carrier: 'm1', move: { o1, o2 }, spots: spots.map(s => ({ id: s.id, x: s.p[0], y: s.p[1], crowd: s.id === 'ball' })),
-    best: 'spot:go', ok: [], cue: 'Now run past him into the space, so {m0} can pass it back!' };
+    best: 'spot:go', ok: [], cue: 'Now run past him into the space, so {m0} can pass it back!',
+    praise: 'Great run! You ran past him, so {m0} could pass it back!' }; // the cue asks for the run; after it, the card says what it did
 }
 
 // ---------- 1v1 defending (steal it) ----------

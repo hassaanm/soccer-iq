@@ -79,7 +79,9 @@ export const rounds = {
     if (opt.startsWith('push:')) return pushEnd(h, opt.slice(5));
     return MATE[opt] ? { ...this.sim.a(MATE[opt]) } : dribbleEnd(h, opt.slice(5), L, W);
   },
-  cue() { return this.sc.cue.replaceAll('{m0}', this.name('m1')).replaceAll('{m1}', this.name('m2')); },
+  // A line with his teammates' names filled in.
+  named(text) { return text.replaceAll('{m0}', this.name('m1')).replaceAll('{m1}', this.name('m2')); },
+  cue() { return this.named(this.sc.cue); },
 
   // Give-and-go, step 2: the friend has the ball; the defender who was on him turns to press the friend.
   async toStep2() {
@@ -121,7 +123,7 @@ export const rounds = {
       const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
-        : good ? { stars: 3, text: sc.praise || `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
+        : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
         : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.kind === 'support' ? 'He could not pass to you!' : 'Oops, lost it!' };
       this.card = null;
       await this.outcome(opt, good);
