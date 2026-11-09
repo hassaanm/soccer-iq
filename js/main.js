@@ -61,6 +61,9 @@ const flash = (el, cls, text, ms) => {
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
 const tunnel = $('#tunnel');
+let tunnelNow = 0;  // how strong the head-down tunnel is now (0 = off)
+let dotsDone = 0;   // rounds shown as played on the dots
+let scoreNow = null; // the score on the scoreboard
 const hud = {
   state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot, showing }) {
     const d = hudEl.dataset;
@@ -77,26 +80,36 @@ const hud = {
     const label = lookUp ? 'HEAD DOWN' : 'LOOK UP'; if (lb.lastChild.textContent !== label) { lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = label; }
     // Head down = tunnel vision: blurry, darker edges. Clears as he looks up.
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
-    tunnel.style.opacity = playerView ? ((1 - look) * .95).toFixed(3) : '0';
+    const o = playerView ? Math.round((1 - look) * 95) / 100 : 0;
+    if (o !== tunnelNow) { tunnelNow = o; tunnel.style.opacity = o; tunnel.classList.toggle('on', o > 0); }
   },
-  // One result card for every play: the outcome ("GOAL!", "Stole it!"...) appears the moment it happens,
-  // then the stars and a short tip fill in underneath. With `watch`, it waits for "Watch the 3-star play" or "Next".
-  // `rated` = { stars, text, watch }: in lessons the whole card (title, stars, tip) appears at once, the moment
-  // the play ends. Without it (matches, demos) the card is just the title.
+  // The big moment. The outcome ("GOAL!", "Stole it!"…) lands in huge letters the moment it happens.
+  // In lessons (`rated` = { stars, text, watch }) the result card follows: the stars pop one by one over a short
+  // tip, and with `watch` it waits for "Watch the 3-star play" or "Next". A missed play skips the big letters and
+  // goes straight to the card. Matches and demos aren't rated: they show just the big letters.
   banner(text, kind, rated) {
-    const el = $('#rate'), title = el.querySelector('.title');
+    const big = $('#banner'), el = $('#rate'), good = kind !== 'bad', splash = !!text && (good || !rated);
+    sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
+    clearTimeout(timers.rate); clearTimeout(timers.big);
+    hudEl.classList.add('rating');
+    if (splash) {
+      big.querySelector('b').innerHTML = [...text].map((ch, i) => `<i style="--i:${i}">${ch}</i>`).join('');
+      big.className = kind; void big.offsetWidth; big.classList.add('show');
+    }
+    if (text === 'GOAL!') { const f = $('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+    const done = v => { big.classList.remove('show'); el.classList.remove('show'); hudEl.classList.remove('rating'); return v; };
+    if (!rated) { timers.big = setTimeout(done, 1700); return Promise.resolve(); }
+    const title = el.querySelector('.title'), lead = splash ? 850 : 0;
     title.textContent = text; title.className = 'title ' + kind;
-    el.className = rated ? 's' + rated.stars : 'solo';
-    el.querySelector('.stars').innerHTML = rated ? [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join('') : '';
-    el.querySelector('.txt').textContent = rated?.text || ''; el.querySelector('.btns').classList.toggle('hidden', !rated?.watch);
-    void el.offsetWidth; el.classList.add('show'); hudEl.classList.add('rating');
-    sfx(kind === 'bad' ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
-    clearTimeout(timers.rate);
-    const done = v => { el.classList.remove('show'); hudEl.classList.remove('rating'); return v; };
-    if (!rated) { timers.rate = setTimeout(done, 1700); return Promise.resolve(); }
-    [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 250 + i * 160));
+    el.className = 's' + rated.stars;
+    el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join('');
+    el.querySelector('.txt').textContent = rated.text || ''; el.querySelector('.btns').classList.toggle('hidden', !rated.watch);
+    timers.big = setTimeout(() => {
+      big.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+      [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 250 + i * 160));
+    }, lead);
     return new Promise(res => {
-      if (!rated.watch) { timers.rate = setTimeout(() => res(done('next')), rated.stars === 3 ? 1600 + rated.text.length * 45 : 2200); return; }
+      if (!rated.watch) { timers.rate = setTimeout(() => res(done('next')), lead + (rated.stars === 3 ? 1600 + rated.text.length * 45 : 2200)); return; }
       $('#rateWatch').onclick = () => res(done('watch')); $('#rateNext').onclick = () => res(done('next'));
     });
   },
@@ -121,12 +134,20 @@ const hud = {
   },
   toast(text, warn) { flash($('#toast'), warn ? 'warn' : '', text, 1600); },
   caption(text) { const c = $('#caption'); c.textContent = text; c.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
+  // One dot per round: gold = right on the first try. The dot just earned pops.
   dots(results, n) {
-    $('#dots').innerHTML = Array.from({ length: n }, (_, i) => `<span class="${i < results.length ? (results[i] ? 'star' : 'done') : i === results.length ? 'now' : ''}"></span>`).join('');
+    const done = results.length, fresh = done > dotsDone; dotsDone = done;
+    $('#dots').innerHTML = Array.from({ length: n }, (_, i) =>
+      `<span class="${i < done ? (results[i] ? 'star' : 'done') + (fresh && i === done - 1 ? ' new' : '') : i === done ? 'now' : ''}"></span>`).join('');
   },
+  // The scoreboard: each team's color and short name, the score in the middle. A goal makes its number jump.
   score(s, us, them) {
-    const el = $('#score'); el.classList.remove('hidden');
-    el.innerHTML = `<span>${us.short}</span><b>${s.us} – ${s.them}</b><span>${them.short}</span>`;
+    const el = $('#score'), key = `${us.id} ${s.us} ${them.id} ${s.them}`, was = scoreNow;
+    el.classList.remove('hidden');
+    if (was?.key === key) return;
+    scoreNow = { key, us: s.us, them: s.them };
+    const chip = t => `<i style="background:${t.kit.colors[0]}"></i>`, num = (v, old) => `<em class="${was && v > old ? 'bump' : ''}">${v}</em>`;
+    el.innerHTML = `${chip(us)}<span>${us.short}</span><b>${num(s.us, was?.us)}–${num(s.them, was?.them)}</b><span>${them.short}</span>${chip(them)}`;
   },
 };
 
@@ -295,6 +316,19 @@ function showSticker(emoji, trophy) {
   st.replaceWith(clone); $('#results .emoji').classList.add('hidden'); setTimeout(() => sfx('star', 2), 250);
 }
 
+// Paper confetti falls over the results card after a win.
+const PAPER = ['#ffd84d', '#2fcf6a', '#5aa2ff', '#ef4444', '#ffffff', '#ff8ad0'];
+function confetti(n = 70) {
+  document.querySelector('#confetti')?.remove();
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = document.createElement('div'), rnd = (a, b) => Math.round(a + Math.random() * (b - a));
+  box.id = 'confetti';
+  box.innerHTML = Array.from({ length: n }, (_, i) => `<i style="left:${rnd(0, 100)}%;background:${PAPER[i % PAPER.length]};--dx:${rnd(-90, 90)}px;--rot:${rnd(-720, 720)}deg;`
+    + `animation-duration:${rnd(170, 330) / 100}s;animation-delay:${rnd(0, 80) / 100}s"></i>`).join('');
+  document.body.append(box); setTimeout(() => box.remove(), 4500);
+}
+// One circle per round on the results card; they fill in one by one.
+const roundsRow = results => { $('#results .roundsrow').innerHTML = results.map((ok, i) => `<span class="${ok ? 'star' : 'done'}" style="--i:${i}"></span>`).join(''); };
 // Clears the results card before a flow fills it in.
 function resetResults() {
   $('#results .sticker').classList.add('hidden'); $('#results .emoji').classList.remove('hidden');
@@ -369,8 +403,7 @@ async function runSession() {
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save(P); resetResults();
   showSticker(won ? '🏆' : sk.emoji, won);
   $('#results h2').textContent = won ? 'You won!' : 'Great try!';
-  // One circle per round, like the dots during the lesson: gold = right on the first try.
-  $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
+  roundsRow(results); if (won) confetti();
   $('#results .roundsnote').textContent = `${firstTry} of ${rounds.length} right on the first try`;
   // Level news, then a backyard game for the grown-up.
   $('#results .levelup').textContent = st.unlocked ? `🔓 Unlocked: ${UNLOCKS[skillId]}` : st.leveledUp ? `${'⭐'.repeat(st.level)} Level ${st.level}!` : !level(P, skillId) ? `Get ${Math.ceil(rounds.length * 2 / 3)} right to unlock the next lesson` : '';
@@ -394,7 +427,7 @@ async function runFreePlay() {
   await card({ emoji: '⚽', title: 'Match time!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
   const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
   if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(P); }
-  resetResults(); $('#results .emoji').textContent = '⚽'; if (won) showSticker('🏆', true);
+  resetResults(); $('#results .emoji').textContent = '⚽'; if (won) { showSticker('🏆', true); confetti(); }
   $('#results h2').textContent = won ? 'You won the match!' : 'Good game!';
   resultsButtons({ kind: 'cup', icon: '🏆', text: 'Cup', go: openCups }, { kind: 'match', icon: '↺', text: 'Play again', go: runFreePlay });
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
@@ -434,7 +467,7 @@ async function runTraining() {
   P.openDay = day; P.sessions++; P.pick = null; save(P);
   resetResults(); $('#results .emoji').textContent = '💪';
   $('#results h2').textContent = 'Training done!';
-  $('#results .roundsrow').innerHTML = results.map(ok => `<span class="${ok ? 'star' : 'done'}"></span>`).join('');
+  roundsRow(results); confetti(50);
   $('#results .roundsnote').textContent = `${results.filter(Boolean).length} of ${results.length} right on the first try`;
   $('#results .levelup').textContent = ups.map(id => `${'⭐'.repeat(level(P, id))} ${skillById(id).kid}`).join(' · ');
   const weak = plan.find(id => per[id]?.some(ok => !ok)) || plan[0];
@@ -492,12 +525,12 @@ async function runCup(cupId) {
   resetResults(); $('#results .emoji').textContent = cup.emoji;
   $('#results p').textContent = `${us.short} ${score.us} – ${score.them} ${them.short}`;
   if (won && final) {
-    showSticker(cup.emoji, true); $('#results h2').textContent = 'Champions!';
+    showSticker(cup.emoji, true); confetti(140); $('#results h2').textContent = 'Champions!';
     $('#results .levelup').textContent = `You won the ${cup.name}!`;
     resultsButtons({ kind: 'cup', icon: '🏆', text: 'Another cup', go: openCups }, null);
     say('You won the cup!');
   } else {
-    $('#results h2').textContent = won ? 'You won!' : 'So close!';
+    $('#results h2').textContent = won ? 'You won!' : 'So close!'; if (won) confetti();
     $('#results .levelup').textContent = won ? `On to the ${names[run.round].toLowerCase()}!` : `Play the ${names[run.round].toLowerCase()} again!`;
     $('#results .outside').innerHTML = cupPath(run);
     resultsButtons({ kind: 'cup', icon: '⚽', text: won ? names[run.round] : 'Try again', go: () => runCup(cupId) }, { kind: 'cup', icon: '🏆', text: 'All cups', go: openCups });
@@ -592,7 +625,7 @@ function matchStrip(now) {
     gl.readPixels(0, 0, w, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // the bottom row (WebGL rows start at the bottom)
     const mid = k => { const v = []; for (let i = 1; i < 16; i++) v.push(px[Math.floor(w * i / 16) * 4 + k]); return v.sort((a, b) => a - b)[7]; }; // median: a player's boot doesn't change it
     // Head down, the screen edges are dimmed (the tunnel: brightness .8, saturation .75), so dim the strip to match.
-    const o = +tunnel.style.opacity || 0, rgb = [0, 1, 2].map(mid), gray = .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+    const o = tunnelNow, rgb = [0, 1, 2].map(mid), gray = .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
     const dimmed = rgb.map(v => Math.round(Math.min(255, (gray + (v - gray) * (1 - .25 * o)) * (1 - .2 * o))));
     if (px.some(v => v)) c = '#' + dimmed.map(v => v.toString(16).padStart(2, '0')).join('');
   }

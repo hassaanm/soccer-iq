@@ -1,3 +1,6 @@
+/* Heads Up! Soccer. Sections: tokens · buttons · HUD · game buttons · result card · home · cards and sheets ·
+   lesson, album and cup sheets · results · grown-ups menu · sound popover · small screens · reduced motion. */
+
 /* ---------- design tokens ---------- */
 :root{
   --ink:#24193a; --ink-soft:#6b5e7b; --cream:#fffaf2; --peach:#ffc89a; --line:rgba(36,25,58,.12);
@@ -7,12 +10,22 @@
   --red:#ef4444; --orange:#f59e0b;
   --font:"Fredoka",ui-rounded,"SF Pro Rounded",system-ui,-apple-system,sans-serif;
   --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px); --safe-b:env(safe-area-inset-bottom,0px);
+  --bounce:cubic-bezier(.3,1.6,.5,1);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var(--ink);font-family:var(--font);font-weight:600;
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;overscroll-behavior:none}
 #view{position:fixed;inset:0;width:100vw;height:100dvh;display:block}
 .hidden{display:none!important}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pop{from{transform:scale(.85);opacity:0}}
+@keyframes fadein{from{opacity:0}}
+/* Entrances use `scale` and `translate` (not `transform`), so they never fight a button's pressed-in transform. */
+@keyframes popIn{from{scale:.4;opacity:0}}
+@keyframes dropIn{from{translate:0 -26px;opacity:0}}
+@keyframes riseIn{from{translate:0 26px;opacity:0}}
+@keyframes fromLeft{from{translate:-44px 0;opacity:0}}
+@keyframes fromRight{from{translate:44px 0;opacity:0}}
 
 /* ---------- buttons (one style everywhere) ---------- */
 .btn{--top:#fff;--bot:#eee;--edge:#bbb;position:relative;border:0;cursor:pointer;font-family:var(--font);font-weight:700;color:#fff;
@@ -26,80 +39,179 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .btn-ghost{--top:#fff;--bot:#f1ebe3;--edge:#d6cbbd;color:var(--ink);text-shadow:none}
 .btn-ghost.danger{color:#c02b2b}
 .btn-glass{--edge:rgba(36,25,58,.25);background:rgba(255,250,242,.82);color:var(--ink);text-shadow:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.btn-icon{width:46px;height:46px;padding:0;border-radius:15px;font-size:22px;line-height:1}
+.btn-icon{width:46px;height:46px;padding:0;border-radius:15px;font-size:22px;line-height:1;display:inline-flex;align-items:center;justify-content:center;color:var(--ink)}
+.btn-icon svg{display:block}
+.btn-sm{padding:6px 12px;font-size:14px;flex:none}
 .btn-lg{font-size:22px;padding:13px 34px;border-radius:22px}
-.btn-xl{font-size:28px;padding:14px 64px;border-radius:24px;letter-spacing:.08em}
-.btn-round{position:absolute;width:82px;height:82px;border-radius:50%;padding:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;letter-spacing:.07em}
-.btn-round i{font-style:normal;font-size:30px;line-height:1;text-shadow:none}
+.btn-xl{font-size:28px;padding:14px 64px;border-radius:24px;letter-spacing:.08em;overflow:hidden;animation:breathe 2.6s ease-in-out infinite}
+/* The big PLAY button breathes, and a shine sweeps across it now and then. */
+.btn-xl::after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:45%;transform:skewX(-20deg);pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);animation:sweep 3.6s ease-in-out infinite}
+@keyframes breathe{50%{scale:1.045}}
+@keyframes sweep{0%,55%{left:-60%}100%{left:130%}}
+/* An emoji at the start of a button label, with a little space after it. */
+.btn .ico{font-style:normal;margin-right:.3em;text-shadow:none;display:inline-block}
 .nudge{animation:nudge 1s ease-in-out infinite}
-@keyframes nudge{0%,100%{filter:none}50%{filter:brightness(1.18) drop-shadow(0 0 14px rgba(255,246,176,.95))}}
+@keyframes nudge{0%,100%{filter:none;scale:1}50%{filter:brightness(1.18) drop-shadow(0 0 14px rgba(255,246,176,.95));scale:1.07}}
 .top-left{position:absolute;top:12px;left:calc(14px + var(--safe-l))}
 .top-right{position:absolute;top:12px;right:calc(14px + var(--safe-r))}
 
 /* ---------- HUD ---------- */
 #hud{position:fixed;inset:0;pointer-events:none}
+/* A soft dark edge frames the pitch. */
+#hud::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 75% 80% at 50% 52%,transparent 58%,rgba(36,25,58,.24))}
 #hud .btn{pointer-events:auto}
+/* Glass over the moving 3D picture costs a lot on a phone, so in play the small buttons are plain cream. */
+#hud .btn-glass{background:rgba(255,250,242,.93);backdrop-filter:none;-webkit-backdrop-filter:none}
 #topbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
-#dots{display:flex;gap:7px;background:rgba(36,25,58,.55);padding:8px 12px;border-radius:999px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#dots{display:flex;gap:7px;background:rgba(36,25,58,.68);padding:8px 12px;border-radius:999px;box-shadow:0 4px 10px rgba(36,25,58,.2)}
 #dots:empty{display:none}
 #dots span{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.28)}
-#dots span.now{background:#fff;box-shadow:0 0 0 3px rgba(255,216,77,.7)}
+#dots span.now{background:#fff;box-shadow:0 0 0 3px rgba(255,216,77,.7);animation:dotnow 1.2s ease-in-out infinite}
 #dots span.done{background:#b9aec8}
 #dots span.star{background:var(--gold);box-shadow:0 0 8px rgba(255,216,77,.8)}
+#dots span.new{animation:dotpop .5s var(--bounce)}
+@keyframes dotnow{50%{box-shadow:0 0 0 5px rgba(255,216,77,.35)}}
+@keyframes dotpop{0%{scale:.3}60%{scale:1.7}}
 #hud:is([data-mode=match],[data-mode=free]) #dots{display:none}
-#score{display:flex;align-items:center;gap:12px;background:rgba(36,25,58,.78);color:#fff;padding:6px 16px;border-radius:999px;font-size:16px;backdrop-filter:blur(6px)}
-#score b{font-size:22px;font-weight:700;color:var(--gold)}
+/* Scoreboard: each team's color, its short name, and the score in the middle. A goal makes its number jump. */
+#score{display:flex;align-items:center;gap:9px;background:rgba(36,25,58,.86);color:#fff;padding:5px 12px;border-radius:999px;font-size:15px;letter-spacing:.04em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 4px 12px rgba(36,25,58,.3);animation:dropIn .4s var(--bounce) backwards}
+#score i{width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.9)}
+#score b{display:flex;align-items:center;gap:6px;font-size:22px;font-weight:700;color:var(--gold);background:rgba(0,0,0,.28);padding:0 11px;border-radius:10px;line-height:1.35}
+#score em{font-style:normal;display:inline-block;min-width:.6em;text-align:center}
+#score em.bump{animation:bump .7s var(--bounce)}
+@keyframes bump{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
 #prompt,#caption{position:absolute;top:58px;left:50%;transform:translateX(-50%);white-space:nowrap}
-#prompt{background:var(--cream);color:var(--ink);padding:8px 18px;border-radius:999px;font-size:17px;box-shadow:0 6px 16px rgba(36,25,58,.22)}
+#prompt{background:var(--cream);color:var(--ink);padding:8px 18px;border-radius:999px;font-size:17px;box-shadow:0 0 0 2px #fff,0 6px 16px rgba(36,25,58,.22);animation:dropIn .3s var(--bounce) backwards}
 #prompt:empty,#hud.captioning #prompt{display:none}
 #caption{max-width:86vw;white-space:normal;text-align:center;color:#fff;font-size:clamp(20px,3.8vw,32px);font-weight:700;opacity:0;transition:opacity .25s;
-  text-shadow:0 2px 0 rgba(36,25,58,.55),0 0 22px rgba(36,25,58,.45)}
+  -webkit-text-stroke:5px rgba(36,25,58,.82);paint-order:stroke fill;text-shadow:0 3px 0 rgba(36,25,58,.5),0 0 22px rgba(36,25,58,.4)}
 #caption.show{opacity:1}
+/* While the result card is up, the caption steps aside so the card never covers it (the card says the same thing). */
+#hud.rating #caption,#hud.rating #prompt{opacity:0}
 #toast{position:absolute;top:37%;left:50%;transform:translate(-50%,8px) scale(.9);background:linear-gradient(var(--green),var(--green-d));color:#fff;padding:9px 22px;border-radius:999px;
-  font-size:20px;white-space:nowrap;opacity:0;transition:opacity .18s,transform .18s;box-shadow:0 6px 0 var(--green-e),0 10px 20px rgba(0,0,0,.22);text-shadow:0 1px 0 rgba(0,0,0,.2)}
+  font-size:20px;white-space:nowrap;opacity:0;transition:opacity .18s,transform .22s var(--bounce);box-shadow:0 6px 0 var(--green-e),0 10px 20px rgba(0,0,0,.22);text-shadow:0 1px 0 rgba(0,0,0,.2)}
 #toast.warn{background:linear-gradient(#ffb547,var(--orange));box-shadow:0 6px 0 #a86200,0 10px 20px rgba(0,0,0,.22)}
 #toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
-#banner{position:absolute;top:26%;left:50%;transform:translateX(-50%);opacity:0;pointer-events:none}
-#banner span{display:block;white-space:nowrap;font-weight:700;font-size:clamp(36px,7.5vw,84px);letter-spacing:.03em;color:#fff;
-  -webkit-text-stroke:4px var(--ink);paint-order:stroke fill;text-shadow:0 6px 0 var(--ink),0 12px 30px rgba(0,0,0,.3);transform:scale(.4)}
-#banner.goal span{color:#ffd84d}
-#banner.goal::before{content:"";position:absolute;left:50%;top:50%;width:420px;height:420px;margin:-210px 0 0 -210px;border-radius:50%;z-index:-1;
-  background:repeating-conic-gradient(rgba(255,230,140,.55) 0 8deg,rgba(255,230,140,0) 8deg 22deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 68%);mask:radial-gradient(circle,#000 20%,transparent 68%);animation:spin 6s linear infinite}
-#banner.bad span{color:#fff;-webkit-text-stroke-color:#7a1d1d;text-shadow:0 6px 0 #7a1d1d,0 12px 30px rgba(0,0,0,.3)}
-#banner.show{opacity:1;transition:opacity .15s}
-#banner.show span{transform:scale(1);transition:transform .35s cubic-bezier(.3,1.7,.5,1)}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* "You see …": a small note near the top, so it doesn't look like something he has to act on. */
+#seenNote{position:absolute;top:100px;left:50%;transform:translateX(-50%);background:rgba(36,25,58,.78);color:#fff;font-size:14px;padding:5px 12px;border-radius:999px;opacity:0;transition:opacity .2s;white-space:nowrap}
+#seenNote.show{opacity:1}
 
-/* head-down tunnel vision: blurred, darker edges that clear when he looks up */
-#tunnel{position:fixed;inset:0;pointer-events:none;opacity:0;
+/* The big moment: "GOAL!" in huge letters that drop in one by one over a spinning sunburst, with a soft flash. */
+#banner{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s;z-index:3}
+#banner.show{opacity:1;transition:none}
+#banner b{position:relative;display:flex;white-space:pre;font-weight:700;font-size:clamp(40px,9.5vw,104px);line-height:1;letter-spacing:.03em;color:#fff;
+  -webkit-text-stroke:.075em var(--ink);paint-order:stroke fill;text-shadow:0 .07em 0 var(--ink),0 .14em .3em rgba(0,0,0,.35)}
+#banner i{font-style:normal;display:inline-block}
+#banner.show i{animation:letter .5s var(--bounce) backwards;animation-delay:calc(var(--i) * 38ms)}
+@keyframes letter{from{transform:translateY(.5em) scale(.2) rotate(-14deg);opacity:0}}
+#banner.goal b{color:var(--gold)}
+#banner.goal::before{content:"";position:absolute;left:50%;top:50%;width:min(130vh,620px);aspect-ratio:1;translate:-50% -50%;border-radius:50%;
+  background:repeating-conic-gradient(rgba(255,236,150,.6) 0 8deg,rgba(255,236,150,0) 8deg 22deg);
+  -webkit-mask:radial-gradient(circle,#000 18%,transparent 66%);mask:radial-gradient(circle,#000 18%,transparent 66%);animation:spin 7s linear infinite}
+#banner.bad b{-webkit-text-stroke-color:#7a1d1d;text-shadow:0 .07em 0 #7a1d1d,0 .14em .3em rgba(0,0,0,.35);font-size:clamp(34px,7.5vw,80px)}
+#flash{position:absolute;inset:0;opacity:0;background:radial-gradient(circle at 50% 45%,#fff 0,rgba(255,240,170,.7) 45%,rgba(255,240,170,0) 80%)}
+#flash.go{animation:flash .55s ease-out}
+@keyframes flash{from{opacity:.6}}
+
+/* Head-down tunnel vision: blurred, darker edges that clear when he looks up. Off (not just clear) when unused:
+   blurring the whole moving picture is the most costly thing on the screen. */
+#tunnel{position:fixed;inset:0;pointer-events:none;opacity:0;display:none;
   backdrop-filter:blur(7px) saturate(.75) brightness(.8);-webkit-backdrop-filter:blur(7px) saturate(.75) brightness(.8);
   -webkit-mask:radial-gradient(ellipse 46% 52% at 50% 64%,transparent 55%,#000 100%);mask:radial-gradient(ellipse 46% 52% at 50% 64%,transparent 55%,#000 100%)}
+#tunnel.on{display:block}
 
-/* game buttons */
+/* ---------- game buttons ---------- */
+.btn-round{position:absolute;width:82px;height:82px;border-radius:50%;padding:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;letter-spacing:.07em;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.12),0 5px 0 var(--edge),0 0 0 3px rgba(255,255,255,.85),0 10px 18px rgba(36,25,58,.32);
+  animation:popIn .28s var(--bounce) backwards}
+.btn-round i{font-style:normal;font-size:30px;line-height:1;text-shadow:none}
 #lookBtn{left:calc(26px + var(--safe-l));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
 #lookBtn i{font-size:38px}
 #lookBtn.on{--top:#fff2b8;--bot:var(--gold)}
 #passBtn{right:calc(116px + var(--safe-r));bottom:calc(20px + var(--safe-b))}
 #dribBtn{right:calc(22px + var(--safe-r));bottom:calc(46px + var(--safe-b))}
-/* game controls show in lessons, the mini match and free play */
+#shootBtn{right:calc(116px + var(--safe-r));bottom:calc(112px + var(--safe-b))}
+/* 1v1 "Steal it!": one big button under the right thumb; looking is automatic, so LOOK/PASS/DRIBBLE hide. */
+#stealBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:14px}
+#stealBtn i{font-size:46px}
+/* Which buttons show: game controls in lessons, the mini match and free play (and in demos while the hand shows them). */
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing):is([data-phase=pre],[data-phase=decide]) #lookBtn{display:flex}
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide] :is(#passBtn,#dribBtn){display:flex}
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide][data-step=dribble] #lookBtn{display:none}
-/* the chosen action stays pressed in; tap the other one to switch */
+#hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
+#hud.showing[data-kind=tackle] #stealBtn{display:flex}
+#hud.shoot #shootBtn{display:flex}
+#hud:is([data-kind=defense],[data-kind=support]) :is(#passBtn,#dribBtn){display:none!important}
+#hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
+#hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
+/* The chosen action stays pressed in; tap the other one to switch. */
 #hud .btn-round.active{transform:translateY(4px) scale(1.06);box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 1px 0 var(--edge),0 0 0 4px #fff,0 6px 16px rgba(36,25,58,.35)}
+#hud .btn-round.locked{filter:grayscale(.85) brightness(.9);opacity:.55}
+#hud .pointed{animation:nudge .8s ease-in-out infinite}
+/* A pulsing button keeps its entrance in the list, so it doesn't pop in again when the pulse stops. */
+#hud .btn-round:is(.nudge,.pointed){animation:popIn .28s var(--bounce) backwards,nudge .9s ease-in-out infinite}
+#hud #touchPick .btn.pointed{animation:fromRight .3s var(--bounce) backwards,nudge .8s ease-in-out infinite}
+/* Skip (demos only) sits at the top right, beside the sound button. */
+#hud #skipBtn{display:none;position:absolute;right:calc(72px + var(--safe-r));top:12px;font-size:17px;padding:10px 18px;border-radius:16px}
+#hud[data-mode=demo] #skipBtn{display:block}
+/* Small touches or big push. */
+#touchPick{position:absolute;top:64px;right:calc(18px + var(--safe-r));display:none;flex-direction:column;gap:12px}
+#touchPick .btn{width:150px;height:74px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:17px;animation:fromRight .3s var(--bounce) backwards}
+#touchPick .btn + .btn{animation-delay:.07s}
+#touchPick i{font-style:normal;font-size:28px;line-height:1}
+#touchPick small{font-size:11px;font-weight:600;opacity:.8}
+#hud.touchpick #touchPick{display:flex}
+/* Demos and replays: a hand shows which button, friend or arrow to tap, then taps it. */
+#hand{position:fixed;left:0;top:0;z-index:30;pointer-events:none;opacity:0;transition:transform .6s cubic-bezier(.4,0,.2,1),opacity .25s}
+#hand.show{opacity:1}
+#hand span{position:absolute;left:0;top:0;font-size:74px;line-height:1;transform:translate(-42%,-6%);filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 5px 5px rgba(0,0,0,.4));transform-origin:42% 6%}
+#hand::before{content:"";position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;border:5px solid #fff;opacity:0;box-sizing:border-box}
+#hand.tap span{animation:handtap .35s ease}
+#hand.tap::before{animation:ripple .55s ease-out}
+@keyframes handtap{0%,100%{transform:translate(-42%,-6%) scale(1)}45%{transform:translate(-42%,-6%) scale(.82)}}
+@keyframes ripple{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.7)}}
 
-/* ---------- screens ---------- */
+/* ---------- result card (after each play) ---------- */
+/* Fixed layout: header, three star slots, two lines of text. Nothing resizes as the stars and tip fill in. */
+#rate{position:absolute;top:30%;left:50%;transform:translate(-50%,10px) scale(.9);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s var(--bounce);
+  background:var(--cream);border:3px solid #fff;border-radius:24px;padding:0 0 10px;text-align:center;box-shadow:0 7px 0 rgba(36,25,58,.2),0 16px 30px rgba(0,0,0,.25);width:min(460px,78vw)}
+#rate.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
+/* Three stars: the card glows gold. */
+#rate.s3.show{border-color:var(--gold);box-shadow:0 7px 0 rgba(36,25,58,.2),0 16px 30px rgba(0,0,0,.25),0 0 36px rgba(255,216,77,.85)}
+#rate .title{font-weight:700;font-size:clamp(26px,5vw,38px);line-height:1.1;white-space:nowrap;color:#fff;letter-spacing:.02em;padding:8px 18px 10px;border-radius:21px 21px 0 0;
+  background:linear-gradient(#3fc27a,#239a58);box-shadow:inset 0 -4px 0 rgba(0,0,0,.14);text-shadow:0 2px 0 rgba(0,0,0,.22)}
+#rate .title.bad{background:linear-gradient(#f0585d,#c92f35)}
+#rate .title:empty{display:none}
+#rate .stars{font-size:44px;letter-spacing:6px;line-height:1.1}
+#rate .stars span{display:inline-block;color:#d9d0c4}
+#rate .stars span.on{color:var(--gold-d);text-shadow:0 2px 0 var(--gold-e);transform:scale(.4)}
+#rate .stars span.on.pop{transform:scale(1);transition:transform .3s cubic-bezier(.3,1.8,.5,1);filter:drop-shadow(0 0 7px rgba(255,216,77,.9))}
+#rate .txt{font-size:17px;line-height:1.25;margin:2px 18px 0;min-height:2.5em;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+#rate .btns{position:absolute;top:calc(100% + 12px);left:0;right:0;display:flex;gap:10px;justify-content:center}
+/* Matches and demos aren't rated: the card is just the result. */
+#rate.solo{padding-bottom:0}
+#rate.solo .stars,#rate.solo .txt{display:none}
+#rate.solo .title{border-radius:21px}
+
+/* ---------- home ---------- */
 .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px calc(16px + var(--safe-r)) 12px calc(16px + var(--safe-l))}
-#home{justify-content:space-between;background:radial-gradient(ellipse at 50% 40%,rgba(255,250,242,.25),rgba(36,25,58,.28))}
-.brand{display:flex;align-items:center;gap:10px;margin-top:2px}
-.brand .logo{width:46px;height:46px;flex:none;filter:drop-shadow(0 4px 0 rgba(36,25,58,.35));animation:spinball 8s linear infinite}
-@keyframes spinball{to{transform:rotate(360deg)}}
-.brand h1 span{color:var(--gold)}
+#home{justify-content:space-between;background:radial-gradient(ellipse at 50% 40%,rgba(255,250,242,.2),rgba(36,25,58,.34))}
+.brand{display:flex;align-items:center;gap:10px;margin-top:2px;animation:dropIn .5s var(--bounce) backwards}
+.brand .logo{width:46px;height:46px;flex:none;filter:drop-shadow(0 4px 0 rgba(36,25,58,.35));animation:spin 8s linear infinite}
 .brand h1{margin:0;font-size:clamp(26px,4.6vw,40px);font-weight:700;color:#fff;letter-spacing:.02em;-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:0 4px 0 var(--ink)}
+.brand h1 span{color:var(--gold)}
+#home :is(#albumBtn,#gear,.soundBtn){animation:popIn .35s .25s var(--bounce) backwards}
 .matchup{display:flex;align-items:center;gap:clamp(10px,2.6vw,30px)}
 .team{--team:#888;position:relative;width:min(38vw,330px);border-radius:28px;padding:10px 10px 12px;text-align:center;overflow:hidden;
-  background:linear-gradient(180deg,color-mix(in srgb,var(--team) 55%,#fff) 0%,var(--cream) 62%);border:3px solid rgba(255,255,255,.85);box-shadow:0 7px 0 rgba(36,25,58,.22),0 16px 30px rgba(36,25,58,.25)}
+  background:linear-gradient(180deg,color-mix(in srgb,var(--team) 55%,#fff) 0%,var(--cream) 62%);border:3px solid rgba(255,255,255,.85);box-shadow:0 7px 0 rgba(36,25,58,.22),0 16px 30px rgba(36,25,58,.25);
+  transition:background .3s;animation:fromLeft .5s .08s var(--bounce) backwards}
+.team[data-side=them]{animation-name:fromRight}
 .team .tag{display:inline-block;font-size:12px;letter-spacing:.14em;color:#fff;background:rgba(36,25,58,.55);padding:3px 12px;border-radius:999px}
+.team .kind{display:flex;justify-content:center;gap:4px;margin:6px 0 0}
+.team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
+.team .kind button.on{background:var(--ink);color:#fff}
 .carousel{display:flex;align-items:center;justify-content:center;gap:2px;margin-top:2px}
 .carousel .btn-icon{width:40px;height:40px;font-size:26px;flex:none}
 .shirts{position:relative;display:flex;align-items:center;justify-content:center;width:clamp(150px,23vw,210px);height:clamp(96px,22vh,150px)}
@@ -113,97 +225,82 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .tname{font-size:clamp(20px,3.2vw,28px);font-weight:700;line-height:1.1}
 .roster{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:4px}
 .roster span{font-size:11px;font-weight:600;background:rgba(36,25,58,.08);padding:2px 8px;border-radius:999px;color:var(--ink-soft)}
-.vs{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:20px;font-weight:700;box-shadow:0 0 0 4px rgba(255,255,255,.85),0 6px 14px rgba(0,0,0,.3)}
-.home-foot{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:900px}
+.vs{width:54px;height:54px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:20px;font-weight:700;
+  box-shadow:0 0 0 4px rgba(255,255,255,.85),0 6px 14px rgba(0,0,0,.3);animation:popIn .45s .3s var(--bounce) backwards,vs 2.4s 1s ease-in-out infinite}
+@keyframes vs{50%{scale:1.1;rotate:-6deg}}
+/* Footer, one row: the lesson button, PLAY, then Match and Cup (a matching pair). */
+.home-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:900px;animation:riseIn .5s .15s var(--bounce) backwards}
 .home-foot > *{flex:1}
 .home-foot .btn-xl{flex:none}
-#stickers{display:flex;gap:3px;font-size:20px;flex-wrap:wrap;max-width:30vw}
-.panel{background:var(--cream);border-radius:30px;padding:18px 32px 24px;text-align:center;border:3px solid #fff;
-  box-shadow:0 8px 0 rgba(36,25,58,.2),0 22px 44px rgba(0,0,0,.28);max-width:92vw;max-height:92dvh;overflow:auto;animation:pop .3s cubic-bezier(.3,1.5,.5,1)}
-@keyframes pop{from{transform:scale(.85);opacity:0}}
-.panel .emoji{font-size:clamp(44px,10vh,72px);line-height:1.1}
-.panel h2{margin:4px 0;font-size:clamp(26px,5vw,42px);font-weight:700}
-.panel p{margin:4px 0 16px;font-size:18px;font-weight:500;color:var(--ink-soft)}
-.starsrow{font-size:30px;letter-spacing:4px}
-.btns{display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap}
-#card,#results,#menu{background:rgba(36,25,58,.28);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-.panel.wide{text-align:left;min-width:min(560px,92vw)}
-.panel.wide h2{text-align:center}
-#menu label{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0;font-weight:600}
-#menu select{font:inherit;padding:6px 10px;border-radius:12px;border:2px solid #e8ddd0;background:#fff;max-width:60%}
-#menu .chk{justify-content:flex-start}
-#progressList{margin:10px 0 16px;font-size:14px;border-top:2px dashed #e8ddd0;padding-top:8px;font-weight:500}
-#progressList div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
-#progressList span:last-child{color:var(--ink-soft);white-space:nowrap}
-#rotate{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:var(--peach);z-index:10;font-weight:700;font-size:22px}
-#rotate div{font-size:64px}
-@media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
-
-/* Skip sits where the play buttons usually are (bottom right, under his thumb); demos show no play buttons. */
-#hud #skipBtn{display:none;position:absolute;right:calc(72px + var(--safe-r));top:12px;font-size:17px;padding:10px 18px;border-radius:16px}
-#hud[data-mode=demo] #skipBtn{display:block}
-#hud .btn-round.locked{filter:grayscale(.85) brightness(.9);opacity:.55}
-
-/* grown-ups gear: a ring fills while held; a tap shows how to open it */
+.lessonbox{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+/* One lesson button next to PLAY; tapping it opens a sheet with big lesson tiles. Its icon sits on white so any emoji reads. */
+#lessonBtn{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border-radius:18px;width:auto;max-width:calc(100% - 12px);text-align:left}
+#lessonBtn .le{font-size:26px;width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:#fff;box-shadow:0 0 0 2px var(--line),inset 0 -3px 0 rgba(36,25,58,.08)}
+#lessonBtn .ln{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+#lessonBtn small{font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
+#lessonBtn b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lessonBtn .caret{font-size:14px;color:var(--ink-soft)}
+.freebox{display:flex;justify-content:flex-end;gap:8px}
+.freebox .btn{position:relative;min-width:116px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
+/* Match and Cup: locked until today's lesson or training is done. */
+.freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
+.freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+#version{position:absolute;bottom:4px;right:calc(12px + var(--safe-r));font-size:10px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px rgba(36,25,58,.6)}
+/* Grown-ups gear: a ring fills while held; a tap shows how to open it. */
 #gear::after{content:"";position:absolute;inset:-5px;border-radius:19px;border:4px solid var(--gold);opacity:0;clip-path:inset(0 100% 0 0)}
 #gear.holding::after{opacity:1;animation:fillring 1.2s linear forwards}
 @keyframes fillring{to{clip-path:inset(0 0 0 0)}}
 #gearTip{position:absolute;top:66px;right:calc(14px + var(--safe-r));background:var(--ink);color:#fff;font-size:13px;padding:6px 12px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none}
 #gearTip.show{opacity:1}
-
-/* star rating after each decision */
-#rate{position:absolute;top:30%;left:50%;transform:translate(-50%,10px) scale(.9);opacity:0;pointer-events:none;transition:opacity .2s,transform .25s cubic-bezier(.3,1.5,.5,1);
-  background:var(--cream);border:3px solid #fff;border-radius:24px;padding:0 0 10px;text-align:center;box-shadow:0 7px 0 rgba(36,25,58,.2),0 16px 30px rgba(0,0,0,.25);
-  width:min(460px,78vw);box-sizing:border-box}
-#rate.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
-#rate .stars{font-size:44px;letter-spacing:6px;line-height:1.1}
-#rate .stars span{color:#d9d0c4}
-#rate .stars span.on{color:var(--gold-d);text-shadow:0 2px 0 var(--gold-e)}
-/* Fixed layout: header, three star slots, two lines of text. Nothing resizes as the stars and tip fill in. */
-#rate .txt{font-size:17px;line-height:1.25;margin:2px 18px 0;min-height:2.5em;display:flex;align-items:center;justify-content:center;color:var(--ink)}
-#rate .btns{position:absolute;top:calc(100% + 12px);left:0;right:0;display:flex;gap:10px;justify-content:center}
-/* small touches or big push */
-#touchPick{position:absolute;top:64px;right:calc(18px + var(--safe-r));display:none;flex-direction:column;gap:12px}
-#touchPick .btn{width:150px;height:74px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:17px}
-#touchPick i{font-style:normal;font-size:28px;line-height:1}
-#touchPick small{font-size:11px;font-weight:600;opacity:.8}
-#hud.touchpick #touchPick{display:flex}
-#hud:is([data-kind=defense],[data-kind=support]) :is(#passBtn,#dribBtn){display:none!important}
-/* home: lesson chips, free play, clubs / countries */
-.lessonbox{display:flex;flex-direction:column;gap:4px}
-/* Home: one lesson button next to PLAY; tapping it opens a sheet with big lesson tiles. */
-#lessonBtn{display:inline-flex;align-items:center;gap:8px;padding:6px 12px 6px 8px;border-radius:18px;max-width:100%;text-align:left}
-#lessonBtn .le{font-size:26px;width:38px;height:38px;display:grid;place-items:center;background:var(--gold);border-radius:12px;box-shadow:inset 0 -3px 0 var(--gold-e)}
-#lessonBtn .ln{display:flex;flex-direction:column;line-height:1.1;min-width:0}
-#lessonBtn small{font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
-#lessonBtn b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#lessonBtn .caret{font-size:14px;color:var(--ink-soft)}
-#lessonSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-.sheet{padding:10px 16px 10px;width:min(780px,96vw);box-sizing:border-box;position:relative}
-.sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
-.sheet :is(#sheetClose,#albumClose){position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
-/* Sticker album: one row per chapter, a sticker per lesson. The ring shows the level: none, bronze, silver, gold. */
-#albumSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
-#album{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px}
-#album .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
-#album .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
-#album .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
-#album .row{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
-#album .st{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;font-weight:700;color:var(--ink-soft)}
-#album .st .f{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:25px;background:#fff;box-shadow:0 0 0 3px var(--line),0 3px 0 rgba(36,25,58,.15)}
-#album .st.l1 .f{box-shadow:0 0 0 4px #d39a6a,0 3px 0 rgba(36,25,58,.15)}
-#album .st.l2 .f{box-shadow:0 0 0 4px #b9c2cf,0 3px 0 rgba(36,25,58,.15)}
-#album .st.l3 .f{box-shadow:0 0 0 4px var(--gold),0 0 12px var(--gold),0 3px 0 rgba(36,25,58,.15)}
-#album .st.none .f{background:rgba(36,25,58,.08);filter:grayscale(1);opacity:.45}
-#album .trophies{font-size:13px;font-weight:700;color:var(--ink);padding:2px 0 0}
 #albumBtn{font-size:22px}
-#lessons{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px 3px 5px}
-#lessons .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
-#lessons .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
-#lessons .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
+
+/* ---------- cards and sheets ---------- */
+.panel{background:var(--cream);border-radius:30px;padding:18px 32px 24px;text-align:center;border:3px solid #fff;
+  box-shadow:0 8px 0 rgba(36,25,58,.2),0 22px 44px rgba(0,0,0,.28);max-width:92vw;max-height:92dvh;overflow:auto;animation:pop .3s cubic-bezier(.3,1.5,.5,1)}
+.panel .emoji{font-size:clamp(44px,10vh,72px);line-height:1.1;display:inline-block;animation:emoji .6s .1s var(--bounce) backwards}
+@keyframes emoji{from{scale:.2;rotate:-25deg}}
+.panel h2{margin:4px 0;font-size:clamp(26px,5vw,42px);font-weight:700}
+.panel p{margin:4px 0 16px;font-size:18px;font-weight:500;color:var(--ink-soft)}
+.panel.wide{text-align:left;min-width:min(560px,92vw)}
+.panel.wide h2{text-align:center}
+.btns{display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap}
+/* The scene behind a card or sheet dims and blurs. */
+#card,#results,#menu,#lessonSheet,#albumSheet,#cupSheet{background:rgba(36,25,58,.32);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:fadein .2s}
+.sheet{padding:10px 16px 10px;width:min(780px,96vw);position:relative}
+.sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
+.sheet :is(#sheetClose,#albumClose,#cupClose,#menuClose){display:block;position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
+/* Today's training: the 3 ideas, as a reminder before the mix. */
+.remind{display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.remind > span{display:flex;flex-direction:column;align-items:center;width:150px;padding:8px 8px 9px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px var(--line);animation:riseIn .4s var(--bounce) backwards}
+.remind > span:nth-child(2){animation-delay:.1s}
+.remind > span:nth-child(3){animation-delay:.2s}
+.remind i{font-style:normal;font-size:30px;line-height:1.1}
+.remind b{font-size:15px;line-height:1.15}
+.remind small{font-size:12px;font-weight:500;color:var(--ink-soft);line-height:1.25;margin-top:3px}
+/* Road to the cup: same-size steps joined by a line; won steps get a check, the next one is gold. */
+.cuppath{display:flex;align-items:center;justify-content:center;margin:12px 0 2px}
+.cuppath .step{flex:0 0 74px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 7px;border-radius:14px;background:rgba(36,25,58,.06)}
+.cuppath small{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;line-height:1}
+.cuppath .pic{position:relative;width:40px;height:40px;display:grid;place-items:center;font-size:32px;line-height:1}
+.cuppath .pic img{width:40px;height:40px}
+.cuppath .pic em{position:absolute;right:-5px;bottom:-3px;width:18px;height:18px;border-radius:50%;background:var(--green);color:#fff;font:700 12px/18px system-ui;font-style:normal;text-align:center;box-shadow:0 0 0 2px #fff}
+.cuppath b{font-size:13px;line-height:1}
+.cuppath .done{opacity:.65}
+.cuppath .now{background:var(--gold);box-shadow:0 0 0 2px var(--gold-d);animation:breathe 1.6s ease-in-out infinite}
+.cuppath .now small{color:var(--ink)}
+.cuppath .link{flex:0 0 14px;height:3px;border-radius:2px;background:rgba(36,25,58,.18)}
+
+/* ---------- lesson, album and cup sheets ---------- */
+/* Lessons and stickers: one row per chapter, with the chapter's number and name on the left. */
+#lessons,#album{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px}
+#lessons{padding-bottom:5px}
+:is(#lessons,#album) .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
+:is(#lessons,#album) .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
+:is(#lessons,#album) .cn b{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;margin-right:5px;vertical-align:middle}
 #lessons .row{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
 #lessons .tile{position:relative;border:0;border-radius:14px;background:#fff;padding:5px 4px 4px;font:inherit;color:var(--ink);cursor:pointer;
-  box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-height:56px}
+  box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-height:56px;transition:transform .07s}
+#lessons .tile:active:not(.locked){transform:translateY(2px)}
 #lessons .tile .e{font-size:20px;line-height:1.1}
 #lessons .tile .k{font-size:11.5px;font-weight:700;line-height:1.12}
 #lessons .tile .st{font-size:11px;color:var(--gold-d);letter-spacing:1px;min-height:13px}
@@ -212,121 +309,93 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessons .tile.def::after{content:"defense";position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#4a6fb0;text-transform:uppercase}
 #lessons .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
 #lessons .tile.locked{opacity:.5;cursor:default}
-.freebox{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-/* Match and Cup: locked until today's lesson or training is done. */
-.freebox .btn{position:relative}
-.freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
-.freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+#lessons .tile.train{width:100%;flex-direction:row;gap:8px;min-height:44px;margin-bottom:2px}
+#lessons .tile.train .k{font-size:15px}
+#lessons .tile.train .st{font-size:12px;color:var(--ink-soft);letter-spacing:0}
+/* Sticker album: a sticker per lesson and per cup, its name underneath. The ring shows the level: none, bronze, silver, gold. */
+#album .chap{padding:4px 0;border-bottom:2px solid var(--line)}
+#album .chap:last-of-type{border-bottom:0}
+#album .row{display:grid;grid-template-columns:repeat(auto-fill,76px);justify-content:start;gap:8px 7px}
+#album .st{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;font-weight:700;color:var(--ink-soft)}
+#album .st .f{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:25px;background:#fff;box-shadow:0 0 0 3px var(--line),0 3px 0 rgba(36,25,58,.15)}
+#album .st.l1 .f{box-shadow:0 0 0 4px #d39a6a,0 3px 0 rgba(36,25,58,.15)}
+#album .st.l2 .f{box-shadow:0 0 0 4px #b9c2cf,0 3px 0 rgba(36,25,58,.15)}
+#album .st.l3 .f{box-shadow:0 0 0 4px var(--gold),0 0 12px var(--gold),0 3px 0 rgba(36,25,58,.15)}
+#album .st.none .f{background:rgba(36,25,58,.08);filter:grayscale(1);opacity:.45}
+#album .st .nm{margin-top:5px;font-size:10.5px;line-height:1.1;color:var(--ink);text-align:center;width:76px;min-height:2.2em;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#album .st .lv{font-size:11px;color:var(--gold-d);min-height:13px;line-height:1.2}
+#album .trophies{font-size:13px;font-weight:700;color:var(--ink);text-align:center;padding:6px 0 2px}
 /* Cup sheet: same-size tiles, 4 to a row, and a short last row stays centered. */
-#cupSheet{background:rgba(36,25,58,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 #cups{--gap:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap);padding:8px 4px 6px;max-height:calc(100vh - 80px);overflow-y:auto}
-#cups .tile{flex:0 0 calc((100% - 3 * var(--gap)) / 4);box-sizing:border-box;position:relative;border:0;border-radius:18px;background:#fff;padding:10px 6px 9px;font:inherit;color:var(--ink);cursor:pointer;
-  display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15)}
-@media (max-width:520px){#cups .tile{flex-basis:calc((100% - var(--gap)) / 2)}}
+#cups .tile{flex:0 0 calc((100% - 3 * var(--gap)) / 4);position:relative;border:0;border-radius:18px;background:#fff;padding:10px 6px 9px;font:inherit;color:var(--ink);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);transition:transform .07s}
+#cups .tile:active{transform:translateY(2px)}
 #cups .tile .e{font-size:36px;line-height:1}
 #cups .tile .k{font-size:14.5px;font-weight:700;line-height:1.1;white-space:nowrap}
 #cups .tile .dots{display:flex;gap:5px;margin-top:2px}
 #cups .tile .dots i{width:10px;height:10px;border-radius:50%;background:rgba(36,25,58,.14)}
-#cups .tile .dots i.done{background:var(--green,#3bb54a)}
+#cups .tile .dots i.done{background:var(--green)}
 #cups .tile .dots i.now{background:#fff;box-shadow:0 0 0 2.5px var(--gold-d)}
 #cups .tile .won{position:absolute;top:-8px;right:-6px;padding:2px 7px 2px 5px;border-radius:12px;background:var(--gold);box-shadow:0 0 0 2px #fff,0 2px 0 var(--gold-e);font-size:13px;font-weight:700;line-height:1.3}
 #cups .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
-#cupClose{display:block;margin:0 auto}
-.sheet #cupClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
-/* Road to the cup: same-size steps joined by a line; won steps get a check, the next one is gold. */
-.cuppath{display:flex;align-items:center;justify-content:center;margin:12px 0 2px}
-.cuppath .step{flex:0 0 74px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 7px;border-radius:14px;background:rgba(36,25,58,.06)}
-.cuppath small{font-size:10.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;line-height:1}
-.cuppath .pic{position:relative;width:40px;height:40px;display:grid;place-items:center;font-size:32px;line-height:1}
-.cuppath .pic img{width:40px;height:40px}
-.cuppath .pic em{position:absolute;right:-5px;bottom:-3px;width:18px;height:18px;border-radius:50%;background:var(--green,#3bb54a);color:#fff;font:700 12px/18px system-ui;font-style:normal;text-align:center;box-shadow:0 0 0 2px #fff}
-.cuppath b{font-size:13px;line-height:1}
-.cuppath .done{opacity:.65}
-.cuppath .now{background:var(--gold);box-shadow:0 0 0 2px var(--gold-d)}
-.cuppath .now small{color:var(--ink)}
-.cuppath .link{flex:0 0 14px;height:3px;border-radius:2px;background:rgba(36,25,58,.18)}
-/* Today's training: the 3 ideas, as a reminder before the mix. */
-.remind{display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap}
-.remind > span{display:flex;flex-direction:column;align-items:center;width:150px;padding:8px 8px 9px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px var(--line)}
-.remind i{font-style:normal;font-size:30px;line-height:1.1}
-.remind b{font-size:15px;line-height:1.15}
-.remind small{font-size:12px;font-weight:500;color:var(--ink-soft);line-height:1.25;margin-top:3px}
-#lessons .tile.train{width:100%;flex-direction:row;gap:8px;min-height:44px;margin-bottom:2px}
-#lessons .tile.train .k{font-size:15px}
-#lessons .tile.train .st{font-size:12px;color:var(--ink-soft);letter-spacing:0}
-#album .row.cups{grid-template-columns:repeat(auto-fill,minmax(70px,1fr))}
-.team .kind{display:flex;justify-content:center;gap:4px;margin:6px 0 0}
-.team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
-.team .kind button.on{background:var(--ink);color:#fff}
-#shootBtn{right:calc(116px + var(--safe-r));bottom:calc(112px + var(--safe-b))}
-/* 1v1 "Steal it!": one big button under the right thumb; looking is automatic, so LOOK/PASS/DRIBBLE hide. */
-#stealBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:14px}
-#stealBtn i{font-size:46px}
-#hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
-#hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
-#hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
-.levelup{font-size:18px;font-weight:700;color:var(--gold-d);min-height:0}
-.levelup:empty,.outside:empty{display:none}
-.outside{font-size:12.5px;color:var(--ink-soft);max-width:440px;margin:6px auto 0;line-height:1.3}
-#hud.shoot #shootBtn{display:flex}
-/* Demos and replays: a hand shows which button, friend or arrow to tap, then taps it. */
-#hand{position:fixed;left:0;top:0;z-index:30;pointer-events:none;opacity:0;transition:transform .6s cubic-bezier(.4,0,.2,1),opacity .25s}
-#hand.show{opacity:1}
-#hand span{position:absolute;left:0;top:0;font-size:74px;line-height:1;transform:translate(-42%,-6%);filter:drop-shadow(0 0 2px #fff) drop-shadow(0 0 2px #fff) drop-shadow(0 5px 5px rgba(0,0,0,.4));transform-origin:42% 6%}
-#hand::before{content:"";position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;border:5px solid #fff;opacity:0;box-sizing:border-box}
-#hand.tap span{animation:handtap .35s ease}
-#hand.tap::before{animation:ripple .55s ease-out}
-@keyframes handtap{0%,100%{transform:translate(-42%,-6%) scale(1)}45%{transform:translate(-42%,-6%) scale(.82)}}
-@keyframes ripple{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.7)}}
-#hud .pointed{animation:nudge .8s ease-in-out infinite}
-#hud.showing[data-kind=tackle] #stealBtn{display:flex}
+
+/* ---------- results ---------- */
+#results .btns{margin-top:12px}
+/* One circle per round, like the dots during the lesson: gold = right on the first try. They fill in one by one. */
 .roundsrow{display:flex;gap:8px;justify-content:center;margin:6px 0 2px}
-.roundsrow span{width:20px;height:20px;border-radius:50%;background:#d9d0c4}
+.roundsrow span{width:20px;height:20px;border-radius:50%;background:#d9d0c4;animation:popIn .35s var(--bounce) backwards;animation-delay:calc(.3s + var(--i,0) * 90ms)}
 .roundsrow span.star{background:var(--gold);box-shadow:0 0 0 2px var(--gold-e) inset,0 0 8px rgba(255,216,77,.7)}
 .roundsnote{font-size:14px;color:var(--ink-soft);margin-bottom:6px}
-#version{position:absolute;bottom:4px;right:calc(12px + var(--safe-r));font-size:10px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px rgba(36,25,58,.6)}
-#rate .title{font-weight:700;font-size:clamp(26px,5vw,38px);line-height:1.1;white-space:nowrap;color:#fff;letter-spacing:.02em;padding:8px 18px 10px;border-radius:21px 21px 0 0;
-  background:linear-gradient(#3fc27a,#239a58);box-shadow:inset 0 -4px 0 rgba(0,0,0,.14);text-shadow:0 2px 0 rgba(0,0,0,.22)}
-#rate .title.bad{background:linear-gradient(#f0585d,#c92f35)}
-#rate .title:empty{display:none}
-#rate .stars span.on{transform:scale(.4);display:inline-block}
-#rate .stars span.on.pop{transform:scale(1);transition:transform .3s cubic-bezier(.3,1.8,.5,1)}
-#seenNote{position:absolute;top:100px;left:50%;transform:translateX(-50%);background:rgba(36,25,58,.72);color:#fff;font-size:14px;padding:5px 12px;border-radius:999px;opacity:0;transition:opacity .2s;white-space:nowrap}
-#seenNote.show{opacity:1}
-.btn-icon{display:inline-flex;align-items:center;justify-content:center;color:var(--ink)}
-.btn-icon svg{display:block}
-
-/* Results sticker: a die-cut sticker with a white border that slaps onto the card, then a shine sweeps across it. */
+.levelup{font-size:18px;font-weight:700;color:var(--gold-d)}
+.levelup:empty,.outside:empty{display:none}
+/* "Try it outside": the backyard game is its own small card. */
+.outside{font-size:14px;line-height:1.35;max-width:460px;margin:10px auto 0;color:var(--ink)}
+.outside:has(> b){padding:8px 12px;background:#fff;border-radius:14px;box-shadow:0 0 0 2px var(--line);text-align:left}
+.outside > b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--green-e);margin-bottom:2px}
+/* The sticker he earned: a die-cut sticker with a white border that slaps onto the card, then a shine sweeps across it. */
 .sticker{position:relative;display:inline-flex;flex-direction:column;align-items:center;margin:2px 0 4px}
 .sticker .face{position:relative;width:clamp(84px,25vh,112px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;overflow:hidden;
   background:radial-gradient(circle at 35% 30%,#fff7c9,var(--gold) 55%,var(--gold-d));border:6px solid #fff;
-  box-shadow:0 0 0 2px rgba(36,25,58,.15),0 6px 0 rgba(36,25,58,.18),0 12px 22px rgba(0,0,0,.25);transform:rotate(-8deg);animation:slap .55s cubic-bezier(.3,1.6,.5,1) both}
+  box-shadow:0 0 0 2px rgba(36,25,58,.15),0 6px 0 rgba(36,25,58,.18),0 12px 22px rgba(0,0,0,.25);transform:rotate(-8deg);animation:slap .55s var(--bounce) both}
 .sticker .face span{font-size:clamp(46px,13vh,62px);line-height:1;filter:drop-shadow(0 3px 0 rgba(36,25,58,.2))}
 .sticker .face i{position:absolute;inset:-20%;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.75) 50%,transparent 60%);transform:translateX(-120%);animation:shine 1.1s .6s ease-out both}
 .sticker b{margin-top:-10px;position:relative;background:var(--ink);color:#fff;font-size:13px;letter-spacing:.06em;text-transform:uppercase;padding:3px 12px;border-radius:999px;transform:rotate(-3deg);box-shadow:0 3px 0 rgba(0,0,0,.2)}
 .sticker.trophy .face{background:radial-gradient(circle at 35% 30%,#fff,#ffe9a8 50%,#f5b800)}
+/* A trophy sticker sits on a slow sunburst. */
+.sticker.trophy::before{content:"";position:absolute;left:50%;top:44%;width:260px;aspect-ratio:1;translate:-50% -50%;border-radius:50%;
+  background:repeating-conic-gradient(rgba(255,216,77,.5) 0 9deg,rgba(255,216,77,0) 9deg 24deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 68%);mask:radial-gradient(circle,#000 20%,transparent 68%);animation:spin 9s linear infinite}
 @keyframes slap{0%{transform:scale(2.2) rotate(14deg);opacity:0}60%{opacity:1}100%{transform:scale(1) rotate(-8deg)}}
 @keyframes shine{to{transform:translateX(120%)}}
+/* Paper confetti falls over the results card after a win. */
+#confetti{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:40}
+#confetti i{position:absolute;top:-20px;width:9px;height:14px;border-radius:2px;animation:fall linear both}
+@keyframes fall{to{transform:translate(var(--dx),112vh) rotate(var(--rot))}}
 
-/* While the result card is up, the caption steps aside so the card never covers it (the card says the same thing). */
-#hud.rating #caption,#hud.rating #prompt{opacity:0}
-#menu .btn-sm{padding:6px 12px;font-size:14px;flex:none}
-#menu #voiceSel{flex:1}
-#menu .hint{margin:0 0 8px;font-size:12.5px;font-weight:500;color:var(--ink-soft);text-align:left;line-height:1.35}
-/* Matches and demos aren't rated: the card is just the result. */
-#rate.solo .stars,#rate.solo .txt{display:none}
-#rate.solo{padding-bottom:0}
-#rate.solo .title{border-radius:21px}
-#sheetClose{display:block;margin:0 auto}
-.lessonbox{align-items:flex-start}
-#lessonBtn{width:auto;max-width:calc(100% - 12px)}
+/* ---------- grown-ups menu ---------- */
+/* Grouped settings that scroll under a fixed title and Done button. */
+#menu .panel{overflow:hidden;display:flex;flex-direction:column}
+#menu .menubody{overflow-y:auto;min-height:0;padding:0 6px 8px}
+#menu h3{margin:14px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+#menu h3:first-child{margin-top:4px}
+#menu label{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0;padding:8px 0;min-height:44px;font-weight:600;border-bottom:2px solid var(--line)}
+#menu label small{display:block;font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.2}
+#menu select{font:inherit;padding:6px 10px;border-radius:12px;border:2px solid #e8ddd0;background:#fff;max-width:60%}
+#menu .pick{display:flex;gap:8px;align-items:center;flex:1;justify-content:flex-end;max-width:70%}
+#menu .pick select{max-width:none;flex:1;min-width:0}
+#menu .hint{margin:6px 0 0;font-size:12.5px;font-weight:500;color:var(--ink-soft);text-align:left;line-height:1.35}
+#menu .btns{justify-content:flex-start;margin-top:4px}
+#progressList{margin:4px 0 12px;font-size:14px;font-weight:500}
+#progressList div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+#progressList span:last-child{color:var(--ink-soft);white-space:nowrap}
 
-/* Sound button (top right: on home left of the gear; in game in the corner, with Skip beside it in demos) and its popover. */
+/* ---------- sound button and popover ---------- */
+/* Top right: on home left of the gear; in game in the corner, with Skip beside it in demos. */
 .soundBtn{position:absolute;top:12px;z-index:5}
 .home-sound{right:calc(70px + var(--safe-r))}
 .hud-sound{right:calc(14px + var(--safe-r))}
 .soundBtn.off{color:var(--ink-soft)}
-#soundPop{position:fixed;top:66px;z-index:60;width:min(400px,86vw);box-sizing:border-box;background:var(--cream);border:3px solid #fff;border-radius:20px;padding:10px 14px 12px;
+#soundPop{position:fixed;top:66px;z-index:60;width:min(400px,86vw);background:var(--cream);border:3px solid #fff;border-radius:20px;padding:10px 14px 12px;
   box-shadow:0 7px 0 rgba(36,25,58,.18),0 16px 30px rgba(0,0,0,.28);animation:pop .2s cubic-bezier(.3,1.5,.5,1)}
 #soundPop.from-right{right:calc(64px + var(--safe-r))}
 #soundPop.in-game{right:calc(14px + var(--safe-r))}
@@ -339,6 +408,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #soundPop .sp-row input[type=range]{width:100%;accent-color:var(--green-d);height:26px;margin:0}
 #soundPop.muted .sp-row{opacity:.45}
 #soundPop .sp-row.off input[type=range]{opacity:.4}
+/* On/off switch. */
 .sw{position:relative;width:44px;height:26px;display:inline-block}
 .sw input{position:absolute;opacity:0;inset:0;margin:0}
 .sw i{position:absolute;inset:0;border-radius:999px;background:#d6cbbd;transition:background .15s}
@@ -346,40 +416,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .sw input:checked + i{background:var(--green-d)}
 .sw input:checked + i::after{transform:translateX(18px)}
 
-/* ---------- polish pass (v42) ---------- */
-/* An emoji at the start of a button label, with a little space after it. */
-.btn .ico{font-style:normal;margin-right:.3em;text-shadow:none;display:inline-block}
-/* Home footer: Match and Cup are a matching pair; the lesson icon sits on white so any emoji reads. */
-.freebox .btn{min-width:116px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
-#lessonBtn .le{background:#fff;box-shadow:0 0 0 2px var(--line),inset 0 -3px 0 rgba(36,25,58,.08)}
-/* Results: a little more room above the buttons; the backyard game is its own small card. */
-#results .btns{margin-top:12px}
-.outside{font-size:14px;line-height:1.35;max-width:460px;margin:10px auto 0;color:var(--ink)}
-.outside:has(> b){padding:8px 12px;background:#fff;border-radius:14px;box-shadow:0 0 0 2px var(--line);text-align:left}
-.outside > b{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--green-e);margin-bottom:2px}
-.roundsrow span.done{background:#d9d0c4}
-/* Sticker album: every row (lessons and cups) uses the same column width, with the name under each sticker. */
-#album .row,#album .row.cups{grid-template-columns:repeat(auto-fill,76px);justify-content:start;row-gap:8px}
-#album .chap{padding:4px 0;border-bottom:2px solid var(--line)}
-#album .chap:last-of-type{border-bottom:0}
-#album .st .nm{margin-top:5px;font-size:10.5px;line-height:1.1;color:var(--ink);text-align:center;width:76px;min-height:2.2em;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-#album .st .lv{font-size:11px;color:var(--gold-d);min-height:13px;line-height:1.2}
-#album .trophies{text-align:center;padding:6px 0 2px}
-/* Grown-ups: grouped settings that scroll under a fixed title and Done button. */
-#menu .panel{overflow:hidden;display:flex;flex-direction:column}
-#menu .menubody{overflow-y:auto;min-height:0;padding:0 6px 8px}
-.sheet #menuClose{position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0;font-size:17px}
-#menu h3{margin:14px 0 0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
-#menu h3:first-child{margin-top:4px}
-#menu label{margin:0;padding:8px 0;min-height:44px;border-bottom:2px solid var(--line)}
-#menu label.chk{justify-content:space-between}
-#menu label small{display:block;font-size:12.5px;font-weight:500;color:var(--ink-soft);line-height:1.2}
-#menu .pick{display:flex;gap:8px;align-items:center;flex:1;justify-content:flex-end;max-width:70%}
-#menu .pick select{max-width:none;flex:1;min-width:0}
-#menu .hint{margin:6px 0 0}
-#menu .btns{justify-content:flex-start;margin-top:4px}
-#progressList{margin:4px 0 12px;border-top:0;padding-top:0}
+/* ---------- small screens ---------- */
+/* A phone held upright: ask to turn it. */
+#rotate{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:var(--peach);z-index:70;font-weight:700;font-size:22px}
+#rotate div{font-size:64px;animation:turn 1.8s ease-in-out infinite}
+@keyframes turn{0%,20%{rotate:0deg}60%,100%{rotate:-90deg}}
+@media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
 /* Short screens (a phone held sideways): tighter cards, so the buttons always show without scrolling. */
 @media (max-height:500px){
   .panel{padding:12px 26px 16px}
@@ -397,13 +439,20 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   .sticker .face{width:66px;border-width:4px}
   .sticker b{font-size:11px;padding:2px 10px;margin-top:-8px}
   .sticker .face span{font-size:36px}
+  .sticker.trophy::before{width:190px}
   .btn-lg{font-size:20px;padding:11px 28px}
 }
-/* Narrow phones: the home footer stays one row (lesson, PLAY, then Match and Cup side by side). */
-.freebox{flex-wrap:nowrap}
-.home-foot{gap:10px}
+/* Narrow phones: the home footer stays one row. */
 @media (max-width:760px){
   .home-foot .btn-xl{padding:13px 38px;font-size:24px}
   .freebox{gap:6px}
   .freebox .btn{min-width:0;padding:10px 12px;font-size:16px}
+}
+@media (max-width:520px){#cups .tile{flex-basis:calc((100% - var(--gap)) / 2)}}
+
+/* ---------- reduced motion ---------- */
+/* For anyone who asks the phone for less motion: no looping or sweeping animations, no flash. */
+@media (prefers-reduced-motion:reduce){
+  .btn-xl,.btn-xl::after,.vs,.brand .logo,.shirts .main,.cuppath .now,#banner.goal::before,.sticker.trophy::before,#dots span.now{animation:none}
+  #flash.go{animation:none}
 }
