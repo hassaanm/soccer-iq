@@ -202,14 +202,14 @@ function attack(r, pattern, high = false) {
     best = 'pass:0'; cue = mates[0][0] < heroTo[0] - 2 ? 'Nothing ahead was open, so pass back to {m0}!' : pattern === 'marked' ? '{m0} had nobody near him. Pass to {m0}!' : '{m0} was open!';
   } else if (pattern === 'trap') {
     if (g['pass:0'] !== 'good' || goods.some(o => o.startsWith('drib:'))) return null;
-    best = 'pass:0'; cue = 'Two shirts coming! Pass to {m0}!';
+    best = 'pass:0'; cue = 'Two defenders! Pass to {m0}!';
   } else if (pattern === 'trap-one') {
     const fwdish = goods.filter(o => o.startsWith('drib:')).sort((a, b) => dribbleEnd(P(heroTo), b.slice(5), L, W).x - dribbleEnd(P(heroTo), a.slice(5), L, W).x);
     if (!fwdish.length || g['drib:fwd'] !== 'bad') return null;
     // The take-on is the cut past him, diagonally, on his open side. A sideways dribble or a pass only keeps it.
     const cuts = fwdish.filter(o => o === 'drib:fl' || o === 'drib:fr');
     if (!cuts.length) return null;
-    best = cuts[0]; cue = 'Only one defender. Cut past him on the open side!';
+    best = cuts[0]; cue = 'Only one defender. Dribble past him!';
     return { ...sc, best, ok: cuts.slice(1), safe: [...fwdish.filter(o => !cuts.includes(o)), ...goods.filter(o => o.startsWith('pass:'))], cue };
   } else if (pattern === 'shot-open') {
     if (g.shoot !== 'good') return null;
@@ -257,7 +257,7 @@ function attack(r, pattern, high = false) {
     if (g['pass:0'] !== 'good' || g['drib:fwd'] !== 'bad' || g['push:fwd'] === 'good' || mates[0][0] < heroTo[0] + 3) return null;
     const back = mates[1][0] < heroTo[0] && g['pass:1'] === 'good' ? ['pass:1'] : [];
     return { ...sc, intro: 'won', best: 'pass:0', ok: goods.filter(o => o.startsWith('drib:') && !BACKWARD.has(o.slice(5))), safe: back,
-      cue: 'You won it, but a defender was in your way. {m0} was running ahead, so pass it forward fast!' };
+      cue: '{m0} was ahead. Pass it forward!' };
   } else if (pattern === 'counter-shot') {
     if (g.shoot !== 'good') return null;
     best = 'shoot'; cue = 'You won it right by their goal. Shoot before they get back!';
@@ -266,11 +266,11 @@ function attack(r, pattern, high = false) {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'bad' || goods.some(o => o.startsWith('drib:'))) return null;
     const then = giveGo(r, sc);
     if (!then) return null;
-    return { ...sc, best: 'pass:0', ok: [], cue: 'Two shirts coming! Pass to {m0}, then go!', then };
+    return { ...sc, best: 'pass:0', ok: [], cue: 'Two defenders! Pass to {m0}, then go!', then };
   } else if (pattern === 'carry') {
     // At this age, staying on the ball is right when there's space ahead and every pass goes sideways or back.
     if (g['drib:fwd'] !== 'good' || !['pass:0', 'pass:1'].every(k => g[k] !== 'unclear') || mates.some(m => m[0] > heroTo[0] + 1)) return null;
-    best = 'drib:fwd'; cue = 'Space ahead and the passes only went back. Keep it and run!';
+    best = 'drib:fwd'; cue = 'Space ahead! Keep it and run!';
     return { ...sc, best, ok: goods.filter(o => o.startsWith('drib:') && o !== best && !BACKWARD.has(o.slice(5))), safe: ['pass:0', 'pass:1'].filter(k => g[k] === 'good'), cue };
   } else if (pattern === 'space-friend') {
     // Space means nobody there, not even a friend: the way toward him only keeps it (two stars).
@@ -282,7 +282,7 @@ function attack(r, pattern, high = false) {
     const pushes = opens.filter(o => o.startsWith('push:')).sort((a, b) => pushEnd(P(heroTo), b.slice(5)).x - pushEnd(P(heroTo), a.slice(5)).x);
     best = pushes[0] || opens[0];
     return { ...sc, best, ok: opens.filter(o => o !== best), safe: ['push:fwd', 'drib:fwd', 'push:' + toward, 'drib:' + toward, 'pass:0', 'pass:1'].filter(o => g[o] === 'safe' || g[o] === 'good'),
-      cue: 'Space means nobody there, not even your friend. Run into the open space!' };
+      cue: 'Run where nobody is!' };
   } else if (pattern === 'space-near') {
     if (g['push:fwd'] !== 'bad' || g['pass:0'] !== 'bad' || g['pass:1'] !== 'bad') return null;
     const smalls = goods.filter(o => o.startsWith('drib:') && o !== 'drib:fwd');
@@ -348,7 +348,7 @@ function defense(r, pattern) {
     if (pattern === 'one-goes') {
       mates.push(goalSide(c, 1.1), goalSide(o3, 1.1));                       // a friend is already on the ball
       hero = [c[0] - 3 - r() * 2, c[1] - sgn * (1 + r() * 2)];
-      best = 'o2'; cue = 'A friend was already chasing the ball. Only one bee chases — guard the open player!';
+      best = 'o2'; cue = 'A friend was chasing the ball. You guard the open player!';
     } else {
       mates.push(goalSide(o2, 1.1), goalSide(o3, 1.1));                      // everyone is marking; nobody is on the ball
       hero = [c[0] - 2.5 - r() * 1.5, c[1] - sgn * (.5 + r())];
@@ -405,7 +405,7 @@ function support(r, pattern) {
     o2 = [hero[0] - 1, hero[1] - side * .2];
     spots = [{ id: 'space', p: at(side * (1 + r() * .45), 6.5 + r() * 1.5) }, { id: 'stay', p: hero }, { id: 'hide', p: hero }];
     spots[2].p = [o3[0] + (o3[0] - c[0]) * .25, o3[1] + (o3[1] - c[1]) * .25];  // behind the other defender
-    best = 'space'; cue = 'Too close to {m0}! Spread out into open space.';
+    best = 'space'; cue = 'Give {m0} room! Find open space.';
   } else {                                        // 'stay-open': he's already open, so stay and be ready
     hero = at(side * (1 + r() * .45), 6.5 + r() * 1.5);
     o2 = [hero[0] - 2.5 - r(), hero[1] - side * (3 + r())];
@@ -454,7 +454,7 @@ function tackle(r, pattern) {
   const touches = pattern === 'steal-big' ? [.3, 1.9, .3, 1.9, 1.6] : pattern === 'steal-fast' ? [.3, .3, 1.8, .3, 1.6] : [.3, .3, 1.9, .3, .3, 1.7];
   const speed = pattern === 'steal-fast' ? 3.6 : 3;
   return { kind: 'tackle', carrier: 'o1', hero: [hx - 1, hy], heroTo: [hx, hy], mates, opps, oppsTo: opps, touches, speed,
-    passSide: pick(r, [1, -1]), best: 'tackle:good', ok: [], cue: 'Wait in front of him. Steal it when it rolls away from his feet!' };
+    passSide: pick(r, [1, -1]), best: 'tackle:good', ok: [], cue: 'Stay in front. Steal it when it rolls away!' };
 }
 
 // ---------- receiving: peek before it comes ----------

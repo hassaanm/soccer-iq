@@ -45,7 +45,7 @@ Concepts that several schools teach at 5–8 and that a child can decide in a fr
 | Stand between the ball and our goal | US Soccer, JFA, FA | 5–8 | Win it back!, Only one bee |
 | Won it? Go forward fast | FA ("run to that line"), DFB | 6–8 | Won it? Go! (new) |
 | Only one goes to the ball; others guard | US Soccer (compact), JFA ("defend with friends") | 6–8 | Only one bee chases |
-| Two defenders on you and a friend is free? Pass | US Soccer U7–U8, JFA | 6–8 | Two shirts? Let it go |
+| Two defenders on you and a friend is free? Pass | US Soccer U7–U8, JFA | 6–8 | Two defenders? Pass! |
 | Peek before the ball comes, then turn away from pressure | Barça (Vila: "learning how to look"), futsal research | 5–8 | Peek, then turn! (new) |
 | Don't stand by the ball; go where a pass can reach you | JFA, US Soccer, DFB, Wein | 6–8 | Get open! |
 | Pass to the free friend | US Soccer, JFA, RBFA (5v5) | 7–8 | Pass to the open friend |
@@ -74,7 +74,7 @@ check was dropped in the first pass and added back in the second (see below).
 | 7 | Won it? Go! 🚀 | attack | counter, counter, counter-pass, counter-shot | "You won it! Go forward fast!" |
 | **Chapter 3: Me and my friends (6–8)** | | | | |
 | 8 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Ball coming? Peek over your shoulder, then turn away from him." |
-| 9 | Two shirts? Let it go 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to a free friend." |
+| 9 | Two defenders? Pass! 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to an open friend." |
 | 10 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
 | 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
 | 12 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past him to get it back!" |
@@ -112,7 +112,7 @@ check was dropped in the first pass and added back in the second (see below).
 defender with the first touch.
 
 **Contradiction check (resolved):**
-- "Take him on" vs "Two shirts": one defender → dribble; two defenders and a free friend → pass.
+- "Take him on" vs "Two defenders": one defender → dribble; two defenders and a free friend → pass.
 - A separate "turn away and keep it" pattern was tried and dropped: its picture (one defender close in front)
   matched "Take him on", but its answer was different. Keeping the ball stays a 2-star option everywhere.
 - "Win it back" vs "Only one bee": both say get between the ball and goal. Who goes depends on whether a

@@ -655,7 +655,7 @@ export class Game {
     this.fx(ev);
     const rated = this.rated; this.rated = null;
     this.card = this.hud.banner(title, kind, rated);
-    if (rated?.say) this.say(rated.text);
+    if (rated?.say) this.say(rated.text); else if (rated?.said) this.say(rated.said);
   }
 
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -890,11 +890,12 @@ export class Game {
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
-      const praise = sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.skill === 'look-up' && scanned ? 'You looked up!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : 'Great choice!';
+      // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
+      const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
-        : good ? { stars: 3, text: sc.praise || `${sc.kind === 'tackle' ? 'Great steal!' : praise} ${this.cue()}` } // say why it was right, so the idea sticks
-        : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.kind === 'support' ? 'No pass was on!' : 'Oops, lost it!' };
+        : good ? { stars: 3, text: sc.praise || `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
+        : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.kind === 'support' ? 'He could not pass to you!' : 'Oops, lost it!' };
       this.card = null;
       await this.outcome(opt, good);
       if (more && good && opt === sc.best) return { firstTry: attempt === 1, stars: 3 };

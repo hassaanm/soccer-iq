@@ -26,6 +26,7 @@ export function spokenLines() {
     "Today's training!", 'Training done!', 'Train first!', 'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!',
     ...CUPS.map(c => c.name),
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
+    'You looked up!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
   ];
   for (const c of cues) {
     const cue = fill(c);
