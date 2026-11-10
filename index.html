@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 </head>
 <body>
 <canvas id="view"></canvas>
@@ -127,7 +127,7 @@
   <label>Phone voice <span class="pick"><select id="voiceSel"></select><button id="voiceTest" class="btn btn-ghost btn-sm" type="button">▶ Test</button></span></label>
   <p class="hint">Used when the recorded voice is off. For a nicer one on the iPhone, go to Settings › Accessibility › Spoken Content › Voices › English. Download an "Enhanced" or "Premium" voice (Ava or Zoe sound friendly), then pick it here. Sound, music and voice on/off are under the 🔊 button.</p>
   <h3>Look</h3>
-  <label>Art style <select id="artSel"><option value="lowpoly">Low-poly (faceted)</option><option value="smooth">Smooth (more detail)</option></select></label>
+  <label>Art style <select id="artSel"><option value="lowpoly">Low-poly (faceted)</option><option value="smooth">Smooth (more detail)</option><option value="pro">Stadium (new)</option></select></label>
   <h3>Progress</h3>
   <div id="progressList"></div>
   <div class="btns"><button id="resetBtn" class="btn btn-ghost danger btn-sm">Reset progress</button></div>
@@ -141,7 +141,7 @@
 addEventListener('error', e => {
   if (!/export|import|module/i.test(e.message || '')) return;
   try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
-  const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'fx', 'sound', 'voice', 'geom', 'teams', 'version',
+  const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'world-pro', 'pro/rig', 'pro/post', 'pro/stadium', 'pro/park', 'fx', 'sound', 'voice', 'geom', 'teams', 'version',
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view']
     .map(f => 'js/' + f + '.js').concat('css/app.css');

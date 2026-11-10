@@ -5,11 +5,14 @@ import { hud } from './hud.js';
 import { say } from './speech.js';
 import { sfx } from '../sound.js';
 import { World } from '../world.js';
+import { ProWorld } from '../world-pro.js';
 import { Game } from '../game.js';
 
 export const canvas = $('#view');
+// The art style comes from the grown-ups menu; `?art=pro` in the address tries one without saving it.
+const art = new URLSearchParams(location.search).get('art') || P.settings.art;
 let made;
-try { made = new World(canvas, { art: P.settings.art }); } catch (e) {
+try { made = art === 'pro' ? new ProWorld(canvas, { art }) : new World(canvas, { art }); } catch (e) {
   document.body.innerHTML = '<p style="padding:24px;font:600 18px system-ui">This device can’t show 3D graphics (WebGL is off).</p>'; throw e;
 }
 export const world = made;

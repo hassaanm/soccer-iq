@@ -1,5 +1,6 @@
 // three.js renderer in a low-poly pastel style (inspired by A Short Hike).
-// All art lives here so another style can replace this file later.
+// Another art style extends `World` and replaces the parts it draws differently (see world-pro.js): the sky, the
+// lights, the grass, the surroundings, the players' bodies and how they move, and the last step that draws a frame.
 import * as THREE from 'three';
 import { PITCH } from './skills.js';
 import { DRIBBLE_DIRS, clamp } from './geom.js';
@@ -268,32 +269,16 @@ const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6
 
 export class World {
   constructor(canvas, { art = 'lowpoly' } = {}) {
-    ART.smooth = art === 'smooth';
+    ART.smooth = art !== 'lowpoly';
     this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // sharp enough with antialias, and leaves the phone room for sound
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
     const scene = this.scene = new THREE.Scene();
-    scene.background = new THREE.Color('#ffc89a'); scene.fog = new THREE.Fog('#ffd6b0', 45, 170);
-    // Sky: a big dome fading from warm peach at the horizon to soft blue overhead, with a few low-poly clouds.
-    const dome = new THREE.SphereGeometry(300, 24, 12), cols = [], v = new THREE.Vector3(), lo = new THREE.Color('#ffd2a6'), hi = new THREE.Color('#7fb8e8');
-    for (let i = 0; i < dome.attributes.position.count; i++) { v.fromBufferAttribute(dome.attributes.position, i); const t = Math.max(0, Math.min(1, v.y / 160)); const c = lo.clone().lerp(hi, Math.pow(t, .7)); cols.push(c.r, c.g, c.b); }
-    dome.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); dome.rotateX(Math.PI / 2);
-    const sky = new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, toneMapped: false }));
-    sky.position.set(CX, CY, 0); scene.add(sky);
-    const cloudM = new THREE.MeshLambertMaterial({ color: '#fff6ee', flatShading: true, emissive: '#ffe9d6', emissiveIntensity: .45, fog: false });
-    this.clouds = new THREE.Group(); this.clouds.position.set(CX, CY, 0); scene.add(this.clouds); // they drift slowly around the pitch
-    for (let k = 0; k < 11; k++) {
-      const a = k / 11 * Math.PI * 2 + .3, d = 140 + (k % 3) * 28, cl = new THREE.Group(), n = 3 + k % 3;
-      for (let j = 0; j < n; j++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(8 + ((j + k) % 3) * 3.5, 0), cloudM); b.position.set((j - (n - 1) / 2) * 10, (j % 2) * 4 - 2, (j % 2) * 3); b.scale.z = .55; cl.add(b); }
-      cl.position.set(Math.cos(a) * d, Math.sin(a) * d, 36 + (k % 4) * 8); cl.rotation.z = a + Math.PI / 2; this.clouds.add(cl);
-    }
+    this.buildSky();
     this.camera = new THREE.PerspectiveCamera(40, 2, .1, 500); this.camera.up.set(0, 0, 1);
-    const hemi = new THREE.HemisphereLight('#ffe0c0', '#6e9a5a', .95); hemi.position.set(0, 0, 1); scene.add(hemi);
-    const sun = new THREE.DirectionalLight('#ffe6c4', 1.9); sun.position.set(-8, -12, 30); sun.target.position.set(CX, CY, 0); scene.add(sun.target);
-    sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.bias = -.0004; Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
-    this.sun = sun;
+    this.buildLights();
 
     this.buildPitch(); this.buildEnv(); this.buildMarkers();
     this.ball = makeBall(.2); this.ballPrev = null;
@@ -311,6 +296,36 @@ export class World {
     addEventListener('resize', measure); addEventListener('orientationchange', measure);
     this.measure();
   }
+  buildSky() {
+    const scene = this.scene;
+    scene.background = new THREE.Color('#ffc89a'); scene.fog = new THREE.Fog('#ffd6b0', 45, 170);
+    // Sky: a big dome fading from warm peach at the horizon to soft blue overhead, with a few low-poly clouds.
+    const dome = new THREE.SphereGeometry(300, 24, 12), cols = [], v = new THREE.Vector3(), lo = new THREE.Color('#ffd2a6'), hi = new THREE.Color('#7fb8e8');
+    for (let i = 0; i < dome.attributes.position.count; i++) { v.fromBufferAttribute(dome.attributes.position, i); const t = Math.max(0, Math.min(1, v.y / 160)); const c = lo.clone().lerp(hi, Math.pow(t, .7)); cols.push(c.r, c.g, c.b); }
+    dome.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); dome.rotateX(Math.PI / 2);
+    const sky = new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, toneMapped: false }));
+    sky.position.set(CX, CY, 0); scene.add(sky);
+    const cloudM = new THREE.MeshLambertMaterial({ color: '#fff6ee', flatShading: true, emissive: '#ffe9d6', emissiveIntensity: .45, fog: false });
+    this.clouds = new THREE.Group(); this.clouds.position.set(CX, CY, 0); scene.add(this.clouds); // they drift slowly around the pitch
+    for (let k = 0; k < 11; k++) {
+      const a = k / 11 * Math.PI * 2 + .3, d = 140 + (k % 3) * 28, cl = new THREE.Group(), n = 3 + k % 3;
+      for (let j = 0; j < n; j++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(8 + ((j + k) % 3) * 3.5, 0), cloudM); b.position.set((j - (n - 1) / 2) * 10, (j % 2) * 4 - 2, (j % 2) * 3); b.scale.z = .55; cl.add(b); }
+      cl.position.set(Math.cos(a) * d, Math.sin(a) * d, 36 + (k % 4) * 8); cl.rotation.z = a + Math.PI / 2; this.clouds.add(cl);
+    }
+  }
+  buildLights() {
+    const scene = this.scene;
+    const hemi = new THREE.HemisphereLight('#ffe0c0', '#6e9a5a', .95); hemi.position.set(0, 0, 1); scene.add(hemi);
+    const sun = new THREE.DirectionalLight('#ffe6c4', 1.9); sun.position.set(-8, -12, 30); sun.target.position.set(CX, CY, 0); scene.add(sun.target);
+    sun.castShadow = true; sun.shadow.mapSize.set(1536, 1536); sun.shadow.bias = -.0004; Object.assign(sun.shadow.camera, { left: -26, right: 26, top: 26, bottom: -26, near: 1, far: 120 }); scene.add(sun);
+    this.sun = sun;
+  }
+  // The parts another art style replaces: a player's body, how it moves, and how a finished frame gets on screen.
+  makeRig(p, kit, isHero) { return makeRig(p, kit, isHero); }
+  animate(g, a, sim, mood, moodT) { animate(g, a, sim, mood, moodT); }
+  resize(w, h) { this.renderer.setSize(w, h, false); }
+  beforeDraw() {}
+  draw(camera) { this.renderer.render(this.scene, camera); }
   measure() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (w !== this.width || h !== this.height) { this.width = w; this.height = h; this.resized = true; }
@@ -320,14 +335,7 @@ export class World {
     const ppm = 40, TW = (L + 12) * ppm, TH = (W + 12) * ppm;
     const tex = canvasTex(TW, TH, g => {
       const X = x => (x + 6) * ppm, Y = y => (W + 6 - y) * ppm;
-      g.fillStyle = '#a9d67a'; g.fillRect(0, 0, TW, TH);
-      // Mown bands along the pitch and lighter ones across it, for a soft checker like a real match pitch.
-      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8cc65b' : '#9dd56a'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
-      for (let j = 0; j < 5; j++) { g.fillStyle = j % 2 ? 'rgba(255,255,215,.085)' : 'rgba(20,80,20,.035)'; g.fillRect(X(0), Y((j + 1) * 4), L * ppm, 4 * ppm); }
-      const pool = g.createRadialGradient(X(CX), Y(CY), 2 * ppm, X(CX), Y(CY), 20 * ppm); // sunlight pooling in the middle
-      pool.addColorStop(0, 'rgba(255,250,200,.13)'); pool.addColorStop(1, 'rgba(255,250,200,0)'); g.fillStyle = pool; g.fillRect(0, 0, TW, TH);
-      let sd = 5; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-      for (let k = 0; k < 16000; k++) { g.fillStyle = rr() < .5 ? 'rgba(40,90,30,.10)' : 'rgba(255,255,210,.09)'; g.fillRect(rr() * TW, rr() * TH, 2, 6); }
+      this.paintGrass(g, X, Y, ppm, TW, TH);
       // Lines, drawn as strokes so the circle and the corners stay smooth.
       g.strokeStyle = g.fillStyle = 'rgba(255,255,255,.96)'; g.lineWidth = Math.round(.14 * ppm); g.lineJoin = 'round';
       const line = (x0, y0, x1, y1) => { g.beginPath(); g.moveTo(X(x0), Y(y0)); g.lineTo(X(x1), Y(y1)); g.stroke(); };
@@ -339,10 +347,23 @@ export class World {
       const Q = Math.PI / 2; // corner arcs (canvas y runs down, so the angles are mirrored)
       arc(0, 0, .8, -Q, 0); arc(L, 0, .8, Math.PI, Math.PI + Q); arc(0, W, .8, 0, Q); arc(L, W, .8, Q, Math.PI);
     });
-    const pitch = new THREE.Mesh(new THREE.PlaneGeometry(L + 12, W + 12), new THREE.MeshLambertMaterial({ map: tex }));
+    const pitch = this.pitch = new THREE.Mesh(new THREE.PlaneGeometry(L + 12, W + 12), new THREE.MeshLambertMaterial({ map: tex }));
     pitch.position.set(CX, CY, 0); pitch.receiveShadow = true; this.scene.add(pitch);
     this.outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: '#a9d67a' }));
     this.outer.position.set(CX, CY, -.02); this.outer.receiveShadow = true; this.scene.add(this.outer);
+    this.buildGoals();
+  }
+  paintGrass(g, X, Y, ppm, TW, TH) {
+      g.fillStyle = '#a9d67a'; g.fillRect(0, 0, TW, TH);
+      // Mown bands along the pitch and lighter ones across it, for a soft checker like a real match pitch.
+      for (let i = 0; i < 10; i++) { g.fillStyle = i % 2 ? '#8cc65b' : '#9dd56a'; g.fillRect(X(i * 3), Y(W), 3 * ppm, W * ppm); }
+      for (let j = 0; j < 5; j++) { g.fillStyle = j % 2 ? 'rgba(255,255,215,.085)' : 'rgba(20,80,20,.035)'; g.fillRect(X(0), Y((j + 1) * 4), L * ppm, 4 * ppm); }
+      const pool = g.createRadialGradient(X(CX), Y(CY), 2 * ppm, X(CX), Y(CY), 20 * ppm); // sunlight pooling in the middle
+      pool.addColorStop(0, 'rgba(255,250,200,.13)'); pool.addColorStop(1, 'rgba(255,250,200,0)'); g.fillStyle = pool; g.fillRect(0, 0, TW, TH);
+      let sd = 5; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      for (let k = 0; k < 16000; k++) { g.fillStyle = rr() < .5 ? 'rgba(40,90,30,.10)' : 'rgba(255,255,210,.09)'; g.fillRect(rr() * TW, rr() * TH, 2, 6); }
+  }
+  buildGoals() {
     // Goals: white frame and a simple box net (back, sides and a flat top), with a faint fill so it reads as netting.
     const netCanvas = document.createElement('canvas'); netCanvas.width = netCanvas.height = 64;
     const ng = netCanvas.getContext('2d'); ng.fillStyle = 'rgba(255,255,255,.16)'; ng.fillRect(0, 0, 64, 64);
@@ -541,7 +562,7 @@ export class World {
       this.teamKeys[side] = key; changed = true;
       ids.forEach((id, i) => {
         const old = this.rigs.get(id); if (old) { this.scene.remove(old); disposeRig(old); }
-        const g = makeRig(team.players[i], team.kit, id === 'hero'); this.scene.add(g); this.rigs.set(id, g);
+        const g = this.makeRig(team.players[i], team.kit, id === 'hero'); this.scene.add(g); this.rigs.set(id, g);
       });
     }
     if (!changed) return;
@@ -602,7 +623,7 @@ export class World {
   render(sim, cam, ui, time) {
     if (!this.watched) this.measure();
     const Wpx = this.width, Hpx = this.height, c = this.camera, eye = cam.eye, tgt = cam.tgt;
-    if (this.resized) { this.resized = false; this.renderer.setSize(Wpx, Hpx, false); }
+    if (this.resized) { this.resized = false; this.resize(Wpx, Hpx); }
     // Focal length from height (Ff) and width (Fw) so wide phones don't see extra field.
     const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), aspect = Wpx / Hpx;
     let fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI;
@@ -628,7 +649,7 @@ export class World {
       g.visible = !!a; glow.visible = false; if (!a) continue;
       // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture.
       if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
-      animate(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0);
+      this.animate(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0);
       const s = ui.glow?.[id] || 0, mats = g.userData.mats;
       for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
@@ -684,6 +705,9 @@ export class World {
     this.clouds.rotation.z = time * .0035;
     for (let i = 0; i < this.flags.length; i++) this.flags[i].rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1;
     this.heroRing.scale.setScalar(1 + .05 * Math.sin(time * 4));
-    this.renderer.render(this.scene, c);
+    this.beforeDraw(sim, dt, time);
+    this.draw(c);
   }
 }
+
+export { canvasTex, addHair, disposeRig, blobTex, glowTex, lerp, IDS, WALLS, STEP, TOUCH, TOUCH_TURN, CX, CY, UP };
