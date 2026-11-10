@@ -268,6 +268,7 @@ const WALLS = [{ a: [L + 6, -6], b: [L + 6, W + 6], o: [1, 0] }, { a: [-6, W + 6
   { a: [L + 6, W + 6], b: [-6, W + 6], o: [0, 1] }, { a: [-6, -6], b: [L + 6, -6], o: [0, -1] }];
 
 export class World {
+  get ballR() { return .2; } // the ball's radius; big, so a small child can see it (an art style may change it)
   constructor(canvas, { art = 'lowpoly' } = {}) {
     ART.smooth = art !== 'lowpoly';
     this.canvas = canvas;
@@ -281,9 +282,9 @@ export class World {
     this.buildLights();
 
     this.buildPitch(); this.buildEnv(); this.buildMarkers();
-    this.ball = makeBall(.2); this.ballPrev = null;
+    this.ball = makeBall(this.ballR); this.ballPrev = null;
     this.ball.castShadow = true; scene.add(this.ball);
-    this.ballBlob = new THREE.Mesh(new THREE.CircleGeometry(.3, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })); scene.add(this.ballBlob);
+    this.ballBlob = new THREE.Mesh(new THREE.CircleGeometry(this.ballR * 1.5, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })); scene.add(this.ballBlob);
     this.particles = new Particles(scene); this.shake = 0; this.punch = 0; this.mood = null;
     this.rigs = new Map(); this.teamKeys = { us: null, them: null }; this.tmp = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.axis = new THREE.Vector3();
     // The canvas size in CSS px (`width`, `height`) is kept here, so nothing asks the page for it every frame:
@@ -601,7 +602,7 @@ export class World {
     else if (ev === 'touch') P.puff(b.x, b.y, 2);
     else if (ev === 'goal' || ev === 'goalAgainst') {
       const net = this.nets[b.x > CX ? 0 : 1], team = ev === 'goal' ? 'us' : 'them', colors = this.confetti?.[team] || ['#ffd23f', '#ffffff'];
-      Object.assign(net, { t: 0, y: clamp(b.y, gy0 + .3, gy1 - .3) - CY, z: clamp(.2 + (b.z || 0), .2, gh - .2) - gh / 2 });
+      Object.assign(net, { t: 0, y: clamp(b.y, gy0 + .3, gy1 - .3) - CY, z: clamp(this.ballR + (b.z || 0), .2, gh - .2) - gh / 2 });
       for (const y of [gy0 - 1.2, gy1 + 1.2]) P.confetti(net.x, y, .4, colors, team === 'us' ? 70 : 28, [-net.dir * 2.5, (CY - y) * .5]);
       if (team === 'us') P.confetti(net.x - net.dir * 4, CY, 5, colors, 50);
       this.excite = 1; this.shake = Math.max(this.shake, team === 'us' ? 1 : .6); this.punch = team === 'us' ? 1 : .4;
@@ -690,12 +691,12 @@ export class World {
     const b = sim.ball, bp = this.ballPrev;
     if (bp) {
       const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
-      if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / .2));
-      if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, .2 + (b.z || 0)); // a hard shot leaves a trail
+      if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / this.ballR));
+      if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, this.ballR + (b.z || 0)); // a hard shot leaves a trail
       bp.x = b.x; bp.y = b.y;
     } else this.ballPrev = { x: b.x, y: b.y };
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
-    this.ball.position.set(b.x, b.y, .2 + (b.z || 0));
+    this.ball.position.set(b.x, b.y, this.ballR + (b.z || 0));
     // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.
     const bz = b.z || 0; this.ballBlob.position.set(b.x, b.y, .014); this.ballBlob.scale.setScalar(1 / (1 + bz * .5)); this.ballBlob.material.opacity = .9 / (1 + bz * .8);
     // The crowd gets louder as the ball nears a goal and calms down after.
@@ -710,4 +711,4 @@ export class World {
   }
 }
 
-export { canvasTex, addHair, disposeRig, blobTex, glowTex, lerp, IDS, WALLS, STEP, TOUCH, TOUCH_TURN, CX, CY, UP };
+export { canvasTex, disposeRig, blobTex, glowTex, lerp, IDS, WALLS, STEP, TOUCH, TOUCH_TURN, CX, CY, UP };

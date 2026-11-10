@@ -28,6 +28,7 @@ const ENV = {
 };
 
 export class ProWorld extends World {
+  get ballR() { return .125; } // a ball in proportion to the players: about as wide as a head
   constructor(canvas, opts) {
     super(canvas, opts);
     this.envs = { day: makeEnv(this.renderer, ENV.day), night: makeEnv(this.renderer, ENV.night) };
@@ -39,7 +40,7 @@ export class ProWorld extends World {
     });
   }
   makeRig(p, kit, isHero) { return makeRig(p, kit, isHero); }
-  animate(g, a, sim, mood, moodT) { animateRig(g, a, sim, mood, moodT); }
+  animate(g, a, sim, mood, moodT) { animateRig(g, a, sim, mood, moodT, this.time); }
   resize(w, h) { super.resize(w, h); this.post?.setSize(w, h); }
   draw(camera) { if (this.post) this.post.render(); else this.renderer.render(this.scene, camera); }
 
@@ -130,8 +131,8 @@ export class ProWorld extends World {
           this.streaks.setMatrixAt(n++, this.m4.compose(this.p3.set(x, y, .017), this.q4.setFromEuler(this.e3.set(0, 0, Math.atan2(dy, dx))), this.s3.set(h * d / LAMP_Z * 1.25, h * .62, 1)));
         }
       };
-      for (let i = 0; i < IDS.length; i++) { const g = this.rigs.get(IDS[i]); if (g?.visible) put(g.position.x, g.position.y, 1.5); }
-      if ((sim.ball.z || 0) < .5) put(sim.ball.x, sim.ball.y, .45);
+      for (let i = 0; i < IDS.length; i++) { const g = this.rigs.get(IDS[i]); if (g?.visible) put(g.position.x, g.position.y, 1.6); }
+      if ((sim.ball.z || 0) < .5) put(sim.ball.x, sim.ball.y, .3);
       this.streaks.instanceMatrix.needsUpdate = true;
     }
     this.streaks.count = n;

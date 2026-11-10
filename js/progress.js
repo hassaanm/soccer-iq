@@ -13,6 +13,10 @@ export function defaultProgress() {
     settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false } };
 }
 
+// The art style. 'pro' (Stadium) is the default; an older style counts only if a grown-up picked it after Stadium
+// became the default (`artPick`), so a style that was saved earlier just for being the first in the list does not.
+export const artOf = s => (s.artPick && s.art) || 'pro';
+
 export function load(storage = globalThis.localStorage) {
   const d = defaultProgress();
   try {

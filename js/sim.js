@@ -13,7 +13,7 @@ function turnToward(a, fx, fy, dt) {
 const SIDE = [0, .14, -.14]; // how far a dribble touch sits to the side: laces / inside / outside
 
 export class Sim {
-  constructor() { this.agents = new Map(); this.list = []; this.ball = {}; this.co = null; this.time = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
+  constructor() { this.agents = new Map(); this.list = []; this.ball = {}; this.co = null; this.time = 0; this.restores = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
 
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
@@ -33,6 +33,7 @@ export class Sim {
     this.agents.clear();
     for (const a of s.agents) this.agents.set(a.id, { ...a, face: [...a.face], tx: a.x, ty: a.y, speed: 0, sp: 0 });
     this.ball = { ...s.ball }; this.co = null; this.wait = 0; this.until = null;
+    this.restores++; // the picture starts each player's motion afresh (see pro/motion.js)
   }
 
   a(id) { return this.agents.get(id); }
@@ -42,7 +43,7 @@ export class Sim {
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } }
   give(id) { Object.assign(this.ball, { state: 'carried', carrier: id, z: 0 }); }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
-  windup(id) { const a = this.a(id); if (a) a.kickAt = this.time; }
+  windup(id, kind = 'pass') { const a = this.a(id); if (a) { a.kickAt = this.time; a.kickKind = kind; } } // kind: 'pass' (side of the foot) or 'shot' (laces)
   kick(x, y, { speed = 11, arc = 0.3, z1 = 0, touch = false } = {}) {
     const b = this.ball;
     this.on(touch ? 'touch' : 'kick', speed);

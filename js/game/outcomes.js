@@ -41,7 +41,7 @@ export const outcomes = {
     const shot = { x: L + .7, y: clamp(a.y, gy0 + .8, gy1 - .8) };
     faceTo(a, shot.x, shot.y);
     for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
-    s.windup(id); yield .2;
+    s.windup(id, 'shot'); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
     s.kick(shot.x, shot.y, { speed: 17, arc: .5 }); this.kicked = true;
     yield () => s.ball.state === 'loose';
@@ -60,7 +60,7 @@ export const outcomes = {
   *strike(id, x, y, opts) {
     const s = this.sim, a = s.a(id), to = { x, y };
     for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
-    faceTo(a, x, y); s.windup(id); yield .2;
+    faceTo(a, x, y); s.windup(id, (opts?.speed ?? 11) > 14 ? 'shot' : 'pass'); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   },
   *passGood(id) {

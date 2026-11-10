@@ -6,7 +6,7 @@ import { applySound } from './soundmenu.js';
 import { show } from './screens.js';
 import { renderPickers } from './home.js';
 import { PATH, skillById } from '../skills.js';
-import { nextSkill, level, graduated, defaultProgress } from '../progress.js';
+import { nextSkill, level, graduated, defaultProgress, artOf } from '../progress.js';
 
 // A short tap on the gear only shows the "hold" tip; a 1.2-second hold opens the menu.
 const HOLD = 1200, gear = $('#gear');
@@ -27,7 +27,7 @@ function openMenu() {
   const auto = graduated(P, PATH) ? "Today's training" : skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid;
   $('#skillSel').innerHTML = `<option value="">Automatic (${auto})</option>`
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
-  $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = P.settings.art || 'lowpoly';
+  $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#artSel').value = artOf(P.settings);
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#recordedChk').checked = P.settings.recorded !== false;
@@ -39,9 +39,9 @@ function openMenu() {
   show('#menu');
 }
 $('#menuClose').onclick = () => {
-  const s = P.settings, art = $('#artSel').value, artChanged = art !== (s.art || 'lowpoly');
+  const s = P.settings, art = $('#artSel').value, artChanged = art !== artOf(s);
   s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value;
-  s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value; s.art = art;
+  s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value; s.art = art; s.artPick = true;
   pickVoice(); applySound(); save();
   if (artChanged) return location.reload(); // the world is built once, in the chosen art style
   renderPickers(); show('#home');
