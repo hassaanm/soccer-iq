@@ -99,9 +99,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #seenNote.show{opacity:1}
 
 /* The big moment: "GOAL!" in huge letters that drop in one by one over a spinning sunburst, with a soft flash. */
-#banner{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s;z-index:3}
+#banner{--big:clamp(40px,9.5vw,104px);position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);opacity:0;transition:opacity .3s;z-index:3}
 #banner.show{opacity:1;transition:none}
-#banner b{position:relative;display:flex;white-space:pre;font-weight:700;font-size:clamp(40px,9.5vw,104px);line-height:1;letter-spacing:.03em;color:#fff;
+/* In a lesson the big words are said once and stay: they shrink and move up, and the stars and tip come in under them. */
+#banner.up{transform:translate(-50%,-50%) translateY(calc(-.34 * var(--big))) scale(.6);transition:transform .3s var(--bounce),opacity .3s}
+#banner b{position:relative;display:flex;white-space:pre;font-weight:700;font-size:var(--big);line-height:1;letter-spacing:.03em;color:#fff;
   -webkit-text-stroke:.075em var(--ink);paint-order:stroke fill;text-shadow:0 .07em 0 var(--ink),0 .14em .3em rgba(0,0,0,.35)}
 #banner i{font-style:normal;display:inline-block}
 #banner.show i{animation:letter .5s var(--bounce) backwards;animation-delay:calc(var(--i) * 38ms)}
@@ -123,8 +125,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #tunnel.on{display:block}
 
 /* ---------- game buttons ---------- */
+/* The white ring goes around the button and its raised edge together: two rings, one behind each. */
 .btn-round{position:absolute;width:82px;height:82px;border-radius:50%;padding:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;letter-spacing:.07em;
-  box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.12),0 5px 0 var(--edge),0 0 0 3px rgba(255,255,255,.85),0 10px 18px rgba(36,25,58,.32);
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -3px 0 rgba(0,0,0,.12),0 5px 0 var(--edge),0 0 0 3px #fff,0 5px 0 3px #fff,0 11px 18px rgba(36,25,58,.32);
   animation:popIn .28s var(--bounce) backwards}
 .btn-round i{font-style:normal;font-size:30px;line-height:1;text-shadow:none}
 #lookBtn{left:calc(26px + var(--safe-l));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
@@ -147,7 +150,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
 #hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 /* The chosen action stays pressed in; tap the other one to switch. */
-#hud .btn-round.active{transform:translateY(4px) scale(1.06);box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 1px 0 var(--edge),0 0 0 4px #fff,0 6px 16px rgba(36,25,58,.35)}
+#hud .btn-round.active{transform:translateY(4px) scale(1.06);box-shadow:inset 0 2px 0 rgba(255,255,255,.4),0 1px 0 var(--edge),0 0 0 4px #fff,0 1px 0 4px #fff,0 6px 16px rgba(36,25,58,.35)}
 #hud .btn-round.locked{filter:grayscale(.85) brightness(.9);opacity:.55}
 #hud .pointed{animation:nudge .8s ease-in-out infinite}
 /* A pulsing button keeps its entrance in the list, so it doesn't pop in again when the pulse stops. */
@@ -186,6 +189,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   background:linear-gradient(#3fc27a,#239a58);box-shadow:inset 0 -4px 0 rgba(0,0,0,.14);text-shadow:0 2px 0 rgba(0,0,0,.22)}
 #rate .title.bad{background:linear-gradient(#f0585d,#c92f35)}
 #rate .title:empty{display:none}
+/* Under the big words, the card has no header of its own. */
+#rate.under{top:calc(30% + 8px);padding-top:8px;z-index:4}
+#rate.under .title{display:none}
 #rate .stars{font-size:44px;letter-spacing:6px;line-height:1.1}
 #rate .stars span{display:inline-block;color:#d9d0c4}
 #rate .stars span.on{color:var(--gold-d);text-shadow:0 2px 0 var(--gold-e);transform:scale(.4)}

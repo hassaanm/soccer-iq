@@ -44,9 +44,10 @@ export const hud = {
     if (changed('tunnel', o)) { ui.tunnel.style.opacity = o; ui.tunnel.classList.toggle('on', o > 0); }
   },
   // The big moment. The outcome ("GOAL!", "Stole it!"…) lands in huge letters the moment it happens.
-  // In lessons (`rated` = { stars, text, watch }) the result card follows: the stars pop one by one over a short
-  // tip, and with `watch` it waits for "Watch the 3-star play" or "Next". A missed play skips the big letters and
-  // goes straight to the card. Matches and demos aren't rated: they show just the big letters.
+  // In lessons (`rated` = { stars, text, watch }) the big letters then shrink and move up, and the result card comes
+  // in under them: the stars pop one by one over a short tip, and with `watch` it waits for "Watch the 3-star play"
+  // or "Next". A missed play has no big letters: its card carries the words as a header. Matches and demos aren't
+  // rated: they show just the big letters.
   banner(text, kind, rated) {
     const big = ui.banner, el = ui.rate, good = kind !== 'bad', splash = !!text && (good || !rated);
     sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
@@ -61,11 +62,11 @@ export const hud = {
     if (!rated) { timers.big = setTimeout(done, 1700); return Promise.resolve(); }
     const title = el.querySelector('.title'), lead = splash ? 850 : 0, tip = rated.text || '';
     title.textContent = text; title.className = 'title ' + kind;
-    el.className = 's' + rated.stars;
+    el.className = 's' + rated.stars + (splash ? ' under' : '');
     el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join('');
     el.querySelector('.txt').textContent = tip; el.querySelector('.btns').classList.toggle('hidden', !rated.watch);
     timers.big = setTimeout(() => {
-      big.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+      big.classList.toggle('up', splash); void el.offsetWidth; el.classList.add('show');
       [...el.querySelectorAll('.stars span.on')].forEach((sp, i) => setTimeout(() => { sp.classList.add('pop'); sfx('star', i); }, 250 + i * 160));
     }, lead);
     return new Promise(res => {
