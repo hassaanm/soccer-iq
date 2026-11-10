@@ -4,23 +4,35 @@
 import * as THREE from 'three';
 import { PITCH } from './skills.js';
 import { World, canvasTex, IDS, CX, CY } from './world.js';
-import { makeRig, animateRig, RIM } from './pro/rig.js';
+import { makeRig, RIM } from './pro/rig.js';
+import { animateRig } from './pro/motion.js';
 import { makePost } from './pro/post.js';
 import { buildStadium, TOWERS } from './pro/stadium.js';
 import { buildPark } from './pro/park.js';
+import { makeEnv, buildBeams, sunSprite } from './pro/light.js';
+import { makeSky } from './pro/sky.js';
+import { turf } from './pro/grass.js';
 
 const { L, W } = PITCH;
 // Everything that differs between the two times of day. `key` is the sun by day; by night it and three `fill`
 // lights are the four floodlights.
 const LOOKS = {
-  day: { top: '#1f6fd6', horizon: '#9fcbf3', fog: ['#b4d6f3', 80, 300], hemi: ['#d8eaff', '#7a9c5c', 1.15], key: ['#fff0d0', 2.9], fill: 0, exposure: 1.05, bloom: .2, rim: ['#fff3da', .3], vig: .25, sat: 1.12 },
-  night: { top: '#02040b', horizon: '#111c40', fog: ['#0a1230', 90, 320], hemi: ['#9db0ff', '#24502a', .42], key: ['#f2f6ff', 1.35], fill: 1.3, exposure: 1.1, bloom: .5, rim: ['#d2e2ff', .55], vig: .42, sat: 1.16 },
+  day: { top: '#1a55c8', mid: '#62a8f2', horizon: '#ffe6c2', cloudC: '#fff6ea', shadeC: '#a9b4cc', cloud: 1, fog: ['#ead9c2', 80, 300], hemi: ['#cfe2ff', '#86a35f', .8], key: ['#ffdcae', 3.1], fill: 0, exposure: 1.05, bloom: .28, rim: ['#ffe6bd', .45], vig: .28, sat: 1.14, sun: '#ffcf90' },
+  night: { top: '#02040b', mid: '#0a1230', horizon: '#111c40', cloudC: '#1d2a55', shadeC: '#070b1a', cloud: .45, fog: ['#0a1230', 90, 320], hemi: ['#9db0ff', '#24502a', .42], key: ['#f2f6ff', 1.35], fill: 1.3, exposure: 1.1, bloom: .5, rim: ['#d2e2ff', .55], vig: .42, sat: 1.16, sun: '#000000' },
 };
-const SUN = [-13, -16, 26], LAMP_Z = 26;
+const SUN = [10, -28, 15], LAMP_Z = 26; // the sun is low on one side (late afternoon), measured from the middle of the pitch
+// What shiny things reflect, by day and by night (see pro/light.js).
+const ENV = {
+  day: { top: '#3f7fd8', horizon: '#f0dcc0', ground: '#3f6a30', lamps: [[...SUN, '#ffe0b0', 60, 3]] },
+  night: { top: '#05070f', horizon: '#1a2748', ground: '#0e2a12', lamps: TOWERS.map(t => [t[0] - CX, t[1] - CY, LAMP_Z, '#eaf1ff', 40, 2.5]) },
+};
 
 export class ProWorld extends World {
   constructor(canvas, opts) {
     super(canvas, opts);
+    this.envs = { day: makeEnv(this.renderer, ENV.day), night: makeEnv(this.renderer, ENV.night) };
+    this.scene.environment = this.envs[this.night ? 'night' : 'day'];
+    this.ball.material = Object.assign(new THREE.MeshStandardMaterial({ roughness: .3 }), { onBeforeCompile: this.ball.material.onBeforeCompile }); // a glossy ball
     makePost(this.renderer, this.scene, this.camera).then(post => {
       if (!post) return;
       this.post = post; post.setSize(this.width, this.height); this.applyLook();
@@ -34,34 +46,15 @@ export class ProWorld extends World {
   buildSky() {
     const scene = this.scene;
     scene.background = new THREE.Color(); scene.fog = new THREE.Fog('#000000', 80, 300);
-    this.skyU = { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() } };
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), new THREE.ShaderMaterial({
-      side: THREE.BackSide, depthWrite: false, fog: false, uniforms: this.skyU,
-      vertexShader: 'varying float vH; void main() { vH = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 horizon; varying float vH; void main() { gl_FragColor = vec4(mix(horizon, top, pow(clamp(vH, 0.0, 1.0), 0.5)), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',
-    }));
-    sky.rotation.x = Math.PI / 2; sky.position.set(CX, CY, 0); scene.add(sky);
-    // Night: stars. Day: a few soft clouds that drift slowly around the pitch (`render` turns `clouds`).
+    const sky = makeSky(SUN); this.skyU = sky.u; sky.mesh.position.set(CX, CY, 0); scene.add(sky.mesh);
+    // Night: stars.
     let seed = 3; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const pts = [];
     for (let k = 0; k < 700; k++) { const a = rand() * Math.PI * 2, e = .12 + rand() * 1.4, d = 280; pts.push(CX + Math.cos(a) * Math.cos(e) * d, CY + Math.sin(a) * Math.cos(e) * d, Math.sin(e) * d); }
     this.stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)),
       new THREE.PointsMaterial({ color: new THREE.Color(1.6, 1.7, 2), size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: .85 }));
     scene.add(this.stars);
-    const puff = canvasTex(128, 128, g => {
-      const r = g.createRadialGradient(64, 64, 4, 64, 64, 62); r.addColorStop(0, 'rgba(255,255,255,.95)'); r.addColorStop(.6, 'rgba(255,255,255,.5)'); r.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = r; g.fillRect(0, 0, 128, 128);
-    });
-    const cloudM = new THREE.SpriteMaterial({ map: puff, transparent: true, depthWrite: false, fog: false, opacity: .9 });
-    this.clouds = new THREE.Group(); this.clouds.position.set(CX, CY, 0); scene.add(this.clouds);
-    for (let k = 0; k < 12; k++) {
-      const a = k / 12 * Math.PI * 2 + rand(), d = 170 + rand() * 60, z = 42 + rand() * 40, n = 5 + Math.floor(rand() * 4), s = 26 + rand() * 18;
-      for (let j = 0; j < n; j++) {
-        const sp = new THREE.Sprite(cloudM), o = (j - (n - 1) / 2) * s * .45;
-        sp.position.set(Math.cos(a) * d - Math.sin(a) * o, Math.sin(a) * d + Math.cos(a) * o, z + (j % 2) * s * .14 + rand() * 3);
-        sp.scale.set(s * (1 - Math.abs(o) / (n * s * .45) * .7), s * .55 * (1 - Math.abs(o) / (n * s * .45) * .6), 1); this.clouds.add(sp);
-      }
-    }
+    this.clouds = new THREE.Group(); // the base class turns this group; here the clouds drift inside the sky itself
   }
   buildLights() {
     const scene = this.scene;
@@ -85,7 +78,7 @@ export class ProWorld extends World {
   }
   buildPitch() {
     super.buildPitch();
-    this.outer.material.color.set('#3a8a37');
+    this.outer.material.color.set('#3a8a37'); turf(this.pitch.material); turf(this.outer.material, false);
     // Under four floodlights every player throws four shadows. The key light draws one for real; the other three
     // are soft streaks on the grass, one row of this mesh each, pointed away from their lamp every frame.
     const streak = canvasTex(128, 64, g => {
@@ -100,7 +93,7 @@ export class ProWorld extends World {
 
   buildEnv() {
     this.park = new THREE.Group(); this.stands = new THREE.Group(); this.crowd = new THREE.Group(); this.excite = 0;
-    buildStadium(this); buildPark(this);
+    buildStadium(this); buildPark(this); buildBeams(this.stands, TOWERS, LAMP_Z + 1); sunSprite(this.park, SUN);
     this.scene.add(this.park, this.stands, this.crowd);
     this.setEnv('crowd');
   }
@@ -109,11 +102,13 @@ export class ProWorld extends World {
     this.night = env !== 'park'; this.look = LOOKS[this.night ? 'night' : 'day'];
     const k = this.look, scene = this.scene;
     scene.background.set(k.horizon); scene.fog.color.set(k.fog[0]); scene.fog.near = k.fog[1]; scene.fog.far = k.fog[2];
-    this.skyU.top.value.set(k.top); this.skyU.horizon.value.set(k.horizon);
-    this.stars.visible = this.night; this.clouds.visible = !this.night;
+    for (const n of ['top', 'mid', 'horizon', 'cloudC', 'shadeC']) this.skyU[n].value.set(k[n]);
+    this.skyU.sunC.value.set(k.sun); this.skyU.cloud.value = k.cloud;
+    if (this.envs) scene.environment = this.envs[this.night ? 'night' : 'day'];
+    this.stars.visible = this.night;
     this.hemi.color.set(k.hemi[0]); this.hemi.groundColor.set(k.hemi[1]); this.hemi.intensity = k.hemi[2];
     this.keys.forEach((l, i) => { l.color.set(k.key[0]); l.intensity = i ? k.fill : k.key[1]; });
-    const t = this.night ? [...TOWERS[0], LAMP_Z] : SUN; this.keys[0].position.set(t[0], t[1], t[2]);
+    const t = this.night ? [...TOWERS[0], LAMP_Z] : [CX + SUN[0], CY + SUN[1], SUN[2]]; this.keys[0].position.set(t[0], t[1], t[2]);
     RIM.color.value.set(k.rim[0]); RIM.k.value = k.rim[1];
     this.applyLook();
   }
@@ -125,7 +120,7 @@ export class ProWorld extends World {
   moveCrowd(time) { this.crowdU.uTime.value = time; this.crowdU.uExcite.value = this.excite; } // the fans move in the shader (see pro/stadium.js)
 
   beforeDraw(sim, dt, time) {
-    this.boards.offset.x = time * .012;
+    this.boards.offset.x = time * .012; this.skyU.uTime.value = time;
     // Floodlight shadows: one streak per player and lamp (not the key lamp), and the same for the ball.
     let n = 0;
     if (this.night) {
