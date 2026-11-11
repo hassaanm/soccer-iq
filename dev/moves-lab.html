@@ -116,11 +116,11 @@ if (move === 'dribble') { for (const x of first.touches.slice(0, 4)) OFF.push(x 
 // Which part of the boot is nearest the ball, and how far (cm). Points on the boot's skin are tried one by one.
 const P = new THREE.Vector3(), BC = new THREE.Vector3();
 function contact(leg, i) {
-  const boot = leg.foot.children[0]; boot.updateWorldMatrix(true, false); BC.copy(ballM.position);
+  leg.foot.updateWorldMatrix(true, false); const boot = new THREE.Matrix4().multiplyMatrices(leg.foot.matrixWorld, leg.boot); BC.copy(ballM.position);
   let best = 9, bn = null;
   for (let a = 0; a < 24; a++) for (let b = 1; b < 12; b++) {
     const th = a / 24 * Math.PI * 2, ph = b / 12 * Math.PI, n = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.sin(ph) * Math.sin(th), Math.cos(ph));
-    P.copy(n).multiplyScalar(.072).applyMatrix4(boot.matrixWorld); const d = P.distanceTo(BC) - BALL;
+    P.copy(n).multiplyScalar(.072).applyMatrix4(boot); const d = P.distanceTo(BC) - BALL;
     if (d < best) { best = d; bn = n; }
   }
   const inY = i ? -bn.y : bn.y; // + toward his other foot

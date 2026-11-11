@@ -26,8 +26,20 @@ export function buildPark(w) {
   for (let x = -14; x <= L + 14; x += 5.5) { tree(x + rand() * 2, -12 - rand() * 5, 5 + rand() * 3); tree(x + rand() * 2, W + 12 + rand() * 5, 5 + rand() * 3); }
   for (let y = -6; y <= W + 6; y += 5.5) { tree(-14 - rand() * 5, y + rand() * 2, 5 + rand() * 3); tree(L + 14 + rand() * 5, y + rand() * 2, 5 + rand() * 3); }
   for (let k = 0; k < 70; k++) { const a = rand() * Math.PI * 2, d = 34 + rand() * 50; tree(CX + Math.cos(a) * d * 1.2, CY + Math.sin(a) * d, 5 + rand() * 5); }
-  const inst = (geo, n) => { const m = new THREE.InstancedMesh(geo, soft('#ffffff'), n); m.castShadow = true; park.add(m); return m; };
-  const trunks = inst(new THREE.CylinderGeometry(.14, .24, 1, 8).rotateX(Math.PI / 2), trees.length), leaves = inst(new THREE.IcosahedronGeometry(1, 2), trees.length * 3);
+  // The leaves' ball shares each corner between the triangles round it (three.js makes one per triangle), so the
+  // graphics card works each corner out once, not six times. Same shape, same smooth normals.
+  const ball = new THREE.IcosahedronGeometry(1, 2), bp = ball.attributes.position, bn = ball.attributes.normal, at = new Map(), pos = [], nor = [], idx = [];
+  for (let i = 0; i < bp.count; i++) {
+    const k = [bp.getX(i), bp.getY(i), bp.getZ(i)].map(v => v.toFixed(5)).join();
+    if (!at.has(k)) { at.set(k, pos.length / 3); pos.push(bp.getX(i), bp.getY(i), bp.getZ(i)); nor.push(bn.getX(i), bn.getY(i), bn.getZ(i)); }
+    idx.push(at.get(k));
+  }
+  const leafBall = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)).setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)).setIndex(idx);
+  // The trees' and cones' own shadow material (as for the players in pro/rig.js): three.js's shared one would switch
+  // between these many-copies meshes and plain ones every frame.
+  const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  const inst = (geo, n) => { const m = new THREE.InstancedMesh(geo, soft('#ffffff'), n); m.castShadow = true; m.customDepthMaterial = depth; park.add(m); return m; };
+  const trunks = inst(new THREE.CylinderGeometry(.14, .24, 1, 8).rotateX(Math.PI / 2), trees.length), leaves = inst(leafBall, trees.length * 3);
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color(), dark = new THREE.Color('#2f7a3c'), light = new THREE.Color('#7cc060');
   const put = (mesh, k, x, y, z, sx, sz, c, spin = 0) => { mesh.setMatrixAt(k, mtx.compose(v.set(x, y, z), q.setFromAxisAngle(UP, spin), sc.set(sx, sx, sz))); mesh.setColorAt(k, c); };
   trees.forEach((t, k) => {
@@ -41,7 +53,7 @@ export function buildPark(w) {
   // Training cones in two rows behind the far touchline.
   const cones = new THREE.InstancedMesh(new THREE.ConeGeometry(.16, .3, 12).rotateX(Math.PI / 2), soft('#ffffff', { roughness: .6 }), 12);
   for (let k = 0; k < 12; k++) put(cones, k, 4 + k * 2, W + 3.2 + (k % 2) * .8, .15, 1, 1, col.set(k % 3 ? '#ff7a1a' : '#ffe14a'));
-  cones.castShadow = true; park.add(cones);
+  cones.castShadow = true; cones.customDepthMaterial = depth; park.add(cones);
 
   // Hills far away: wide, low and smooth, lighter the further they are (the air does the rest).
   const hill = new THREE.SphereGeometry(1, 28, 14), HILLS = ['#6fae62', '#83bd72', '#5f9f5c'];

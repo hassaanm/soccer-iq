@@ -23,10 +23,10 @@ renderPickers(); show('#home');
 // One frame: step the game, draw the world. A long gap (a hidden tab) counts as at most 1/20 of a second.
 let last = performance.now(), time = 0;
 function frame(now) {
-  const dt = Math.min(.05, (now - last) / 1000);
+  const ms = now - last, dt = Math.min(.05, ms / 1000);
   last = now; time += dt;
   requestAnimationFrame(frame);
-  try { game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); matchStrip(now); } catch (e) { console.error(e); }
+  try { world.pace(ms); game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); matchStrip(now); } catch (e) { console.error(e); }
 }
 requestAnimationFrame(frame);
 

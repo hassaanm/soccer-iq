@@ -105,8 +105,9 @@ function pose(g, kind, i) {
 const cam = new THREE.PerspectiveCamera(30, 1, .01, 200); cam.up.set(0, 0, 1);
 document.getElementById('info').textContent = `view=${view} skin=${skinK} hair=${hair}${night ? ' night' : ''}`;
 
-// The hair is every mesh in the head after the head itself, the nose and the two ears.
-function triCount(g) { let n = 0, calls = 0, k = 0; g.userData.head.traverse(o => { if (o.isMesh && ++k > 4) { calls++; n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } }); return [n, calls]; }
+// The hair is every part built on the head after the head itself, the nose and the two ears (the parts as built,
+// before pro/rig.js merges them into four meshes).
+function triCount(g) { const hair = g.userData.made.filter(p => p.head).slice(4); return [hair.reduce((n, p) => n + p.tris, 0), hair.length]; }
 
 if (view === 'game') {
   // Whole players from a high camera behind play, small enough that a head is about 25-30 px tall.
@@ -140,9 +141,9 @@ if (view === 'game') {
     const s = styles[i % styles.length], g = player(s, i), h = new THREE.Group(); h.add(g); h.position.x = i * 4; scene.add(h);
     if (poseK) { const dx = pose(g, poseK, i); g.position.x -= dx; }
     cells.push({ g, h, x: i * cw, y: 24 });
-    let tris = 0, meshes = 0, bt = 0, bm = 0; const inHead = o => { for (let p = o; p; p = p.parent) if (p === g.userData.head) return true; return false; };
-    g.traverse(o => { if (!o.isMesh || o === g.userData.blob) return; const t = (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; tris += t; meshes++; if (!inHead(o)) { bt += t; bm++; } });
-    label(`${i ? '' : 'hero · '}${tris} tris, ${meshes} meshes (body ${bt}, ${bm})`, i * cw + cw / 2, 28);
+    let tris = 0, meshes = 0, bt = 0, bm = 0;
+    for (const p of g.userData.made) { tris += p.tris; meshes++; if (!p.head) { bt += p.tris; bm++; } }
+    label(`${i ? '' : 'hero · '}${tris} tris, ${meshes} parts (body ${bt}, ${bm})`, i * cw + cw / 2, 28);
   }
   scene.updateMatrixWorld(true);
   const c0 = new THREE.Vector3();

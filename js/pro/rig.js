@@ -323,7 +323,7 @@ function faceLife(g, head, U, seed) {
     // The ball, from his head: how far round and up his eyes must turn.
     const b = sim.ball; let lx = 0, ly = -.6;
     if (b && g.parent) {
-      v.set(g.position.x + b.x - a.x, g.position.y + b.y - a.y, (b.z || 0) + .11); g.parent.localToWorld(v); head.worldToLocal(v);
+      v.set(g.position.x + b.x - a.x, g.position.y + b.y - a.y, (b.z || 0) + .11); g.parent.localToWorld(v); head.worldToLocal(v).divide(head.userData.shape);
       const az = Math.atan2(v.y, v.x) / D2R, el = Math.atan2(v.z, Math.hypot(v.x, v.y)) / D2R;
       lx = Math.max(-1, Math.min(1, az / 35)) * 3.6; ly = Math.max(-1, Math.min(1, el / 30)) * 1.8;
     }
@@ -379,7 +379,7 @@ export function makeRig(p, kit, isHero) {
     const so = add(foot, ball(.07, 12, 8), sole); so.scale.set(1.7, .64, .2); so.position.set(.06, 0, -.045);
     add(foot, ball(.045, 12, 10), boot).position.set(-.022, 0, -.006);                                             // heel
     const lace = add(foot, ball(.03, 10, 8), sole); lace.scale.set(1.5, .7, .4); lace.position.set(.062, 0, .024); // laces
-    legs.push({ hip, knee, foot });
+    legs.push({ hip, knee, foot, boot: b.matrix });   // boot: where the boot sits on the foot (for the test pages)
   }
   // The spine bends in two places: `pelvis` turns on the hip joints and `torso` on the waist, so he can lean
   // from the hips and twist his chest over them.
@@ -408,9 +408,65 @@ export function makeRig(p, kit, isHero) {
   const [face, U] = faceMat(p, F, mats); add(head, headGeo(F), face); add(head, noseGeo(F), face);
   for (const s of [-1, 1]) { const e = add(head, EAR_GEO, skin); e.position.copy(onHead(-.1, s, -.08, F)); e.position.y -= s * .002; e.scale.y = s; e.rotation.set(0, -.15, -s * .22); }
   addHair(head, p, kit, R, mat, add, F);
+  const bones = [...legs.flatMap(l => [l.hip, l.knee, l.foot]), pelvis, torso, ...arms, ...elbows, head], [drawn, made, skeleton] = bake(g, bones, head);
   const blob = new THREE.Mesh(BLOB_GEO, BLOB_MAT); blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
-  g.userData = { mats, legs, arms, elbows, pelvis, torso, head, blob, yaw: null, seed: Math.random() * 6 };
+  g.userData = { mats: drawn, made, skeleton, legs, arms, elbows, pelvis, torso, head, blob, yaw: null, seed: Math.random() * 6 };
   [g.userData.face, g.userData.faceSet] = faceLife(g, head, U, g.userData.seed);
   return g;
+}
+
+// The parts above are built one mesh each, on the bone that moves them. `bake` then draws them with four meshes:
+// every plain-coloured part in one (each corner keeps its part's colour, roughness and shine), and the face, the
+// shirt and the hair in one each. Each corner follows exactly one bone (rigid skinning), so he looks and moves the
+// same, for 4 draws instead of 37 (and 4 again for his shadow). The head's shape (its scale) goes into the corners,
+// so the head bone only turns. Returns the four materials, the size of each part built (for the test page) and the
+// bones.
+const ONE = new THREE.Matrix4();
+// The players' own shadow material: three.js's shared one would have to switch between bent (skinned) and plain
+// meshes many times a frame, and each switch looks its shader up again.
+const DEPTH = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+function bodyMat() {
+  return withRim(new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true }), sh => {
+    sh.vertexShader = 'attribute vec2 aMat;\nvarying vec2 vMat;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvMat = aMat;');
+    sh.fragmentShader = 'varying vec2 vMat;\n' + sh.fragmentShader.replace('#include <envmap_common_pars_fragment>', '#include <envmap_common_pars_fragment>\n#define envMapIntensity vMat.y')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = vMat.x;');   // aMat: roughness, shine (envMapIntensity)
+  }, 'body');
+}
+function bake(g, bones, head) {
+  g.updateMatrixWorld(true);
+  const S = new THREE.Matrix4().makeScale(head.scale.x, head.scale.y, head.scale.z), groups = new Map(), made = [], meshes = [];
+  g.traverse(o => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) {
+    const M = o.matrix.clone(); let b = o.parent;
+    while (!bones.includes(b)) { M.premultiply(b.matrix); b = b.parent; }
+    if (b === head) M.premultiply(S);
+    const geo = o.geometry.clone().applyMatrix4(M), ix = geo.index.array, m = o.material;
+    if (M.determinant() < 0) for (let i = 0; i < ix.length; i += 3) { const t = ix[i + 1]; ix[i + 1] = ix[i + 2]; ix[i + 2] = t; }   // a mirrored part: turn its faces back the right way
+    const key = m.map || m.vertexColors ? m : 'body';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push([geo, bones.indexOf(b), m]); made.push({ tris: ix.length / 3, head: b === head });
+    o.removeFromParent();
+  }
+  head.scale.set(1, 1, 1); head.userData.shape = new THREE.Vector3().setFromMatrixScale(S);
+  const skeleton = new THREE.Skeleton(bones, bones.map(() => new THREE.Matrix4())), drawn = [];
+  for (const [key, list] of groups) {
+    const body = key === 'body', names = body ? ['position', 'normal'] : Object.keys(list[0][0].attributes), n = list.reduce((s, [geo]) => s + geo.attributes.position.count, 0);
+    const out = Object.fromEntries(names.map(k => [k, new Float32Array(n * list[0][0].attributes[k].itemSize)])), idx = [], si = new Uint16Array(n * 4), sw = new Float32Array(n * 4), col = new Float32Array(n * 3), am = new Float32Array(n * 2);
+    let v = 0;
+    for (const [geo, bone, m] of list) {
+      for (const k of names) out[k].set(geo.attributes[k].array, v * geo.attributes[k].itemSize);
+      for (const i of geo.index.array) idx.push(i + v);
+      for (let i = v; i < v + geo.attributes.position.count; i++) { si[i * 4] = bone; sw[i * 4] = 1; col[i * 3] = m.color.r; col[i * 3 + 1] = m.color.g; col[i * 3 + 2] = m.color.b; am[i * 2] = m.roughness; am[i * 2 + 1] = m.envMapIntensity; }
+      v += geo.attributes.position.count;
+    }
+    const geo = new THREE.BufferGeometry();
+    for (const k of names) geo.setAttribute(k, new THREE.BufferAttribute(out[k], list[0][0].attributes[k].itemSize));
+    if (body) { geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setAttribute('aMat', new THREE.BufferAttribute(am, 2)); }
+    geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4)); geo.setIndex(idx);
+    const mesh = new THREE.SkinnedMesh(geo, body ? bodyMat() : key);
+    mesh.bind(skeleton, ONE); mesh.castShadow = true; mesh.customDepthMaterial = DEPTH; mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, .9), 1.5);   // room for arms up in a cheer
+    g.add(mesh); drawn.push(mesh.material);
+  }
+  return [drawn, made, skeleton];
 }

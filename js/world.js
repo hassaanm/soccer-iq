@@ -23,6 +23,11 @@ const LOOKS = {
   day: { top: '#1a55c8', mid: '#62a8f2', horizon: '#ffe6c2', cloudC: '#fff6ea', shadeC: '#a9b4cc', cloud: 1, fog: ['#ead9c2', 80, 300], hemi: ['#cfe2ff', '#86a35f', .8], key: ['#ffdcae', 3.1], fill: 0, exposure: 1.05, bloom: .28, rim: ['#ffe6bd', .45], vig: .28, sat: 1.14, sun: '#ffcf90' },
   night: { top: '#02040b', mid: '#0a1230', horizon: '#111c40', cloudC: '#1d2a55', shadeC: '#070b1a', cloud: .45, fog: ['#0a1230', 90, 320], hemi: ['#9db0ff', '#24502a', .42], key: ['#f2f6ff', 1.35], fill: 1.3, exposure: 1.1, bloom: .5, rim: ['#d2e2ff', .55], vig: .42, sat: 1.16, sun: '#000000' },
 };
+// Picture quality, best first. `pr`: the most screen pixels per CSS pixel (a phone's screen has 2 or 3; 1.5 is sharp
+// enough with smoothing and leaves the phone room for sound); `bloom`: the glow (1 full, .5 on a quarter of the
+// pixels, 0 none; see pro/post.js); `shadow`: the shadow map's size. Only a slow device goes down the list (see `pace`).
+const QUALITY = [{ pr: 1.5, bloom: 1, shadow: 2048 }, { pr: 1.25, bloom: 1, shadow: 2048 }, { pr: 1, bloom: 1, shadow: 2048 },
+  { pr: 1, bloom: .5, shadow: 2048 }, { pr: 1, bloom: .5, shadow: 1024 }, { pr: 1, bloom: 0, shadow: 1024 }];
 const SUN = [10, -28, 15], LAMP_Z = 26; // the sun is low on one side (late afternoon), measured from the middle of the pitch
 // What shiny things reflect, by day and by night (see pro/light.js).
 const ENV = {
@@ -37,11 +42,12 @@ const glowTex = canvasTex(128, 128, g => {
 });
 const IDS = ['hero', 'm1', 'm2', 'o1', 'o2', 'o3']; // the sim's player ids: three of ours, three of theirs
 
-// Frees what one player's body owns: its shapes, its materials and the two painted textures (shirt and face).
-// The canvases behind those textures are emptied too: iOS counts canvas memory until the garbage collector runs.
-// The shared spot under him (see pro/rig.js) is left alone.
+// Frees what one player's body owns: its shapes, its materials, its bones' texture and the two painted textures
+// (shirt and face). The canvases behind those textures are emptied too: iOS counts canvas memory until the garbage
+// collector runs. The shared spot under him (see pro/rig.js) is left alone.
 function disposeRig(g) {
   g.traverse(o => { if (o.isMesh && !o.geometry.userData.shared) o.geometry.dispose(); });
+  g.userData.skeleton.dispose();
   for (const m of g.userData.mats) {
     if (m.map) { const cv = m.map.image; m.map.dispose(); cv.width = cv.height = 0; }
     m.dispose();
@@ -49,6 +55,18 @@ function disposeRig(g) {
 }
 // Everything about a team that changes how its players look. Same key: the bodies already built can stay.
 const lookKey = team => JSON.stringify([team.kit, team.players.slice(0, 3)]);
+
+// Parts that never move and share a material, as one mesh: one draw (and one shadow draw) instead of one each.
+function merged(parts, mat) {
+  const pos = [], nor = [], idx = []; let n = 0;
+  for (const o of parts) {
+    o.updateMatrix(); const g = o.geometry.clone().applyMatrix4(o.matrix);
+    pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); for (const i of g.index.array) idx.push(i + n);
+    n += g.attributes.position.count; o.geometry.dispose(); g.dispose();
+  }
+  const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)).setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); geo.setIndex(idx);
+  return new THREE.Mesh(geo, mat);
+}
 
 // A curved arrow lying on the ground: a band of radius r and width w from angle a0 to a1 (either direction),
 // ending in an arrowhead at a1. Angles are in the pitch's x/y plane, around the player's feet.
@@ -91,8 +109,10 @@ function makeBall(r) {
 export class World {
   constructor(canvas) {
     this.canvas = canvas;
-    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    r.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // sharp enough with antialias, and leaves the phone room for sound
+    // No smoothing (antialias) or stencil on the page's own picture: the picture is drawn, smoothed, in the post
+    // passes' buffer (pro/post.js), and the page only gets one flat square of it.
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, stencil: false });
+    r.setPixelRatio(Math.min(devicePixelRatio, QUALITY[0].pr)); this.level = 0; this.pacer = { win: [], t: 0, slow: 0, skip: 3, first: 0, steps: 0, done: false };
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; // the exposure comes with the time of day (see `applyLook`)
     const scene = this.scene = new THREE.Scene();
@@ -118,7 +138,35 @@ export class World {
     makePost(r, scene, this.camera).then(post => {
       if (!post) return;
       this.post = post; post.setSize(this.width, this.height); this.applyLook();
+      if (QUALITY[this.level].bloom < 1) post.setBloom(QUALITY[this.level].bloom);
     });
+  }
+  // The safety net for slow devices (a governor), called by main.js with the real time (ms) since the last frame.
+  // Every second it takes the middle frame time (the median, so a few hitches don't count); the first three seconds
+  // (loading, first shaders) are not judged. After two slow seconds in a row (median over 22 ms: under about 45
+  // frames a second) it takes one step down QUALITY, then lets the new quality settle for a second. It never steps
+  // back up, so the picture never goes back and forth. If two steps made frames no faster (by 15%), the time is not
+  // going on drawing (a phone in low-power mode, for one, shows only 30 frames a second): it goes back to full
+  // quality and stops watching. A fast device is never slow, so nothing ever changes there.
+  pace(ms) {
+    const p = this.pacer; if (p.done || ms > 250) return; // a hidden tab or a long hitch tells nothing
+    p.win.push(ms); if ((p.t += ms) < 1000 || p.win.length < 15) return;
+    const med = p.win.sort((a, b) => a - b)[p.win.length >> 1]; p.win.length = 0; p.t = 0;
+    if (p.skip > 0) { p.skip--; return; }
+    if (med <= 22) { p.slow = 0; return; }
+    if (++p.slow < 2) return;
+    p.slow = 0; p.first ||= med;
+    if (p.steps >= 2 && med > p.first * .85) { this.setQuality(0); p.done = true; return; }
+    let next = this.level + 1; const same = (a, b) => Math.min(devicePixelRatio, a.pr) === Math.min(devicePixelRatio, b.pr) && a.bloom === b.bloom && a.shadow === b.shadow;
+    while (next < QUALITY.length && same(QUALITY[next], QUALITY[this.level])) next++; // skip a step that changes nothing here (a 1x screen has no pixels to save)
+    if (next >= QUALITY.length) { p.done = true; return; }
+    this.setQuality(next); p.steps++; p.skip = 1;
+  }
+  setQuality(i) {
+    const q = QUALITY[this.level = i], l = this.keys[0].shadow;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr)); this.resized = true; // `render` sizes the picture again
+    this.post?.setBloom(q.bloom);
+    if (l.mapSize.x !== q.shadow) { l.mapSize.set(q.shadow, q.shadow); l.map?.dispose(); l.map = null; }
   }
   buildSky() {
     const scene = this.scene;
@@ -194,34 +242,36 @@ export class World {
       const t = new THREE.CanvasTexture(netCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / .2, h / .2); t.colorSpace = THREE.SRGBColorSpace;
       return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     };
-    const depth = 1.1, gw = gy1 - gy0, frame = M('#ffffff'), rear = M('#d9dde3');
-    const bar = (len, r, m, axis) => { const g = new THREE.CylinderGeometry(r, r, len, 8); if (axis === 'z') g.rotateX(Math.PI / 2); if (axis === 'x') g.rotateZ(Math.PI / 2); const o = new THREE.Mesh(g, m); o.castShadow = true; return o; };
+    const depth = 1.1, gw = gy1 - gy0, frame = M('#ffffff'), rear = M('#d9dde3'), bars = new Map([[frame, []], [rear, []]]);
+    const bar = (len, r, m, axis) => { const g = new THREE.CylinderGeometry(r, r, len, 8); if (axis === 'z') g.rotateX(Math.PI / 2); if (axis === 'x') g.rotateZ(Math.PI / 2); return new THREE.Mesh(g, m); };
+    const put = (o, x, y, z) => { o.position.set(x, y, z); bars.get(o.material).push(o); }; // the bars never move: both goals' bars of one colour are drawn as one mesh
     this.nets = [];
     for (const [gx, dir] of [[L, 1], [0, -1]]) {
       const bx = gx + dir * depth, add = (o, x, y, z) => { o.position.set(x, y, z); this.scene.add(o); return o; };
       for (const y of [gy0, gy1]) {
-        add(bar(gh, .07, frame, 'z'), gx, y, gh / 2);           // front posts
-        add(bar(gh, .03, rear, 'z'), bx, y, gh / 2);            // back posts
-        add(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, gh); // top side bars
-        add(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, .03);
+        put(bar(gh, .07, frame, 'z'), gx, y, gh / 2);           // front posts
+        put(bar(gh, .03, rear, 'z'), bx, y, gh / 2);            // back posts
+        put(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, gh); // top side bars
+        put(bar(depth, .03, rear, 'x'), gx + dir * depth / 2, y, .03);
       }
-      add(bar(gw, .07, frame), gx, CY, gh);                       // crossbar
-      add(bar(gw, .03, rear), bx, CY, gh);
-      add(bar(gw, .03, rear), bx, CY, .03);
+      put(bar(gw, .07, frame), gx, CY, gh);                       // crossbar
+      put(bar(gw, .03, rear), bx, CY, gh);
+      put(bar(gw, .03, rear), bx, CY, .03);
       // The back net has enough points to bulge when a shot hits it (see `fx('goal')` and `moveNets`).
       const back = add(new THREE.Mesh(new THREE.PlaneGeometry(gw, gh, 20, 8).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, gh)), bx, CY, gh / 2);
       this.nets.push({ mesh: back, base: back.geometry.attributes.position.array.slice(), dir, x: gx, t: 9, y: 0, z: 0 });
       for (const y of [gy0, gy1]) add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh)), gx + dir * depth / 2, y, gh / 2);
       add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gw), netMat(depth, gw)), gx + dir * depth / 2, CY, gh);
     }
-    // Corner flags that wave a little.
-    const poleM = M('#fff8e8'), flagM = new THREE.MeshLambertMaterial({ color: '#ff6b5e', side: THREE.DoubleSide });
+    // Corner flags that wave a little (the four poles are one mesh).
+    const poleM = M('#fff8e8'), flagM = new THREE.MeshLambertMaterial({ color: '#ff6b5e', side: THREE.DoubleSide }), poles = [];
     const flagG = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 1.45, .55, 0, 1.3, 0, 0, 1.15], 3)); flagG.computeVertexNormals();
     this.flags = [[0, 0], [L, 0], [0, W], [L, W]].map(([x, y]) => {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 1.5, 5).rotateX(Math.PI / 2), poleM); pole.position.set(x, y, .75); pole.castShadow = true;
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 1.5, 5).rotateX(Math.PI / 2), poleM); pole.position.set(x, y, .75); poles.push(pole);
       const flag = new THREE.Mesh(flagG, flagM); flag.position.set(x, y, 0); flag.castShadow = true;
-      this.scene.add(pole, flag); return flag;
+      this.scene.add(flag); return flag;
     });
+    for (const [m, list] of [...bars, [poleM, poles]]) { const o = merged(list, m); o.castShadow = true; this.scene.add(o); }
   }
   // A shot that hits the net pushes it out around the ball; it swings back and settles.
   moveNets(dt) {
@@ -242,7 +292,21 @@ export class World {
     this.park = new THREE.Group(); this.stands = new THREE.Group(); this.crowd = new THREE.Group(); this.excite = 0;
     buildStadium(this); buildPark(this); buildBeams(this.stands, TOWERS, LAMP_Z + 1); sunSprite(this.park, SUN);
     this.scene.add(this.park, this.stands, this.crowd);
-    this.setEnv('crowd');
+    this.setEnv('park'); this.shadeOnlyNear(this.park); this.setEnv('crowd');
+  }
+  // Most trees stand outside the sun's shadow box, so their shadows fall on nothing that is drawn. Those trees move
+  // to a copy of their mesh that throws no shadow, and the shadow pass skips them (the same picture, a third of the work).
+  shadeOnlyNear(group) {
+    const l = this.keys[0]; this.scene.updateMatrixWorld(true); l.shadow.camera.updateProjectionMatrix(); l.shadow.updateMatrices(l);
+    const box = l.shadow.getFrustum(), m4 = new THREE.Matrix4(), ball = new THREE.Sphere(), col = new THREE.Color();
+    for (const mesh of group.children.filter(o => o.isInstancedMesh && o.castShadow)) {
+      const geo = mesh.geometry; if (!geo.boundingSphere) geo.computeBoundingSphere();
+      const all = [...Array(mesh.count).keys()], near = all.filter(k => { mesh.getMatrixAt(k, m4); return box.intersectsSphere(ball.copy(geo.boundingSphere).applyMatrix4(m4)); });
+      if (near.length === all.length) continue;
+      const fill = (to, list) => { list.forEach((k, j) => { mesh.getMatrixAt(k, m4); mesh.getColorAt(k, col); to.setMatrixAt(j, m4); to.setColorAt(j, col); }); to.count = list.length; to.computeBoundingSphere(); };
+      const far = new THREE.InstancedMesh(geo, mesh.material, all.length - near.length); fill(far, all.filter(k => !near.includes(k))); group.add(far);
+      fill(mesh, near);
+    }
   }
   // 'park': the training ground by day. 'crowd': the stadium at night, full of fans.
   setEnv(env) {
