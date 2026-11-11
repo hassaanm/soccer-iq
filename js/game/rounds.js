@@ -24,7 +24,7 @@ export const rounds = {
   async wonIntro() {
     const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), [hx, hy] = sc.heroTo, meet = { x: hx + 1, y: hy };
     Object.assign(o1, { x: hx + 4.6, y: hy + .2, tx: hx + 4.6, ty: hy + .2, face: [-1, 0] });
-    s.give('o1'); Object.assign(s.ball, { x: o1.x - .5, y: o1.y });
+    Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1'); // the ball at his feet first, so it is his straight away
     s.go('hero', hx, hy, 2.6); s.go('o1', meet.x, meet.y, 3.2);
     (sc.oppsTo || []).forEach((p, i) => i && p && s.go('o' + (i + 1), ...p, 3));
     const t0 = s.time;

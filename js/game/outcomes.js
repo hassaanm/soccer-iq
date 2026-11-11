@@ -72,16 +72,31 @@ export const outcomes = {
     let nx = l > .05 ? dx / l : -(to.y - from.y), ny = l > .05 ? dy / l : to.x - from.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
     this.sim.go(p.id, clamp(c.x + nx * 1.3, .5, L - .5), clamp(c.y + ny * 1.3, .5, W - .5), 4.5);
   },
+  // Facing well away from where he will play the ball (more than about 60°), he first turns with it (a cut, a hook or
+  // a pull back, see sim.js). Less than that he passes across his body from where the ball is. Players close to him
+  // that the scripts aren't moving hold still meanwhile, so nobody walks into the pass.
+  *turnTo(id, x, y) {
+    const s = this.sim, a = s.a(id), t = s.ball.carrier === id ? s.turn(id, x, y, 1.05) : 0;
+    if (!t) return;
+    const held = [...s.agents.values()].filter(p => p.id !== id && !this.scripted.has(p.id) && dist(p, a) < 4);
+    for (const p of held) { this.scripted.add(p.id); s.stop(p.id); }
+    yield t;
+    for (const p of held) this.scripted.delete(p.id); // free again: the kick's own check moves anyone in its path
+  },
   *strike(id, x, y, opts) {
     const s = this.sim, a = s.a(id), to = { x, y };
+    yield* this.turnTo(id, x, y);
     for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
-    const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(a, x, y, kind, [...s.agents.values()].filter(o => o.team !== a.team));
+    // The foot follows the way the ball lies from him (his body may already face the target after a look around).
+    const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
+    const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, kind, [...s.agents.values()].filter(o => o.team !== a.team));
     faceTo(a, x, y); s.windup(id, kind, foot); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   },
   *passGood(id) {
     const s = this.sim, t = s.a(id);
-    this.scripted.add(id); s.stop(id);
+    this.scripted.add(id); s.stop(id); yield* this.turnTo('hero', t.x, t.y);
+    s.open(id, L - 3.5, W / 2); // he will turn with it toward goal (finish)
     yield* this.strike('hero', t.x, t.y, { speed: 13, arc: .2 });
     this.scripted.delete('hero'); // after passing he runs to support
     yield () => s.ball.state === 'loose';
@@ -96,6 +111,7 @@ export const outcomes = {
   },
   *passBad(id) {
     const s = this.sim, m = s.a(id), them = s.team('them');
+    yield* this.turnTo('hero', m.x, m.y); // facing away, he turns with the ball first
     // The defender who cuts it out is the first one along the path (not just the nearest to it).
     const along = firstInLane(them, s.ball, m, .02, .9);
     const ic = along || interceptor(s.ball, m, them);
@@ -195,7 +211,7 @@ export const outcomes = {
         yield* this.strike(c.id, to.x, to.y, { speed: 10, arc: .15 });
         yield () => s.ball.state === 'loose';
         s.give(to.id);
-      } else { const [hx, hy] = toGoal(c); c.face = [-hx, -hy]; yield .5; }
+      } else { const [hx, hy] = toGoal(c); yield Math.max(.5, s.turn(c.id, c.x - hx * 3, c.y - hy * 3)); } // he turns away with the ball (a pull back or a hook)
       yield* this.end('held', 1.3); return;
     }
     if (good) {
@@ -274,9 +290,10 @@ export const outcomes = {
     if (good) {
       // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
       if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { yield* this.strike(c.id, h.x - .3, h.y, { speed: 8, arc: .05 }); this.result = 'incoming'; return; }
+      s.open('hero', L - 3.5, W / 2); // he opens his body toward goal as the pass comes, and turns with his first touch
       yield* this.strike(c.id, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
-      s.give('hero'); this.scripted = new Set(['hero']); this.ai = true; yield .2;
+      s.give('hero'); this.scripted = new Set(['hero']); this.ai = true;
       yield* this.finish('hero'); return;
     }
     // The pass goes, but the defender standing in its path cuts it out.
@@ -328,6 +345,7 @@ export const outcomes = {
           const dx = ax * Math.cos(tilt * sd) - ay * Math.sin(tilt * sd), dy = ax * Math.sin(tilt * sd) + ay * Math.cos(tilt * sd);
           const to = { x: clamp(b.x + dx * len * (last ? 2.2 : 1), 1, L - 1), y: clamp(b.y + dy * len * (last ? 2.2 : 1), 1, W - 1) };
           for (const a of s.agents.values()) if (a.id !== c.id && a.id !== 'hero' && closestOnLane(a, b, to, 0).d < 1) this.giveWay(a, b, to); // nobody stands in its path
+          s.windup(c.id, 'touch'); yield .1; // his foot comes to the ball (pro/motion.js), then the ball goes
           s.kick(to.x, to.y, { speed: len > 1.2 ? 3.4 : 2.4, arc: 0, touch: true });
           tk.to = to; tk.wait = len > 1.2 ? .05 : .25; tk.big = len > 1.2;
         }
@@ -410,7 +428,7 @@ export const outcomes = {
       s.stop('m1'); yield* this.steal(chaser); return;
     }
     const t0 = s.time; yield () => (s.ball.state !== 'flying' && dist(m, s.ball) < .7) || s.time - t0 > 2.5;
-    s.give('m1'); s.stop('m1'); faceTo(m, L, W / 2);
+    s.give('m1'); s.stop('m1'); if (!s.turn('m1', L, W / 2)) faceTo(m, L, W / 2); // he turns with it toward goal
     // He has it, but standing still now: the nearest defender gets back in front of him.
     const o = s.team('them').sort((a, b) => dist(a, m) - dist(b, m))[0], gx = L - m.x, gy = W / 2 - m.y, gl = Math.hypot(gx, gy) || 1;
     s.go(o.id, m.x + gx / gl * 1.4, m.y + gy / gl * 1.4, 4.6);
@@ -422,7 +440,7 @@ export const outcomes = {
     try {
       if (opt.startsWith('tackle:')) yield* this.tackleGen(opt);
       else if (opt.startsWith('turn:')) { // the ball arrives, and his first touch turns him that way
-        const s = this.sim; this.scripted.add('hero'); s.stop('hero');
+        const s = this.sim, h = s.a('hero'), to = dribbleEnd(h, this.sc.turns[opt[5]], L, W); this.scripted.add('hero'); s.stop('hero'); s.open('hero', to.x, to.y);
         const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
         s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good);
       }

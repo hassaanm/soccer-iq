@@ -4,10 +4,12 @@
 // leans into speeding up, slowing down and turning. On top of that he handles the ball: he times his steps so
 // a foot meets it at every dribble touch, passes with the inside of either foot, shoots with the inside of the
 // laces, takes a pass with the inside of the foot (it gives with the ball) or the sole, puts his sole on the ball as
-// he stops, and now and then sells a dummy. The foot for a pass or shot comes from the game (`a.kickFoot`). Standing, he
+// he stops, and now and then sells a dummy. Turning with the ball, the foot the game picked for the move (sim.js plan:
+// a push, a cut, a hook, a pull back) goes to the ball and moves it. The foot for a pass or shot comes from the game (`a.kickFoot`). Standing, he
 // shifts his weight, breathes and moves his feet. Turning a joint by a positive y angle swings its part back.
 import * as THREE from 'three';
 import { THIGH, SHIN, HALF } from './rig.js';
+import { turnFoot, turnSide, dribbleAt } from '../sim.js';
 
 const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, BALL = .125; // BALL: the ball's radius (world.js)
 const TOUCH = 1.4; // metres between dribble touches (as in sim.js)
@@ -63,6 +65,7 @@ function foot(q, D, Ls, run) {
 // on the kicking foot.
 const KICK = { // back x, back z, hit z, through x, through z, pitch back, pitch at the ball, pitch after, toes out, body, lands at x
   pass: [-.22, .13, .1, .42, .13, .1, -.15, -.15, 1.45, .45, 0],
+  touch: [-.1, .1, .1, .32, .09, .3, .45, .3, .25, .2, 0], // a dribbler knocking the ball on: a short push with the laces, twice as quick
   shot: [-.42, .42, .14, .56, .5, 1, .7, .4, .45, 1, .48],
 };
 function kickFoot(t, k, hit) {
@@ -92,11 +95,13 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const bf = bx * cyaw + by * syaw, bl = by * cyaw - bx * syaw; // the ball: metres ahead of him, and to his left
   // Steps grow from 0.4 m at a walk to 1.2 m at a sprint (a little shorter with the ball), and the feet spend less time down.
   const Ls = 2 * lerp(.42, 1.22, run) * (carrying ? .88 : 1), D = lerp(.6, .31, run), QT = D + .72 * (1 - D); // QT: where in its cycle a foot meets the ball
-  const dribble = carrying && w > .5, cyc = (a.dist % TOUCH) / TOUCH;
+  const tm = carrying ? turnFoot(sim, a.id) : null, turning = carrying && !!b.move; // a turn with the ball (sim.js) owns the ball and one foot
+  const dn = dribbleAt(a) / TOUCH, dribble = carrying && w > .5 && !turning, cyc = dn - Math.floor(dn); // where he is between two dribble touches
+  if (turning) m.spec = m.feint = null;
   let act = m.spec; // one foot busy with the ball: taking a pass ('trap') or resting on top of it ('sole')
   // Kicks: with the foot the game picked for the play (see game/outcomes.js), or else the foot on the ball's side. A kick ends any other move.
   if (a.kickAt !== m.kickAt) { m.kickAt = a.kickAt; m.kf = a.kickFoot === 0 || a.kickFoot === 1 ? a.kickFoot : Math.abs(bl) > .05 ? +(bl > 0) : +(frac(a.kickAt * 3.3 + u.seed) < .5); act = m.spec = m.feint = null; }
-  const kt = a.kickAt != null ? now - a.kickAt : 9;
+  const kt = a.kickAt != null ? (now - a.kickAt) * (a.kickKind === 'touch' ? 2 : 1) : 9; // a touch runs the kick at twice the speed
   if (dt > 0) {
     let adv = ds / Ls;
     if (dribble && cyc < .9) { // with the ball he lengthens or shortens his steps so that a foot swings through at every touch
@@ -108,7 +113,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     m.bank = damp(m.bank, clamp(wrap(u.yaw - yaw0) / dt * a.sp * .012, -.3, .3), 7, dt);
     if (ds > 1e-4) { const rel = Math.atan2(a.y - m.y, a.x - m.x) - u.yaw; m.cx = damp(m.cx, Math.cos(rel), 12, dt); m.cy = damp(m.cy, Math.sin(rel), 12, dt); }
     // Stopping with the ball: more often than not a sole goes on top of it.
-    if (carrying && !act && kt > .7 && m.sp >= 1.1 && a.sp < 1.1 && frac(u.seed + ++m.n * .618) < .65) act = m.spec = { k: 'sole', t: T, d: .8, leg: m.n & 1 };
+    if (carrying && !act && !turning && kt > .7 && m.sp >= 1.1 && a.sp < 1.1 && frac(u.seed + ++m.n * .618) < .65) act = m.spec = { k: 'sole', t: T, d: .8, leg: m.n & 1 };
     // Running at a defender with the ball: now and then he sells a dummy (drops a shoulder and swings a foot round the ball).
     if (dribble && run > .45 && !m.feint && kt > .7 && (now < m.ft || now - m.ft > 3.5)) for (let i = 0; i < sim.list.length; i++) {
       const o = sim.list[i], ox = o.x - a.x, oy = o.y - a.y, f = ox * cyaw + oy * syaw, l = oy * cyaw - ox * syaw;
@@ -119,20 +124,21 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   let fe = 0, fs = 0;
   if (m.feint) { const c = (now - m.feint.t) / .55; if (c >= 1 || c < 0 || !carrying) m.feint = null; else { fe = Math.sin(Math.PI * c) ** 2 * w; fs = m.feint.s; } }
 
-  const K = a.kickKind === 'shot' ? KICK.shot : KICK.pass, ks = m.kf ? 1 : -1;
+  const K = KICK[a.kickKind] || KICK.pass, ks = m.kf ? 1 : -1;
   const kw = kt >= 0 && kt < .7 ? sm(kt / .06) * (1 - sm((kt - .46) / .24)) : 0;
   let kX = 0, kY = 0, kZ = 0, kP = 0;
   if (kw) { // the ankle goes to where its striking part meets the middle of the ball: the arch for a pass, the laces for a shot
-    if (kt < .2) { const sh = K === KICK.shot; m.bf = bf; m.bl = clamp(bl, -.14, .14); m.hit = clamp(bf - BALL - (sh ? .1 : .05), .02, .32); m.hitY = m.bl - ks * (sh ? .02 : .06); }
+    if (kt < .2) { const sh = K !== KICK.pass; m.bf = bf; m.bl = clamp(bl, -.24, .24); m.hit = clamp(bf - BALL - (sh ? .1 : .05), .02, .32); m.hitY = m.bl - ks * (sh ? .02 : .06); }
     kickFoot(kt, K, m.hit); kX = F.x; kZ = F.z; kP = F.p; kY = lerp(ks * .1, m.hitY, sm(kt / .2));
   }
   // Taking a pass: as it arrives he sets a foot for it (the inside of the foot, or the sole on top), then moves it on.
   // The foot he takes it with: the one farther from a defender close by (his body shields the ball); with nobody
   // close, the one on the side of the goal he attacks, so his body opens to the field (the "back foot"); else the
   // foot on the ball's side.
-  if (!act && !kw && b.state === 'flying' && w < .6 && (1 - b.t) * b.dur < .3 && Math.hypot(b.tx - a.x, b.ty - a.y) < 1.3 && Math.hypot(b.fx - a.x, b.fy - a.y) > 1) {
+  if (!act && !kw && !turning && b.state === 'flying' && w < .6 && (1 - b.t) * b.dur < .3 && Math.hypot(b.tx - a.x, b.ty - a.y) < 1.3 && Math.hypot(b.fx - a.x, b.fy - a.y) > 1) {
     const gl = (a.team === 'them' ? 1 : -1) * syaw; let leg = Math.abs(gl) > .3 ? +(gl > 0) : Math.abs(bl) > .05 ? +(bl > 0) : m.n & 1, near = 3.5;
     for (let i = 0; i < sim.list.length; i++) { const o = sim.list[i], ox = o.x - a.x, oy = o.y - a.y, d = Math.hypot(ox, oy); if (o.team !== a.team && d < near) { near = d; leg = +(oy * cyaw - ox * syaw < 0); } }
+    if (a.open != null) leg = +(turnSide(sim, a, Math.atan2(b.fy - a.y, b.fx - a.x), a.open) < 0); // he will turn as he takes it: the foot that turns it (sim.js plan, 'first')
     act = m.spec = { k: 'trap', t: now, hit: -1, leg, sole: frac(u.seed + ++m.n * .618) < .35 };
   }
   // Standing about: now and then he shifts his feet, glances round or (with the ball) rests a sole on it. Turning on the spot, his feet step round.
@@ -146,7 +152,16 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   }
   // The busy foot: how much (fW), which leg, where its ankle goes, and the foot's pitch and turn.
   let fW = 0, fLeg = 0, fx = 0, fy = 0, fz = 0, fp = 0, ft = 0;
-  if (act && act.k === 'trap') {
+  if (tm) { // turning with the ball: the foot sits against the ball on the side it pushes from (or on top, dragging it back)
+    const sg = tm.leg ? 1 : -1, ph = wrap(Math.atan2(tm.dy, tm.dx) - u.yaw), nx = Math.cos(ph), ny = Math.sin(ph), k = tm.part;
+    fW = tm.w; fLeg = tm.leg;
+    if (k === 'sole') { fx = bf - .06 - .1 * tm.pre; fy = bl; fz = .3 + .08 * tm.pre; fp = -.2; ft = sg * .2; }
+    else { // inside: toes turned out so the arch faces the way the ball goes; outside: toes turned in; laces: toes on
+      ft = k === 'inside' ? ph + sg * Math.PI / 2 : k === 'outside' ? ph - sg * Math.PI / 2 : ph; ft = wrap(ft); ft = sg * clamp(sg * ft, k === 'laces' ? -.6 : -1, k === 'laces' ? .6 : 1.6);
+      const r = BALL + (k === 'laces' ? .12 : .05) + .1 * tm.pre, back = k === 'inside' ? .05 : k === 'outside' ? .07 : 0; // on its way it comes from that side, a little off the ball
+      fx = bf - nx * r - Math.cos(ft) * back; fy = bl - ny * r - Math.sin(ft) * back; fz = (k === 'laces' ? .1 : .09) + .12 * tm.pre; fp = k === 'laces' ? .5 : k === 'outside' ? .1 : -.15;
+    }
+  } else if (act && act.k === 'trap') {
     if (act.hit < 0 && b.state !== 'flying') act.hit = now;
     const c = act.hit < 0 ? 0 : now - act.hit, e = sm(c / .2);
     // Before it comes he sets the foot where the ball will stop (b.tx, b.ty); then the foot stays on the ball as it
@@ -182,7 +197,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const twist = -w * lerp(.08, .2, run) * c1 - ks * kX * .5 * kw; // the hip on the leading leg's side goes forward
   // A dribble touch: the foot swinging through as the touch comes turns to send the ball on. Straight ahead it is
   // the laces; to push the ball across it is the inside of one foot or the outside of the other.
-  const tw = dribble ? Math.max(sm((cyc - .78) / .2), 1 - sm(cyc / .12)) : 0, side = SIDE[(Math.floor(a.dist / TOUCH) + (cyc > .5 ? 1 : 0)) % 3];
+  const tw = dribble ? Math.max(sm((cyc - .78) / .2), 1 - sm(cyc / .12)) : 0, side = SIDE[(((Math.floor(dn) + (cyc > .5 ? 1 : 0)) % 3) + 3) % 3];
   const tf = Math.abs(frac(q1 - QT + .5) - .5) < .25 ? 1 : 0, wid = lerp(.1, .16, rd) + (carrying ? .02 : 0);
 
   for (let i = 0; i < 2; i++) { // plain loops: this runs for six players every frame
@@ -196,7 +211,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     if (tw && i === tf) { // the touch meets the ball: laces behind it (toes down), or the inside / outside of the foot on the side it pushes from
       x = lerp(x, clamp(bf - BALL - (side ? .07 : .12), .02, .3), tw * .8); y = lerp(y, bl - side * .12, tw * .8); z = Math.max(z, .1 * tw); turn -= side * (sgn === side ? .42 : .95) * tw; if (!side) p += .5 * tw;
     }
-    if (carrying && !kw && !(fW && i === fLeg) && bf > .1 && z < .32) x = lerp(x, Math.min(x, bf - BALL - (tw && i === tf ? .13 : .19)), sm((BALL + .1 - Math.abs(y - bl)) / .05)); // no foot goes into the ball
+    if (carrying && !kw && !(fW && i === fLeg) && (bf > .1 || turning) && z < .32) x = lerp(x, Math.min(x, bf - BALL - (tw && i === tf ? .13 : .19)), sm((BALL + .1 - Math.abs(y - bl)) / .05)); // no foot goes into the ball
     if (fe && sgn === fs && q > D) { const o = fe * Math.sin(Math.PI * (q - D) / (1 - D)); y += fs * .2 * o; z += .06 * o; turn += fs * .5 * o; }
     if (fW && i === fLeg) { x = lerp(x, fx, fW); y = lerp(y, fy - oy, fW); z = lerp(z, fz, fW); p = lerp(p, fp, fW); turn = lerp(turn, ft, fW); }
     if (kw) { // the kicking foot swings; the other is planted beside the ball
