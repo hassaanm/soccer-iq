@@ -1,19 +1,14 @@
 // The 3D world and the game that plays in it.
 import { $ } from './dom.js';
-import { P } from './store.js';
-import { artOf } from '../progress.js';
 import { hud } from './hud.js';
 import { say } from './speech.js';
 import { sfx } from '../sound.js';
 import { World } from '../world.js';
-import { ProWorld } from '../world-pro.js';
 import { Game } from '../game.js';
 
 export const canvas = $('#view');
-// The art style comes from the grown-ups menu; `?art=lowpoly` in the address tries one without saving it.
-const art = new URLSearchParams(location.search).get('art') || artOf(P.settings);
 let made;
-try { made = art === 'pro' ? new ProWorld(canvas, { art }) : new World(canvas, { art }); } catch (e) {
+try { made = new World(canvas); } catch (e) {
   document.body.innerHTML = '<p style="padding:24px;font:600 18px system-ui">This device can’t show 3D graphics (WebGL is off).</p>'; throw e;
 }
 export const world = made;

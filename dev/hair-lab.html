@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hair lab</title>
-<!-- A developer page: every 'pro' hairstyle on the real rig (head, face, ears, collar, hair as in the game).
+<!-- A developer page: every hairstyle on the real rig (head, face, ears, collar, hair as in the game).
   Query: view=front|three|side|back|top|game, skin=light|tan|mid|brown|dark, hair=<hex>, style=<name> (one big),
   light=day|night, styles=a,b,c (pick and order). -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
@@ -40,7 +40,7 @@ renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadow
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = night ? 1.1 : 1.05;
 renderer.setScissorTest(true);
 
-// The game's light (js/world-pro.js): by day a hemisphere light and a low warm sun; by night four floodlights.
+// The game's light (js/world.js): by day a hemisphere light and a low warm sun; by night four floodlights.
 const scene = new THREE.Scene();
 scene.environment = makeEnv(renderer, night ? { top: '#05070f', horizon: '#1a2748', ground: '#0e2a12', lamps: [[-30, -25, 26, '#eaf1ff', 40, 2.5], [30, 25, 26, '#eaf1ff', 40, 2.5]] }
   : { top: '#3f7fd8', horizon: '#f0dcc0', ground: '#3f6a30', lamps: [[10, -28, 15, '#ffe0b0', 60, 3]] });

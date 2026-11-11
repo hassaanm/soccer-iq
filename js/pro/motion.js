@@ -1,4 +1,4 @@
-// How the 'pro' players move. The game moves each player as a point at a steady speed; this file turns that
+// How the players move. The game moves each player as a point at a steady speed; this file turns that
 // into a body in motion. Each foot follows a path (planted on the grass while it carries him, then lifted and
 // swung through), the legs bend to reach their feet, steps get longer as he speeds up, and the whole body
 // leans into speeding up, slowing down and turning. On top of that he handles the ball: he times his steps so
@@ -6,11 +6,11 @@
 // foot to take a pass, puts his sole on the ball as he stops, and now and then sells a dummy. Standing, he
 // shifts his weight, breathes and moves his feet. Turning a joint by a positive y angle swings its part back.
 import * as THREE from 'three';
-import { lerp, TOUCH } from '../world.js';
 import { THIGH, SHIN, HALF } from './rig.js';
 
-const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, BALL = .125; // BALL: the ball's radius (world-pro.js)
-const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
+const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, BALL = .125; // BALL: the ball's radius (world.js)
+const TOUCH = 1.4; // metres between dribble touches (as in sim.js)
+const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), damp = (v, to, rate, dt) => v + (to - v) * (1 - Math.exp(-rate * dt));
 
 // The body's tilt for the player being posed (set by `animateRig`, read by `reach`).

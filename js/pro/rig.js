@@ -1,8 +1,8 @@
-// Player bodies for the 'pro' art style: a young athlete about six heads tall, with a separate shirt, shorts,
+// Player bodies: a young athlete about six heads tall, with a separate shirt, shorts,
 // socks and boots, knees and elbows that bend, and a soft light along his edges (rim light) so he stands out
 // from the grass. The body faces +x, z is up, and his left side is +y.
 import * as THREE from 'three';
-import { canvasTex, blobTex } from '../world.js';
+import { canvasTex, blobTex } from '../tex.js';
 import { addHair, jawX, jawY } from './hair.js';
 
 // The rim light's colour and strength, shared by every player; the world sets them for day or night.

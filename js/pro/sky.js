@@ -1,4 +1,4 @@
-// The sky of the 'pro' style, drawn per pixel on a big dome: three bands of colour from the horizon up, a warm
+// The sky, drawn per pixel on a big dome: three bands of colour from the horizon up, a warm
 // glow around the sun, and clouds made from layered noise that drift slowly. The clouds are bright at their thin
 // edges, darker in their thick middles, and catch the sun's colour on the side that faces it.
 import * as THREE from 'three';

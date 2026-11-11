@@ -1,4 +1,4 @@
-// Turns the flat grass picture into turf for the 'pro' style. Close to the camera you see single blades; a little
+// Turns the flat grass picture into turf. Close to the camera you see single blades; a little
 // further off, lighter and darker patches; the mown bands change strength with the side you look from, as real
 // ones do; and far grass seen at a low angle catches the light. All of it is worked out per pixel on the
 // graphics card from where the pixel is on the ground, so it costs no extra pictures.

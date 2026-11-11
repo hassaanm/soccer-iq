@@ -1,11 +1,11 @@
-// The training ground of the 'pro' style, on a sunny day: a white fence round the pitch, rounded trees, training
+// The training ground, on a sunny day: a white fence round the pitch, rounded trees, training
 // cones along one side, and soft green hills far away.
 import * as THREE from 'three';
 import { PITCH } from '../skills.js';
-import { canvasTex, CX, CY, UP } from '../world.js';
+import { canvasTex } from '../tex.js';
 import { shell } from './stadium.js';
 
-const { L, W } = PITCH;
+const { L, W } = PITCH, CX = L / 2, CY = W / 2, UP = new THREE.Vector3(0, 0, 1);
 
 export function buildPark(w) {
   const park = w.park;

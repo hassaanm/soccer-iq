@@ -1,4 +1,4 @@
-// The last steps of a 'pro' frame: bright things glow (bloom), then one pass sets the exposure, squeezes the
+// The last steps of a frame: bright things glow (bloom), then one pass sets the exposure, squeezes the
 // bright range into what a screen can show (tone curve), deepens the colours and darkens the corners a little.
 // The same pass splits the colours a hair toward the corners, as a camera lens does, and adds a grain too fine
 // to see that stops smooth skies from showing steps (banding).

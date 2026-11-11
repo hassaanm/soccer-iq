@@ -1,8 +1,11 @@
-// Light effects of the 'pro' style. `makeEnv` paints a small picture of the surroundings (sky, ground, the sun or
+// Light effects. `makeEnv` paints a small picture of the surroundings (sky, ground, the sun or
 // the four lamps) that boots, the ball and skin reflect. `buildBeams` adds what floodlights do to night air: a
 // soft cone of light from each tower and a wide streak across each lamp. `sunSprite` is the sun's glare by day.
 import * as THREE from 'three';
-import { canvasTex, CX, CY } from '../world.js';
+import { PITCH } from '../skills.js';
+import { canvasTex } from '../tex.js';
+
+const CX = PITCH.L / 2, CY = PITCH.W / 2;
 
 const DOME = {
   vertexShader: 'varying vec3 vD; void main() { vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',

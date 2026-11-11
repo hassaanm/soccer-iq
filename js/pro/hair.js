@@ -1,4 +1,4 @@
-// Hair for the 'pro' players, cut like a footballer's: short sides that fade to the skin and a shaped top.
+// Hair for the players, cut like a footballer's: short sides that fade to the skin and a shaped top.
 // Every style is one mesh (one draw call, plus a band or a tie in the kit's trim colour). It has two parts:
 // - the scalp: a thin sheet that hugs the head from a squared hairline (a line-up) to the crown. Its colours do
 //   the fade: skin low on the sides and back, then stubble, then full hair where the top starts.

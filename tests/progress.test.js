@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed, isOpen, skills, artOf } from '../js/progress.js';
+import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed, isOpen, skills } from '../js/progress.js';
 import { PATH } from '../js/skills.js';
 
 const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
@@ -144,12 +144,4 @@ test('once everything is gold and sure, training is still a full mix', () => {
   for (let i = 0; i < 200; i++) trainingPlan(p, PATH, { day: 103, builds: BUILDS }).forEach(id => seen.add(id));
   assert.ok(seen.size >= 12, `${seen.size} lessons seen`);
   assert.equal(trainingPlan(p, PATH, { day: 103, builds: BUILDS, rnd: seq(0) }).length, 3);
-});
-
-test('the art style is Stadium unless a grown-up picked another one after it became the default', () => {
-  assert.equal(artOf({}), 'pro');
-  assert.equal(artOf({ art: 'lowpoly' }), 'pro'); // saved before Stadium was the default: not a choice
-  assert.equal(artOf({ art: 'lowpoly', artPick: true }), 'lowpoly');
-  assert.equal(artOf({ art: 'smooth', artPick: true }), 'smooth');
-  assert.equal(artOf({ art: 'pro', artPick: true }), 'pro');
 });

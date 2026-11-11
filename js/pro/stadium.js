@@ -1,12 +1,13 @@
-// The night stadium of the 'pro' style: moving advert boards, one bowl of seats all the way round with a roof,
+// The night stadium: moving advert boards, one bowl of seats all the way round with a roof,
 // a few thousand fans, camera flashes, and four floodlight towers. Everything is built once; the fans and the
 // flashes then move inside the graphics card (the world only gives them the time and how excited the crowd is).
 import * as THREE from 'three';
 import { PITCH } from '../skills.js';
-import { canvasTex, WALLS, CX, CY } from '../world.js';
+import { canvasTex } from '../tex.js';
 
-const { L, W } = PITCH;
+const { L, W } = PITCH, CX = L / 2, CY = W / 2;
 const X0 = -6, X1 = L + 6, Y0 = -6, Y1 = W + 6; // the walls round the pitch
+const WALLS = [{ a: [X1, Y0], b: [X1, Y1], o: [1, 0] }, { a: [X0, Y1], b: [X0, Y0], o: [-1, 0] }, { a: [X1, Y1], b: [X0, Y1], o: [0, 1] }, { a: [X0, Y0], b: [X1, Y0], o: [0, -1] }];
 const ROWS = 14, off = r => 1.2 + r * .8, rz = r => 1.1 + r * .55, TOP = rz(ROWS - 1) + 4.6, LAMP = 26;
 export const TOWERS = [[X0 - 15, Y0 - 15], [X1 + 15, Y0 - 15], [X1 + 15, Y1 + 15], [X0 - 15, Y1 + 15]];
 
