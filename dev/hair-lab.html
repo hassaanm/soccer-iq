@@ -7,6 +7,8 @@
 <!-- A developer page: every hairstyle on the real rig (head, face, ears, collar, hair as in the game).
   Query: view=front|three|side|back|top|game, skin=light|tan|mid|brown|dark, hair=<hex>, style=<name> (one big),
   light=day|night, styles=a,b,c (pick and order).
+  Faces: face=1 shows six big heads with mixed skins, hair colours and styles (skin=, hair=, style= set them all;
+  dist=<m> moves the camera, at=<m> raises what it looks at).
   Bodies: body=1 frames whole players (n=4 side by side, the first is the hero, kits differ) in any view;
   pose=stand|run|shot|cheer freezes a pose made by the real animateRig (kt=<s> picks the moment of the shot,
   ph=<0-1> the moment of the stride, mt=<s> the moment of the cheer). pose also works with view=game. -->
@@ -33,7 +35,10 @@ const view = Q.get('view') || 'front', night = Q.get('light') === 'night';
 const SKIN = { light: '#f0c8a6', tan: '#d9a37a', mid: '#b07a52', brown: '#8a5a3a', dark: '#6b4429' };   // as in js/teams.js
 const HAIR = { light: '#5a4330', tan: '#2a1c12', mid: '#1b1410', brown: '#120c08', dark: '#120c08' };
 const skinK = SKIN[Q.get('skin')] ? Q.get('skin') : 'light', skin = SKIN[skinK], hair = Q.get('hair') ? '#' + Q.get('hair').replace('#', '') : HAIR[skinK];
-const styles = Q.get('style') ? [Q.get('style')] : Q.get('styles') ? Q.get('styles').split(',') : HAIR_STYLES;
+const faces = Q.get('face') === '1';   // [skin, hair, style] for each big head
+const FACES = [['light', '#5a4330', 'part'], ['tan', '#1b1410', 'crop'], ['dark', '#120c08', 'fade'], ['mid', '#1b1410', 'curls'], ['light', '#c9a46a', 'quiff'], ['brown', '#120c08', 'buzz']]
+  .map(([k, h, s]) => [Q.get('skin') ? skin : SKIN[k], Q.get('hair') ? hair : h, Q.get('style') || s]);
+const styles = faces ? FACES.map(f => f[2]) : Q.get('style') ? [Q.get('style')] : Q.get('styles') ? Q.get('styles').split(',') : HAIR_STYLES;
 const KITS = [{ pattern: 'stripes', colors: ['#fb090b', '#1b1b1f'], shorts: '#ffffff', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' },
   { pattern: 'solid', colors: ['#1e3a8a'], shorts: '#ffffff', socks: '#1e3a8a', num: '#ffffff', trim: '#fcd116' }];
 const BODY_KITS = [KITS[0], { pattern: 'solid', colors: ['#fcd116'], shorts: '#1e3a8a', socks: '#fcd116', num: '#1e3a8a', trim: '#1e3a8a' },
@@ -64,6 +69,7 @@ const labels = document.getElementById('labels');
 const label = (text, x, y) => { const d = document.createElement('div'); d.textContent = text; d.style.left = x + 'px'; d.style.top = y + 'px'; labels.appendChild(d); };
 const NAMES = ['SILVA', 'KANE', 'MBAPPE', 'PEDRI'];
 const player = (style, i) => body ? makeRig({ name: NAMES[i % 4], num: [7, 10, 9, 23][i % 4], skin: Object.values(SKIN)[(i * 2) % 5], hair, hairStyle: style }, BODY_KITS[i % 4], i === 0)
+  : faces ? makeRig({ name: 'LAB' + i, num: 7 + i, skin: FACES[i % 6][0], hair: FACES[i % 6][1], hairStyle: style }, KITS[i % 2], false)
   : makeRig({ name: 'LAB' + i, num: 7 + i, skin, hair, hairStyle: style }, KITS[i % 2], false);
 // Freezes a rig in a pose made by the real animateRig: a fake player and game run frame by frame. Returns how far
 // he moved, so the caller can put him back in his place.
@@ -83,8 +89,8 @@ function pose(g, kind, i) {
 const cam = new THREE.PerspectiveCamera(30, 1, .01, 200); cam.up.set(0, 0, 1);
 document.getElementById('info').textContent = `view=${view} skin=${skinK} hair=${hair}${night ? ' night' : ''}`;
 
-// The hair is every mesh in the head after the head itself and the two ears.
-function triCount(g) { let n = 0, calls = 0, k = 0; g.userData.head.traverse(o => { if (o.isMesh && ++k > 3) { calls++; n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } }); return [n, calls]; }
+// The hair is every mesh in the head after the head itself, the nose and the two ears.
+function triCount(g) { let n = 0, calls = 0, k = 0; g.userData.head.traverse(o => { if (o.isMesh && ++k > 4) { calls++; n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } }); return [n, calls]; }
 
 if (view === 'game') {
   // Whole players from a high camera behind play, small enough that a head is about 25-30 px tall.
@@ -136,7 +142,7 @@ if (view === 'game') {
   });
 } else {
   // One head per cell, framed the same way, each drawn in its own part of the canvas.
-  const n = styles.length, cols = n === 1 ? 1 : Math.ceil(Math.sqrt(n * W / H * .8)), rowsN = Math.ceil(n / cols), cw = W / cols, ch = (H - 24) / rowsN;
+  const n = styles.length, cols = n === 1 ? 1 : faces ? 3 : Math.ceil(Math.sqrt(n * W / H * .8)), rowsN = Math.ceil(n / cols), cw = W / cols, ch = (H - 24) / rowsN;
   const dir = { front: [1, 0, .08], three: [.75, .62, .2], side: [0, 1, .1], back: [-1, -.15, .15], top: [.45, .2, 1] }[view] || [1, 0, .08];
   const d = new THREE.Vector3(...dir).normalize(), cells = [];
   styles.forEach((s, i) => {
@@ -152,8 +158,8 @@ if (view === 'game') {
     renderer.setClearColor('#20242c'); renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H); renderer.clear();
     for (const c of cells) {
       for (const o of cells) o.g.visible = o === c;   // only this cell's player, so no one stands behind him
-      c.g.userData.head.getWorldPosition(h); h.z += .03;
-      cam.aspect = cw / ch; cam.fov = n === 1 ? 24 : 28; cam.position.copy(h).addScaledVector(d, .95); cam.lookAt(h); cam.updateProjectionMatrix();
+      c.g.userData.head.getWorldPosition(h); h.z += num('at', faces ? .01 : .03);
+      cam.aspect = cw / ch; cam.fov = n === 1 ? 24 : 28; cam.position.copy(h).addScaledVector(d, num('dist', faces ? .8 : .95)); cam.lookAt(h); cam.updateProjectionMatrix();
       renderer.setViewport(c.x, H - c.y - ch, cw, ch); renderer.setScissor(c.x, H - c.y - ch, cw, ch);
       renderer.setClearColor(night ? '#141a2c' : '#2b313b'); renderer.clear(); renderer.render(scene, cam);
     }

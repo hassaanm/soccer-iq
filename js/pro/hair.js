@@ -9,10 +9,32 @@ import * as THREE from 'three';
 const TAU = Math.PI * 2, V = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, sm = t => (t = clamp(t), t * t * (3 - 2 * t)), mix = (a, b, t) => a + (b - a) * t;
 
-// The head narrows below the ears (to the jaw, and at the back to the neck); hair that sits there narrows too.
-export const jawX = (x, z) => x * (1 - (x < 0 ? .2 : .06) * Math.max(0, -z) ** 2);
-export const jawY = (y, z) => y * (1 - .24 * Math.max(0, -z) ** 2);
-const bend = v => { const z = v.z / v.length(); v.x = jawX(v.x, z); v.y = jawY(v.y, z); return v; };
+// The head's shape: a ball down to the forehead, then rings every .1 down to the chin: [half width, depth to the
+// front, depth to the back, roundness at the front, at the back, how far forward its middle is] (roundness 2 is an
+// oval, higher is boxier). The face is flatter than a ball, with a slight brow; the cheeks narrow to a jaw that
+// turns forward under the ears to a firm chin; the back narrows to the neck.
+const RINGS = [[.917, .917, .917, 2, 2, 0], [.954, .96, .954, 2, 2, 0], [.972, .99, .975, 2.1, 2, 0], [.975, 1.01, .99, 2.2, 2, 0], [.96, .97, .995, 2.3, 2, 0],
+  [.945, .968, .985, 2.3, 2, 0], [.925, .966, .955, 2.3, 2, 0], [.9, .955, .9, 2.3, 2, 0], [.872, .94, .78, 2.3, 2, 0], [.845, .895, .62, 2.4, 2, .02],
+  [.8, .8, .46, 2.5, 2, .06], [.66, .66, .3, 2.5, 2, .18], [.44, .41, .23, 2.3, 2, .33], [0, 0, 0, 2, 2, .4], [0, 0, 0, 2, 2, .4]];
+const ring = z => {   // the ring at height z (from .4 down to -1), smoothly between the rows
+  const u = clamp((.4 - z) * 10, 0, 13.999), i = Math.floor(u), t = u - i, at = k => RINGS[Math.max(0, Math.min(14, k))];
+  return at(i).map((_, j) => { const p0 = at(i - 1)[j], p1 = at(i)[j], p2 = at(i + 1)[j], p3 = at(i + 2)[j]; return p1 + .5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0))); });
+};
+const inside = (x, y, z) => {
+  if (z >= .4) return x * x + y * y + z * z < 1;
+  if (z <= -1) return false;
+  const [w, f, b, nf, nb, cx] = ring(z), dx = x - cx, d = dx > 0 ? f : b, n = dx > 0 ? nf : nb;
+  return w > 1e-4 && d > 1e-4 && (Math.abs(dx) / d) ** n + (Math.abs(y) / w) ** n < 1;
+};
+// Moves a point v along its line from the middle of the head, from a ball (of radius |v|) onto the head. Hair goes
+// through it too, so it sits on the head.
+export function headAt(v) {
+  const l = v.length(), x = v.x / l, y = v.y / l, z = v.z / l;
+  let lo = .2, hi = 1.6;
+  for (let k = 0; k < 22; k++) { const t = (lo + hi) / 2; if (inside(x * t, y * t, z * t)) lo = t; else hi = t; }
+  return v.multiplyScalar((lo + hi) / 2);
+}
+const bend = headAt;
 
 // The hairline: [angle round from the front, angle up from the level of the ears], straight lines between the
 // points: straight across the forehead, a square corner at each temple, a short sideburn, round the ear, and
