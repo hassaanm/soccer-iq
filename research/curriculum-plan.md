@@ -49,6 +49,7 @@ Concepts that several schools teach at 5–8 and that a child can decide in a fr
 | Peek before the ball comes, then turn away from pressure | Barça (Vila: "learning how to look"), futsal research | 5–8 | Peek, then turn! (new) |
 | Don't stand by the ball; go where a pass can reach you | JFA, US Soccer, DFB, Wein | 6–8 | Get open! |
 | Pass to the free friend | US Soccer, JFA, RBFA (5v5) | 7–8 | Pass to the open friend |
+| Friend running? Pass it in front of him, where he is going | US Youth Soccer (U8 passing in pairs), youth coaching guides | 6–8 | Pass in front! (added Nov 11) |
 | Pass and move (simple combinations) | FA ("combine"), US Soccer ("short combinations") | 7–8 | Pass and go! (new) |
 | Guard the player nobody is guarding | JFA, FA (covering) | 7–8 | Guard the open player |
 | 1v1 defending: get close, wait, steal it when it's loose | FA ("1v1 defending", "delaying"), Coerver | 7–8 | Steal it! (new) |
@@ -77,11 +78,12 @@ check was dropped in the first pass and added back in the second (see below).
 | 9 | Two defenders? Pass! 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to an open friend." |
 | 10 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
 | 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
-| 12 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past him to get it back!" |
+| 12 | Pass in front! 🏃 | attack | lead, lead, lead-free | "Your friend is running? Pass it in front of him!" |
+| 13 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past him to get it back!" |
 | **Chapter 4: Our team (7–8)** | | | | |
-| 13 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
-| 14 | Guard the open player 🛡️ | defense | mark-free, mark-free, gs-covered | "Find the player nobody is guarding." |
-| 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
+| 14 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
+| 15 | Guard the open player 🛡️ | defense | mark-free, mark-free, gs-covered | "Find the player nobody is guarding." |
+| 16 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
 
 **Why this order**
 
@@ -302,3 +304,21 @@ of the plays where he gets in front of the attacker), so play keeps flowing.
 - **Today's training replaces PLAY.** It picks 3 lessons (2 rounds each, mixed). Lessons he missed lately always come back (up to 2). The rest are weighted by how overdue the review is and whether the lesson is below gold. Lessons included in later ones (`BUILDS` in skills.js, for example Look up) count as practiced when those come up, so they rarely get their own turn. The opening card reminds him of the 3 ideas. All right on a due lesson adds a star; all missed shortens its review gap.
 - **Match and Cup open for the day** after a lesson or training session. The grown-ups menu has "Match and Cup always open" to skip this.
 - **Cups:** World Cup, Champions League, Club World Cup, Euros, Copa América, FA Cup, Supercopa. Each is a knockout (QF, SF, final first to 3); a lost match is replayed. Won cups go in the sticker album. 17 teams were added (53 in all) so every cup has enough entrants.
+
+## Pass in front! (lead pass, added Nov 11)
+
+- **Why:** a pass to a friend who is running has to go where he will be, not where he is. Coaches say it to
+  young players in nearly these words: "pass to where they're going, not where they are", and a US Youth
+  Soccer U8 passing handout says to pass to his feet if he is standing, a little in front of him if he is
+  running. It is also the return pass in "Pass and go!", so it sits right before that lesson, after "Pass to
+  the open friend" (who to pass to comes before where to put it).
+- **The round:** he has the ball; a free friend is running up the field and the play freezes mid-run, with a
+  white arrow showing which way the friend runs. He taps one of three gold spots: in front of the friend (3★:
+  he runs onto it without slowing down and goes to goal), at his feet (by the time the ball gets there he is
+  past it and has to stop and come back: a defender chasing him takes it, or with nobody near he keeps it but
+  the defenders are back, 2★), or far ahead (it runs away from him to their last defender). The spot in front is
+  worked out from his speed and the ball's speed, so he really takes it in stride.
+- **Variety:** friend on the left or right, straight or slightly diagonal runs, different distances, a
+  defender chasing him (main) or nobody near him (contrast), sometimes near their goal.
+- **Saved games:** lessons that were open before it was added stay open (`catchUp` in `js/progress.js`).
+- Sources: [US Youth Soccer U8 passing in pairs (league handout)](https://clubs.bluesombrero.com/Portals/51188/docs/Sports%20Connect-Otero%20County%20Youth%20Soccer%20League-Documents/u8_passing_in_pairs.pdf), [youth coaching tips, ages 4–8](https://www.soccerxpert.com/tips/details/youth-soccer-coaching-4-8-year-olds).

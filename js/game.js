@@ -63,6 +63,7 @@ export class Game {
     this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null;
     this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
+    if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
   }
   // Which way he faces at the start of a spot round: toward the ball, turned so the ball and every spot are on
   // screen when they fit. Otherwise the right spot would often be the one he has to turn to find, and he could
@@ -145,7 +146,8 @@ export class Game {
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
     if (this.ai) this.teamAI();
-    const held = this.phase === 'feedback' || (this.sc?.kind === 'receive' && this.phase === 'decide'); // a pass on its way waits while he peeks
+    // A pass on its way waits while he peeks; a friend running stays frozen mid-run until the pass is played.
+    const held = this.phase === 'feedback' || (this.sc?.kind === 'receive' && this.phase === 'decide') || (this.sc?.kind === 'lead' && this.mode !== 'home' && (this.phase === 'decide' || this.phase === 'idle'));
     if (!held) this.sim.step(dt);
     if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null && Math.abs(wrap(this.yaw - this.yaw0)) > 1.4) this.peeked = true;
 

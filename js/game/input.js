@@ -45,7 +45,7 @@ export const input = {
   },
 
   // Shooting is offered when he is close enough to goal to have a real chance.
-  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !facesBall(this.sc) && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); },
+  get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !facesBall(this.sc) && this.sc?.kind !== 'lead' && !!h && h.x > L - (this.sc?.skill === 'shoot-close' ? 18 : 13); },
   shoot() { if (this.canAct && this.canShoot && !this.locked) this.choose('shoot'); },
   // The two turns as curved arrows around his feet: each starts just to one side of facing the ball and sweeps
   // around through that shoulder to the way the turn takes him (sc.turns). The facing is fixed for the round

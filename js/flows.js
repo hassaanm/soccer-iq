@@ -61,6 +61,7 @@ const countRight = results => `${results.filter(Boolean).length} of ${results.le
 const howTo = (sk, hero) => sk.id === 'steal-it' ? `You are ${hero}, defending. Tap STEAL when the ball rolls away from his feet.`
   : sk.id === 'peek-and-turn' ? `You are ${hero}. A friend passes to you. Drag to peek behind you, then tap the arrow to turn.`
   : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
+  : sk.id === 'lead-pass' ? `You are ${hero}. A friend is running. Tap 👀 to look up, then tap where to pass.`
   : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
   : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
 const runLesson = flow(async () => {

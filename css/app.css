@@ -147,6 +147,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #hud.showing[data-kind=tackle] #stealBtn{display:flex}
 #hud.shoot #shootBtn{display:flex}
 #hud:is([data-kind=defense],[data-kind=support]) :is(#passBtn,#dribBtn){display:none!important}
+#hud[data-kind=lead] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 #hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}
 #hud[data-kind=receive] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 /* The chosen action stays pressed in; tap the other one to switch. */

@@ -136,7 +136,7 @@ export const live = {
   praise(opt) {
     const r = this.rating(opt); if (r !== 'best' && r !== 'ok') return;
     const k = this.sc.kind, word = k === 'receive' ? (this.peeked ? 'Nice peek! 👀' : 'Nice turn!') : k === 'support' ? 'Great run!' : k === 'defense' ? 'Good defending!'
-      : k === 'tackle' ? null : opt === 'shoot' ? null : opt.startsWith('pass:') ? 'Nice pass!' : opt.startsWith('push:') ? 'Into space! 💨' : 'Great dribble!';
+      : k === 'tackle' ? null : opt === 'shoot' ? null : opt.startsWith('pass:') || k === 'lead' ? 'Nice pass!' : opt.startsWith('push:') ? 'Into space! 💨' : 'Great dribble!';
     if (word) this.hud.toast(word);
   },
 

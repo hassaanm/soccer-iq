@@ -6,7 +6,7 @@ import { dist, closestOnLane, DRIBBLE_DIRS } from '../js/geom.js';
 export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d => 'drib:' + d)];
 // Every choice a scenario offers: spots on defense; passes, dribbles (and big pushes in the dribble lesson) on attack.
 export function optionsFor(sc) {
-  if (sc.kind === 'defense' || sc.kind === 'support') return sc.spots.map(s => 'spot:' + s.id);
+  if (sc.kind === 'defense' || sc.kind === 'support' || sc.kind === 'lead') return sc.spots.map(s => 'spot:' + s.id);
   if (sc.kind === 'tackle') return ['tackle:good', 'tackle:early', 'tackle:tight', 'tackle:none'];
   if (sc.kind === 'receive') return ['turn:L', 'turn:R'];
   const push = sc.skill === 'dribble-to-space' || sc.skill === 'won-it-go' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];

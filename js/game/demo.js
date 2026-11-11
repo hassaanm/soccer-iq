@@ -108,6 +108,9 @@ export const demo = {
     } else if (sc.kind === 'tackle') {
       this.step = 'tackle'; this.hint = true;
       await this.talk('Watch the ball.', .4, 'Watch the ball… 👀');
+    } else if (sc.kind === 'lead') { // he finds his friend running, and sees where he is going
+      await this.lookAround(this.yaw, 1.1);
+      await this.talk(`${this.name('m1')} is running!`, .8);
     } else if (spotKind(sc)) {
       await this.lookAround(this.yaw, 1.1);
       const q = sc.kind === 'support' ? 'Where is the space? 👀' : 'See who is open? 👀';

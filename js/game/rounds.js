@@ -1,7 +1,7 @@
 // One decision round: the run-up, the moment he chooses, and how good each choice is. Around it, the lesson
 // loop: play the choice, show why a wrong one failed, replay the better way, and let him try again.
 import { dist, dribbleEnd } from '../geom.js';
-import { grade, pushEnd } from '../generate.js';
+import { grade, pushEnd, LEAD } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
 import { pickFoot } from './outcomes.js';
 
@@ -12,6 +12,7 @@ export const rounds = {
     const sc = this.sc, s = this.sim;
     if (sc.intro === 'won') return this.wonIntro();
     if (sc.kind === 'receive') return this.passIn();
+    if (sc.kind === 'lead') return this.runIn();
     s.go('hero', ...sc.heroTo, 3.6);
     if (sc.kind === 'defense') s.go(sc.carrier, ...sc.oppsTo[0], 3);
     (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
@@ -44,6 +45,17 @@ export const rounds = {
     s.kick(hx - .45, hy, { speed: 6.5, arc: .05 }); await this.delay(.4);
     s.stopAll();
   },
+  // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the play
+  // freezes mid-run, everyone exactly where the scenario put them, so the spots match the run.
+  async runIn() {
+    const sc = this.sc, s = this.sim;
+    s.go('hero', ...sc.heroTo, 3.6); sc.oppsTo.forEach((p, i) => s.go('o' + (i + 1), ...p, 3)); this.leadRun();
+    await this.delay(LEAD.pre);
+    s.stopAll(); for (const [id, mv] of Object.entries(sc.moves)) Object.assign(s.a(id), { x: mv.at[0], y: mv.at[1] });
+    this.leadRun(); this.phase = 'idle'; // held still (see tick) until he plays the pass
+  },
+  // The players running in a lead-pass round go on with their runs (also after a replay puts them back).
+  leadRun() { for (const [id, mv] of Object.entries(this.sc.moves || {})) Object.assign(this.sim.a(id), { tx: mv.to[0], ty: mv.to[1], speed: mv.speed, sp: mv.speed }); },
 
   decide() {
     this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
@@ -114,7 +126,7 @@ export const rounds = {
     const sc = this.sc, save = this.sim.save(), yawSave = this.yaw;
     // After a replay the round starts over facing the same way as before (toward the ball on a receive or on
     // defense), not up the field.
-    const restart = () => { this.sim.restore(save); this.reset(); this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); };
+    const restart = () => { this.sim.restore(save); this.reset(); this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
     for (let attempt = 1; ; attempt++) {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
@@ -122,7 +134,7 @@ export const rounds = {
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
-      const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : 'Great choice!';
+      const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
       const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
@@ -155,7 +167,7 @@ export const rounds = {
       const y = this.yaw; this.sim.restore(save); this.reset(); this.yaw = y; this.camMode = 'player'; this.phase = 'feedback';
       await this.talk(this.cue(), 1.5); return;
     }
-    this.sim.restore(save); this.reset(); this.camMode = 'overview'; this.phase = 'feedback';
+    this.sim.restore(save); this.reset(); this.camMode = 'overview'; this.phase = 'feedback'; this.leadRun();
     const ball = { x: this.sim.ball.x, y: this.sim.ball.y }, bad = this.target(opt), best = this.target(this.sc.best);
     this.lines = [{ a: ball, b: { x: bad.x, y: bad.y }, color: '#e5484d' }, { a: ball, b: { x: best.x, y: best.y }, color: '#30a46c' }];
     this.aimAt = { x: (bad.x + best.x) / 2, y: (bad.y + best.y) / 2 };

@@ -29,10 +29,11 @@ The path, chapters and reasons are in `research/curriculum-plan.md`. Each lesson
 | 9 | Two shirts? Let it go! 🚧 | attack | trap / trap-one | two defenders: pass to the free friend |
 | 10 | Get open! 🙋 | off the ball | shadow / spread / stay-open | move to where a pass can reach you |
 | 11 | Pass to the open friend 🎯 | attack | marked / one-open / carry | the friend with nobody next to him |
-| 12 | Pass and go! 🔁 | attack, then off the ball | give-go / give-go-ahead | pass to the wall friend, then run past the defender |
-| 13 | Only one bee chases 🐝 | defense | one-goes / you-go / gs-covered | a friend is on the ball: guard the open player; nobody is: you go |
-| 14 | Guard the open player 🛡️ | defense | mark-free / gs-covered | stand goal-side of the free attacker |
-| 15 | Forward first ⬆️ | attack | forward / two-open / carry / shot-open | forward open friend (3★) beats the safe back pass (2★) |
+| 12 | Pass in front! 🏃 | attack (tap a spot) | lead / lead-free | friend running: pass in front of him, where he is going (at his feet: he has to stop; too far: their defender gets it) |
+| 13 | Pass and go! 🔁 | attack, then off the ball | give-go / give-go-ahead | pass to the wall friend, then run past the defender |
+| 14 | Only one bee chases 🐝 | defense | one-goes / you-go / gs-covered | a friend is on the ball: guard the open player; nobody is: you go |
+| 15 | Guard the open player 🛡️ | defense | mark-free / gs-covered | stand goal-side of the free attacker |
+| 16 | Forward first ⬆️ | attack | forward / two-open / carry / shot-open | forward open friend (3★) beats the safe back pass (2★) |
 
 ## Replay
 

@@ -6,7 +6,7 @@ import { allScenarios } from '../js/skills.js';
 import { TEAMS } from '../js/teams.js';
 import { OPTIONS } from './harness.js';
 
-const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first']);
+const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first']);
 function makeGame(skills = ALL) {
   const events = [];
   const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] };
@@ -355,5 +355,27 @@ test('peek and turn: the arrows go around his body, even if he looked away befor
       return gm.sc.best;
     }, 60, g2 => { if (g2.phase === 'pre') g2.yaw = 1.2; }); // he looks away while the pass comes
     assert.ok(checked);
+  }
+});
+
+test('pass in front!: the play freezes mid-run; in front he takes it in stride, to his feet it lands behind him', async () => {
+  const { generate } = await import('../js/generate.js');
+  for (let seed = 1; seed <= 8; seed++) for (const opt of ['spot:lead', 'spot:feet']) {
+    const sc = generate('lead-pass', seed), { g, events } = makeGame();
+    g.mode = 'lesson'; g.load(sc); await drive(g, g.pre(), () => null);
+    const p = g.decide(), m = g.sim.a('m1'), at = { x: m.x, y: m.y };
+    for (let i = 0; i < 20; i++) g.tick(1 / 30, 50 + i / 30);
+    assert.ok(Math.hypot(m.x - at.x, m.y - at.y) < .01, `${sc.id}: the runner moved while he decides`);
+    assert.equal(g.rating('spot:lead'), 'best'); assert.equal(g.rating('spot:feet'), sc.pattern === 'lead-free' ? 'safe' : 'bad'); assert.equal(g.rating('spot:far'), 'bad');
+    g.choose(opt); await p;
+    const [dx, dy] = sc.dir, b = g.sim.ball; let took = null, behind = null;
+    await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 20, gm => {
+      if (took === null && b.carrier === 'm1') took = m.speed;
+      if (behind === null && b.state === 'loose' && opt === 'spot:feet') behind = (b.x - m.x) * dx + (b.y - m.y) * dy;
+    });
+    if (opt === 'spot:lead') assert.ok(took >= 5, `${sc.id}: he slowed down to take it (${took} m/s)`); // full run, then on to goal at 5.2
+    else assert.ok(behind < -1.5, `${sc.id}: the ball was not behind him (${behind})`);
+    const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
+    assert.ok(opt === 'spot:lead' ? ends.some(e => e === 'GOAL!' || e === 'Kept the ball!') : ends.includes(sc.pattern === 'lead-free' ? 'Kept the ball!' : 'Stolen!'), `${sc.id} ${opt}: ${ends}`);
   }
 });

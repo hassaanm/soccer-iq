@@ -481,6 +481,63 @@ function receive(r, pattern, high = false) {
   return { ...sc, best: 'turn:' + (s > 0 ? 'L' : 'R'), ok: ['turn:' + (s > 0 ? 'R' : 'L')], cue: 'Nobody was behind you. Peek, then turn and go!' };
 }
 
+// ---------- passing in front of a running friend (a lead pass) ----------
+// m1 is running up the field into open space, and the play freezes mid-run. The child taps where the pass goes:
+// in front of him, where he will be when the ball gets there ('lead', the right answer: he takes it without
+// slowing down); where he is now ('feet': by the time it arrives he is past it, so he stops and comes back); or
+// far ahead ('far': it runs away from him to their last defender). In 'lead' a defender chases him, so the pass
+// to his feet is lost; in 'lead-free' nobody is near him, so it is kept, but he had to stop (2 stars).
+export const LEAD = { pre: 1.3, kick: .2, speed: 12 }; // run-up seconds, wind-up seconds, pass speed (m/s)
+// Where a pass from `h` meets a runner at `f` going `d` (unit) at `v` m/s: half a step in front of where he is
+// when the ball gets there. `t` is when that is, counted from the moment he decides.
+export function leadPoint(h, f, d, v) {
+  let t = LEAD.kick + .5, T = null;
+  for (let i = 0; i < 8; i++) {
+    T = { x: f.x + d.x * (v * t + .45), y: f.y + d.y * (v * t + .45) };
+    const l = dist(h, T) || 1, b = { x: h.x + (T.x - h.x) / l * .4, y: h.y + (T.y - h.y) / l * .4 }; // the ball sits just in front of him
+    t = LEAD.kick + dist(b, T) / LEAD.speed;
+  }
+  return { ...T, t };
+}
+function lead(r, pattern, high = false) {
+  const side = pick(r, [1, -1]), H = { x: high ? 11 + r() * 3 : 6 + r() * 5, y: clamp(W / 2 - side * r() * 4, 3, W - 3) };
+  const ang = -side * (r() * .75 - .3), d = { x: Math.cos(ang), y: Math.sin(ang) };   // straight up, a little out, or in toward the middle
+  const inX = side * d.y, inY = -side * d.x;                                         // sideways toward the middle (his side)
+  const v = 4.8 + r() * .6, F = { x: H.x + .5 + r() * 2.5, y: H.y + side * (4.5 + r() * 3) };
+  const T = leadPoint(H, F, d, v), farK = 4.5 + r() * 1.5, far = { x: T.x + d.x * farK, y: T.y + d.y * farK };
+  const along = (p, k) => [p.x + d.x * k, p.y + d.y * k];
+  const room = k => inPitch(along(F, k), 1); let run = 0; while (run < 14 && room(run + .5)) run += .5; // how far he can run before the edge
+  if (run < dist(F, far) + 1) return null;
+  const S = along(F, -v * LEAD.pre), hero = [H.x, H.y], heroTo = hero;
+  const pa = -side * (.25 + r() * .5), pd = 1.9 + r() * .4, o1 = [H.x + Math.cos(pa) * pd, H.y + Math.sin(pa) * pd]; // presser, away from the runner
+  const ka = 1 + r() * .6, ki = r() * .9 - .3, o3 = [far.x + d.x * ka + inX * ki, far.y + d.y * ka + inY * ki];      // their last defender, deep, just past the far spot
+  const m2 = [H.x - 3.5 - r() * 2, H.y - side * (3 + r() * 2)];                                                                         // the other friend, behind on the other side
+  const moves = { m1: { at: [F.x, F.y], to: along(F, run), speed: v } };
+  let o2, o2s;
+  if (pattern === 'lead') { // a defender runs after him, a step or two behind and inside
+    const vc = 4.3 + r() * .3, back = 1.5 + r() * .7, k = .5 + r() * .5;
+    o2 = [F.x - d.x * back + inX * k, F.y - d.y * back + inY * k]; o2s = [o2[0] - d.x * vc * LEAD.pre, o2[1] - d.y * vc * LEAD.pre];
+    moves.o2 = { at: o2, to: [o2[0] + d.x * (run - 1), o2[1] + d.y * (run - 1)], speed: vc };
+  } else { o2 = [clamp(H.x + 8 + r() * 4, 3, L - 3), W / 2 - side * (3 + r() * 3)]; o2s = o2; } // nobody near him: their other defender is across the field
+  const P2 = ([x, y]) => ({ x, y }), opps = [o1, o2, o3].map(P2), spots = [{ id: 'lead', p: T }, { id: 'feet', p: F }, { id: 'far', p: far }];
+  if (![S, hero, [H.x - 3, H.y], o1, o2, o2s, o3, m2, ...spots.map(s => [s.p.x, s.p.y])].every(p => inPitch(p, 1.2))) return null;
+  if (T.x > L - 7 || far.x > L - 2.5) return null;                                     // not so close to goal that a shot is the answer
+  // Every pass lane is clear of defenders, except the defender the play is about, and the other friend is out of the way.
+  const lane = (o, s, t0 = .1) => closestOnLane(o, H, s.p, t0).d;
+  if (spots.some(s => lane(opps[0], s) < 1.5 || lane(P2(m2), s, 0) < 2 || dist(P2(m2), s.p) < 2.5)) return null;
+  if (lane(opps[2], spots[0]) < 2 || dist(opps[2], T) < 3.5 || lane(opps[1], spots[0]) < 1.3 || lane(opps[1], spots[2]) < 1.3) return null;
+  if (spots.some((s, i) => spots.some((t, j) => j > i && dist(s.p, t.p) < 2.4))) return null;
+  // Timing, with the same speeds the play uses. In front: he gets there first, clearly. Far: their last defender does.
+  const reach = o => dist(o, T) / DEF_RUN + .3, tFeet = LEAD.kick + dist(H, F) / LEAD.speed;
+  if (opps.some(o => reach(o) < T.t + .4)) return null;
+  if (dist(opps[2], far) / DEF_RUN + .3 > dist(F, far) / v - .5) return null;
+  if (pattern === 'lead' && dist(opps[1], F) / 5 + .1 > tFeet) return null;              // to his feet: the chaser gets there before the ball
+  if (pattern === 'lead-free' && opps.some(o => dist(o, F) / DEF_RUN + .3 < tFeet + .8)) return null; // nobody can get to it before he comes back for it
+  return { kind: 'lead', hero: [H.x - 3, H.y], heroTo, mates: [S, m2], opps: [[o1[0] + .8, o1[1]], o2s, o3], oppsTo: [o1, o2, o3], moves, dir: [d.x, d.y],
+    spots: spots.map(s => ({ id: s.id, x: s.p.x, y: s.p.y })), best: 'spot:lead', ok: [], safe: pattern === 'lead-free' ? ['spot:feet'] : [],
+    cue: 'Pass it in front of {m0}, where he is going!' };
+}
+
 const goalSideOf = (p, k) => { const dx = L - p[0], dy = W / 2 - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + dx / l * k, p[1] + dy / l * k]; }; // their goal is at x = L
 
 const PATTERNS = {
@@ -489,6 +546,7 @@ const PATTERNS = {
   'see-the-trap': ['trap', 'trap', 'trap-one'],
   'take-him-on': ['trap-one', 'trap-one', 'carry', 'trap'],
   'pass-to-open': ['marked', 'marked', 'one-open', 'carry'],
+  'lead-pass': ['lead', 'lead', 'lead-free'],
   'forward-first': ['forward', 'forward', 'two-open', 'carry', 'shot-open'],
   'dribble-to-space': ['space-far', 'space-near', 'space-behind', 'space-friend'],
   'get-goal-side': ['goal-side', 'you-go', 'goal-side'],
@@ -506,7 +564,7 @@ function swapMates(sc) {
   return { ...sc, mates: [sc.mates[1], sc.mates[0]], best: swap(sc.best), ok: (sc.ok || []).map(swap), safe: (sc.safe || []).map(swap),
     cue: sc.cue.replace(/\{m([01])\}/g, (_, i) => `{m${1 - i}}`) };
 }
-const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']), SUPPORT = new Set(['shadow', 'spread', 'stay-open']), TACKLE = new Set(['steal', 'steal-fast', 'steal-big']), RECEIVE = new Set(['peek-turn', 'peek-open']);
+const DEFENSE = new Set(['goal-side', 'gs-covered', 'one-goes', 'you-go', 'mark-free']), SUPPORT = new Set(['shadow', 'spread', 'stay-open']), TACKLE = new Set(['steal', 'steal-fast', 'steal-big']), RECEIVE = new Set(['peek-turn', 'peek-open']), LEADS = new Set(['lead', 'lead-free']);
 export const generates = id => !!PATTERNS[id];
 export const mainPattern = id => PATTERNS[id]?.[0];
 // The demo for a lesson: always its main pattern (never a contrast round), and for passes, a friend ahead or wide
@@ -531,8 +589,8 @@ export function generate(skill, seed, { even = false, pattern: want = null } = {
   const first = Math.floor(r() * pats.length), high = r() < .3; // about 3 in 10 scenes happen near their goal (where it fits)
   for (let i = 0; i < 4000; i++) {
     const pattern = i < 3000 ? pats[first] : pats[Math.floor(r() * pats.length)];
-    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : TACKLE.has(pattern) ? tackle(r, pattern) : RECEIVE.has(pattern) ? receive(r, pattern, high) : attack(r, pattern, high);
-    const fixed = DEFENSE.has(pattern) || SUPPORT.has(pattern) || TACKLE.has(pattern) || RECEIVE.has(pattern) || pattern === 'give-go' || pattern === 'give-go-ahead'; // give-and-go's step 2 depends on which friend is the wall
+    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : TACKLE.has(pattern) ? tackle(r, pattern) : RECEIVE.has(pattern) ? receive(r, pattern, high) : LEADS.has(pattern) ? lead(r, pattern, high) : attack(r, pattern, high);
+    const fixed = DEFENSE.has(pattern) || SUPPORT.has(pattern) || TACKLE.has(pattern) || RECEIVE.has(pattern) || LEADS.has(pattern) || pattern === 'give-go' || pattern === 'give-go-ahead'; // give-and-go's step 2 depends on which friend is the wall; the runner is always m1
     if (sc) return { ...(fixed || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
   }
   return null;

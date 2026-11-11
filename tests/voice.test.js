@@ -24,7 +24,7 @@ test('everything said in demos and lessons has a recorded clip', async () => {
   const { g } = makeGame(); g.say = t => said.push(t);
   const { generate } = await import('../js/generate.js');
   for (const sk of PATH) for (let seed = 1; seed < 6; seed++) {
-    const sc = generate(sk.id, seed), opts = sc.kind === 'defense' ? sc.spots.map(s => 'spot:' + s.id) : ['pass:0', 'pass:1', 'drib:back', 'drib:fwd'];
+    const sc = generate(sk.id, seed), opts = sc.kind === 'defense' || sc.kind === 'lead' ? sc.spots.map(s => 'spot:' + s.id) : ['pass:0', 'pass:1', 'drib:back', 'drib:fwd'];
     let n = 0; await drive(g, g.round(sc, { hint: false }), { maxSec: 120, pick: gm => (n++ < 1 ? opts.find(o => gm.rating(o) !== 'best') : null) || gm.sc.best });
   }
   for (const t of said) assert.deepEqual(missing(t), [], t);

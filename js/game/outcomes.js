@@ -1,7 +1,7 @@
 // Outcome scripts: what happens on the pitch after his choice (pass, dribble, push, shot, run, steal), up to the
 // banner that ends the play. The scripts move the players in `scripted`; the team AI moves everyone else.
 import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } from '../geom.js';
-import { pushEnd, DEF_RUN, takeOn } from '../generate.js';
+import { pushEnd, DEF_RUN, takeOn, LEAD } from '../generate.js';
 import { L, W, gy0, gy1, MATE, faceTo } from './shared.js';
 
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
@@ -376,6 +376,47 @@ export const outcomes = {
     s.give(id); this.result = 'passed'; yield .2;
   },
 
+  // "Pass in front!": everyone goes on from the freeze, and the pass goes to the spot he tapped (see generate.js lead()).
+  // In front: his friend runs onto it without slowing down and goes on to goal. To his feet: by the time it
+  // arrives he is past it, so he stops and comes back; a defender chasing him gets there first, else he keeps it
+  // but the defenders are back. Far ahead: it runs away from him to their last defender.
+  *leadGen(spotId) {
+    const s = this.sim, sp = this.sc.spots.find(x => x.id === spotId), m = s.a('m1'), [dx, dy] = this.sc.dir, chaser = this.sc.moves.o2 && s.a('o2');
+    this.ai = false; for (const a of s.agents.values()) this.scripted.add(a.id);
+    s.stopAll(); this.leadRun();
+    yield* this.strike('hero', sp.x, sp.y, { speed: LEAD.speed, arc: .1 });
+    if (spotId === 'lead') {
+      yield () => s.ball.state === 'loose' || (s.ball.z < .5 && dist(m, s.ball) < .55);
+      // Caught out by the run: their deep defender holds his spot, and the chaser keeps chasing a step behind.
+      s.give('m1'); if (chaser) s.go(chaser.id, L - 4, W / 2, this.sc.moves.o2.speed);
+      yield* this.finish('m1'); return;
+    }
+    // He only sees where it is going once it is on its way: he runs on a moment, then pulls up.
+    if (chaser && spotId === 'feet') s.go(chaser.id, sp.x, sp.y, 5);
+    const deep = s.a('o3'); if (spotId === 'far') s.go(deep.id, sp.x, sp.y, DEF_RUN);
+    yield .25; s.go('m1', m.x + dx * .8, m.y + dy * .8, 2.4);
+    if (chaser && spotId === 'far') { const k = Math.max(0, (m.x - chaser.x) * dx + (m.y - chaser.y) * dy - .4); s.go(chaser.id, chaser.x + dx * k, chaser.y + dy * k, 2.4); } // he pulls up a step behind him
+    yield .3;
+    if (spotId === 'far') {
+      s.stop('m1'); yield () => s.ball.state === 'loose';
+      const t0 = s.time; yield () => dist(deep, s.ball) < .7 || s.time - t0 > 1;
+      yield* this.steal(deep); return;
+    }
+    // To his feet: he turns and comes back for it.
+    s.go('m1', sp.x + dx * (chaser ? 1.6 : .5), sp.y + dy * (chaser ? 1.6 : .5), chaser ? 3 : 4);
+    if (chaser) {
+      yield () => s.ball.state === 'loose';
+      const t0 = s.time; yield () => dist(chaser, s.ball) < .7 || s.time - t0 > 1;
+      s.stop('m1'); yield* this.steal(chaser); return;
+    }
+    const t0 = s.time; yield () => (s.ball.state !== 'flying' && dist(m, s.ball) < .7) || s.time - t0 > 2.5;
+    s.give('m1'); s.stop('m1'); faceTo(m, L, W / 2);
+    // He has it, but standing still now: the nearest defender gets back in front of him.
+    const o = s.team('them').sort((a, b) => dist(a, m) - dist(b, m))[0], gx = L - m.x, gy = W / 2 - m.y, gl = Math.hypot(gx, gy) || 1;
+    s.go(o.id, m.x + gx / gl * 1.4, m.y + gy / gl * 1.4, 4.6);
+    const t1 = s.time; yield () => dist(o, m) < 1.8 || s.time - t1 > 1.6;
+    yield* this.end('kept', 1.1);
+  },
   // Picks the script for his choice and runs it. However the play ends, the team AI stops moving players.
   *outcomeGen(opt, good) {
     try {
@@ -388,6 +429,7 @@ export const outcomes = {
       else if (good && this.sc.then && opt === this.sc.best) yield* this.passOnly(MATE[opt]);
       else if (good && this.offBall && MATE[opt]) { this.offBall = false; yield* this.passOnly(MATE[opt]); this.result = 'support'; }
       else if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); }
+      else if (opt.startsWith('spot:') && this.sc.kind === 'lead') yield* this.leadGen(opt.slice(5));
       else if (opt.startsWith('spot:')) yield* (this.sc.kind === 'support' ? this.supportGen(opt.slice(5), good) : this.defendGen(opt.slice(5), good));
       else if (opt.startsWith('push:')) yield* this.pushGen(opt.slice(5), good);
       else if (MATE[opt]) {

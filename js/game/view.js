@@ -56,6 +56,13 @@ export const view = {
     for (let i = 0; i < 3; i++) { this.cam.eye[i] = lerp(this.cam.eye[i], want.eye[i], k); this.cam.tgt[i] = lerp(this.cam.tgt[i], want.tgt[i], k); }
     this.cam.Ff = lerp(this.cam.Ff, want.Ff, k); this.cam.Fw = lerp(this.cam.Fw ?? want.Fw, want.Fw, k);
   },
+  // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
+  // per round, so the scene only builds it once.
+  runArrow() {
+    const sc = this.sc, m = this.sim.a('m1'), [dx, dy] = sc.dir;
+    if (this.arrow?.sc !== sc) this.arrow = { sc, lines: [{ a: { x: m.x + dx * .6, y: m.y + dy * .6 }, b: { x: m.x + dx * 3.2, y: m.y + dy * 3.2 }, color: '#ffffff' }] };
+    return this.arrow.lines;
+  },
   updateHud() {
     const hud = this.hud, s = this.sim;
     let prompt = '';
@@ -64,6 +71,7 @@ export const view = {
       else if (this.phase === 'decide') prompt =
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
         this.step === 'turn' ? (this.peeked ? 'Tap the arrow for your turn' : 'Ball coming! Drag to peek, then tap a turn arrow') :
+        this.step === 'spot' && this.sc?.kind === 'lead' ? (this.lookUp ? 'Tap where to pass' : 'Tap 👀 to look up') :
         this.step === 'spot' ? (this.lookUp ? 'Tap where to run' : 'Watch the ball… tap 👀 to look up') :
         this.pendingDir ? 'Small touches or big push?' :
         this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Drag to look for a friend') :
@@ -89,7 +97,7 @@ export const view = {
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
-    ui.lines = this.lines; ui.heroRing = this.camMode === 'player';
+    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player';
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

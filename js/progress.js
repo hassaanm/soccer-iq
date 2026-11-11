@@ -47,8 +47,20 @@ export const isMastered = (p, id) => played(p, id) && skillState(p, id).top >= M
 export const passed = (p, id) => level(p, id) >= 1;
 export const skills = (p, path) => new Set(path.filter(s => passed(p, s.id)).map(s => s.id));
 
-// A lesson opens once the one before it is passed (or once it has been played itself, for older saves).
-export const isOpen = (p, path, i) => i === 0 || passed(p, path[i - 1].id) || played(p, path[i].id);
+// A lesson opens once the one before it is passed (or once it has been played itself, for older saves), or when a
+// new lesson was put in before it after it had already opened (see catchUp).
+export const isOpen = (p, path, i) => i === 0 || passed(p, path[i - 1].id) || played(p, path[i].id) || !!p.opened?.includes(path[i].id);
+
+// When lessons are added to the path, a save keeps everything it had: each lesson that was open on the path the
+// save knew stays open, even if the new lesson now comes before it. `known` lists the lessons a save has seen;
+// saves from before it existed knew every lesson except those marked `added` in skills.js. Levels and stars are
+// never touched, and the new lesson opens by the usual rule (the lesson before it is passed).
+export function catchUp(p, path) {
+  const known = new Set(p.known || path.filter(s => !s.added).map(s => s.id)), old = path.filter(s => known.has(s.id));
+  if (old.length < path.length) old.forEach((s, i) => { if (isOpen(p, old, i) && !isOpen(p, path, path.indexOf(s))) (p.opened ||= []).push(s.id); });
+  p.known = path.map(s => s.id);
+  return p;
+}
 
 // What PLAY starts (the "coach's pick"): the grown-up's locked lesson, then the lesson he picked, then a lesson
 // not passed yet or at 1 star that he hasn't finished today, then the next new lesson, then the most overdue one.
