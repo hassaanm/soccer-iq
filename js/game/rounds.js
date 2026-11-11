@@ -3,6 +3,7 @@
 import { dist, dribbleEnd } from '../geom.js';
 import { grade, pushEnd } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
+import { pickFoot } from './outcomes.js';
 
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
@@ -38,7 +39,8 @@ export const rounds = {
     const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo;
     s.go('hero', hx, hy, 2.5); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
     await this.delay(.5);
-    faceTo(m, hx, hy); s.windup('m1'); await this.delay(.2);
+    const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
+    faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2);
     s.kick(hx - .45, hy, { speed: 6.5, arc: .05 }); await this.delay(.4);
     s.stopAll();
   },

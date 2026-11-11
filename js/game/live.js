@@ -59,7 +59,7 @@ export const live = {
   takeOver(id) {
     if (id === 'hero') return;
     const s = this.sim, h = s.a('hero'), m = s.a(id);
-    for (const k of ['x', 'y', 'tx', 'ty', 'speed', 'sp', 'dist', 'kickAt', 'kickKind', 'face']) [h[k], m[k]] = [m[k], h[k]];
+    for (const k of ['x', 'y', 'tx', 'ty', 'speed', 'sp', 'dist', 'kickAt', 'kickKind', 'kickFoot', 'face']) [h[k], m[k]] = [m[k], h[k]];
     if (s.ball.carrier === id) s.ball.carrier = 'hero';
     this.world.swapRigs('hero', id);
     const r = this.roster; [r.hero, r[id]] = [r[id], r.hero];

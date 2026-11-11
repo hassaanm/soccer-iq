@@ -20,21 +20,23 @@ const ring = z => {   // the ring at height z (from .4 down to -1), smoothly bet
   const u = clamp((.4 - z) * 10, 0, 13.999), i = Math.floor(u), t = u - i, at = k => RINGS[Math.max(0, Math.min(14, k))];
   return at(i).map((_, j) => { const p0 = at(i - 1)[j], p1 = at(i)[j], p2 = at(i + 1)[j], p3 = at(i + 2)[j]; return p1 + .5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0))); });
 };
-const inside = (x, y, z) => {
+// A player's own head (`s`, from pro/rig.js) changes it a little below the cheekbones: `jaw` makes the jaw wider
+// (+) or narrower (-), `chin` the chin longer (+) or shorter (-). Above the ears it is the same for everyone.
+const inside = (x, y, z, s) => {
   if (z >= .4) return x * x + y * y + z * z < 1;
-  if (z <= -1) return false;
-  const [w, f, b, nf, nb, cx] = ring(z), dx = x - cx, d = dx > 0 ? f : b, n = dx > 0 ? nf : nb;
+  const zz = s ? z + s.chin * .9 * sm((-.1 - z) / .75) : z;
+  if (zz <= -1) return false;
+  const [w0, f, b, nf, nb, cx] = ring(zz), w = s ? w0 * (1 + s.jaw * sm((-.08 - z) / .5)) : w0, dx = x - cx, d = dx > 0 ? f : b, n = dx > 0 ? nf : nb;
   return w > 1e-4 && d > 1e-4 && (Math.abs(dx) / d) ** n + (Math.abs(y) / w) ** n < 1;
 };
-// Moves a point v along its line from the middle of the head, from a ball (of radius |v|) onto the head. Hair goes
-// through it too, so it sits on the head.
-export function headAt(v) {
+// Moves a point v along its line from the middle of the head, from a ball (of radius |v|) onto the head (`s`: the
+// player's own head, as in `inside`). Hair goes through it too, so it sits on the head.
+export function headAt(v, s) {
   const l = v.length(), x = v.x / l, y = v.y / l, z = v.z / l;
   let lo = .2, hi = 1.6;
-  for (let k = 0; k < 22; k++) { const t = (lo + hi) / 2; if (inside(x * t, y * t, z * t)) lo = t; else hi = t; }
+  for (let k = 0; k < 22; k++) { const t = (lo + hi) / 2; if (inside(x * t, y * t, z * t, s)) lo = t; else hi = t; }
   return v.multiplyScalar((lo + hi) / 2);
 }
-const bend = headAt;
 
 // The hairline: [angle round from the front, angle up from the level of the ears], straight lines between the
 // points: straight across the forehead, a square corner at each temple, a short sideburn, round the ear, and
@@ -162,8 +164,10 @@ const ICO = (() => { // a ball of 20 triangles, for coils
 })();
 
 // Adds hair to `head` (a group whose origin is the head's centre). `R` is the head's radius; `mat(colour,
-// roughness, options)` makes a material and `add(parent, shape, material)` a mesh, as in pro/rig.js.
-export function addHair(head, p, kit, R, mat, add) {
+// roughness, options)` makes a material and `add(parent, shape, material)` a mesh, as in pro/rig.js. `shape`: his
+// own head (see `inside`), so the hair fits it.
+export function addHair(head, p, kit, R, mat, add, shape) {
+  const bend = v => headAt(v, shape);
   const hairC = new THREE.Color(p.hair), skinC = new THREE.Color(p.skin), hash = nameHash(p.name || '');
   const list = skinC.r * .3 + skinC.g * .6 + skinC.b * .1 < .45 ? DARK : FAIR;
   const S = STYLES[STYLES[p.hairStyle] ? p.hairStyle : KNOWN[p.name] || list[hash % list.length]];

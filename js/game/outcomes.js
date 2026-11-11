@@ -14,6 +14,20 @@ const shotClear = (a, aim, opps) => opps.every(o => closestOnLane(o, a, aim, 0).
 // point where he meets it. Nothing when the path is clear.
 const firstInLane = (opps, from, to, t0, reach) => opps.map(o => ({ opp: o, ...closestOnLane(o, from, to, t0) })).filter(c => c.d < reach).sort((a, b) => a.t - b.t)[0];
 
+// Which foot strikes the ball (1 his left, 0 his right), as coaches teach it. Both feet, chosen by the play:
+// - a shot from one side of the goal: the foot on that side (left of the goal, left foot). In the middle, as below.
+// - a pass to his left: the inside of his right foot (the inside of that foot faces left), and to his right the left foot.
+// - straight on: the foot farther from the nearest defender, so his body is between the defender and the ball.
+// `a.face` is still the way he faced before he turns to the target.
+export function pickFoot(a, x, y, kind, opps = []) {
+  const dx = x - a.x, dy = y - a.y, [fx, fy] = a.face;
+  if (kind === 'shot' && (x > L - .5 || x < .5)) { const off = (a.y - W / 2) * (x > L / 2 ? 1 : -1); if (Math.abs(off) > .8) return +(off > 0); } // off: + when he is left of the goal's middle
+  else { const turn = Math.atan2(fx * dy - fy * dx, fx * dx + fy * dy); if (Math.abs(turn) > .3) return +(turn < 0); }
+  const o = opps.filter(o => dist(o, a) < 5).sort((p, q) => dist(p, a) - dist(q, a))[0];
+  if (o) return +(dx * (o.y - a.y) - dy * (o.x - a.x) < 0); // a defender on his left: the right foot
+  return Math.floor((a.x + a.y) * 1.7) & 1;                    // nobody near: either foot
+}
+
 export const outcomes = {
   // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds.
   *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield wait; },
@@ -39,9 +53,10 @@ export const outcomes = {
     // Wind up facing the goal, then check the shot line once more at the moment of the kick.
     this.ai = false; s.stopAll();
     const shot = { x: L + .7, y: clamp(a.y, gy0 + .8, gy1 - .8) };
+    const foot = pickFoot(a, shot.x, shot.y, 'shot', opps);
     faceTo(a, shot.x, shot.y);
     for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
-    s.windup(id, 'shot'); yield .2;
+    s.windup(id, 'shot', foot); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
     s.kick(shot.x, shot.y, { speed: 17, arc: .5 }); this.kicked = true;
     yield () => s.ball.state === 'loose';
@@ -60,7 +75,8 @@ export const outcomes = {
   *strike(id, x, y, opts) {
     const s = this.sim, a = s.a(id), to = { x, y };
     for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
-    faceTo(a, x, y); s.windup(id, (opts?.speed ?? 11) > 14 ? 'shot' : 'pass'); yield .2;
+    const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(a, x, y, kind, [...s.agents.values()].filter(o => o.team !== a.team));
+    faceTo(a, x, y); s.windup(id, kind, foot); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   },
   *passGood(id) {

@@ -7,15 +7,16 @@ import { addHair, headAt } from './hair.js';
 
 // The rim light's colour and strength, shared by every player; the world sets them for day or night.
 export const RIM = { color: { value: new THREE.Color('#ffffff') }, k: { value: .5 } };
-function withRim(m) {
+function withRim(m, more, key = '') {
   m.onBeforeCompile = sh => {
+    more?.(sh);
     sh.uniforms.uRim = RIM.color; sh.uniforms.uRimK = RIM.k;
     sh.fragmentShader = 'uniform vec3 uRim;\nuniform float uRimK;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', `
       float rimF = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
       outgoingLight += uRim * uRimK * rimF * (0.3 + 0.7 * diffuseColor.rgb);
       #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'rim';
+  m.customProgramCacheKey = () => 'rim' + key;
   return m;
 }
 
@@ -57,14 +58,14 @@ function loft(rings, seg = 28, n = 2.5) {
   }
   return geo;
 }
-// The head: a ball moved by `headAt` (pro/hair.js) into a skull, a jaw and a chin. Its picture, the face, covers
-// only the front: FA radians round each way from the nose and from under the chin up to FE. Past its edges the
-// picture's edge, plain skin, carries on, so the back of the head is plain.
+// The head: a ball moved by `headAt` (pro/hair.js) into a skull, a jaw and a chin; each player's own (`F`, his
+// face). Its picture covers only the front: FA radians round each way from the nose and from under the chin up to
+// FE. Past its edges the picture's edge, plain skin, carries on, so the back of the head is plain.
 const FA = 1.6, FE = .9, FW = 384, FH = 320;
-const HEAD_GEO = (() => {
+function headGeo(F) {
   const geo = ball(R, 30, 22), pos = geo.attributes.position, uv = geo.attributes.uv, nm = geo.attributes.normal, v = new THREE.Vector3(), same = new Map();
   for (let i = 0; i < pos.count; i++) {
-    headAt(v.fromBufferAttribute(pos, i).divideScalar(R)).multiplyScalar(R); pos.setXYZ(i, v.x, v.y, v.z);
+    headAt(v.fromBufferAttribute(pos, i).divideScalar(R), F).multiplyScalar(R); pos.setXYZ(i, v.x, v.y, v.z);
     const az = (uv.getX(i) - .5) * TAU, el = (uv.getY(i) - .5) * Math.PI;
     uv.setXY(i, Math.min(1, Math.max(0, .5 + az / (2 * FA))), Math.min(1, (el + Math.PI / 2) / (FE + Math.PI / 2)));
   }
@@ -74,8 +75,8 @@ const HEAD_GEO = (() => {
     v.set(0, 0, 0); for (const i of l) v.x += nm.getX(i), v.y += nm.getY(i), v.z += nm.getZ(i);
     v.normalize(); for (const i of l) nm.setXYZ(i, v.x, v.y, v.z);
   }
-  geo.userData.shared = true; return geo;
-})();
+  return geo;
+}
 // An ear: a flat shell with a rim and a hollow, its back against the head, narrower at the lobe. It faces +y.
 const EAR_GEO = (() => {
   const geo = new THREE.LatheGeometry([[0, -.3], [.9, -.3], [1.06, 0], [1, .5], [.78, .7], [.55, .3], [.2, .15], [0, .15]].map(([r, h]) => new THREE.Vector2(r, h)), 12), pos = geo.attributes.position;
@@ -85,25 +86,260 @@ const EAR_GEO = (() => {
 // The nose: only its lower part shows, a soft rounded bump (the tip and the wings) that rises out of the face;
 // above it the bridge is just a gentle swell that melts into the face. It sits partly inside the head, and its
 // normals turn to the face's where it meets the face, so there is no hard edge. It shares the head's picture.
-const onHead = (x, y, z) => headAt(new THREE.Vector3(x, y, z)).multiplyScalar(R);
-const NOSE_GEO = (() => {
+// Its base is F.nb degrees below the eyes; F.nw makes it wider.
+const D2R = Math.PI / 180, onHead = (x, y, z, F) => headAt(new THREE.Vector3(x, y, z), F).multiplyScalar(R);
+function noseGeo(F) {
   const geo = ball(1, 16, 12), pos = geo.attributes.position, uv = geo.attributes.uv, nm = geo.attributes.normal, v = new THREE.Vector3(), n = new THREE.Vector3(), f = new THREE.Vector3();
-  const zt = -.031;   // the height of the tip
+  const lo = .0105, zt = Math.tan(F.nb * D2R) * R * .97 + lo;   // the height of the tip, so that its base is at F.nb
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), up = Math.max(0, z), dn = Math.max(0, -z);
     // up: a long, low, narrow swell to the bridge; down: short, round, wide at the wings
-    v.set(x * (.0145 - .0125 * up ** .8), y * (.0165 - .008 * up ** .7) * (1 - .1 * dn), z > 0 ? z * .021 : z * .009);
-    f.copy(onHead(1, v.y / R, (zt + v.z) / R));   // the face just behind this point
+    v.set(x * (.016 - .0138 * up ** .8), y * F.nw * (.0178 - .0088 * up ** .7) * (1 - .1 * dn), z > 0 ? z * (.03 + zt * .25) : z * lo);
+    f.copy(onHead(1, v.y / R, (zt + v.z) / R, F));   // the face just behind this point
     v.x += f.x - .003; v.z += zt; pos.setXYZ(i, v.x, v.y, v.z);
     uv.setXY(i, .5 + Math.atan2(v.y, v.x) / (2 * FA), (Math.asin(v.z / v.length()) + Math.PI / 2) / (FE + Math.PI / 2));
   }
   geo.computeVertexNormals();
   for (let i = 0; i < nm.count; i++) {   // out of the face: its own normal; where it meets the face: the face's
-    v.fromBufferAttribute(pos, i); f.copy(onHead(1, v.y / R, v.z / R)); const t = Math.min(1, Math.max(0, (v.x - f.x) / .011));
+    v.fromBufferAttribute(pos, i); f.copy(onHead(1, v.y / R, v.z / R, F)); const t = Math.min(1, Math.max(0, (v.x - f.x) / .011));
     n.fromBufferAttribute(nm, i).lerp(v.normalize(), 1 - t * t * (3 - 2 * t)).normalize(); nm.setXYZ(i, n.x, n.y, n.z);
   }
-  geo.userData.shared = true; return geo;
-})();
+  return geo;
+}
+
+// Each player's own face, from his name (the same name always gives the same face), in degrees on the face's
+// picture (see `faceTex`): ex, ey the middle of each eye (round from the nose, up from the eyes' level), ew half
+// its width, eo how open (above the middle), ed the lower lid's depth, tilt the outer corner up, ir the iris;
+// brows: bx where the inner end starts, bl the length, bh the height above the eye, bt half the thickness, ba the
+// arch, bd the drop to the outer end; mouth: my its height, mw half its width, lip how full, set (- serious,
+// + a slight smile); nose: nb its base, nw its width; head: w wider, h longer, jaw, chin (pro/hair.js);
+// beard 0 to 1 (stubble to a short beard), freck freckles.
+const IRIS = { brown: ['#3b2416', '#4a2e1b', '#5a3a20', '#2e1d12', '#563a22'], hazel: '#6b5428', green: '#55663a', blue: '#4d6f86', grey: '#68737a' };
+// Real players a child may know: only what differs from the face their name gives.
+const KNOWN_FACES = {
+  YAMAL: { ew: 10, eo: 3.7, bt: 1.05, ba: 1.4, set: .3, w: 1.01, h: .97, jaw: -.05, chin: -.03, lip: 1, beard: 0 },
+  'MBAPPÉ': { ew: 10.2, ex: 20.5, eo: 3.5, bt: 1.15, ba: 1.6, mw: 17, set: .45, lip: 1.15, w: 1.03, h: .99, jaw: .02, chin: -.02, beard: 0 },
+  HAALAND: { iris: 'blue', ew: 9.1, eo: 3, bt: 1.4, ba: .5, bd: .2, set: -.25, mw: 15.5, lip: .7, w: .98, h: 1.04, jaw: .08, chin: .06, nb: -21.5, beard: 0 },
+  MESSI: { ew: 9.3, eo: 3, bt: 1.35, ba: 1.1, bd: .8, set: .1, mw: 15, w: 1.02, h: .985, jaw: .03, chin: -.02, beard: .8 },
+  RONALDO: { ew: 9.8, eo: 3.4, tilt: 3.5, bt: 1.15, ba: 2.4, bd: .2, mw: 16.5, set: .3, lip: .85, w: .98, h: 1.03, jaw: .08, chin: .07, beard: 0 },
+  'VINI JR': { ew: 9.9, eo: 3.6, bt: 1.05, ba: 1.6, mw: 17.2, set: .5, lip: 1.2, w: 1.01, h: .99, jaw: -.02, beard: 0 },
+  BELLINGHAM: { ew: 9.4, eo: 3.1, bt: 1.85, ba: .8, bd: .4, set: 0, lip: 1.05, w: 1, h: 1.02, jaw: .06, chin: .02, beard: .25 },
+  SALAH: { ew: 9.6, eo: 3.4, bt: 1.75, ba: 1.6, set: .25, lip: 1, w: 1.02, h: 1, jaw: .04, beard: 1 },
+  'DE BRUYNE': { iris: 'blue', ew: 9.2, eo: 2.9, tilt: -1, bt: 1.2, ba: 1, bd: 1.2, set: -.1, lip: .65, w: .98, h: 1.03, chin: .04, beard: .3, freck: .5 },
+  'MODRIĆ': { iris: 'hazel', ew: 9, eo: 3, tilt: 1, bt: 1.05, ba: 1.6, bd: 1.4, set: .05, lip: .65, w: .965, h: 1.03, jaw: -.05, chin: .03, beard: .25 },
+  GRIEZMANN: { ew: 9.6, eo: 3.5, set: .35, bt: 1.2, beard: .2 },
+  LEWANDOWSKI: { iris: 'grey', ew: 9.1, eo: 3, bt: 1.2, ba: 1.6, set: -.2, lip: .7, w: .98, h: 1.035, jaw: .05, chin: .06, beard: .2 },
+  KANE: { iris: 'blue', ew: 9.2, eo: 3.1, bt: 1.25, ba: 1.2, set: .15, w: 1.03, h: .99, jaw: .06, beard: 0 },
+  'VAN DIJK': { ew: 9.5, eo: 3.2, bt: 1.7, ba: .9, set: .1, w: 1.01, h: 1.035, jaw: .07, chin: .04, beard: .9 },
+  SON: { ew: 9.6, eo: 2.6, tilt: 2, bt: 1.4, ba: .6, mw: 16.5, set: .5, w: 1.02, h: .99, beard: 0 },
+  SAKA: { ew: 10, eo: 3.7, bt: 1.3, ba: 1.5, set: .35, lip: 1.1, w: 1.01, h: .98, jaw: -.03, beard: 0 },
+  MUSIALA: { ew: 9.9, eo: 3.5, bt: 1.2, set: .3, w: 1, h: .99, jaw: -.04, beard: 0 },
+  PEDRI: { ew: 10.1, eo: 3.7, bt: 1.6, ba: 1.2, set: .05, w: .965, h: 1.02, jaw: -.05, chin: .02, beard: 0 },
+  'ØDEGAARD': { iris: 'blue', ew: 9.6, eo: 3.2, bt: 1.2, ba: .8, set: .15, w: .97, h: 1.02, beard: 0 },
+  FODEN: { iris: 'blue', ew: 9.8, eo: 3.4, bt: 1.1, set: .25, freck: .4, beard: 0 },
+  'HØJLUND': { iris: 'blue', ew: 9.6, eo: 3.3, bt: 1.2, set: .05, w: .99, h: 1.02, beard: 0 },
+  LUKAKU: { ew: 9.3, eo: 3.1, bt: 1.6, set: .1, lip: 1.15, w: 1.04, h: 1.02, jaw: .08, beard: .45 },
+  'SUÁREZ': { ew: 9.4, eo: 3.2, bt: 1.6, ba: 1.4, mw: 16.5, set: .25, beard: .6 },
+  RAPHINHA: { ew: 9.5, bt: 1.4, set: .2, beard: .45 },
+  'LEÃO': { ew: 9.8, eo: 3.4, bt: 1.3, set: .15, w: .98, h: 1.02, jaw: -.02, beard: .35 },
+  'MAC ALLISTER': { iris: 'hazel', bt: 1.2, beard: .3, freck: .3 },
+  KUBO: { eo: 2.6, ew: 9.4, bt: 1.3, ba: .5, beard: 0 }, MITOMA: { eo: 2.6, bt: 1.2, ba: .7, beard: 0 }, ENDO: { eo: 2.5, bt: 1.4, ba: .6, beard: .15 },
+};
+const lum = c => c.r * .3 + c.g * .6 + c.b * .1;
+export function faceOf(p) {
+  let h = 2166136261; for (const c of p.name || '') h = Math.imul(h ^ c.codePointAt(0), 16777619);
+  let rs = (h >>> 0) ^ 0x5bd1e995; const rnd = () => ((rs = Math.imul(rs ^ rs >>> 15, 2246822507) + 0x6d2b79f5) >>> 0) / 4294967296, r = (a, b) => a + (b - a) * rnd();
+  const sk = new THREE.Color(p.skin), fair = lum(sk) > .6, ew = r(8.7, 10.3);
+  const F = { ew, ex: 0, ey: r(-.5, 1.8), eo: r(2.8, 3.7), ed: r(2, 2.8), tilt: r(-1.5, 5), ir: r(4.4, 4.9), hood: r(-.25, .2),
+    bx: r(5, 7.6), bl: r(-1, 3.5), bh: r(8.2, 10.4), bt: r(1.6, 2.9), ba: r(.3, 2.6), bd: r(-1, 1.8),
+    my: r(-31.5, -28.5), mw: r(14, 17), lip: r(.65, 1.25), set: r(-.15, .5), nb: r(-21.5, -19), nw: r(.92, 1.12),
+    w: r(.945, 1.05), h: r(.96, 1.045), jaw: r(-.09, .1), chin: r(-.06, .08), beard: 0, freck: 0 };
+  F.ex = ew * r(1.9, 2.2);   // about one eye's width between the eyes
+  F.bl += F.ex + F.ew - F.bx;   // the brow ends about over the eye's outer corner
+  const k = rnd(); F.beard = k < .1 ? r(.55, .85) : k < .3 ? r(.15, .4) : 0;
+  if (fair && rnd() < .15) F.freck = r(.3, .6);
+  const ik = rnd(); F.iris = fair && ik < .4 ? ['blue', 'green', 'grey', 'hazel', 'blue'][Math.floor(rnd() * 5)] : !fair && ik < .1 ? 'hazel' : 'brown';
+  const kn = KNOWN_FACES[p.name] || {}; Object.assign(F, kn); if (kn.ew && !kn.ex) F.ex = F.ew * 2.02;
+  if (kn.ew || kn.ex) F.bl = F.ex + F.ew - F.bx + 1.5;
+  F.irisC = F.iris === 'brown' ? IRIS.brown[Math.floor(rnd() * 5)] : IRIS[F.iris];
+  return F;
+}
+
+// The face's skin, painted in angles: `X(a)` is the column a degrees round from the nose (+ is his left), `Y(e)`
+// the row e degrees up from the eyes' level. Only what never moves is painted: soft shades made from the skin
+// (so they suit every skin), stubble or a beard, freckles. The eyes, brows and mouth are drawn by the face's
+// shader (`faceMat`), so they can blink, look about and change with his mood.
+function faceTex(p, F) {
+  const D = Math.PI / 180, X = a => FW * (.5 + a * D / (2 * FA)), Y = e => FH * (FE - e * D) / (FE + Math.PI / 2), kx = X(1) - X(0), ky = Y(0) - Y(1);
+  const sk = new THREE.Color(p.skin), hc = new THREE.Color(p.hair);
+  const rgb = (c, k = 1) => `rgba(${c.r * 255 | 0},${c.g * 255 | 0},${c.b * 255 | 0},${k})`;
+  const shade = sk.clone().multiply(new THREE.Color(.62, .5, .46)), deep = sk.clone().multiply(new THREE.Color(.36, .25, .22));
+  let rs = Math.floor(F.ew * 1e5) | 1; const rnd = () => ((rs = Math.imul(rs ^ rs >>> 15, 2246822507) + 1) >>> 0) / 4294967296;
+  return canvasTex(FW, FH, g => {
+    g.fillStyle = p.skin; g.fillRect(0, 0, FW, FH);
+    const soft = (a, e, rx, ry, k, c = shade) => {   // a soft shade, rx and ry degrees across
+      g.save(); g.translate(X(a), Y(e)); g.scale(rx * kx, ry * ky);
+      const r = g.createRadialGradient(0, 0, 0, 0, 0, 1); r.addColorStop(0, rgb(c, k)); r.addColorStop(1, rgb(c, 0));
+      g.fillStyle = r; g.fillRect(-1, -1, 2, 2); g.restore();
+    };
+    soft(0, -95, 75, 42, .5); for (const s of [-1, 1]) soft(s * 55, -45, 30, 30, .26 + .6 * Math.max(0, F.jaw));   // under the jaw, and the jaw's sides
+    const nb = F.nb;
+    for (const s of [-1, 1]) {
+      soft(s * 38, -20, 13, 15, .16);                                // under the cheekbone
+      soft(s * F.ex, F.ey + 2.5, F.ew * 1.45, 6.5, .15);              // the eye's socket, under the brow
+      soft(s * (F.ex - F.ew * .95), F.ey + .5, 3.5, 4.5, .14);        // deeper by the nose
+      soft(s * F.ex, F.ey - F.ed - 2.6, F.ew * .95, 2.2, .07);        // under the eye
+      soft(s * 6.8 * F.nw, nb + 9, 3.5, 10, .1);                      // beside the nose
+      soft(s * 3.4 * F.nw, nb + .9, 2.1, 1.2, .32, deep);             // the nostrils
+      soft(s * (F.mw + 1.5), F.my + 3.5, 3, 6, .07);                  // the fold from the nose to the mouth's corner
+    }
+    soft(0, nb + 6, 6, 8, .14);                                       // on the nose, so it does not shine
+    soft(0, nb - .4, 7.5 * F.nw, 3, .42, deep);                       // under the nose
+    soft(0, (nb + F.my) / 2 + .8, 2.2, 3.2, .1);                      // the groove above the lip
+    soft(0, F.my - 13 - 40 * F.chin, 9, 4, .1);                       // the chin's underside starts
+    if (F.beard) {   // stubble or a short beard: a soft shade in the hair's colour (a small mask, drawn larger so it is smooth), then fine dots
+      const bc = sk.clone().lerp(hc, .7 + .25 * F.beard), cl = (v, lo, hi) => Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+      const mask = (a, e) => {   // how much beard at a, e (degrees)
+        const A = Math.abs(a), lip = cl(Math.hypot(A / (F.mw + .5), (e - F.my + .4) / (1.8 + 2.2 * F.lip)), 1, 1.25);
+        const nose = 1 - cl(e, nb - 2.5, nb - .5) * (1 - cl(A, 8 * F.nw, 11 * F.nw)), cheek = cl(-27 + .3 * A - e, 0, 4), back = cl(82 - A, 0, 10);
+        return Math.max(cheek, cl(F.mw + 3 - A, 0, 2) * cl(nb - e, 0, 2)) * lip * nose * back;
+      };
+      const mw = 86, mh = 38, mc = document.createElement('canvas'); mc.width = mw; mc.height = mh;
+      const mg = mc.getContext('2d'), im = mg.createImageData(mw, mh);
+      for (let j = 0; j < mh; j++) for (let i = 0; i < mw; i++) { const k = (j * mw + i) * 4; im.data[k] = bc.r * 255; im.data[k + 1] = bc.g * 255; im.data[k + 2] = bc.b * 255; im.data[k + 3] = 255 * (.07 + .16 * F.beard) * mask(-86 + i * 2 + 1, -6 - j * 2 - 1); }
+      mg.putImageData(im, 0, 0); g.imageSmoothingEnabled = true; g.drawImage(mc, X(-86), Y(-6), X(86) - X(-86), Y(-82) - Y(-6));
+      for (let i = 0; i < 6000 * F.beard + 1500; i++) {
+        const a = (rnd() * 2 - 1) * 85, e = -80 + rnd() * 74, m = mask(a, e);
+        if (m && rnd() < m) { g.fillStyle = rgb(bc.clone().multiplyScalar(.65 + .3 * rnd()), (.1 + .25 * F.beard) * (.5 + .5 * rnd())); g.beginPath(); g.arc(X(a), Y(e), .55, 0, 7); g.fill(); }
+      }
+      mc.width = mc.height = 0;
+    }
+    if (F.freck) for (let i = 0; i < 70; i++) {   // freckles over the nose and cheeks
+      const a = (rnd() * 2 - 1) * 30, e = nb + 4 + (rnd() * 2 - 1) * 8 - .004 * a * a;
+      if (Math.abs(a) > 4 || rnd() < .4) { g.fillStyle = rgb(sk.clone().multiply(new THREE.Color(.78, .6, .48)), F.freck * (.25 + .35 * rnd())); g.beginPath(); g.arc(X(a), Y(e), .6 + .8 * rnd(), 0, 7); g.fill(); }
+    }
+  });
+}
+// The face's material: the painted skin, with the eyes, brows and mouth drawn on it by its shader, so they cost no
+// meshes and no painting while he plays. Its numbers (`U`) are his own: his face (`F`), and how it moves:
+// fDyn = (blink 0 open to 1 shut, the irises' turn round and up in degrees), fMood = (happy, sad, effort, focus).
+// Seen from far away (more than a degree or so of face in each pixel), the eyes fade to soft dark marks, so no
+// white dots flicker at game size.
+const FACE_GLSL = `{
+  vec2 A = vec2((vMapUv.x - .5) * ${(2 * FA).toFixed(5)}, vMapUv.y * ${(FE + Math.PI / 2).toFixed(5)} - ${(Math.PI / 2).toFixed(5)}) * 57.29578;
+  float sd = A.x < 0. ? -1. : 1.;
+  vec2 P = vec2(abs(A.x), A.y), fw = fwidth(A);
+  float px = max(fw.x, fw.y), aa = max(px * .9, .2), far = smoothstep(1.1, 3., px);
+  float hap = fMood.x, sad = fMood.y, eff = fMood.z, foc = fMood.w, blink = fDyn.x;
+  vec3 col = diffuseColor.rgb;
+  if (P.x < 42. && P.y > -12. && P.y < 26.) {
+    // The eye: almond shaped, turned by its tilt; u runs from -1 at the inner corner to 1 at the outer.
+    vec2 d = P - fE.xy; float ct = cos(fE2.x), st = sin(fE2.x);
+    vec2 e = vec2(d.x * ct + d.y * st, d.y * ct - d.x * st);
+    float u = e.x / fE.z, w1 = max(0., 1. - u * u);
+    float up0 = fE.w * pow(w1, .7) * (1. - (.16 + fB2.z) * u), dn0 = -fE2.z * pow(w1, .85) * (1. + .15 * u);
+    float dn = dn0 + fE2.z * w1 * (.85 * hap + .5 * eff + .12 * foc);                         // cheeks push the lower lid up
+    float up = up0 * (1. - .15 * foc - .38 * eff - .1 * hap - .2 * sad * (.6 + .4 * u));    // lids lower: focus, effort, sadness
+    up = max(mix(up, dn, blink), dn);
+    float inEye = clamp(min(up - e.y, e.y - dn) / aa + .5, 0., 1.) * step(abs(u), 1.) * smoothstep(0., .5, up - dn);
+    vec3 scl = mix(vec3(.66, .62, .58), col, .32) * mix(1., .5, smoothstep(up - 2.6, up, e.y));   // the white, shaded under the lid
+    vec2 ic = vec2(clamp(fDyn.y * sd, -fE.z * .48, fE.z * .48), clamp(fDyn.z, -2.2, 1.8) + .15);
+    vec2 q = (e - ic) * vec2(.92, 1.1); float r = length(q), ir = fE2.y;
+    vec3 irc = fIris * mix(1.15, .5, smoothstep(ir * .45, ir, r)) * mix(1., .55, smoothstep(up - 2.6, up, e.y));
+    irc = mix(irc, vec3(.01, .007, .005), clamp((ir * .4 - r) / aa + .5, 0., 1.));                      // the pupil
+    irc = mix(irc, vec3(.85), .4 * (1. - far) * clamp((ir * .17 - length(q - vec2(-.3 * sd, .38) * ir)) / aa + .5, 0., 1.));   // a faint glint
+    vec3 eye = mix(scl, irc, clamp((ir - r) / aa + .5, 0., 1.));
+    eye = mix(eye, col * .45, far * .8);                                                           // far away: a soft dark mark
+    float lid = clamp(min(up0 - e.y, e.y - up) / aa + .5, 0., 1.) * step(abs(u), 1.);              // the lid, where it has come down
+    col *= 1. - .07 * lid;
+    col = mix(col, eye, inEye);
+    float cr = clamp((.35 - abs(e.y - fE.w * pow(w1, .55) - 1.7 - .4 * u)) / (aa * 1.6) + .5, 0., 1.) * smoothstep(-.95, -.3, u) * smoothstep(1., .55, u);
+    col = mix(col, fLine, .14 * cr * (1. - blink));                                              // the crease above the eye
+    float ll = clamp((.28 - abs(e.y - dn - .15)) / aa + .5, 0., 1.) * smoothstep(.95, .2, abs(u - .15));
+    col = mix(col, fLine, .3 * ll);                                                               // the lower lid
+    float lt = fE2.w * (.7 + .55 * smoothstep(-.5, 1., u));
+    float lash = clamp((lt * .5 - abs(e.y - up - lt * .3)) / aa + .5, 0., 1.) * smoothstep(-1.08, -.88, u) * smoothstep(1.13, .96, u);
+    col = mix(col, fLine, .92 * lash);                                                            // the upper lid's dark edge
+    // The brow: thicker at its inner end, thinner out to a soft end. Sad: the inner ends rise; focus and effort:
+    // they come down and together.
+    float b0 = fB.x - .9 * foc - 1.3 * eff + .4 * sad, t = (P.x - b0) / fB.y, tc = clamp(t, 0., 1.), ti = 1. - tc;
+    float by = fE.y + fB.z + fB2.x * sin(2.7 * tc) - fB2.y * tc + 1.1 * hap + sad * (2.8 * ti * ti - .6 * tc) - (1.1 * foc + 2.1 * eff) * pow(ti, 1.4) + .3 * eff;
+    float br = fB.w * (1.1 - .5 * pow(tc, 1.4)) * mix(.6, 1., smoothstep(-.02, .14, t)) * (1. - .75 * smoothstep(.7, 1.02, t));
+    float ba = clamp((br - abs(P.y - by)) / (aa + .35) + .5, 0., 1.) * step(-.02, t) * smoothstep(1.04, .9, t);
+    col = mix(col, fBrowC, .93 * ba);
+  }
+  if (P.x < 30. && P.y < -16. && P.y > -48.) {
+    // The mouth: a soft line between the lips that smiles or droops at the corners; it opens to a grin (happy)
+    // or to clenched teeth (effort).
+    float mw = fM.y * (1. + .15 * hap + .1 * eff - .1 * sad - .05 * foc), u = P.x / mw, w1 = max(0., 1. - u * u), sw = sqrt(w1);
+    float lift = .25 + 1.1 * fM.w + 2.4 * hap - 1.6 * sad - .3 * foc - .3 * eff;
+    float yl = fM.x + lift * u * u + .5 * sad * w1, op = 3.8 * hap + 2.4 * eff;
+    float yU = yl + op * .2 * w1, yD = yl - op * pow(w1, .8), lip = fM.z * (1. - .35 * foc - .25 * eff - .2 * hap);
+    float on = step(abs(u), 1.);
+    float ul = clamp(min(yU + 1.7 * lip * sw - P.y, P.y - yU) / (aa * 2.) + .5, 0., 1.) * on;
+    float lo = clamp(min(yD - P.y, P.y - yD + 2.6 * lip * sw) / (aa * 2.5) + .5, 0., 1.) * on;
+    col = mix(col, fLip, .75 * ul + .5 * lo);
+    col *= 1. + .07 * lo * smoothstep(.7, 0., abs(u)) * smoothstep(yD - 2.6 * lip, yD - .8 * lip, P.y);   // light on the lower lip
+    col *= 1. - .16 * clamp(1. - abs(P.y - yD + 2.6 * lip * sw + 1.) / 1.4, 0., 1.) * sw;               // the shade under it
+    float inM = clamp(min(yU - P.y, P.y - yD) / aa + .5, 0., 1.) * on * smoothstep(0., .5, yU - yD);
+    float g = yU - yD, tk = hap + eff + 1e-3;
+    float tU = smoothstep(-aa, aa, P.y - yU + g * (.58 * hap + .46 * eff) / tk), tL = smoothstep(-aa, aa, yD + g * .44 * eff / tk - P.y);
+    vec3 teeth = vec3(.6, .57, .52) * mix(1., .55, smoothstep(.35, .85, abs(u))) * mix(1., .7, far);
+    col = mix(col, mix(fLip * .25, teeth, max(tU, tL) * smoothstep(.88, .62, abs(u))), inM);
+    float ln = clamp((.5 - abs(P.y - yl)) / aa + .5, 0., 1.) * (1. - .5 * u * u) * step(abs(u), 1.04);
+    col = mix(col, fLine, .7 * ln * (1. - inM));                                                // the line between the lips
+    vec2 cq = vec2(P.x - mw, P.y - fM.x - lift); col *= 1. - .22 * exp(-dot(cq, cq) / 1.4);       // the corners
+  }
+  diffuseColor.rgb = col;
+}`;
+function faceMat(p, F, mats) {
+  const V4 = (...a) => ({ value: new THREE.Vector4(...a) }), C = c => ({ value: new THREE.Color(c) });
+  const sk = new THREE.Color(p.skin), hc = new THREE.Color(p.hair), toS = c => c.clone().convertLinearToSRGB();
+  const brow = toS(hc).multiplyScalar(.8).lerp(new THREE.Color().setRGB(.165, .1, .063, THREE.SRGBColorSpace).convertLinearToSRGB(), Math.min(.75, Math.max(0, lum(hc) - .08) * 2.5));   // fair hair: darker brows, so they read
+  const sS = toS(sk), lipS = sS.clone().multiply(new THREE.Color(.78, .52, .5)).lerp(new THREE.Color(.38, .2, .2), lum(sS) < .45 ? .25 : 0);
+  const U = { fE: V4(F.ex, F.ey, F.ew, F.eo), fE2: V4(F.tilt * D2R, F.ir, F.ed, 1.15 + .1 * F.bt), fB: V4(F.bx, F.bl, F.bh, F.bt), fB2: V4(F.ba, F.bd, F.hood, 0),
+    fM: V4(F.my, F.mw, F.lip, F.set), fDyn: V4(0, 0, -.6, 0), fMood: V4(0, 0, 0, 0),
+    fIris: C(F.irisC), fBrowC: { value: new THREE.Color().setRGB(brow.r, brow.g, brow.b, THREE.SRGBColorSpace) }, fLine: C('#1c110c'),
+    fLip: { value: new THREE.Color().setRGB(lipS.r, lipS.g, lipS.b, THREE.SRGBColorSpace) } };
+  const m = withRim(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .62, map: faceTex(p, F) }), sh => {
+    Object.assign(sh.uniforms, U);
+    sh.fragmentShader = 'uniform vec4 fE, fE2, fB, fB2, fM, fDyn, fMood;\nuniform vec3 fIris, fBrowC, fLine, fLip;\n' + sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\n' + FACE_GLSL);
+  }, 'face');
+  mats.push(m); return [m, U];
+}
+// The face's life, called every frame by animateRig (pro/motion.js): he blinks on his own rhythm, his eyes follow
+// the ball, and his face goes with the moment: focused on the ball, a short effort as he kicks, a grin when his
+// team scores, a let-down face when the other team does, calm otherwise. Only a few numbers change.
+function faceLife(g, head, U, seed) {
+  const s = { t: null, next: 1 + seed % 3, bl: -9, f: 0, lx: 0, ly: -.6, gx: 0, gy: 0, gt: 0, hold: null };
+  let rs = Math.floor(seed * 1e6) | 1; const rnd = () => ((rs = Math.imul(rs ^ rs >>> 15, 2246822507) + 1) >>> 0) / 4294967296;
+  const v = new THREE.Vector3(), sm = t => (t = Math.min(1, Math.max(0, t)), t * t * (3 - 2 * t)), damp = (x, to, k, dt) => x + (to - x) * (1 - Math.exp(-k * dt));
+  const face = (a, sim, mood, moodT, time) => {
+    if (s.hold) return;
+    const dt = s.t === null ? 0 : Math.min(.1, Math.max(0, time - s.t)); s.t = time;
+    // Blinks: every 2 to 6 seconds, now and then two in a row.
+    if (time > s.next || time < s.bl) { s.bl = time; s.next = time + (rnd() < .15 ? .35 : 2 + 4 * rnd()); }
+    const bt = time - s.bl, blink = bt < .07 ? sm(bt / .07) : sm(1 - (bt - .07) / .12);
+    // The ball, from his head: how far round and up his eyes must turn.
+    const b = sim.ball; let lx = 0, ly = -.6;
+    if (b && g.parent) {
+      v.set(g.position.x + b.x - a.x, g.position.y + b.y - a.y, (b.z || 0) + .11); g.parent.localToWorld(v); head.worldToLocal(v);
+      const az = Math.atan2(v.y, v.x) / D2R, el = Math.atan2(v.z, Math.hypot(v.x, v.y)) / D2R;
+      lx = Math.max(-1, Math.min(1, az / 35)) * 3.6; ly = Math.max(-1, Math.min(1, el / 30)) * 1.8;
+    }
+    if ((s.gt -= dt) < 0) { s.gt = 1 + 2.5 * rnd(); s.gx = (rnd() - .5) * 1.4; s.gy = (rnd() - .5) * .8; }   // small glances about
+    const carry = b && b.state === 'carried' && b.carrier === a.id, near = b ? Math.hypot(b.x - a.x, b.y - a.y) : 99;
+    const happy = Math.max(0, mood), sad = Math.max(0, -mood), calm = 1 - happy - sad;
+    s.f = damp(s.f, carry ? 1 : near < 4 ? .75 * (1 - near / 4) + .25 : 0, 3, dt);
+    const kt = a.kickAt != null ? sim.time - a.kickAt : 9, effort = sm((kt + .12) / .1) * (1 - sm((kt - .25) / .35)) * calm;
+    if (sad) ly = -2.2 * sad + ly * (1 - sad);
+    s.lx = damp(s.lx, lx + s.gx * calm, 14, dt); s.ly = damp(s.ly, ly + s.gy * calm, 14, dt);
+    U.fDyn.value.set(blink, s.lx, s.ly, 0); U.fMood.value.set(happy * sm(moodT / .25), sad, effort, s.f * calm * (1 - effort));
+  };
+  // Freezes the face (for the test page): blink, look [round, up], happy, sad, effort, focus; null lets it live.
+  const set = o => { s.hold = o; if (o) { U.fDyn.value.set(o.blink || 0, ...(o.look || [0, -.6]), 0); U.fMood.value.set(o.happy || 0, o.sad || 0, o.effort || 0, o.focus || 0); } };
+  return [face, set];
+}
 
 // The shirt's picture. Around the body: the right side seam is at x = 0, the chest at 256, the left side at 512,
 // the back at 768. Up the body: `y(z)` is the row for a height z above the waist.
@@ -123,62 +359,6 @@ function shirtTex(kit, p) {
     g.fillStyle = kit.trim; g.beginPath(); g.arc(306, y(.245), 12, 0, 7); g.fill();
   });
 }
-// The face, painted in angles: `X(a)` is the column a degrees round from the nose (+ is his left), `Y(e)` the row e
-// degrees up from the eyes' level. Shades are the skin made darker, so they suit every skin.
-function faceTex(p) {
-  const D = Math.PI / 180, X = a => FW * (.5 + a * D / (2 * FA)), Y = e => FH * (FE - e * D) / (FE + Math.PI / 2), kx = X(1) - X(0), ky = Y(0) - Y(1);
-  const sk = new THREE.Color(p.skin), hc = new THREE.Color(p.hair), lum = c => c.r * .3 + c.g * .6 + c.b * .1, hash = [...p.name || ''].reduce((h, c) => h * 31 + c.charCodeAt(0) >>> 0, 7);
-  const rgb = (c, k = 1) => `rgba(${c.r * 255 | 0},${c.g * 255 | 0},${c.b * 255 | 0},${k})`;
-  const shade = sk.clone().multiply(new THREE.Color(.62, .5, .46)), deep = sk.clone().multiply(new THREE.Color(.36, .25, .22));
-  const brow = hc.clone().lerp(new THREE.Color('#2a1a10'), Math.min(.75, Math.max(0, lum(hc) - .08) * 2.5));   // fair hair: darker brows, so they read
-  const iris = new THREE.Color(lum(sk) > .6 && lum(hc) > .2 && hash % 3 === 0 ? ['#56707e', '#5f6a3a'][hash % 2] : ['#4a2e1b', '#3b2416', '#56361f'][hash % 3]);
-  return canvasTex(FW, FH, g => {
-    g.fillStyle = p.skin; g.fillRect(0, 0, FW, FH);
-    const soft = (a, e, rx, ry, k, c = shade) => {   // a soft shade, rx and ry degrees across
-      g.save(); g.translate(X(a), Y(e)); g.scale(rx * kx, ry * ky);
-      const r = g.createRadialGradient(0, 0, 0, 0, 0, 1); r.addColorStop(0, rgb(c, k)); r.addColorStop(1, rgb(c, 0));
-      g.fillStyle = r; g.fillRect(-1, -1, 2, 2); g.restore();
-    };
-    soft(0, -95, 75, 42, .5); for (const s of [-1, 1]) soft(s * 55, -45, 30, 30, .26);   // under the jaw, and the jaw's sides
-    for (const s of [-1, 1]) {
-      soft(s * 36, -22, 13, 14, .16);                    // under the cheekbone
-      soft(s * 15, 3, 14, 6, .16);                       // under the brow
-      soft(s * 6.5, -10, 3.5, 9, .1);                    // beside the nose
-    }
-    soft(0, -14, 6, 8, .14);                             // on the nose, so it does not shine
-    soft(0, -18.5, 7, 3.2, .45, deep);                       // under the nose
-    soft(0, -35, 11, 3, .22);                             // under the lower lip
-    // The mouth: closed, a soft line that turns up a little at the corners, the upper lip a little darker and a hint of the lower lip.
-    soft(0, -29.5, 11.5, 2.6, .2, deep); soft(0, -32, 9, 2.2, .12);
-    g.lineCap = 'round';
-    for (const [w, k] of [[3, .16], [1.5, .5]]) {
-      const lg = g.createLinearGradient(X(-13), 0, X(13), 0); lg.addColorStop(0, rgb(deep, 0)); lg.addColorStop(.3, rgb(deep, k)); lg.addColorStop(.7, rgb(deep, k)); lg.addColorStop(1, rgb(deep, 0));
-      g.strokeStyle = lg; g.lineWidth = w; g.beginPath(); g.moveTo(X(-13), Y(-29.3)); g.bezierCurveTo(X(-7), Y(-31.1), X(7), Y(-31.1), X(13), Y(-29.3)); g.stroke();   // the corners turn up a little
-    }
-    for (const s of [-1, 1]) {
-      // An eye: almond shaped, the outer corner a little higher; the upper lid covers the top of the iris.
-      const ex = X(s * 15), ey = Y(0), w = 7.65 * kx, up = 3.15 * ky, dn = 2 * ky, ix = ex + s * .3 * kx;
-      const lid = () => { g.moveTo(ex - s * w, ey + 1); g.bezierCurveTo(ex - s * w * .5, ey - up * 1.3, ex + s * w * .45, ey - up * 1.35, ex + s * w, ey - 1.5); };
-      g.save(); g.beginPath(); lid(); g.bezierCurveTo(ex + s * w * .4, ey + dn * 1.4, ex - s * w * .45, ey + dn * 1.4, ex - s * w, ey + 1); g.clip();
-      g.fillStyle = rgb(new THREE.Color('#ece6de').lerp(sk, .25)); g.fillRect(ex - w - 2, ey - up * 2, w * 2 + 4, up * 4);
-      g.fillStyle = rgb(iris); g.beginPath(); g.arc(ix, ey + .5, 3.8 * ky, 0, 7); g.fill();
-      g.strokeStyle = 'rgba(15,8,5,.5)'; g.lineWidth = 1; g.stroke();
-      g.fillStyle = '#0d0806'; g.beginPath(); g.arc(ix, ey + .5, 1.3 * ky, 0, 7); g.fill();
-      g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.arc(ix - 1.4, ey - 1.4, .9, 0, 7); g.fill();
-      g.fillStyle = 'rgba(20,10,5,.28)'; g.fillRect(ex - w - 2, ey - up * 2, w * 2 + 4, up * 1.15);   // the lid's shadow on the eye
-      g.restore();
-      g.strokeStyle = 'rgba(22,13,9,.92)'; g.lineWidth = 2.2; g.beginPath(); lid(); g.stroke();   // the upper lid line
-      g.strokeStyle = rgb(deep, .16); g.lineWidth = 1.3; g.beginPath(); g.moveTo(ex - s * w * .8, ey - up * 1.9); g.quadraticCurveTo(ex, ey - up * 2.5, ex + s * w * .85, ey - up * 1.7); g.stroke();   // the crease above
-      g.strokeStyle = rgb(deep, .35); g.lineWidth = 1.2; g.beginPath(); g.moveTo(ex - s * w * .7, ey + dn * 1.05); g.quadraticCurveTo(ex, ey + dn * 1.5, ex + s * w * .95, ey); g.stroke();   // the lower lid
-      // A brow: soft dabs along a low arch, fuller at the inner end, thinner out to a round end; level, so he
-      // looks focused, not cross.
-      g.fillStyle = rgb(brow, .9); g.beginPath();
-      for (let k = 0; k <= 24; k++) { const t = k / 24, r = (1.3 - .65 * t ** 1.4) * ky, x = X(s * (6 + 19 * t)), y = Y(7.8 + 2.3 * Math.sin(Math.PI * t * .8) - .4 * t); g.moveTo(x + r * 1.3, y); g.ellipse(x, y, r * 1.3, r, 0, 0, 7); }
-      g.fill('nonzero');
-    }
-  });
-}
-
 const BLOB_GEO = new THREE.CircleGeometry(.5, 20), BLOB_MAT = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
 BLOB_GEO.userData.shared = true;
 
@@ -223,12 +403,14 @@ export function makeRig(p, kit, isHero) {
     const hand = add(elbow, ball(.037, 12, 10), skin); hand.scale.set(1, .6, 1.3); hand.position.z = -.253;    // a flat hand, palm to the body
     const thumb = add(elbow, ball(.015, 8, 6), skin); thumb.scale.z = 1.7; thumb.position.set(.03, -s * .006, -.236);
   }
-  const head = new THREE.Group(); head.rotation.order = 'ZYX'; head.position.z = HEAD; head.scale.set(1, .92, 1.1); torso.add(head);
-  const face = mat('#ffffff', .62, { map: faceTex(p) }); add(head, HEAD_GEO, face); add(head, NOSE_GEO, face);
-  for (const s of [-1, 1]) { const e = add(head, EAR_GEO, skin); e.position.copy(onHead(-.1, s, -.08)); e.position.y -= s * .002; e.scale.y = s; e.rotation.set(0, -.15, -s * .22); }
-  addHair(head, p, kit, R, mat, add);
+  // The head, with his own face (`faceOf`): a little wider or longer, its jaw and chin his own.
+  const F = faceOf(p), head = new THREE.Group(); head.rotation.order = 'ZYX'; head.position.z = HEAD; head.scale.set(F.w, .92 * F.w, 1.1 * F.h); torso.add(head);
+  const [face, U] = faceMat(p, F, mats); add(head, headGeo(F), face); add(head, noseGeo(F), face);
+  for (const s of [-1, 1]) { const e = add(head, EAR_GEO, skin); e.position.copy(onHead(-.1, s, -.08, F)); e.position.y -= s * .002; e.scale.y = s; e.rotation.set(0, -.15, -s * .22); }
+  addHair(head, p, kit, R, mat, add, F);
   const blob = new THREE.Mesh(BLOB_GEO, BLOB_MAT); blob.position.z = .012; g.add(blob);
   g.rotation.order = 'ZYX';
   g.userData = { mats, legs, arms, elbows, pelvis, torso, head, blob, yaw: null, seed: Math.random() * 6 };
+  [g.userData.face, g.userData.faceSet] = faceLife(g, head, U, g.userData.seed);
   return g;
 }

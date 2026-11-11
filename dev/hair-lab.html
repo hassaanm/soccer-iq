@@ -10,8 +10,13 @@
   Faces: face=1 shows six big heads with mixed skins, hair colours and styles (skin=, hair=, style= set them all;
   dist=<m> moves the camera, at=<m> raises what it looks at).
   Bodies: body=1 frames whole players (n=4 side by side, the first is the hero, kits differ) in any view;
-  pose=stand|run|shot|cheer freezes a pose made by the real animateRig (kt=<s> picks the moment of the shot,
-  ph=<0-1> the moment of the stride, mt=<s> the moment of the cheer). pose also works with view=game. -->
+  pose=stand|run|shot|cheer|sad freezes a pose made by the real animateRig (kt=<s> picks the moment of the shot,
+  ph=<0-1> the moment of the stride, mt=<s> the moment of the cheer). pose also works with view=game. head=1 frames
+  the heads (with dist=<m>), to see the face the pose gives (pose=shot: effort, cheer: happy, sad: let down).
+  Faces of real players: row=1 shows twelve named players (from js/teams.js, with their own hair and face; names=A,B,..
+  picks them, cols=<n> sets the columns). exprs=1 shows one player (name=, default YAMAL) in each face state.
+  expr=calm|focus|effort|happy|sad|half|blink freezes every face in that state; look=<round>,<up> turns the eyes
+  (degrees, + is his left / up). Each label gives the head's triangles and draw calls. -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <style>
   html, body { margin: 0; height: 100%; background: #20242c; color: #e8ecf2; font: 600 14px system-ui, sans-serif; overflow: hidden; }
@@ -29,8 +34,15 @@ import { makeRig, RIM } from '../js/pro/rig.js';
 import { HAIR_STYLES } from '../js/pro/hair.js';
 import { makeEnv } from '../js/pro/light.js';
 import { animateRig } from '../js/pro/motion.js';
+import { TEAMS } from '../js/teams.js';
 
 const Q = new URLSearchParams(location.search);
+// Real players by name, as js/teams.js has them.
+const PEOPLE = new Map(TEAMS.flatMap(t => t.players).map(p => [p.name, p]));
+const ROW = Q.get('names') ? Q.get('names').split(',') : ['YAMAL', 'MBAPPÉ', 'HAALAND', 'MESSI', 'RONALDO', 'VINI JR', 'BELLINGHAM', 'SALAH', 'DE BRUYNE', 'MODRIĆ', 'KANE', 'SAKA'];
+const EXPR = { calm: {}, focus: { focus: 1 }, effort: { effort: 1 }, happy: { happy: 1 }, sad: { sad: 1, look: [0, -2.2] }, half: { blink: .5 }, blink: { blink: 1 } };
+const row = Q.get('row') === '1', exprs = Q.get('exprs') === '1', who = Q.get('name') || 'YAMAL';
+const freeze = (g, k) => { const o = EXPR[k]; if (!o) return; const l = Q.get('look'); g.userData.faceSet({ ...o, look: o.look || (l ? l.split(',').map(Number) : undefined) }); };
 const view = Q.get('view') || 'front', night = Q.get('light') === 'night';
 const SKIN = { light: '#f0c8a6', tan: '#d9a37a', mid: '#b07a52', brown: '#8a5a3a', dark: '#6b4429' };   // as in js/teams.js
 const HAIR = { light: '#5a4330', tan: '#2a1c12', mid: '#1b1410', brown: '#120c08', dark: '#120c08' };
@@ -38,7 +50,7 @@ const skinK = SKIN[Q.get('skin')] ? Q.get('skin') : 'light', skin = SKIN[skinK],
 const faces = Q.get('face') === '1';   // [skin, hair, style] for each big head
 const FACES = [['light', '#5a4330', 'part'], ['tan', '#1b1410', 'crop'], ['dark', '#120c08', 'fade'], ['mid', '#1b1410', 'curls'], ['light', '#c9a46a', 'quiff'], ['brown', '#120c08', 'buzz']]
   .map(([k, h, s]) => [Q.get('skin') ? skin : SKIN[k], Q.get('hair') ? hair : h, Q.get('style') || s]);
-const styles = faces ? FACES.map(f => f[2]) : Q.get('style') ? [Q.get('style')] : Q.get('styles') ? Q.get('styles').split(',') : HAIR_STYLES;
+const styles = row ? ROW : exprs ? Object.keys(EXPR) : faces ? FACES.map(f => f[2]) : Q.get('style') ? [Q.get('style')] : Q.get('styles') ? Q.get('styles').split(',') : HAIR_STYLES;
 const KITS = [{ pattern: 'stripes', colors: ['#fb090b', '#1b1b1f'], shorts: '#ffffff', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' },
   { pattern: 'solid', colors: ['#1e3a8a'], shorts: '#ffffff', socks: '#1e3a8a', num: '#ffffff', trim: '#fcd116' }];
 const BODY_KITS = [KITS[0], { pattern: 'solid', colors: ['#fcd116'], shorts: '#1e3a8a', socks: '#fcd116', num: '#1e3a8a', trim: '#1e3a8a' },
@@ -68,7 +80,10 @@ RIM.color.value.set(night ? '#d2e2ff' : '#ffe6bd'); RIM.k.value = night ? .55 : 
 const labels = document.getElementById('labels');
 const label = (text, x, y) => { const d = document.createElement('div'); d.textContent = text; d.style.left = x + 'px'; d.style.top = y + 'px'; labels.appendChild(d); };
 const NAMES = ['SILVA', 'KANE', 'MBAPPE', 'PEDRI'];
-const player = (style, i) => body ? makeRig({ name: NAMES[i % 4], num: [7, 10, 9, 23][i % 4], skin: Object.values(SKIN)[(i * 2) % 5], hair, hairStyle: style }, BODY_KITS[i % 4], i === 0)
+const player = (style, i) => { const g = player0(style, i); freeze(g, exprs ? style : Q.get('expr') || (Q.get('look') ? 'calm' : '')); return g; };
+const player0 = (style, i) => row ? makeRig({ ...PEOPLE.get(style) || { name: style, skin: SKIN.tan, hair: HAIR.tan }, num: 7 + i }, KITS[i % 2], false)
+  : exprs ? makeRig({ ...PEOPLE.get(who) || { name: who, skin: SKIN.tan, hair: HAIR.tan }, num: 7 }, KITS[0], false)
+  : body ? makeRig({ name: NAMES[i % 4], num: [7, 10, 9, 23][i % 4], skin: Object.values(SKIN)[(i * 2) % 5], hair, hairStyle: style }, BODY_KITS[i % 4], i === 0)
   : faces ? makeRig({ name: 'LAB' + i, num: 7 + i, skin: FACES[i % 6][0], hair: FACES[i % 6][1], hairStyle: style }, KITS[i % 2], false)
   : makeRig({ name: 'LAB' + i, num: 7 + i, skin, hair, hairStyle: style }, KITS[i % 2], false);
 // Freezes a rig in a pose made by the real animateRig: a fake player and game run frame by frame. Returns how far
@@ -83,6 +98,7 @@ function pose(g, kind, i) {
   while (k < 120) step();
   if (run) { const want = num('ph', 0); for (let n = 0; n < 200 && Math.abs(((g.userData.m.ph + .04 - want) % 1 + 1.5) % 1 - .5) > .012; n++) step(); }
   if (kind === 'shot') { a.kickAt = sim.time; const end = sim.time + num('kt', .3); while (sim.time < end - 1e-6) step(); }
+  if (kind === 'sad') { mood = -1; const end = num('mt', .95); while (moodT < end) { moodT += dt; step(); } }
   if (kind === 'cheer') { mood = 1; const end = num('mt', .95); while (moodT < end) { moodT += dt; step(); } }
   return a.x;
 }
@@ -134,7 +150,7 @@ if (view === 'game') {
     renderer.setClearColor('#20242c'); renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H); renderer.clear();
     for (const c of cells) {
       for (const o of cells) o.h.visible = o === c;
-      c.h.getWorldPosition(c0); c0.z = poseK === 'cheer' ? 1.02 : .86;
+      if (Q.get('head') === '1') c.g.userData.head.getWorldPosition(c0); else { c.h.getWorldPosition(c0); c0.z = poseK === 'cheer' ? 1.02 : .86; }
       cam.aspect = cw / ch; cam.fov = 28; cam.position.copy(c0).addScaledVector(d, num('dist', 4.4)); cam.lookAt(c0); cam.updateProjectionMatrix();
       renderer.setViewport(c.x, H - c.y - ch, cw, ch); renderer.setScissor(c.x, H - c.y - ch, cw, ch);
       renderer.setClearColor(night ? '#141a2c' : '#2b313b'); renderer.clear(); renderer.render(scene, cam);
@@ -142,7 +158,7 @@ if (view === 'game') {
   });
 } else {
   // One head per cell, framed the same way, each drawn in its own part of the canvas.
-  const n = styles.length, cols = n === 1 ? 1 : faces ? 3 : Math.ceil(Math.sqrt(n * W / H * .8)), rowsN = Math.ceil(n / cols), cw = W / cols, ch = (H - 24) / rowsN;
+  const n = styles.length, cols = num('cols', 0) || (n === 1 ? 1 : faces ? 3 : row ? 6 : exprs ? 4 : Math.ceil(Math.sqrt(n * W / H * .8))), rowsN = Math.ceil(n / cols), cw = W / cols, ch = (H - 24) / rowsN;
   const dir = { front: [1, 0, .08], three: [.75, .62, .2], side: [0, 1, .1], back: [-1, -.15, .15], top: [.45, .2, 1] }[view] || [1, 0, .08];
   const d = new THREE.Vector3(...dir).normalize(), cells = [];
   styles.forEach((s, i) => {
@@ -158,8 +174,8 @@ if (view === 'game') {
     renderer.setClearColor('#20242c'); renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H); renderer.clear();
     for (const c of cells) {
       for (const o of cells) o.g.visible = o === c;   // only this cell's player, so no one stands behind him
-      c.g.userData.head.getWorldPosition(h); h.z += num('at', faces ? .01 : .03);
-      cam.aspect = cw / ch; cam.fov = n === 1 ? 24 : 28; cam.position.copy(h).addScaledVector(d, num('dist', faces ? .8 : .95)); cam.lookAt(h); cam.updateProjectionMatrix();
+      c.g.userData.head.getWorldPosition(h); h.z += num('at', faces || row || exprs ? .01 : .03);
+      cam.aspect = cw / ch; cam.fov = n === 1 ? 24 : 28; cam.position.copy(h).addScaledVector(d, num('dist', faces || exprs ? .8 : .95)); cam.lookAt(h); cam.updateProjectionMatrix();
       renderer.setViewport(c.x, H - c.y - ch, cw, ch); renderer.setScissor(c.x, H - c.y - ch, cw, ch);
       renderer.setClearColor(night ? '#141a2c' : '#2b313b'); renderer.clear(); renderer.render(scene, cam);
     }

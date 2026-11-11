@@ -18,7 +18,7 @@ export class Sim {
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
     this.agents.clear();
-    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, dist: 0, kickAt: null, face: [team === 'us' ? 1 : -1, 0] });
+    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, dist: 0, kickAt: null, kickFoot: null, face: [team === 'us' ? 1 : -1, 0] });
     add('hero', 'us', sc.hero);
     sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
     sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
@@ -43,9 +43,15 @@ export class Sim {
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } }
   give(id) { Object.assign(this.ball, { state: 'carried', carrier: id, z: 0 }); }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
-  windup(id, kind = 'pass') { const a = this.a(id); if (a) { a.kickAt = this.time; a.kickKind = kind; } } // kind: 'pass' (side of the foot) or 'shot' (laces)
+  // kind: 'pass' (inside of the foot) or 'shot' (laces); foot: 1 his left, 0 his right (game/outcomes.js picks it), or
+  // null to let the picture pick the foot nearer the ball.
+  windup(id, kind = 'pass', foot = null) { const a = this.a(id); if (a) { a.kickAt = this.time; a.kickKind = kind; a.kickFoot = foot; } }
   kick(x, y, { speed = 11, arc = 0.3, z1 = 0, touch = false } = {}) {
     const b = this.ball;
+    // A pass to a player stops at his feet, a small step in front of him, so he can take it with a foot (not in his middle).
+    if (!touch) for (const a of this.agents.values()) if (a.id !== b.carrier && Math.min(Math.hypot(a.x - x, a.y - y), Math.hypot(a.tx - x, a.ty - y)) < .25) {
+      const dx = b.x - x, dy = b.y - y, l = Math.hypot(dx, dy); if (l > 1.5) { x += dx / l * .4; y += dy / l * .4; } break;
+    }
     this.on(touch ? 'touch' : 'kick', speed);
     Object.assign(b, { state: 'flying', carrier: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
       dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
