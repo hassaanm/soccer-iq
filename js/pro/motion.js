@@ -208,7 +208,8 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
 
   if (mood > 0) { // his team scored: jumping with both arms up
     for (let i = 0; i < 2; i++) {
-      u.arms[i].rotation.y = lerp(u.arms[i].rotation.y, -2.75 + .3 * Math.sin(moodT * 15 + i * 2 + u.seed), mood);
+      u.arms[i].rotation.x = lerp(u.arms[i].rotation.x, (i ? -.32 : .32) + .06 * Math.sin(moodT * 15 + i * 2 + u.seed), mood); // a V, clear of the head
+      u.arms[i].rotation.y = lerp(u.arms[i].rotation.y, -2.85 + .3 * Math.sin(moodT * 15 + i * 2 + u.seed), mood);
       u.elbows[i].rotation.y = lerp(u.elbows[i].rotation.y, -.25, mood);
     }
     u.torso.rotation.y = lerp(u.torso.rotation.y, -.1, mood); u.head.rotation.y = lerp(u.head.rotation.y, -.3, mood);

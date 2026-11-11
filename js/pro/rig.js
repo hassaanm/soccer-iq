@@ -23,24 +23,27 @@ function withRim(m) {
 // than his shoulders.
 export const HIP = .82, THIGH = .38, SHIN = .38, HALF = .075;   // HALF: each hip joint's distance from the middle
 const WAIST = .13;                                                // the waist above the hip joints; the chest bends here
-const SHOULDER = .3, SHOULDER_Y = .165, HEAD = .55, R = .127;     // above the waist
-const Z0 = -.078, Z1 = .385; // the shirt runs from below the waist to the collar; its picture maps to this range
-// Rings up the shirt and the shorts: [height, half width, depth to the front, depth to the back].
-const SHIRT = [[-.064, .128, .08, .078], [Z0, .15, .097, .094], [-.02, .145, .094, .09], [.05, .138, .09, .086], [.13, .148, .097, .088], [.2, .162, .104, .09],
-  [.26, .168, .104, .09], [.3, .16, .098, .086], [.33, .128, .084, .078], [.355, .085, .066, .064], [.375, .058, .054, .054], [Z1, .052, .05, .05]];
-const SHORTS = [[-.084, .004, .004, .004], [-.074, .09, .06, .06], [-.04, .136, .084, .088], [0, .146, .09, .096], [.06, .14, .088, .09], [.1, .13, .082, .082], [.14, .108, .068, .068]];
+const SHOULDER = .28, SHOULDER_Y = .148, HEAD = .55, R = .127;  // above the waist; the shoulder joint sits just inside the shirt
+const Z0 = -.08, Z1 = .385; // the shirt runs from below the waist to the collar; its picture maps to this range
+// Rings up the shirt and the shorts: [height, half width, depth to the front, depth to the back, roundness (2 is
+// an oval, higher is boxier)]. The shirt hangs loose over the shorts, narrows a little at the waist, is widest at
+// the chest, then slopes down from the neck to round shoulders.
+const SHIRT = [[-.068, .13, .096, .09, 2.3], [Z0, .152, .126, .11, 2.3], [-.03, .144, .112, .1, 2.3], [.04, .13, .096, .084, 2.4], [.12, .138, .105, .088],
+  [.2, .148, .112, .096], [.26, .152, .106, .1], [.295, .153, .098, .097], [.318, .148, .091, .09], [.335, .128, .083, .082],
+  [.35, .1, .073, .072, 2.3], [.362, .08, .065, .063, 2.1], [.375, .064, .058, .057, 2], [Z1, .059, .055, .054, 2]];
+const SHORTS = [[-.084, .004, .004, .004], [-.074, .09, .06, .06], [-.04, .136, .084, .088], [0, .146, .09, .096], [.06, .136, .084, .086], [.1, .118, .074, .074], [.14, .098, .062, .064]];
 
 const TAU = Math.PI * 2;
 const lathe = (pts, seg = 18) => new THREE.LatheGeometry(pts.map(([r, z]) => new THREE.Vector2(r, z)), seg).rotateX(Math.PI / 2);
 // An arm or leg part hanging down from its joint: radius r0 at the joint, r1 at the far end, both ends rounded.
 const limb = (len, r0, r1, bulge = 0) => lathe([[0, -len - r1 * .9], [r1 * .72, -len - r1 * .62], [r1, -len], [(r0 + r1) / 2 + bulge, -len * .45], [r0, 0], [r0 * .72, r0 * .62], [0, r0 * .9]], 14);
 const ball = (r, w = 20, h = 14) => new THREE.SphereGeometry(r, w, h).rotateX(Math.PI / 2);
-// A body part built from rings: each ring is a rounded box shape (`n` = 2 is an oval, higher is boxier), wider
-// than it is deep, and deeper at the chest than at the back. Its picture wraps once around, starting at the
+// A body part built from rings: each ring is a rounded box shape (roundness `n` = 2 is an oval, higher is boxier),
+// wider than it is deep, and deeper at the chest than at the back. Its picture wraps once around, starting at the
 // right side seam, and runs from the first ring's height to the last.
 function loft(rings, seg = 28, n = 2.5) {
-  const pos = [], uv = [], idx = [], e = 2 / n, lo = Math.min(...rings.map(r => r[0])), hi = rings[rings.length - 1][0];
-  for (const [z, w, f, b] of rings) for (let j = 0; j <= seg; j++) {
+  const pos = [], uv = [], idx = [], lo = Math.min(...rings.map(r => r[0])), hi = rings[rings.length - 1][0];
+  for (const [z, w, f, b, rn = n] of rings) for (let j = 0, e = 2 / rn; j <= seg; j++) {
     const a = j / seg * TAU, s = Math.sin(a), c = Math.cos(a);
     pos.push((s > 0 ? f : b) * Math.sign(s) * Math.abs(s) ** e, -w * Math.sign(c) * Math.abs(c) ** e, z); uv.push(j / seg, (z - lo) / (hi - lo));
   }
@@ -129,16 +132,19 @@ export function makeRig(p, kit, isHero) {
   add(pelvis, loft(SHORTS, 22, 2.3), shorts);
   const torso = new THREE.Group(); torso.position.z = WAIST; pelvis.add(torso);
   add(torso, loft(SHIRT), mat('#ffffff', .86, { map: shirtTex(kit, p) }));
-  add(torso, new THREE.TorusGeometry(.052, .012, 8, 18), mat(kit.trim, .86)).position.z = Z1 - .004;      // collar
-  add(torso, new THREE.CylinderGeometry(.043, .05, .1, 14).rotateX(Math.PI / 2), skin).position.z = Z1 + .03; // neck
+  add(torso, new THREE.TorusGeometry(.057, .0075, 6, 22), mat(kit.trim, .86)).position.z = Z1 - .002;     // a thin collar rib
+  add(torso, lathe([[.052, -.04], [.051, 0], [.048, .035], [.045, .07], [.045, .1]], 16), skin).position.z = Z1; // neck
+  // A sleeve: its top is a dome round the shoulder joint, so it stays in place under the shirt however the arm
+  // turns, and only the round of the shoulder shows past the shirt's side.
   const sleeve = mat(kit.pattern === 'sleeves' ? kit.colors[1] : kit.colors[0], .86), cuff = mat(kit.trim, .86);
+  const sleeveGeo = lathe([[.051, -.128], [.052, -.07], [.055, -.02], [.056, 0], [.053, .02], [.045, .037], [.03, .05], [0, .056]], 14);
   for (const s of [-1, 1]) {
-    const piv = new THREE.Group(); piv.position.set(0, s * SHOULDER_Y, SHOULDER); torso.add(piv); arms.push(piv);
-    add(piv, limb(.125, .056, .05), sleeve);
-    add(piv, new THREE.CylinderGeometry(.052, .052, .02, 14).rotateX(Math.PI / 2), cuff).position.z = -.134;
-    add(piv, limb(.235, .04, .034), skin);
-    const elbow = new THREE.Group(); elbow.position.z = -.235; piv.add(elbow); elbows.push(elbow);
-    add(elbow, limb(.215, .034, .027), skin);
+    const piv = new THREE.Group(); piv.position.set(-.004, s * SHOULDER_Y, SHOULDER); torso.add(piv); arms.push(piv);
+    add(piv, sleeveGeo, sleeve);
+    add(piv, new THREE.CylinderGeometry(.053, .053, .018, 14).rotateX(Math.PI / 2), cuff).position.z = -.13;
+    add(piv, limb(.225, .044, .035, .005), skin);
+    const elbow = new THREE.Group(); elbow.position.z = -.225; piv.add(elbow); elbows.push(elbow);
+    add(elbow, limb(.215, .035, .027, .004), skin);
     const hand = add(elbow, ball(.034, 12, 10), skin); hand.scale.set(1, .6, 1.3); hand.position.z = -.25;    // a flat hand, palm to the body
     const thumb = add(elbow, ball(.014, 8, 6), skin); thumb.scale.z = 1.7; thumb.position.set(.028, -s * .006, -.234);
   }
