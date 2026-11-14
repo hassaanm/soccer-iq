@@ -133,9 +133,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lookBtn{left:calc(26px + var(--safe-l));bottom:calc(20px + var(--safe-b));width:96px;height:96px}
 #lookBtn i{font-size:38px}
 #lookBtn.on{--top:#fff2b8;--bot:var(--gold)}
-#passBtn{right:calc(116px + var(--safe-r));bottom:calc(20px + var(--safe-b))}
+#passBtn{right:calc(124px + var(--safe-r));bottom:calc(20px + var(--safe-b))}
 #dribBtn{right:calc(22px + var(--safe-r));bottom:calc(46px + var(--safe-b))}
-#shootBtn{right:calc(116px + var(--safe-r));bottom:calc(112px + var(--safe-b))}
+#shootBtn{right:calc(124px + var(--safe-r));bottom:calc(120px + var(--safe-b))}
 /* 1v1 "Steal it!": one big button under the right thumb; looking is automatic, so LOOK/PASS/DRIBBLE hide. */
 #stealBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:14px}
 #stealBtn i{font-size:46px}
@@ -167,6 +167,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #touchPick i{font-style:normal;font-size:28px;line-height:1}
 #touchPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud.touchpick #touchPick{display:flex}
+/* With SHOOT up too (a match near the goal) the right side is full, so the pick moves to the left, where LOOK UP was. */
+#hud.touchpick.shoot #touchPick{right:auto;left:calc(18px + var(--safe-l))}
+#hud.touchpick.shoot #touchPick .btn{animation-name:fromLeft}
 /* Demos and replays: a hand shows which button, friend or arrow to tap, then taps it. */
 #hand{position:fixed;left:0;top:0;z-index:30;pointer-events:none;opacity:0;transition:transform .6s cubic-bezier(.4,0,.2,1),opacity .25s}
 #hand.show{opacity:1}
@@ -198,14 +201,17 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #rate .stars span.on{color:var(--gold-d);text-shadow:0 2px 0 var(--gold-e);transform:scale(.4)}
 #rate .stars span.on.pop{transform:scale(1);transition:transform .3s cubic-bezier(.3,1.8,.5,1);filter:drop-shadow(0 0 7px rgba(255,216,77,.9))}
 #rate .txt{font-size:17px;line-height:1.25;margin:2px 18px 0;min-height:2.5em;display:flex;align-items:center;justify-content:center;color:var(--ink)}
-#rate .btns{position:absolute;top:calc(100% + 12px);left:0;right:0;display:flex;gap:10px;justify-content:center}
+#rate .btns{position:absolute;top:calc(100% + 12px);left:0;right:0;display:flex;gap:14px;justify-content:center}
+/* Big enough for a small finger: Watch and Next come after every missed play. */
+#rate .btns .btn{min-height:54px;padding:10px 22px;font-size:18px}
+#rateNext{min-width:112px}
 /* Matches and demos aren't rated: the card is just the result. */
 #rate.solo{padding-bottom:0}
 #rate.solo .stars,#rate.solo .txt{display:none}
 #rate.solo .title{border-radius:21px}
 
 /* ---------- home ---------- */
-.screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px calc(16px + var(--safe-r)) 12px calc(16px + var(--safe-l))}
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px calc(16px + var(--safe-r)) max(12px,var(--safe-b)) calc(16px + var(--safe-l))}
 #home{justify-content:space-between;background:radial-gradient(ellipse at 50% 40%,rgba(255,250,242,.2),rgba(36,25,58,.34))}
 .brand{display:flex;align-items:center;gap:10px;margin-top:2px;animation:dropIn .5s var(--bounce) backwards}
 .brand .logo{width:46px;height:46px;flex:none;filter:drop-shadow(0 4px 0 rgba(36,25,58,.35));animation:spin 8s linear infinite}
@@ -219,7 +225,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .team[data-side=them]{animation-name:fromRight}
 .team .tag{display:inline-block;font-size:12px;letter-spacing:.14em;color:#fff;background:rgba(36,25,58,.55);padding:3px 12px;border-radius:999px}
 .team .kind{display:flex;justify-content:center;gap:4px;margin:6px 0 0}
-.team .kind button{border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
+.team .kind button{position:relative;border:0;border-radius:999px;padding:3px 10px;font:600 12px var(--font);background:rgba(36,25,58,.1);color:var(--ink-soft);cursor:pointer}
+/* The pills are small, so the touch area reaches past them. */
+.team .kind button::after{content:"";position:absolute;inset:-9px -2px}
 .team .kind button.on{background:var(--ink);color:#fff}
 .carousel{display:flex;align-items:center;justify-content:center;gap:2px;margin-top:2px}
 .carousel .btn-icon{width:40px;height:40px;font-size:26px;flex:none}
@@ -277,7 +285,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #card,#results,#menu,#lessonSheet,#albumSheet,#cupSheet{background:rgba(36,25,58,.32);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:fadein .2s}
 .sheet{padding:10px 16px 10px;width:min(780px,96vw);position:relative}
 .sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
-.sheet :is(#sheetClose,#albumClose,#cupClose,#menuClose){display:block;position:absolute;top:8px;right:12px;padding:6px 14px;min-height:0;margin:0}
+.sheet :is(#sheetClose,#albumClose,#cupClose,#menuClose){display:block;position:absolute;top:8px;right:12px;padding:11px 18px;min-height:44px;margin:0;z-index:1}
 /* Today's training: the 3 ideas, as a reminder before the mix. */
 .remind{display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap}
 .remind > span{display:flex;flex-direction:column;align-items:center;width:150px;padding:8px 8px 9px;border-radius:16px;background:#fff;box-shadow:0 0 0 2px var(--line);animation:riseIn .4s var(--bounce) backwards}
@@ -301,7 +309,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 
 /* ---------- lesson, album and cup sheets ---------- */
 /* Lessons and stickers: one row per chapter, with the chapter's number and name on the left. */
-#lessons,#album{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 80px);overflow-y:auto;padding:3px}
+#lessons,#album{display:flex;flex-direction:column;gap:6px;max-height:calc(92dvh - 72px);overflow-y:auto;padding:3px}
 #lessons{padding-bottom:5px}
 :is(#lessons,#album) .chap{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
 :is(#lessons,#album) .cn{font-size:12px;font-weight:700;color:var(--ink-soft);line-height:1.15;text-align:left}
@@ -336,7 +344,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #album .st .lv{font-size:11px;color:var(--gold-d);min-height:13px;line-height:1.2}
 #album .trophies{font-size:13px;font-weight:700;color:var(--ink);text-align:center;padding:6px 0 2px}
 /* Cup sheet: same-size tiles, 4 to a row, and a short last row stays centered. */
-#cups{--gap:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap);padding:8px 4px 6px;max-height:calc(100vh - 80px);overflow-y:auto}
+#cups{--gap:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:var(--gap);padding:8px 4px 6px;max-height:calc(92dvh - 72px);overflow-y:auto}
 #cups .tile{flex:0 0 calc((100% - 3 * var(--gap)) / 4);position:relative;border:0;border-radius:18px;background:#fff;padding:10px 6px 9px;font:inherit;color:var(--ink);cursor:pointer;
   display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:0 0 0 2px var(--line),0 3px 0 rgba(36,25,58,.15);transition:transform .07s}
 #cups .tile:active{transform:translateY(2px)}
@@ -433,7 +441,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 @media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
 /* Short screens (a phone held sideways): tighter cards, so the buttons always show without scrolling. */
 @media (max-height:500px){
-  .panel{padding:12px 26px 16px}
+  .panel{padding:10px 26px 12px}
   .panel .emoji{font-size:38px}
   .panel h2{font-size:30px;margin:0 0 2px}
   .panel p{font-size:16px;margin:2px 0 8px}
@@ -445,7 +453,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   .outside:has(> b){padding:6px 10px}
   #results .btns{margin-top:8px}
   .sticker{margin:0}
-  .sticker .face{width:66px;border-width:4px}
+  .sticker .face{width:58px;border-width:4px}
   .sticker b{font-size:11px;padding:2px 10px;margin-top:-8px}
   .sticker .face span{font-size:36px}
   .sticker.trophy::before{width:190px}

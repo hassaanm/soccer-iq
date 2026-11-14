@@ -1,5 +1,5 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
-import { lerp, smooth, rot } from '../geom.js';
+import { lerp, smooth, rot, clamp } from '../geom.js';
 import { L, W, MATES, DIRS, NONE, facesBall } from './shared.js';
 
 export const view = {
@@ -18,6 +18,18 @@ export const view = {
       return { eye: [mx - 8, my, 9], tgt: [mx + 1.5, my, 0], Ff: .85, Fw: .42 };
     }
     if (this.camMode === 'follow') {
+      // Our goal, as on TV: the net first, then the camera swings round to the scorer (our player nearest the
+      // ball when it went in), low and in front of him so his cheer and face show, and drifts slowly round.
+      const m = this.world.mood;
+      if (m?.team === 'us' && m.t > .6) {
+        if (this.celeb?.m !== m) { let id = 'hero', d = 1e9; for (const p of s.team('us')) { const k = Math.hypot(p.x - b.x, p.y - b.y); if (k < d) { d = k; id = p.id; } } this.celeb = { m, id }; }
+        const p = s.a(this.celeb.id) || h;
+        if (p) {
+          const at = a => [p.x + Math.cos(a) * 4.4, p.y + Math.sin(a) * 4.4], on = ([x, y]) => x > .5 && x < L - .5 && y > .5 && y < W - .5, turn = .45 + (m.t - .6) * .1;
+          let a = (p.face ? Math.atan2(p.face[1], p.face[0]) : 0) + turn; if (!on(at(a))) a = Math.atan2(W / 2 - p.y, L / 2 - p.x) + turn; // too near a line: look from the middle of the pitch instead
+          return { eye: [clamp(at(a)[0], .5, L - .5), clamp(at(a)[1], .5, W - .5), 1.55], tgt: [p.x, p.y, 1.05], Ff: 1.25, Fw: .5 };
+        }
+      }
       // A calm chase camera: it trails a smoothed point near the ball and only turns around
       // (slowly) when the other team has the ball, so kicks and passes never make it jump.
       const f = this.follow;
@@ -32,7 +44,8 @@ export const view = {
       const [bx, by] = rot(-4.2, 2, this.yaw); // over his shoulder, so his body never hides a ball rolling at him
       return { eye: [h.x + bx, h.y + by, 4.2], tgt: [lerp(h.x, b.x, .75), lerp(h.y, b.y, .75), 0], Ff: 1.02, Fw: .56 };
     }
-    // Player view, behind him in the direction he's turned. Head down: close and aimed at the ball.
+    // Player view, behind him in the direction he's turned. Head down: close and aimed just above the ball, so the
+    // prompt at the top of a phone screen does not cover his head.
     // Head up: just above head height, looking out across the field.
     const k = smooth(this.look);
     const [bx, by] = rot(-lerp(3.1, 5.2, k), lerp(1.3, .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
@@ -40,7 +53,7 @@ export const view = {
     // looks a few meters ahead of him toward the ball, keeping him in view.
     let dx = b.x, dy = b.y;
     if (facesBall(this.sc)) { const [ax, ay] = rot(3.5, 0, this.yaw); dx = lerp(h.x + ax, b.x, .25); dy = lerp(h.y + ay, b.y, .25); }
-    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(0, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
+    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(.8, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
   },
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;

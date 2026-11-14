@@ -38,19 +38,25 @@ const sprite = (map, opacity, sx, sy) => {
 };
 
 export function buildBeams(group, towers, z) {
-  const H = 46, geo = new THREE.CylinderGeometry(1.6, 15, H, 40, 1, true).translate(0, -H / 2, 0), down = new THREE.Vector3(0, -1, 0), dir = new THREE.Vector3();
+  // The four cones are one mesh (one draw): each corner keeps how far down its cone it is (`aT`, 0 at the lamp).
+  const H = 46, down = new THREE.Vector3(0, -1, 0), dir = new THREE.Vector3(), o = new THREE.Object3D(), cones = [];
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false,
-    vertexShader: `varying float vT; varying vec3 vN, vV; void main() { vT = -position.y / ${H}.0; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`,
+    vertexShader: 'attribute float aT; varying float vT; varying vec3 vN, vV; void main() { vT = aT; vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalMatrix * normal; vV = -mv.xyz; gl_Position = projectionMatrix * mv; }',
     fragmentShader: 'varying float vT; varying vec3 vN, vV; void main() { float f = abs(dot(normalize(vN), normalize(vV))); gl_FragColor = vec4(vec3(0.62, 0.74, 1.0) * pow(f, 3.0) * pow(clamp(1.0 - vT, 0.0, 1.0), 2.2) * 0.2, 1.0); }',
   });
   const streak = glare(256, 32, [[0, .9], [.12, .35], [1, 0]]), star = glare(128, 128, [[0, 1], [.08, .6], [.3, .12], [1, 0]]);
   for (const [x, y] of towers) {
-    const beam = new THREE.Mesh(geo, mat); beam.position.set(x, y, z);
-    beam.quaternion.setFromUnitVectors(down, dir.set(CX - x, CY - y, -z).normalize()); beam.renderOrder = 3; group.add(beam);
+    const geo = new THREE.CylinderGeometry(1.6, 15, H, 40, 1, true).translate(0, -H / 2, 0).toNonIndexed(), p = geo.attributes.position;
+    geo.setAttribute('aT', new THREE.Float32BufferAttribute(Array.from({ length: p.count }, (_, i) => -p.getY(i) / H), 1));
+    o.position.set(x, y, z); o.quaternion.setFromUnitVectors(down, dir.set(CX - x, CY - y, -z).normalize()); o.updateMatrix(); cones.push(geo.applyMatrix4(o.matrix));
     const a = sprite(streak, .55, 90, 5), b = sprite(star, .8, 13, 13);
     a.position.set(x, y, z); b.position.set(x, y, z); group.add(a, b);
   }
+  const beams = new THREE.BufferGeometry();
+  for (const k of ['position', 'normal', 'aT']) beams.setAttribute(k, new THREE.Float32BufferAttribute(cones.flatMap(g => [...g.attributes[k].array]), cones[0].attributes[k].itemSize));
+  cones.forEach(g => g.dispose());
+  const beam = new THREE.Mesh(beams, mat); beam.renderOrder = 3; group.add(beam);
 }
 
 // The sun: a small hot middle, a wide warm glow and a thin streak, far away in the direction the light comes from.

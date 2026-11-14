@@ -6,12 +6,39 @@ import { canvasTex, blobTex } from '../tex.js';
 import { addHair, headAt } from './hair.js';
 
 // The rim light's colour and strength, shared by every player; the world sets them for day or night.
-export const RIM = { color: { value: new THREE.Color('#ffffff') }, k: { value: .5 } };
+export const RIM = { color: { value: new THREE.Color('#ffffff') }, k: { value: .5 }, detail: { value: 1 } }; // detail 0: no cloth bumps (slow devices)
+// Cloth is told apart by its roughness (.8 to .95: shirt, shorts, socks; .9 and up: socks). It gets soft folds and a
+// fine knit, socks get ribs, all as tiny bumps worked out from where the pixel is on his body (so they move with
+// him), each fading out before it gets smaller than a pixel. Cloth shines less than skin or boots. Everything is a
+// little darker near the grass (less sky reaches it), which sets him on the ground.
+const CLOTH = `
+  float clothK = step(0.79, roughnessFactor) * step(roughnessFactor, 0.95), sockK = step(0.885, roughnessFactor) * clothK;
+  if (uDetail > 0.0) {
+    vec3 p = vRigP; float fw = length(fwidth(p));
+    float fold = (sin(p.z * 62.0 + sin(p.y * 29.0 + p.x * 15.0) * 2.2) + 0.6 * sin(p.z * 41.0 - p.y * 36.0 + p.x * 19.0) + 0.4 * sin(p.y * 53.0 + p.z * 23.0 + 1.7 * sin(p.x * 31.0))) * 0.0028 * (0.35 + 0.65 * smoothstep(1.3, 0.92, p.z)) * smoothstep(0.03, 0.008, fw) * (1.0 - sockK);
+    float knit = sin(p.z * 1300.0) * sin((p.x + p.y) * 1300.0) * 0.00016 * smoothstep(0.0028, 0.0011, fw);
+    float rib = sin(atan(p.y - sign(p.y) * 0.075, p.x) * 34.0) * 0.00028 * sockK * smoothstep(0.004, 0.0016, fw);
+    float bh = (fold + knit + rib) * clothK;
+    vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition), r1 = cross(dpy, normal), r2 = cross(normal, dpx);
+    float det = dot(dpx, r1);
+    vec3 g = sign(det) * (dFdx(bh) * r1 + dFdy(bh) * r2) / max(abs(det), 1e-12);
+    float gl = length(g); g *= gl > 0.6 ? 0.6 / gl : 1.0;   // tilt the normal at most a little; never a zero normal
+    normal = normalize(normal - g);
+  }`;
+const SHADE = `
+  float aoH = mix(0.6, 1.0, smoothstep(0.04, 1.05, vRigZ));
+  reflectedLight.indirectDiffuse *= aoH; reflectedLight.directDiffuse *= mix(1.0, aoH, 0.3);
+  reflectedLight.directSpecular *= 1.0 - 0.6 * clothK; reflectedLight.indirectSpecular *= 1.0 - 0.45 * clothK;`;
 function withRim(m, more, key = '') {
   m.onBeforeCompile = sh => {
     more?.(sh);
-    sh.uniforms.uRim = RIM.color; sh.uniforms.uRimK = RIM.k;
-    sh.fragmentShader = 'uniform vec3 uRim;\nuniform float uRimK;\n' + sh.fragmentShader.replace('#include <opaque_fragment>', `
+    sh.uniforms.uRim = RIM.color; sh.uniforms.uRimK = RIM.k; sh.uniforms.uDetail = RIM.detail;
+    sh.vertexShader = 'varying vec3 vRigP;\nvarying float vRigZ;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRigP = position;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvRigZ = (modelMatrix * vec4(transformed, 1.0)).z;');
+    sh.fragmentShader = 'uniform vec3 uRim;\nuniform float uRimK, uDetail;\nvarying vec3 vRigP;\nvarying float vRigZ;\n' + sh.fragmentShader
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + CLOTH)
+      .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + SHADE)
+      .replace('#include <opaque_fragment>', `
       float rimF = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
       outgoingLight += uRim * uRimK * rimF * (0.3 + 0.7 * diffuseColor.rgb);
       #include <opaque_fragment>`);

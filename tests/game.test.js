@@ -379,3 +379,14 @@ test('pass in front!: the play freezes mid-run; in front he takes it in stride, 
     assert.ok(opt === 'spot:lead' ? ends.some(e => e === 'GOAL!' || e === 'Kept the ball!') : ends.includes(sc.pattern === 'lead-free' ? 'Kept the ball!' : 'Stolen!'), `${sc.id} ${opt}: ${ends}`);
   }
 });
+
+test("the child's player keeps his head down over the ball until LOOK UP, and the picture is told (hero.look)", async () => {
+  const sc = allScenarios('look-up')[0];
+  const { g } = makeGame(); g.mode = 'lesson'; g.load(sc);
+  let done = false; g.pre().then(() => { done = true; });
+  for (let t = 0; t < 5 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
+  g.decide(); for (let i = 0; i < 15; i++) g.tick(1 / 30, 6 + i / 30);
+  assert.equal(g.sim.a('hero').look, 0, 'head down before LOOK UP');
+  g.toggleLook(); for (let i = 0; i < 15; i++) g.tick(1 / 30, 7 + i / 30);
+  assert.equal(g.sim.a('hero').look, 1, 'head up after LOOK UP');
+});

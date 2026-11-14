@@ -41,6 +41,48 @@ function plan(k, d, s, P, alt, run) {
   if (k === 'pull') return { dur: .74, face: [.36, .74], slow: .06, t: [[.04, .4, T, 'sole', [-.26, s * .07], 1], [.4, .56, T, 'sole', [-.26, s * .07], 1], [.66, .9, O, 'inside', e(.55), .4]] }; // drag it back, keep the sole on it as he spins, then the other foot takes it on
   return { dur: .56, face: [0, .78], slow: .2, t: [[.04, .7, O, 'inside', e(.5), 1, [.12, s * .4]]] }; // first
 }
+// Skill turns: now and then a turn is made as a skill move instead (see pickSkill). It keeps the plain turn's time, its
+// slowing down and its body turn (and `last`, when he speeds up again), so he is where the plain turn puts him, when
+// it puts him there, and the ball ends on the same spot. Where other players react to the ball (the team AI is on)
+// the ball also takes the plain turn's way exactly (`path`: the plain turn's touches move the ball, the skill's
+// touches say which foot is on it); elsewhere (`own`) the skill takes the ball its own way: a longer fake, then the touch.
+//   chop     (for a cut): he shapes to shoot with the far foot, then its inside chops the ball across instead
+//   roll     (for a cut from standing, a walk or a jog): the sole of the far foot rolls the ball across his body
+//   cruyff   (for a hook, or with its own way a pull back): he shapes to pass with the far foot, then its inside drags
+//            the ball back behind his standing leg and he spins after it
+//   croqueta (a push past a defender close in front, its own way): the inside of the far foot knocks it across to the
+//            inside of the other foot, which pushes it on
+//   double   (the same push on the plain way): two quick touches across his body, the inside of the far foot, then
+//            the outside of the near foot
+const SKILL_T = { push: ['croqueta'], cut: ['chop', 'roll'], hook: ['cruyff'], pull: ['cruyff'] };
+export const TURN_SKILLS = new Set(['croqueta', 'double', 'chop', 'roll', 'cruyff']);
+function skillPlan(k, base, s, P, own) {
+  const T = s > 0 ? 1 : 0, O = 1 - T, E = base.t[base.t.length - 1][4], t = base.t[0], out = { ...base, last: base.t[base.t.length - 1][0] }; // E: where the plain turn leaves the ball
+  if (!own) out.path = base.t;
+  if (k === 'croqueta') out.t = [[.02, .42, O, 'inside', [Math.max(.2, P[0] - .14), s * .3], 1], [.5, .92, T, 'inside', E, .5]];
+  else if (k === 'double') out.t = [[.05, .28, O, 'inside', E, 1], [.3, .55, T, 'outside', E, .4]];
+  else if (k === 'chop') out.t = [own ? [.4, .92, O, 'inside', E, 1] : [t[0], t[1], O, 'inside', E, 1]];
+  else if (k === 'roll') out.t = [own ? [.08, .72, O, 'sole', E, 1, [Math.max(.25, P[0]), s * .22]] : [t[0], t[1], O, 'sole', E, 1]];
+  else out.t = [own ? [.38, .84, O, 'inside', E, 1, [.04, s * .3]] : t]; // cruyff: behind the standing leg (T, planted beside the ball)
+  return out;
+}
+// A number from 0 to 1 that is the same whenever the same things go in: a replay of a play makes the same choices.
+const rnd = (...v) => { let h = 2166136261; for (const x of v) h = Math.imul(h ^ Math.round(x), 16777619); h ^= h >>> 15; h = Math.imul(h, 2246822507); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+const idn = id => [...id].reduce((h, c) => h * 31 + c.charCodeAt(0), 7);
+// The skill he is doing now, for the picture (pro/motion.js): its kind, how far through it he is (c: a dribble skill
+// runs over one dribble touch, 0 to 1 at the touch that takes the ball away, then a little past it; a skill turn is
+// its part of the move, as in plan), the side he fakes to (+1 his left, as he faced when it began), that facing (yaw)
+// and the fake's way on the grass (fx, fy). null when none.
+const SK = { k: '', c: 0, fake: 0, yaw: 0, fx: 0, fy: 0, at: 0 };
+export function skillNow(sim, id) {
+  const a = sim.a(id), b = sim.ball; if (!a || b.carrier !== id || b.state !== 'carried') return null;
+  const m = b.move;
+  if (m && TURN_SKILLS.has(m.k)) { SK.k = m.k; SK.c = (sim.time - m.t0) / m.dur; SK.fake = -m.s; SK.yaw = m.a0; SK.at = m.t[0][0]; }
+  else if (a.skill && !m) { SK.k = a.skill.k; SK.c = dribbleAt(a) / 1.4 - a.skill.n; SK.fake = a.skill.fake; SK.yaw = a.skill.yaw; SK.at = .5; }
+  else return null;
+  SK.fx = -Math.sin(SK.yaw) * SK.fake; SK.fy = Math.cos(SK.yaw) * SK.fake;
+  return SK;
+}
 // Which way he turns (+1 to his left) from the ball's line `h` to `want`: the short way, but nearly straight back he
 // turns away from a player of the other team close by. Also used by the picture to ready the foot for a pass he will turn with.
 export function turnSide(sim, c, h, want) {
@@ -53,7 +95,7 @@ const nearFoe = (sim, c, r = 4) => { let near = null; for (const o of sim.agents
 const BP = [0, 0];
 function ballAt(m, u) {
   let fx = m.P[0], fy = m.P[1];
-  for (const t of m.t) {
+  for (const t of m.path || m.t) {
     if (u <= t[0]) break;
     const [ex, ey] = t[4], v = t[6], q = Math.min(1, (u - t[0]) / (t[1] - t[0])), e = t[3] === 'sole' || v ? sm(q) : 1 - (1 - q) * (1 - q); // pushed: fast off the foot, then slowing; dragged or swept round: smooth
     if (v) { const a = (1 - e) * (1 - e), b = 2 * e * (1 - e), c = e * e; fx = a * fx + b * v[0] + c * ex; fy = a * fy + b * v[1] + c * ey; }
@@ -80,7 +122,9 @@ export function turnFoot(sim, id) {
 }
 
 export class Sim {
-  constructor() { this.agents = new Map(); this.list = []; this.ball = {}; this.co = null; this.time = 0; this.restores = 0; this.on = () => {}; } // on(event, data): 'kick', 'touch', 'step'
+  constructor() { this.agents = new Map(); this.list = []; this.ball = {}; this.co = null; this.time = 0; this.restores = 0; this.on = () => {}; this.flair = null; this.skillLog = null; } // on(event, data): 'kick', 'touch', 'step'
+  // flair: who may use a skill move now, set by the game's play scripts ({ ctx: what part of the play, by: { id: flairOf(...) } },
+  // see flair.js), or null for none. skillLog: a list to note every chance in (for the counts), or null.
 
   // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
   setup(sc) {
@@ -130,12 +174,47 @@ export class Sim {
     const ad = Math.abs(d), dx = b.x - c.x, dy = b.y - c.y, ch = Math.cos(b.h), sh = Math.sin(b.h), s = turnSide(this, c, b.h, want);
     if (ad > 2.6 && Math.sign(d) !== s) d += s * 2 * Math.PI; // nearly straight back: the long way round, away from a defender
     const near = nearFoe(this, c, 3.5), ahead = near && (near.x - c.x) * ch + (near.y - c.y) * sh > .2; // a defender close in front: pull it back away from him
-    const k = kind || (this.time - b.got < .5 && ad > 1.2 ? 'first' : ad < .8 ? 'push' : ad < 2.1 ? 'cut' : ahead ? 'pull' : 'hook');
-    const P = [dx * ch + dy * sh, dy * ch - dx * sh], m = plan(k, d, s, P, Math.floor(c.dist / .7) & 1, c.speed > 0 && Math.hypot(c.tx - c.x, c.ty - c.y) > .5), f0 = ang(c.face[0], c.face[1]);
+    let k = kind || (this.time - b.got < .5 && ad > 1.2 ? 'first' : ad < .8 ? 'push' : ad < 2.1 ? 'cut' : ahead ? 'pull' : 'hook');
+    const P = [dx * ch + dy * sh, dy * ch - dx * sh], run = c.speed > 0 && Math.hypot(c.tx - c.x, c.ty - c.y) > .5, f0 = ang(c.face[0], c.face[1]);
+    let m = plan(k, d, s, P, Math.floor(c.dist / .7) & 1, run);
+    // A skill turn instead, now and then: only for a turn he chose to make (not taking a loose ball onto his run) with a
+    // defender near (a push: close in front of him, and turning enough to need it).
+    const own = this.flair?.own, foe = !kind && min >= 0 && SKILL_T[k] && this.flair?.by[c.id] && nearFoe(this, c, k === 'push' ? 3.5 : 5);
+    if (foe && (k !== 'push' || (ad > .45 && (foe.x - c.x) * ch + (foe.y - c.y) * sh > .5)) && (k !== 'pull' || own)) {
+      const sk = this.pickSkill(c, k === 'push' && !own ? ['double'] : SKILL_T[k].filter(x => x !== 'roll' || c.sp < 2.6), 'turn');
+      if (sk) { m = skillPlan(sk, m, s, P, own); k = sk; c.skill = null; }
+    }
     let fd = wrapA(want - f0); if (Math.abs(fd) > 1.6 && Math.sign(fd) !== s) fd += s * 2 * Math.PI; // the body turns the same way round as the ball
     b.move = { k, t0: this.time, a0: b.h, d, s, P, f0, fd, ...m };
     this.on('touch');
     return m.dur;
+  }
+  // A chance for a skill move for `c` (one of `kinds` that he can do, see flair.js): he takes it as often as his flair
+  // says, and the choice is the same whenever the play is replayed (it comes from where he is). At most one chance
+  // every 3 s, taken or not, so he never does two skills close together. Returns the move, or null.
+  pickSkill(c, kinds, sit) {
+    const f = this.flair?.by[c.id], w = f && kinds.map(k => f.fav.includes(k) ? 4 : f.can.includes(k) ? 1 : 0), all = w ? w.reduce((p, q) => p + q, 0) : 0;
+    if (!all || this.time - (c.skT ?? -9) < 3) return null; // none he can do here, or one too soon
+    c.skT = this.time;
+    const r = rnd(c.x * 20, c.y * 20, c.dist * 20, idn(c.id));
+    let k = null, q = rnd(r * 1e6, 17) * all;
+    if (r < f.p) for (let i = 0; i < kinds.length && !k; i++) if ((q -= w[i]) < 0) k = kinds[i];
+    this.skillLog?.push(`${k || '-'}|${this.flair.ctx}|${sit}|${f.tier}|${c.id}`);
+    return k;
+  }
+  // Running at a defender with the ball (2 to 5 m in front of him, about in his way) and a touch just made: a chance
+  // to sell a fake before the next touch, which takes the ball the other way. Only when that next touch goes to one
+  // side (the dribble's touches go on, left, right), and he must be running. The ball's way is not changed: the next
+  // touch is the dribble's own. A stepover or a body feint fits one touch even at a sprint; the scissors (two
+  // stepovers) only when he is slower.
+  dribbleSkill(a) {
+    const b = this.ball; if (!this.flair?.by[a.id] || a.sp < 1.8 || (a.kickAt != null && this.time - a.kickAt < .7)) return;
+    const n = Math.floor(dribbleAt(a) / 1.4), side = Math.sign(SIDE[(n + 1) % 3]); if (!side) return;
+    const ch = Math.cos(b.h), sh = Math.sin(b.h);
+    let foe = null; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > 1.6 && f < 5 && Math.abs(l) < 1.8) foe = o; }
+    if (!foe) return;
+    const k = this.pickSkill(a, a.sp < 4.6 ? ['stepover', 'feint', 'scissors'] : ['stepover', 'feint'], 'run-at');
+    if (k) a.skill = { k, n, fake: -side, yaw: b.h };
   }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
   // kind: 'pass' (inside of the foot) or 'shot' (laces); foot: 1 his left, 0 his right (game/outcomes.js picks it), or
@@ -158,6 +237,7 @@ export class Sim {
     const b = this.ball;
     for (const a of this.agents.values()) {
       const has = b.state === 'carried' && b.carrier === a.id, fetch = has && b.reach; // his ball, out of reach: he goes to it first
+      if (a.skill && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || dribbleAt(a) / 1.4 - a.skill.n > 1.4)) a.skill = null; // a dribble skill ends a little after its touch, or when anything else starts
       let dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
       if (fetch) {
         const bx = b.x - a.x, by = b.y - a.y, bd = Math.hypot(bx, by);
@@ -171,14 +251,14 @@ export class Sim {
         if (a.sp < .3) a.d0 = a.dist; // setting off from standing: his first step is a touch that pushes the ball on
         this.startTurn(a, ang(dx, dy));
       }
-      const m = has ? b.move : null, u = m ? (this.time - m.t0) / m.dur : 0, last = m ? m.t[m.t.length - 1][0] : 0;
+      const m = has ? b.move : null, u = m ? (this.time - m.t0) / m.dur : 0, last = m ? m.last ?? m.t[m.t.length - 1][0] : 0;
       const sp = m ? a.speed * (u < last ? m.slow : m.slow + (1 - m.slow) * sm((u - last) / (1 - last))) : a.speed; // nearly still while a foot turns the ball
       if (d > 0.02 && a.speed > 0) {
         if (m) a.sp = lerp(a.sp, sp, Math.min(1, dt * 10)); // he brakes into the turn and runs out of it
         const s = Math.min((m ? a.sp : sp) * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m) turnToward(a, dx / d, dy / d, dt); a.dist += s;
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
-        if (has && !m && !b.reach && Math.floor((a.dist - (a.d0 || 0)) / 1.4) > Math.floor((before - (a.d0 || 0)) / 1.4)) { this.on('touch'); b.h = ang(dx, dy); } // each dribble touch puts the ball on the way he runs
+        if (has && !m && !b.reach && Math.floor((a.dist - (a.d0 || 0)) / 1.4) > Math.floor((before - (a.d0 || 0)) / 1.4)) { this.on('touch'); b.h = ang(dx, dy); if (!a.skill) this.dribbleSkill(a); } // each dribble touch puts the ball on the way he runs
         if (!m) a.sp = lerp(a.sp, sp, Math.min(1, dt * 8));
       } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move

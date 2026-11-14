@@ -6,12 +6,20 @@ const MAX = 420;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = list => list[Math.floor(Math.random() * list.length)];
 // What a piece starts as, before `spawn` adds what the caller asked for.
-const BASE = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: -9, drag: 0, size: .1, life: 1, spin: 0, face: false, flutter: 0 };
-const GRASS = ['#7fbf52', '#9ed46c', '#6aa84a', '#c9e89a'], GOLD = ['#ffd23f', '#fff3b0', '#ffffff', '#ffb02e'];
+const BASE = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: -9, drag: 0, size: .1, life: 1, spin: 0, face: false, flutter: 0, round: false };
+const GRASS = ['#7fbf52', '#9ed46c', '#6aa84a', '#c9e89a'], GOLD = ['#ffd23f', '#fff3b0', '#ffffff', '#ffb02e'], TRAIL = ['#ffffff', '#fff6d0', '#ffe27a'];
+export const TURF_BITS = ['#6aa84a', '#7fbf52', '#5d8f3c', '#7a6a45', '#8f7d55']; // grass and a little earth, for a hard kick
 
 export class Particles {
   constructor(scene) {
-    const mesh = this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), MAX);
+    // Each piece is a square (confetti, grass) or a round dot (sparkles, the trail): `aRound` 1 cuts it to a disc.
+    const geo = new THREE.PlaneGeometry(1, 1), mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false });
+    this.round = new THREE.InstancedBufferAttribute(new Float32Array(MAX), 1); this.round.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('aRound', this.round);
+    mat.onBeforeCompile = sh => {
+      sh.vertexShader = 'attribute float aRound; varying float vRound; varying vec2 vQ;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRound = aRound; vQ = position.xy;');
+      sh.fragmentShader = 'varying float vRound; varying vec2 vQ;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (vRound > 0.5 && dot(vQ, vQ) > 0.25) discard;');
+    };
+    const mesh = this.mesh = new THREE.InstancedMesh(geo, mat, MAX);
     mesh.frustumCulled = false; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.zero = new THREE.Matrix4().makeScale(0, 0, 0);
     this.col = new THREE.Color('#ffffff');
@@ -30,6 +38,7 @@ export class Particles {
     Object.assign(p, BASE, o);
     p.age = 0; p.rx = rnd(0, 6.3); p.ry = rnd(0, 6.3); p.rz = rnd(0, 6.3); p.landed = false;
     this.mesh.setColorAt(i, this.col.set(o.color || '#ffffff')); this.mesh.instanceColor.needsUpdate = true;
+    if (this.round.array[i] !== +!!o.round) { this.round.array[i] = +!!o.round; this.round.needsUpdate = true; }
   }
 
   // Paper squares shot up and out from a point; they flutter down and lie on the grass for a moment.
@@ -51,12 +60,12 @@ export class Particles {
   sparks(x, y, z, n = 14, colors = GOLD) {
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2 + rnd(-.2, .2), r = rnd(2.2, 4.5);
-      this.spawn({ x, y, z, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(1.5, 4.5), g: -6, drag: 2.4, size: rnd(.08, .15), life: rnd(.45, .8), spin: rnd(3, 8), face: true, color: pick(colors) });
+      this.spawn({ x, y, z, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(1.5, 4.5), g: -6, drag: 2.4, size: rnd(.08, .15), life: rnd(.45, .8), spin: rnd(3, 8), face: true, round: true, color: pick(colors) });
     }
   }
   // One dot left behind a fast ball.
   trail(x, y, z) {
-    this.spawn({ x: x + rnd(-.05, .05), y: y + rnd(-.05, .05), z, g: 0, size: rnd(.1, .17), life: rnd(.2, .34), spin: 2, face: true, color: pick(GOLD) });
+    this.spawn({ x: x + rnd(-.05, .05), y: y + rnd(-.05, .05), z, g: 0, size: rnd(.08, .14), life: rnd(.2, .34), spin: 2, face: true, round: true, color: pick(TRAIL) });
   }
 
   update(dt, camera) {

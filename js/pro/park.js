@@ -7,6 +7,9 @@ import { shell } from './stadium.js';
 
 const { L, W } = PITCH, CX = L / 2, CY = W / 2, UP = new THREE.Vector3(0, 0, 1);
 
+// The time, for the leaves (the world sets it every frame).
+export const PARK = { uTime: { value: 0 } };
+
 export function buildPark(w) {
   const park = w.park;
   let seed = 23; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -40,6 +43,14 @@ export function buildPark(w) {
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   const inst = (geo, n) => { const m = new THREE.InstancedMesh(geo, soft('#ffffff'), n); m.castShadow = true; m.customDepthMaterial = depth; park.add(m); return m; };
   const trunks = inst(new THREE.CylinderGeometry(.14, .24, 1, 8).rotateX(Math.PI / 2), trees.length), leaves = inst(leafBall, trees.length * 3);
+  // The leaves sway in the breeze, each tree on its own beat, the tops most (worked out on the graphics card).
+  leaves.material.onBeforeCompile = sh => {
+    sh.uniforms.uTime = PARK.uTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec2 tp = instanceMatrix[3].xy; float sw = (position.z + 1.0) * 0.5;
+      transformed.xy += sw * vec2(0.035 * sin(uTime * 1.3 + tp.x * 0.37 + tp.y * 0.21) + 0.012 * sin(uTime * 3.1 + tp.y), 0.025 * sin(uTime * 1.1 + tp.y * 0.29));`);
+  };
+  leaves.material.customProgramCacheKey = () => 'leaves';
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color(), dark = new THREE.Color('#2f7a3c'), light = new THREE.Color('#7cc060');
   const put = (mesh, k, x, y, z, sx, sz, c, spin = 0) => { mesh.setMatrixAt(k, mtx.compose(v.set(x, y, z), q.setFromAxisAngle(UP, spin), sc.set(sx, sx, sz))); mesh.setColorAt(k, c); };
   trees.forEach((t, k) => {

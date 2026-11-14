@@ -154,6 +154,7 @@ export class Game {
     const s = this.sim, h = s.a('hero');
 
     this.look = clamp(this.look + (this.lookUp ? 1 : -1) * dt / .3, 0, 1);
+    if (h) h.look = this.look; // his head in the picture (pro/motion.js): down over the ball until he looks up
     // While deciding with his head up, his body turns with his head (the ball stays at his feet).
     if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble' && this.sc?.kind !== 'receive') {
       const f0 = Math.atan2(h.face[1], h.face[0]), f = f0 + wrap(this.yaw - f0) * Math.min(1, dt * 10);

@@ -3,16 +3,16 @@
 import * as THREE from 'three';
 import { PITCH } from './skills.js';
 import { DRIBBLE_DIRS, clamp } from './geom.js';
-import { Particles } from './fx.js';
+import { Particles, TURF_BITS } from './fx.js';
 import { canvasTex, blobTex } from './tex.js';
 import { makeRig, RIM } from './pro/rig.js';
 import { animateRig } from './pro/motion.js';
 import { makePost } from './pro/post.js';
-import { buildStadium, TOWERS } from './pro/stadium.js';
-import { buildPark } from './pro/park.js';
+import { buildStadium, TOWERS, join } from './pro/stadium.js';
+import { buildPark, PARK } from './pro/park.js';
 import { makeEnv, buildBeams, sunSprite } from './pro/light.js';
 import { makeSky } from './pro/sky.js';
-import { turf } from './pro/grass.js';
+import { turf, TURF } from './pro/grass.js';
 
 const { L, W, gy0, gy1, gh } = PITCH;
 const CX = L / 2, CY = W / 2, BALL_R = .125; // the ball's radius: in proportion to the players, about as wide as a head
@@ -20,14 +20,15 @@ const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .72 });
 // Everything that differs between the two times of day. `key` is the sun by day; by night it and three `fill`
 // lights are the four floodlights.
 const LOOKS = {
-  day: { top: '#1a55c8', mid: '#62a8f2', horizon: '#ffe6c2', cloudC: '#fff6ea', shadeC: '#a9b4cc', cloud: 1, fog: ['#ead9c2', 80, 300], hemi: ['#cfe2ff', '#86a35f', .8], key: ['#ffdcae', 3.1], fill: 0, exposure: 1.05, bloom: .28, rim: ['#ffe6bd', .45], vig: .28, sat: 1.14, sun: '#ffcf90' },
-  night: { top: '#02040b', mid: '#0a1230', horizon: '#111c40', cloudC: '#1d2a55', shadeC: '#070b1a', cloud: .45, fog: ['#0a1230', 90, 320], hemi: ['#9db0ff', '#24502a', .42], key: ['#f2f6ff', 1.35], fill: 1.3, exposure: 1.1, bloom: .5, rim: ['#d2e2ff', .55], vig: .42, sat: 1.16, sun: '#000000' },
+  day: { top: '#1a55c8', mid: '#62a8f2', horizon: '#ffe6c2', cloudC: '#fff6ea', shadeC: '#a9b4cc', cloud: 1, fog: ['#ead9c2', 80, 300], hemi: ['#cfe2ff', '#86a35f', .8], key: ['#ffdcae', 3.1], fill: 0, exposure: 1.05, bloom: .28, rim: ['#ffe6bd', .45], vig: .28, sat: 1.14, sun: '#ffcf90', turf: [.26, 0, .92, 1] },
+  night: { top: '#02040b', mid: '#0a1230', horizon: '#111c40', cloudC: '#1d2a55', shadeC: '#070b1a', cloud: .45, fog: ['#0a1230', 90, 320], hemi: ['#9db0ff', '#24502a', .3], key: ['#f2f6ff', 1.7], fill: 1.3, exposure: 1.1, bloom: .5, rim: ['#dce8ff', .8], vig: .42, sat: 1.16, sun: '#000000', turf: [0, .5, .8, .84] },
 };
 // Picture quality, best first. `pr`: the most screen pixels per CSS pixel (a phone's screen has 2 or 3; 1.5 is sharp
 // enough with smoothing and leaves the phone room for sound); `bloom`: the glow (1 full, .5 on a quarter of the
 // pixels, 0 none; see pro/post.js); `shadow`: the shadow map's size. Only a slow device goes down the list (see `pace`).
-const QUALITY = [{ pr: 1.5, bloom: 1, shadow: 2048 }, { pr: 1.25, bloom: 1, shadow: 2048 }, { pr: 1, bloom: 1, shadow: 2048 },
-  { pr: 1, bloom: .5, shadow: 2048 }, { pr: 1, bloom: .5, shadow: 1024 }, { pr: 1, bloom: 0, shadow: 1024 }];
+// `detail`: cloth bumps on the players and cloud shadows on the grass (small touches that cost a little on every pixel).
+const QUALITY = [{ pr: 1.5, bloom: 1, shadow: 2048, detail: 1 }, { pr: 1.25, bloom: 1, shadow: 2048, detail: 1 }, { pr: 1, bloom: 1, shadow: 2048, detail: 1 },
+  { pr: 1, bloom: .5, shadow: 2048, detail: 0 }, { pr: 1, bloom: .5, shadow: 1024, detail: 0 }, { pr: 1, bloom: 0, shadow: 1024, detail: 0 }];
 const SUN = [10, -28, 15], LAMP_Z = 26; // the sun is low on one side (late afternoon), measured from the middle of the pitch
 // What shiny things reflect, by day and by night (see pro/light.js).
 const ENV = {
@@ -157,7 +158,7 @@ export class World {
     if (++p.slow < 2) return;
     p.slow = 0; p.first ||= med;
     if (p.steps >= 2 && med > p.first * .85) { this.setQuality(0); p.done = true; return; }
-    let next = this.level + 1; const same = (a, b) => Math.min(devicePixelRatio, a.pr) === Math.min(devicePixelRatio, b.pr) && a.bloom === b.bloom && a.shadow === b.shadow;
+    let next = this.level + 1; const same = (a, b) => Math.min(devicePixelRatio, a.pr) === Math.min(devicePixelRatio, b.pr) && a.bloom === b.bloom && a.shadow === b.shadow && a.detail === b.detail;
     while (next < QUALITY.length && same(QUALITY[next], QUALITY[this.level])) next++; // skip a step that changes nothing here (a 1x screen has no pixels to save)
     if (next >= QUALITY.length) { p.done = true; return; }
     this.setQuality(next); p.steps++; p.skip = 1;
@@ -165,7 +166,7 @@ export class World {
   setQuality(i) {
     const q = QUALITY[this.level = i], l = this.keys[0].shadow;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr)); this.resized = true; // `render` sizes the picture again
-    this.post?.setBloom(q.bloom);
+    this.post?.setBloom(q.bloom); RIM.detail.value = q.detail; TURF.uTurf.value.x = q.detail * this.look.turf[0];
     if (l.mapSize.x !== q.shadow) { l.mapSize.set(q.shadow, q.shadow); l.map?.dispose(); l.map = null; }
   }
   buildSky() {
@@ -221,7 +222,7 @@ export class World {
     pitch.position.set(CX, CY, 0); pitch.receiveShadow = true; this.scene.add(pitch);
     this.outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshLambertMaterial({ color: '#3a8a37' }));
     this.outer.position.set(CX, CY, -.02); this.outer.receiveShadow = true; this.scene.add(this.outer);
-    this.buildGoals(); turf(pitch.material); turf(this.outer.material, false);
+    this.buildGoals(); turf(pitch.material); turf(this.outer.material, false); TURF.uTurfC.value.set(CX, CY, L / 2, W / 2);
     // Under four floodlights every player throws four shadows. The key light draws one for real; the other three
     // are soft streaks on the grass, one row of this mesh each, pointed away from their lamp every frame.
     const streak = canvasTex(128, 64, g => {
@@ -260,8 +261,9 @@ export class World {
       // The back net has enough points to bulge when a shot hits it (see `fx('goal')` and `moveNets`).
       const back = add(new THREE.Mesh(new THREE.PlaneGeometry(gw, gh, 20, 8).rotateX(Math.PI / 2).rotateZ(Math.PI / 2), netMat(gw, gh)), bx, CY, gh / 2);
       this.nets.push({ mesh: back, base: back.geometry.attributes.position.array.slice(), dir, x: gx, t: 9, y: 0, z: 0 });
-      for (const y of [gy0, gy1]) add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gh).rotateX(Math.PI / 2), netMat(depth, gh)), gx + dir * depth / 2, y, gh / 2);
-      add(new THREE.Mesh(new THREE.PlaneGeometry(depth, gw), netMat(depth, gw)), gx + dir * depth / 2, CY, gh);
+      // The two side nets and the roof net are one mesh (one draw); their picture repeats every 20 cm.
+      const sheet = (w, h, rx, x, y, z) => { const g = new THREE.PlaneGeometry(w, h); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / .2, uv.getY(i) * h / .2); if (rx) g.rotateX(Math.PI / 2); return [g.translate(x, y, z)]; };
+      add(new THREE.Mesh(join([sheet(depth, gh, 1, 0, gy0 - CY, 0), sheet(depth, gh, 1, 0, gy1 - CY, 0), sheet(depth, gw, 0, 0, 0, gh / 2)]), netMat(.2, .2)), gx + dir * depth / 2, CY, gh / 2);
     }
     // Corner flags that wave a little (the four poles are one mesh).
     const poleM = M('#fff8e8'), flagM = new THREE.MeshLambertMaterial({ color: '#ff6b5e', side: THREE.DoubleSide }), poles = [];
@@ -322,6 +324,8 @@ export class World {
     this.keys.forEach((l, i) => { l.color.set(k.key[0]); l.intensity = i ? k.fill : k.key[1]; });
     const t = this.night ? [...TOWERS[0], LAMP_Z] : [CX + SUN[0], CY + SUN[1], SUN[2]]; this.keys[0].position.set(t[0], t[1], t[2]);
     RIM.color.value.set(k.rim[0]); RIM.k.value = k.rim[1];
+    TURF.uTurf.value.x = QUALITY[this.level].detail * k.turf[0]; TURF.uTurf.value.z = k.turf[1]; TURF.uTurf.value.w = k.turf[2];
+    this.pitch.material.color.setScalar(k.turf[3]); this.outer.material.color.set('#3a8a37').multiplyScalar(k.turf[3]);
     this.applyLook();
   }
   applyLook() {
@@ -331,9 +335,10 @@ export class World {
   }
   // Most fans wear our colours, some wear theirs, the rest wear what they like.
   dressCrowd(us, them) {
-    const { bodies } = this.fanMeshes, col = new THREE.Color(), shirt = t => (t.kit.colors[0].toLowerCase() === '#ffffff' && t.kit.colors[1]) || t.kit.colors[0];
-    this.fans.forEach((f, k) => bodies.setColorAt(k, col.set(f.pick < .55 ? shirt(us) : f.pick < .75 ? shirt(them) : f.c)));
-    bodies.instanceColor.needsUpdate = true;
+    const { bodies, arms, withArms } = this.fanMeshes, col = new THREE.Color(), shirt = t => (t.kit.colors[0].toLowerCase() === '#ffffff' && t.kit.colors[1]) || t.kit.colors[0];
+    const wear = f => col.set(f.pick < .55 ? shirt(us) : f.pick < .75 ? shirt(them) : f.c).multiplyScalar(f.tint); // a little lighter or darker each, as real shirts in real light
+    this.fans.forEach((f, k) => bodies.setColorAt(k, wear(f))); withArms.forEach((f, k) => arms.setColorAt(k, wear(f)));
+    bodies.instanceColor.needsUpdate = arms.instanceColor.needsUpdate = true;
   }
 
   buildMarkers() {
@@ -426,7 +431,7 @@ export class World {
   fx(ev, v) {
     const sim = this.sim, b = sim?.ball; if (!b) return;
     const P = this.particles;
-    if (ev === 'kick') { P.puff(b.x, b.y, v >= 15 ? 10 : 5); if (v >= 15) { this.shake = Math.max(this.shake, .5); P.sparks(b.x, b.y, .2, 6, ['#ffffff', '#fff3b0']); } }
+    if (ev === 'kick') { P.puff(b.x, b.y, v >= 15 ? 14 : 5, v >= 15 ? TURF_BITS : undefined); if (v >= 15) { this.shake = Math.max(this.shake, .5); P.sparks(b.x, b.y, .2, 6, ['#ffffff', '#fff3b0']); } }
     else if (ev === 'touch') P.puff(b.x, b.y, 2);
     else if (ev === 'goal' || ev === 'goalAgainst') {
       const net = this.nets[b.x > CX ? 0 : 1], team = ev === 'goal' ? 'us' : 'them', colors = this.confetti?.[team] || ['#ffd23f', '#ffffff'];
@@ -531,8 +536,9 @@ export class World {
     const nearGoal = this.crowd.visible ? clamp(1 - Math.min(Math.hypot(b.x - L, b.y - CY), Math.hypot(b.x, b.y - CY)) / 9, 0, 1) * .3 : 0;
     this.excite = Math.max(nearGoal, this.excite * Math.exp(-dt * .55));
     this.crowdU.uTime.value = time; this.crowdU.uExcite.value = this.excite; // the fans move in the shader (see pro/stadium.js)
+    const fm = this.fanMeshes; fm.arms.count = this.excite > .34 ? fm.withArms.length : fm.nUp; // calm: only the scarf holders' arms are up, so only theirs are drawn
     this.moveNets(dt); this.particles.update(dt, c);
-    this.boards.offset.x = time * .012; this.skyU.uTime.value = time;
+    this.boards.offset.x = time * .012; this.skyU.uTime.value = time; TURF.uTurf.value.y = time; PARK.uTime.value = time;
     for (let i = 0; i < this.flags.length; i++) this.flags[i].rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1;
     this.heroRing.scale.setScalar(1 + .05 * Math.sin(time * 4));
     this.moveStreaks(sim);

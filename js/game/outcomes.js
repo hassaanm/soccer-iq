@@ -3,6 +3,7 @@
 import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } from '../geom.js';
 import { pushEnd, DEF_RUN, takeOn, LEAD } from '../generate.js';
 import { L, W, gy0, gy1, MATE, faceTo } from './shared.js';
+import { flairOf } from '../flair.js';
 
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 // Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
@@ -35,6 +36,7 @@ export const outcomes = {
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
     const s = this.sim, a = s.a(id), tx = L - 3.5, opps = s.team('them');
+    this.spice('finish', [id]);
     const room = y => Math.min(...opps.map(o => closestOnLane(o, a, { x: tx, y }, 0).d));
     const ty = [W / 2 - 2.5, W / 2, W / 2 + 2.5].map(y => ({ y, r: room(y) - Math.abs(y - a.y) * .08 })).sort((p, q) => q.r - p.r)[0].y;
     this.scripted.add(id); s.go(id, tx, ty, 5.2);
@@ -48,7 +50,7 @@ export const outcomes = {
       if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { blocked = true; break; } // defender in front
       if (Math.hypot(fx, fy) < .3 || s.time - t0 > 4) { blocked = !shotClear(s.ball, aim, opps); break; }
     }
-    s.stop(id);
+    s.stop(id); this.spice(null);
     if (blocked) { yield* this.end('kept', 1.1); return; }
     // Wind up facing the goal, then check the shot line once more at the moment of the kick.
     this.ai = false; s.stopAll();
@@ -103,7 +105,7 @@ export const outcomes = {
     s.give(id); this.scripted.delete(id); yield .15;
   },
   *steal(opp) {
-    const s = this.sim;
+    const s = this.sim; this.spice(null);
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
     s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit('stolen');
@@ -140,7 +142,7 @@ export const outcomes = {
   },
   *dribbleGen(dir, good) {
     const s = this.sim, h = s.a('hero'), end = dribbleEnd(h, dir, L, W), cut = good && takeOn(h, dir, s.team('them'));
-    this.scripted.add('hero'); s.go('hero', end.x, end.y, 4.4);
+    this.scripted.add('hero'); this.spice(good && (cut?.good ? 'take-on' : 'dribble'), ['hero']); s.go('hero', end.x, end.y, 4.4);
     const t0 = s.time;
     // A take-on: the defender bites, stepping in toward where the ball was, and he cuts past him on the open side.
     if (cut?.good) { const f = cut.foe; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
@@ -254,7 +256,7 @@ export const outcomes = {
       yield () => s.ball.state === 'loose';
       s.give(free.id); shooter = free;
     }
-    this.scripted.add(shooter.id);
+    this.scripted.add(shooter.id); this.spice('exploit', [shooter.id]); // through the gap he left: a skill shows he got past
     const spot = { x: plan.to[0], y: plan.to[1] };
     s.go(shooter.id, spot.x, spot.y, 5.2);
     // He got past them: the beaten defenders chase from behind (slower), so nobody magically appears in the shot.
@@ -266,7 +268,7 @@ export const outcomes = {
   },
   // Their player is through: everyone stops, and he shoots into our goal.
   *concede(shooter) {
-    const s = this.sim;
+    const s = this.sim; this.spice(null);
     this.ai = false; s.stopAll();
     yield* this.strike(shooter.id, -.7, clamp(shooter.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
@@ -374,14 +376,14 @@ export const outcomes = {
       const at = { x: s.ball.x, y: s.ball.y };
       s.go('hero', at.x, at.y, 4.5); yield .35; s.go('hero', h.x, h.y, 0);
       if (s.ball.carrier !== c.id) { const t0 = s.time; yield () => { s.go(c.id, s.ball.x, s.ball.y, sc.speed + .6); return dist(c, s.ball) < .5 || s.time - t0 > 1; }; s.give(c.id); }
-      const side = c.y > h.y ? 1 : -1; s.go(c.id, Math.max(2, h.x - 1.2), clamp(h.y + side * 1.6, 1.5, W - 1.5), 4.2);
+      const side = c.y > h.y ? 1 : -1; this.spice('beat-1v1', [c.id]); s.go(c.id, Math.max(2, h.x - 1.2), clamp(h.y + side * 1.6, 1.5, W - 1.5), 4.2);
       yield () => c.x < h.x - .8 || dist(c, { x: c.tx, y: c.ty }) < .2;
     }
     // He's past: he runs in and scores, from a spot where none of our players stands in the way of the shot.
     const ours = s.team('us').filter(d => d.id !== 'hero');
     const clear = y => Math.min(9, ...ours.map(d => Math.min(closestOnLane(d, c, { x: 4.5, y }, 0).d, closestOnLane(d, { x: 4.5, y }, { x: -.7, y: clamp(y, gy0 + .8, gy1 - .8) }, 0).d)));
     const spot = { x: 4.5, y: [lerp(c.y, W / 2, .6), W / 2 - 2.5, W / 2, W / 2 + 2.5].sort((a, b) => clear(b) - clear(a))[0] };
-    s.go(c.id, spot.x, spot.y, 4.6);
+    this.spice('past-1v1', [c.id]); s.go(c.id, spot.x, spot.y, 4.6);
     const t1 = s.time; yield () => { s.go('hero', c.x + 1.4, c.y + (h.y > c.y ? 1 : -1), 3.2); return dist(c, spot) < .4 || s.time - t1 > 3; }; // he chases from behind
     yield* this.concede(c);
   },
@@ -435,6 +437,13 @@ export const outcomes = {
     const t1 = s.time; yield () => dist(o, m) < 1.8 || s.time - t1 > 1.6;
     yield* this.end('kept', 1.1);
   },
+  // Skill moves (sim.js, flair.js): who may use one in this part of the play (`ids`, each with his own flair), and
+  // which part it is (`ctx`, for the counts); a falsy ctx: nobody. Only players who keep the ball in the script get
+  // one: never on a choice that loses it, never just before a defender wins it, never while the child decides. While
+  // the team AI moves players after the ball, or the script watches the ball (the run at goal waits for a clear shot), a
+  // skill turn keeps the ball on the plain turn's way (`own` false), so nobody moves differently and the play ends the same.
+  spice(ctx, ids) { this.sim.flair = ctx ? { ctx, own: !this.ai && ctx !== 'finish', by: Object.fromEntries(ids.map(id => [id, this.flairOf(id)])) } : null; },
+  flairOf(id) { const p = id[0] === 'o' ? this.them?.players[+id[1] - 1] : this.us?.players[(this.roster || { hero: 0, m1: 1, m2: 2 })[id]]; return flairOf(p?.name); },
   // Picks the script for his choice and runs it. However the play ends, the team AI stops moving players.
   *outcomeGen(opt, good) {
     try {
@@ -454,7 +463,7 @@ export const outcomes = {
         if (good) { yield* this.passGood(MATE[opt]); yield* this.finish(MATE[opt]); }
         else yield* this.passBad(MATE[opt]);
       } else yield* this.dribbleGen(opt.slice(5), good);
-    } finally { this.ai = false; }
+    } finally { this.ai = false; this.spice(null); }
   },
   async outcome(opt, good) {
     const h = this.sim.a('hero');

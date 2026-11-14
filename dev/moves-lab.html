@@ -14,6 +14,12 @@
   opp=1 (a defender close in front, so a big turn is a pull back), alt=1 (turn a step later, so a cut or a small
   turn is taken with the other foot: the game picks by his steps),
   view=front|side|top|three (side and three look from the side of the foot he uses; top looks down from in front), seed=<n>.
+  Skill moves (sim.js picks the moment, pro/motion.js the feet): move=stepover|scissors|feint (he dribbles at a
+  defender who backs off; the skill comes at a touch with the defender 2 to 5 m in front), move=croqueta|double|chop|cruyff|roll
+  (he dribbles, then turns `turn` degrees with a defender close by, and the turn is made as that skill). speed=<m/s>
+  (the run; 4.4 as in the game, the scissors 3.2), plain=1 (a skill turn keeps the plain turn's ball path, as where the
+  team AI plays). The defender is a full body here, to show his reaction; view=pair films them both from the side. Each frame names the nearest part of each
+  boot to the ball and its gap in cm (a red label: a boot in the ball).
   Each frame says the time from the wind-up (or from the ball's arrival, the stop, the feint). At contact it also says
   which part of the boot is nearest the ball and the gap in cm (minus: the boot is in the ball). -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
@@ -33,37 +39,42 @@ import * as THREE from 'three';
 import { makeRig } from '../js/pro/rig.js';
 import { makeEnv } from '../js/pro/light.js';
 import { animateRig } from '../js/pro/motion.js';
-import { Sim, dribbleAt } from '../js/sim.js';
+import { Sim, dribbleAt, skillNow } from '../js/sim.js';
 import { faceTo } from '../js/game/shared.js';
+import { team } from '../js/game/team.js';
 const pickFoot = (await import('../js/game/outcomes.js')).pickFoot || (() => null); // the game's rule for the foot
 
 const Q = new URLSearchParams(location.search), num = (k, d) => Q.has(k) ? +Q.get(k) : d;
 const move = Q.get('move') || 'pass', view = Q.get('view') || 'three', footQ = Q.get('foot'), forced = footQ === 'left' ? 1 : footQ === 'right' ? 0 : null;
 const kickMove = move === 'pass' || move === 'drive' || move === 'shot', trapMove = move.startsWith('trap'), turnMove = move === 'turn' || move === 'gg';
-const TURN = num('turn', move === 'gg' ? 180 : 90) * Math.PI / 180;
+const dribSkill = ['stepover', 'scissors', 'feint'].includes(move), turnSkill = ['croqueta', 'double', 'chop', 'cruyff', 'roll'].includes(move), skillMove = dribSkill || turnSkill;
+const TURN = num('turn', move === 'gg' || move === 'cruyff' ? 180 : move === 'croqueta' || move === 'double' ? 40 : 90) * Math.PI / 180, SPEED = num('speed', move === 'scissors' ? 3.2 : move === 'roll' ? 2 : 4.4);
 const DT = 1 / 60, BALL = .125, H0 = [10, 10];
 
 // One run of the move. `shots` (seconds after its key moment) are posed and handed to `snap`; the first run (with no
 // shots) finds that moment. Everything here is fixed, so the second run is the same as the first.
-function runMove(g, shots, snap, k0) {
+function runMove(g, shots, snap, k0, foeRig) {
   const s = new Sim(), opp = [];
   // Where the target is: a pass goes `to` degrees to his left (by default across to the inside of the foot he uses).
   const side = forced == null ? 1 : forced ? -1 : 1, to = num('to', move === 'shot' ? 0 : 40 * side) * Math.PI / 180;
   let hero = H0;
   if (move === 'shot') hero = [22, forced === 1 ? 13 : forced === 0 ? 7 : 10];          // left or right of the goal (it is at x 30, y 8 to 12)
-  if (move === 'dribble' || move === 'stop' || move === 'feint' || move === 'knock') hero = [4, 10];
+  if (move === 'dribble' || move === 'stop' || move === 'knock' || skillMove) hero = [4, 10];
   if (move === 'turn') hero = [4, 10];
   if (move === 'turn' && Q.has('opp')) opp.push([4 + (Q.has('walk') ? 4.6 : 7.4) + (Q.has('alt') ? .7 : 0) + 1.6, 10.3]);
   if (move === 'gg') opp.push([13.5, 10 - 1.6 * Math.sign(TURN || 1)]);
   if (trapMove) opp.push(forced === 1 ? [10.6, 7.6] : [10.6, 12.4]);                     // a defender on the other side, so the rule picks that foot
-  if (move === 'feint') opp.push([12.5, 10]);
+  if (dribSkill) opp.push([12.5, 10.2]);
+  if (turnSkill) opp.push(move === 'croqueta' || move === 'double' ? [4 + 7.4 + 2.4, 9.3] : move === 'cruyff' ? [4 + 7.4 + 2.4, 10.3] : [4 + 7.4 + 1.2, 10 - 2.2 * Math.sign(TURN)]);
   if (move === 'pass' || move === 'drive') opp.push([13, 10 - 3 * side]);
   s.setup({ hero, mates: trapMove ? [[10 + 9 * Math.cos(to), 10 + 9 * Math.sin(to)]] : move === 'gg' ? [[17, 10]] : [], opps: opp });
   const h = s.a('hero'); g.userData.m = null; g.userData.yaw = null; g.userData.seed = num('seed', 1.3);
+  if (foeRig) { foeRig.userData.m = null; foeRig.userData.yaw = null; }
+  if (skillMove) s.flair = { ctx: 'lab', own: !Q.has('plain') && move !== 'double', by: { hero: { p: 1, can: [move], fav: [move], tier: 'lab' } } }; // he takes the first chance, with this move
   const toMate = () => { const m = s.a('m1'), dx = h.x - m.x, dy = h.y - m.y, l = Math.hypot(dx, dy); Object.assign(s.ball, { x: m.x + dx / l * .4, y: m.y + dy / l * .4 }); s.give('m1'); }; // the ball at his friend's feet
   if (trapMove) { toMate(); h.face = [Math.cos(to), Math.sin(to)]; }
   if (move === 'gg') { toMate(); h.face = [1, 0]; s.a('m1').face = [-1, 0]; }
-  let key = null, label = '', at = null; // at: where he is at the key moment (turn strips are filmed from one spot)
+  let key = null, label = '', at = null, end = null; // at: where he is at the key moment (turn strips are filmed from one spot); end: a skill's end
   const gen = function* () {
     yield 1.4;
     if (kickMove) {
@@ -78,6 +89,11 @@ function runMove(g, shots, snap, k0) {
     } else if (move === 'knock') { // as game/outcomes.js approach: the foot comes to the ball, 0.1 s later the ball goes
       s.go('hero', 26, 10, 3); yield 1.9; key = s.time; s.windup('hero', 'touch'); yield .1;
       s.kick(h.x + 2.6, h.y, { speed: 3.4, arc: 0, touch: true }); yield () => s.ball.state === 'loose'; s.give('hero'); yield 1;
+    } else if (dribSkill) { // he dribbles at the defender, who backs off slowly
+      s.go('hero', 28, 10, SPEED); s.go('o1', 22, 10.3, 1.4); yield 5;
+    } else if (turnSkill) { // he dribbles, then turns: the turn is the skill
+      s.go('hero', 26, 10, SPEED); yield 7.4 / SPEED + .02;
+      s.go('hero', h.x + 9 * Math.cos(TURN), h.y + 9 * Math.sin(TURN), SPEED); yield 2;
     } else if (move === 'turn') { // he dribbles, then turns with the ball and goes on the new way
       const sp = Q.has('walk') ? 2 : 4.4; s.go('hero', 26, 10, sp); yield (Q.has('walk') ? 2.3 : 1.7) + (Q.has('alt') ? .16 : 0);
       key = s.time; s.go('hero', h.x + 9 * Math.cos(TURN), h.y + 9 * Math.sin(TURN), sp); yield 2;
@@ -99,8 +115,9 @@ function runMove(g, shots, snap, k0) {
   for (let k = 0; k < 60 * 6; k++) {
     const d0 = dribbleAt(h); s.step(DT);
     if (Math.floor(dribbleAt(h) / 1.4) > Math.floor(d0 / 1.4) && s.time > 1.5) touches.push(s.time);
-    animateRig(g, h, s);
-    if (move === 'feint' && key == null && g.userData.m.feint) key = g.userData.m.feint.t;
+    animateRig(g, h, s); if (foeRig) animateRig(foeRig, s.a('o1'), s);
+    if (skillMove && key == null && (h.skill?.k === move || s.ball.move?.k === move)) key = s.time;
+    if (skillMove && key != null && end == null && !h.skill && !s.ball.move) end = s.time;
     if (forced != null && kickMove && h.kickAt != null) g.userData.m.kf = forced;
     if (forced != null) { const m = g.userData.m; if (m.spec?.k === 'trap') { m.spec.leg = forced; m.spec.sole = move === 'trap-sole'; } }
     if (move === 'dribble' && key == null && touches.length) key = touches[0];
@@ -108,7 +125,100 @@ function runMove(g, shots, snap, k0) {
     if (snap) while (want.length && s.time >= k0 + want[0] - 1e-6) snap(want.shift(), s, h);
     if (move === 'stop' && key != null && !snap && g.userData.m.spec?.k === 'sole') label = 'sole on the ball';
   }
-  return { key, touches, sim: s, yaw: g.userData.yaw, at };
+  return { key, touches, sim: s, yaw: g.userData.yaw, at, end };
+}
+
+// Scenes: several players at once, to check the body between touches (waiting, scanning, receiving, defending,
+// running and stopping). The real Sim moves them, and where a scene says so the game's own team AI (game/team.js)
+// moves the players it does not script. Every player is a full body (ours red, theirs blue).
+//   scene=jockey    our defender m1 (team AI) meets a dribbler running at our goal
+//   scene=press     the hero dribbles at their defender o1 (team AI): shielding, head up between touches
+//   scene=shield    the hero dribbles with a defender running close at his side: arm out, head up between touches
+//   scene=receive   m2 waits for a pass from m1: shoulder check, open body, on his toes
+//   scene=show      the hero dribbles; his friends (team AI) find space and ask for the ball
+//   scene=runstop   m1 sprints 10 m and stops
+//   scene=backpedal m1 drops back 6 m, watching the ball in front of him
+//   scene=passgo    m1 passes to m2, then moves (team AI once the ball lands, as in the game)
+//   scene=spin      m1 has his back to the ball and turns round to it on the spot (his feet step round)
+//   scene=idle      everyone stands about while the hero has the ball (no two alike)
+//   scene=lookup    the hero stands on the ball, head down; at 0 s he looks up (the game's LOOK UP)
+// focus=<id> films that player (scene=idle films the middle); look=0 keeps the hero's head down all through;
+// view=side|front|three|back|top|game|far (game: from behind and above him, as the game's camera; far: about as big as
+// a player is in the game, 110 px); dist=<m>; yaw=<deg>
+// (the camera's way round, instead of the player's); at=<s,s,...> (eight moments, seconds from the scene's key moment).
+const SCENES = {
+  jockey: { yaw: 0, hero: [3, 3], mates: [[9, 10.6]], opps: [[18, 10]], carrier: 'o1', focus: 'm1', ai: ['hero', 'o1'], at: [0, .4, .8, 1.2, 1.6, 2, 2.4, 2.8],
+    *gen(s, key) { yield 1; key(); s.go('o1', 1, 10, 2.6); yield 5; } },
+  press: { yaw: 0, hero: [9, 10], mates: [], opps: [[17, 10.4]], focus: 'hero', ai: ['hero'], at: [0, .4, .8, 1.2, 1.6, 2, 2.4, 2.8],
+    *gen(s, key) { yield 1; key(); s.go('hero', 28, 10.5, 3); yield 5; } },
+  shield: { hero: [8, 10], mates: [], opps: [[8.4, 11.2]], focus: 'hero', yaw: 0, at: [.4, .7, 1, 1.3, 1.6, 1.9, 2.2, 2.5],
+    *gen(s, key) { yield .5; key(); s.go('hero', 24, 10, 2.2); s.go('o1', 24.4, 11.2, 2.2); yield 5; } },
+  receive: { hero: [3, 3], mates: [[18, 10], [12, 14]], opps: [[15, 16]], carrier: 'm1', focus: 'm2', at: [-2.4, -1.9, -1.4, -1, -.6, -.3, 0, .3],
+    *gen(s, key) { yield 2.8; const m = s.a('m2'); s.windup('m1'); yield .2; s.kick(m.x, m.y, { speed: 11, arc: .15 }); yield () => s.ball.state === 'loose'; key(); s.give('m2'); yield 1.5; } },
+  show: { hero: [8, 10], mates: [[6, 5], [5, 15]], opps: [[20, 10], [16, 6]], focus: 'm1', ai: ['hero'], at: [2, 2.6, 3.2, 3.8, 4.4, 5, 5.6, 6.2],
+    *gen(s, key) { yield .2; key(); s.go('hero', 24, 10, 1.6); yield 8; } },
+  runstop: { yaw: 0, hero: [3, 3], mates: [[4, 10]], opps: [], focus: 'm1', at: [-.6, -.3, -.12, 0, .1, .2, .35, .6],
+    *gen(s, key) { yield 1; s.go('m1', 14, 10, 5.5); yield () => Math.hypot(s.a('m1').x - 14, s.a('m1').y - 10) < .02; key(); yield 2; } },
+  backpedal: { yaw: 0, hero: [3, 3], mates: [[11, 10]], opps: [[16, 10]], carrier: 'o1', focus: 'm1', at: [0, .3, .6, .9, 1.2, 1.5, 1.8, 2.2],
+    *gen(s, key) { yield 1.2; key(); s.go('m1', 5, 10, 2.6); s.go('o1', 10, 10, 2.4); yield 4; } },
+  passgo: { hero: [3, 3], mates: [[10, 10], [18, 12.5]], opps: [[14, 7], [24, 11]], carrier: 'm1', focus: 'm1', ai: [], at: [-.1, .1, .3, .6, 1, 1.4, 1.8, 2.4],
+    *gen(s, key, lab) { lab.ai = false; yield 1.2; key(); s.windup('m1', 'pass', 1); faceTo(s.a('m1'), 18, 12.5); yield .2; s.kick(18, 12.5, { speed: 11, arc: .15 });
+      yield () => s.ball.state === 'loose'; s.give('m2'); lab.scripted = new Set(['m2']); lab.ai = true; yield 4; } },
+  spin: { hero: [10, 10], mates: [[12.5, 10]], opps: [], focus: 'm1', yaw: 0, at: [-.1, .05, .12, .2, .28, .38, .5, .8],
+    *gen(s, key) { s.a('m1').face = [0, 1]; yield .05; s.a('m1').face = [1, 0]; yield 1; key(); s.a('m1').face = [1, 0]; yield 2; } },
+  idle: { hero: [10, 10], mates: [[14, 6], [14, 14]], opps: [[17, 8.6], [17.5, 12.5], [21, 10]], focus: null, center: [15.5, 10], at: [0, .8, 1.6, 2.4, 3.2, 4, 4.8, 5.6],
+    *gen(s, key) { yield 1; key(); yield 7; } },
+  lookup: { hero: [10, 10], mates: [[17, 7], [17, 13]], opps: [[21, 10]], focus: 'hero', at: [-.8, -.4, -.1, .1, .3, .6, 1, 1.5],
+    *gen(s, key) { s.a('hero').look = 0; yield 1.6; key(); s.a('hero').look = 1; yield 3; } },
+};
+const SCENE = SCENES[Q.get('scene')];
+if (SCENE && Q.has('at')) SCENE.at = Q.get('at').split(',').map(Number); // at=<s,s,...>: the moments to film
+function runScene(rigs, shots, snap, k0) {
+  const S = SCENE, s = new Sim(), lab = { ...team, sim: s, scripted: new Set(S.ai || []), roles: null, ballTeam: 'us', ai: !!S.ai };
+  s.setup({ hero: S.hero, mates: S.mates, opps: S.opps, carrier: S.carrier });
+  for (const a of s.agents.values()) { const g = rigs.get(a.id); g.userData.m = null; g.userData.yaw = null; }
+  if (Q.has('look')) s.a('hero').look = num('look', 1);
+  if (S.carrier) { const c = s.a(S.carrier); c.face = [c.team === 'us' ? 1 : -1, 0]; s.give(c.id); }
+  let key = null;
+  s.run(S.gen(s, () => { key = s.time; }, lab));
+  const want = [...shots].sort((a, b) => a - b);
+  for (let k = 0; k < 60 * 9; k++) {
+    if (lab.ai) lab.teamAI();
+    s.step(DT);
+    for (const a of s.agents.values()) animateRig(rigs.get(a.id), a, s);
+    if (snap) while (want.length && s.time >= k0 + want[0] - 1e-6) snap(want.shift(), s);
+    if (key != null && s.time > key + Math.max(...SCENE.at) + .1 && !want.length) break;
+  }
+  return { key, sim: s };
+}
+function sceneLab() {
+  const red = { pattern: 'stripes', colors: ['#fb090b', '#1b1b1f'], shorts: '#ffffff', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' };
+  const blue = { pattern: 'solid', colors: ['#2557c9'], shorts: '#1b1b1f', socks: '#2557c9', num: '#ffffff', trim: '#ffffff' };
+  const people = { hero: ['SILVA', 7, '#d9a37a', 'crop'], m1: ['KAI', 4, '#8d5a3b', 'crop'], m2: ['LEO', 9, '#f0c8a0', 'crop'], o1: ['MAX', 5, '#c48a62', 'crop'], o2: ['BEN', 3, '#f2cfae', 'crop'], o3: ['ALI', 8, '#6b4430', 'crop'] };
+  const rigs = new Map();
+  for (const id in people) { const [name, n, skin, hairStyle] = people[id], g = makeRig({ name, num: n, skin, hair: '#1b1410', hairStyle }, id[0] === 'o' ? blue : red, id === 'hero'); g.userData.seed = { hero: 1.3, m1: 2.6, m2: 4.1, o1: .7, o2: 3.3, o3: 5.2 }[id]; rigs.set(id, g); scene.add(g); }
+  const first = runScene(rigs, [], null);
+  for (const [id, g] of rigs) if (!first.sim.a(id)) g.visible = false;
+  const fid = Q.get('focus') || SCENE.focus, fa = fid && first.sim.a(fid);
+  const yaw0 = fa ? rigs.get(fid).userData.yaw : 0; // the camera is set by where the player faces at the end of the first run
+  const labels = document.getElementById('labels'), cols = 4, rows = 2, cw = W / cols, ch = (Hh - 30) / rows;
+  renderer.setViewport(0, 0, W, Hh); renderer.setScissor(0, 0, W, Hh); renderer.setClearColor('#20242c'); renderer.clear();
+  const dirOf = { front: [1, 0, .22], side: [0, -1, .16], three: [.62, -.62, .3], back: [-1, 0, .3], top: [.3, -.1, 1], game: [-1, 0, .7], far: [-.8, -.55, .5] };
+  let n = 0, cyaw = Q.has('yaw') ? num('yaw', 0) * Math.PI / 180 : SCENE.yaw ?? yaw0;
+  runScene(rigs, SCENE.at, (off, s) => {
+    const b = s.ball; ballM.position.set(b.x, b.y, BALL + (b.z || 0));
+    const f = fid ? s.a(fid) : null, c = f ? [f.x, f.y] : SCENE.center || [15, 10], d = dirOf[view] || dirOf.three;
+    const dx = d[0] * Math.cos(cyaw) - d[1] * Math.sin(cyaw), dy = d[0] * Math.sin(cyaw) + d[1] * Math.cos(cyaw);
+    const c0 = new THREE.Vector3(c[0], c[1], view === 'game' ? .9 : .75), dir = new THREE.Vector3(dx, dy, d[2]).normalize();
+    scene.updateMatrixWorld(true);
+    const col = n % cols, r = Math.floor(n / cols), x = col * cw, y = 30 + r * ch;
+    cam.aspect = cw / ch; cam.position.copy(c0).addScaledVector(dir, num('dist', view === 'game' ? 5.2 : view === 'far' ? 14 : fid ? 5.5 : 11)); cam.lookAt(c0); cam.updateProjectionMatrix();
+    renderer.setViewport(x, Hh - y - ch, cw, ch); renderer.setScissor(x, Hh - y - ch, cw, ch); renderer.setClearColor('#2b313b'); renderer.clear(); renderer.render(scene, cam);
+    const el = document.createElement('div'); const m = f && rigs.get(fid).userData.m, tags = m ? [m.scan && 'scan', m.ask && 'asks', m.kj > .5 && 'jockey', m.ready > .6 && 'ready', Math.abs(m.yo) > .3 && 'turned ' + Math.round(m.yo * 57) + '°'].filter(Boolean) : [];
+    el.textContent = `${off >= 0 ? '+' : ''}${off.toFixed(2)} s` + (f ? ` · ${(m.v ?? f.sp).toFixed(1)} m/s` : '') + (tags.length ? ' · ' + tags.join(' · ') : '');
+    el.style.left = x + cw / 2 + 'px'; el.style.top = y + 4 + 'px'; labels.appendChild(el); n++;
+  }, first.key);
+  document.getElementById('info').textContent = `scene=${Q.get('scene')} · focus=${fid || '-'} · view=${view}`;
 }
 
 const canvas = document.getElementById('c'), W = innerWidth, Hh = innerHeight;
@@ -126,62 +236,74 @@ const goal = new THREE.Mesh(new THREE.BoxGeometry(.1, 4, 1.6), new THREE.MeshSta
 const ballM = new THREE.Mesh(new THREE.SphereGeometry(BALL, 28, 18), new THREE.MeshStandardMaterial({ color: '#f4f4f0', roughness: .3 }));
 const seam = new THREE.Mesh(new THREE.TorusGeometry(BALL * 1.002, .006, 6, 40), new THREE.MeshBasicMaterial({ color: '#111' })); ballM.add(seam);
 ballM.castShadow = true; scene.add(ballM);
-const rig = makeRig({ name: 'SILVA', num: 7, skin: '#d9a37a', hair: '#1b1410', hairStyle: 'crop' }, { pattern: 'stripes', colors: ['#fb090b', '#1b1b1f'], shorts: '#ffffff', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' }, true);
-scene.add(rig);
-const marks = []; // the defenders, as red cones
 const cam = new THREE.PerspectiveCamera(26, 1, .05, 200); cam.up.set(0, 0, 1);
+if (SCENE) sceneLab(); else { // one player close up
+  const rig = makeRig({ name: 'SILVA', num: 7, skin: '#d9a37a', hair: '#1b1410', hairStyle: 'crop' }, { pattern: 'stripes', colors: ['#fb090b', '#1b1b1f'], shorts: '#ffffff', socks: '#1b1b1f', num: '#ffffff', trim: '#ffffff' }, true);
+  scene.add(rig);
+  const marks = []; // the defenders, as red cones
 
-const first = runMove(rig, [], null);
-for (const o of first.sim.team('them')) { const c = new THREE.Mesh(new THREE.ConeGeometry(.22, .7, 16).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d33' })); c.position.set(o.x, o.y, .35); scene.add(c); marks.push(c); }
-const OFF = kickMove ? [-.12, .06, .12, .16, .2, .26, .36, .55] : trapMove ? [-.32, -.2, -.1, -.04, 0, .12, .28, .5]
-  : move === 'stop' ? [-.15, .05, .2, .35, .5, .65, .85, 1.1] : move === 'feint' ? [0, .08, .16, .24, .32, .42, .55, .7]
-  : move === 'knock' ? [-.05, .03, .07, .1, .14, .2, .3, .45] : turnMove ? (Q.get('at') || '-.1,.1,.2,.3,.4,.5,.65,.9').split(',').map(Number) : [];
-if (move === 'dribble') { for (const x of first.touches.slice(0, 4)) OFF.push(x - first.key - .05, x - first.key + .03); }
+  const foeRig = skillMove ? makeRig({ name: 'MAX', num: 5, skin: '#c48a62', hair: '#1b1410', hairStyle: 'crop' }, { pattern: 'solid', colors: ['#2557c9'], shorts: '#1b1b1f', socks: '#2557c9', num: '#ffffff', trim: '#ffffff' }, false) : null;
+  if (foeRig) { foeRig.userData.seed = .7; scene.add(foeRig); }
+  const first = runMove(rig, [], null, 0, foeRig);
+  for (const o of first.sim.team('them')) { if (foeRig) break; const c = new THREE.Mesh(new THREE.ConeGeometry(.22, .7, 16).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#d33' })); c.position.set(o.x, o.y, .35); scene.add(c); marks.push(c); }
+  const OFF = kickMove ? [-.12, .06, .12, .16, .2, .26, .36, .55] : trapMove ? [-.32, -.2, -.1, -.04, 0, .12, .28, .5]
+    : move === 'stop' ? [-.15, .05, .2, .35, .5, .65, .85, 1.1]
+    : move === 'knock' ? [-.05, .03, .07, .1, .14, .2, .3, .45] : turnMove ? (Q.get('at') || '-.1,.1,.2,.3,.4,.5,.65,.9').split(',').map(Number)
+    : skillMove ? (Q.get('at') ? Q.get('at').split(',').map(Number) : Array.from({ length: 8 }, (_, i) => -.03 + i / 7 * (((first.end ?? first.key + .6) - first.key) * (dribSkill ? .8 : 1) + .06))) : [];
+  if (move === 'dribble') { for (const x of first.touches.slice(0, 4)) OFF.push(x - first.key - .05, x - first.key + .03); }
 
-// Which part of the boot is nearest the ball, and how far (cm). Points on the boot's skin are tried one by one.
-const P = new THREE.Vector3(), BC = new THREE.Vector3();
-function contact(leg, i) {
-  leg.foot.updateWorldMatrix(true, false); const boot = new THREE.Matrix4().multiplyMatrices(leg.foot.matrixWorld, leg.boot); BC.copy(ballM.position);
-  let best = 9, bn = null;
-  for (let a = 0; a < 24; a++) for (let b = 1; b < 12; b++) {
-    const th = a / 24 * Math.PI * 2, ph = b / 12 * Math.PI, n = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.sin(ph) * Math.sin(th), Math.cos(ph));
-    P.copy(n).multiplyScalar(.072).applyMatrix4(boot); const d = P.distanceTo(BC) - BALL;
-    if (d < best) { best = d; bn = n; }
+  // Which part of the boot is nearest the ball, and how far (cm). Points on the boot's skin are tried one by one.
+  const P = new THREE.Vector3(), BC = new THREE.Vector3();
+  function contact(leg, i) {
+    leg.foot.updateWorldMatrix(true, false); const boot = new THREE.Matrix4().multiplyMatrices(leg.foot.matrixWorld, leg.boot); BC.copy(ballM.position);
+    let best = 9, bn = null;
+    for (let a = 0; a < 24; a++) for (let b = 1; b < 12; b++) {
+      const th = a / 24 * Math.PI * 2, ph = b / 12 * Math.PI, n = new THREE.Vector3(Math.sin(ph) * Math.cos(th), Math.sin(ph) * Math.sin(th), Math.cos(ph));
+      P.copy(n).multiplyScalar(.072).applyMatrix4(boot); const d = P.distanceTo(BC) - BALL;
+      if (d < best) { best = d; bn = n; }
+    }
+    const inY = i ? -bn.y : bn.y; // + toward his other foot
+    const part = bn.z < -.6 ? 'sole' : bn.x > .75 ? 'toe' : inY > .55 ? (bn.z > .3 ? 'inside of the laces' : 'inside') : inY < -.55 ? 'outside' : bn.z > .45 ? (inY > .2 ? 'inside of the laces' : 'laces') : bn.x < -.6 ? 'heel' : inY > 0 ? 'inside' : 'outside';
+    return { gap: best * 100, part };
   }
-  const inY = i ? -bn.y : bn.y; // + toward his other foot
-  const part = bn.z < -.6 ? 'sole' : bn.x > .75 ? 'toe' : inY > .55 ? (bn.z > .3 ? 'inside of the laces' : 'inside') : inY < -.55 ? 'outside' : bn.z > .45 ? (inY > .2 ? 'inside of the laces' : 'laces') : bn.x < -.6 ? 'heel' : inY > 0 ? 'inside' : 'outside';
-  return { gap: best * 100, part };
+  const labels = document.getElementById('labels');
+  const label = (text, x, y, cls) => { const d = document.createElement('div'); d.textContent = text; d.style.left = x + 'px'; d.style.top = y + 'px'; if (cls) d.className = cls; labels.appendChild(d); };
+  const cols = 4, rows = 2, cw = W / cols, ch = (Hh - 30) / rows;
+  renderer.setViewport(0, 0, W, Hh); renderer.setScissor(0, 0, W, Hh); renderer.setClearColor('#20242c'); renderer.clear();
+  let n = 0, used = null;
+  const dirOf = { front: [1, 0, .22], side: [0, -1, .16], top: turnMove ? [.05, -.02, 1] : [.7, -.25, 1], three: [.62, -.62, .3] };
+  if (skillMove && first.key == null) document.getElementById('info').textContent = `move=${move}: no chance for the skill came`;
+  runMove(rig, OFF, (off, s, h) => {
+    const b = s.ball; ballM.position.set(b.x, b.y, BALL + (b.z || 0)); seam.rotation.set(0, 0, 0);
+    const m = rig.userData.m, kick = kickMove && off > .1 && off < .3, legI = kickMove ? m.kf : trapMove ? (m.spec?.leg ?? forced ?? 0) : null;
+    if (kickMove && used == null && h.kickAt != null) used = m.kf;
+    if (trapMove && m.spec?.k === 'trap') used = m.spec.leg;
+    // The camera turns with him (with the way he faces at the end of the move) and looks from the side of the foot he uses.
+    const yaw = move === 'dribble' || dribSkill || move === 'stop' || move === 'knock' ? rig.userData.yaw : turnMove ? TURN / 2 : turnSkill ? num('yaw', TURN / 2 * 57.3 + (move === 'croqueta' || move === 'double' ? 90 : 0)) / 57.3 : first.yaw, d = dirOf[view] || dirOf.three, sy = (view === 'side' || view === 'three') && (used ?? forced) === 1 ? -1 : 1;
+    const dx = d[0] * Math.cos(yaw) - d[1] * sy * Math.sin(yaw), dy = d[0] * Math.sin(yaw) + d[1] * sy * Math.cos(yaw);
+    const o1 = s.a('o1'), pair = view === 'pair' && o1; // pair: from the side, both players in the picture
+    const fixed = turnMove || turnSkill, kf = move === 'croqueta' || move === 'double' ? .9 : turnSkill ? .15 : .7, cx = fixed ? first.at.x + (h.x - first.at.x) * kf : h.x, cy = fixed ? first.at.y + (h.y - first.at.y) * kf : h.y, c0 = new THREE.Vector3(cx + Math.cos(yaw) * .25, cy + Math.sin(yaw) * .25, view === 'top' ? .1 : .55), dir = new THREE.Vector3(dx, dy, d[2]).normalize();
+    scene.updateMatrixWorld(true);
+    const c = n % cols, r = Math.floor(n / cols), x = c * cw, y = 30 + r * ch;
+    cam.aspect = cw / ch; if (pair) { const py = num('yaw', 0) / 57.3; c0.set((h.x + o1.x) / 2, (h.y + o1.y) / 2, .7); dir.set(Math.sin(py) * .9, -Math.cos(py) * .9, .35).normalize(); }
+    cam.position.copy(c0).addScaledVector(dir, num('dist', pair ? 5.6 : view === 'top' ? 2.6 : 3.7)); cam.lookAt(c0); cam.updateProjectionMatrix();
+    renderer.setViewport(x, Hh - y - ch, cw, ch); renderer.setScissor(x, Hh - y - ch, cw, ch); renderer.setClearColor('#2b313b'); renderer.clear(); renderer.render(scene, cam);
+    const when = move === 'dribble' ? `touch ${Math.floor(n / 2) + 1}${n % 2 ? ' (after)' : ' (before)'}` : `${off >= 0 ? '+' : ''}${off.toFixed(2)} s`;
+    let txt = when, cls = '';
+    if (kickMove && b.state === 'flying' && b.t === 0) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · CONTACT: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
+    else if (kickMove && (b.state === 'carried')) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · ${k.part} ${k.gap.toFixed(0)} cm`; }
+    if (trapMove && Math.abs(off) < 1e-6) { const k = contact(rig.userData.legs[legI], legI); txt += ` · ARRIVES: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
+    if (move === 'dribble') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (n % 2) txt += ` · ball goes ${['on', 'left', 'right'][Math.floor(dribbleAt(h) / 1.4) % 3]}`; }
+    if (skillMove) { // both boots: the nearest part to the ball and the gap; a boot in the ball shows red
+      const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], sk = skillNow(s, 'hero');
+      txt += ` · R ${k[0].part} ${k[0].gap.toFixed(0)} · L ${k[1].part} ${k[1].gap.toFixed(0)} cm` + (sk ? ` · ${sk.k} ${sk.c.toFixed(2)}` : '');
+      if (Math.min(k[0].gap, k[1].gap) < -.5) cls = 'hit';
+    } else if (turnMove || move === 'knock') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (k[i].gap < 3) cls = 'hit'; if (s.ball.move) txt += ' · ' + s.ball.move.k; }
+    label(txt, x + cw / 2, y + 4, cls); n++;
+  }, first.key, foeRig);
+  const FOOT = ['right', 'left'];
+  document.getElementById('info').textContent = `move=${move} · foot used: ${used == null ? '-' : FOOT[used]}${footQ ? ' (asked ' + footQ + ')' : ' (game rule)'} · view=${view}`;
 }
-const labels = document.getElementById('labels');
-const label = (text, x, y, cls) => { const d = document.createElement('div'); d.textContent = text; d.style.left = x + 'px'; d.style.top = y + 'px'; if (cls) d.className = cls; labels.appendChild(d); };
-const cols = 4, rows = 2, cw = W / cols, ch = (Hh - 30) / rows;
-renderer.setViewport(0, 0, W, Hh); renderer.setScissor(0, 0, W, Hh); renderer.setClearColor('#20242c'); renderer.clear();
-let n = 0, used = null;
-const dirOf = { front: [1, 0, .22], side: [0, -1, .16], top: turnMove ? [.05, -.02, 1] : [.7, -.25, 1], three: [.62, -.62, .3] };
-runMove(rig, OFF, (off, s, h) => {
-  const b = s.ball; ballM.position.set(b.x, b.y, BALL + (b.z || 0)); seam.rotation.set(0, 0, 0);
-  const m = rig.userData.m, kick = kickMove && off > .1 && off < .3, legI = kickMove ? m.kf : trapMove ? (m.spec?.leg ?? forced ?? 0) : null;
-  if (kickMove && used == null && h.kickAt != null) used = m.kf;
-  if (trapMove && m.spec?.k === 'trap') used = m.spec.leg;
-  // The camera turns with him (with the way he faces at the end of the move) and looks from the side of the foot he uses.
-  const yaw = move === 'dribble' || move === 'feint' || move === 'stop' || move === 'knock' ? rig.userData.yaw : turnMove ? TURN / 2 : first.yaw, d = dirOf[view] || dirOf.three, sy = (view === 'side' || view === 'three') && (used ?? forced) === 1 ? -1 : 1;
-  const dx = d[0] * Math.cos(yaw) - d[1] * sy * Math.sin(yaw), dy = d[0] * Math.sin(yaw) + d[1] * sy * Math.cos(yaw);
-  const cx = turnMove ? first.at.x + (h.x - first.at.x) * .7 : h.x, cy = turnMove ? first.at.y + (h.y - first.at.y) * .7 : h.y, c0 = new THREE.Vector3(cx + Math.cos(yaw) * .25, cy + Math.sin(yaw) * .25, view === 'top' ? .1 : .55), dir = new THREE.Vector3(dx, dy, d[2]).normalize();
-  scene.updateMatrixWorld(true);
-  const c = n % cols, r = Math.floor(n / cols), x = c * cw, y = 30 + r * ch;
-  cam.aspect = cw / ch; cam.position.copy(c0).addScaledVector(dir, num('dist', view === 'top' ? 2.6 : 3.7)); cam.lookAt(c0); cam.updateProjectionMatrix();
-  renderer.setViewport(x, Hh - y - ch, cw, ch); renderer.setScissor(x, Hh - y - ch, cw, ch); renderer.setClearColor('#2b313b'); renderer.clear(); renderer.render(scene, cam);
-  const when = move === 'dribble' ? `touch ${Math.floor(n / 2) + 1}${n % 2 ? ' (after)' : ' (before)'}` : `${off >= 0 ? '+' : ''}${off.toFixed(2)} s`;
-  let txt = when, cls = '';
-  if (kickMove && b.state === 'flying' && b.t === 0) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · CONTACT: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
-  else if (kickMove && (b.state === 'carried')) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · ${k.part} ${k.gap.toFixed(0)} cm`; }
-  if (trapMove && Math.abs(off) < 1e-6) { const k = contact(rig.userData.legs[legI], legI); txt += ` · ARRIVES: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
-  if (move === 'dribble') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (n % 2) txt += ` · ball goes ${['on', 'left', 'right'][Math.floor(dribbleAt(h) / 1.4) % 3]}`; }
-  if (turnMove || move === 'knock') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (k[i].gap < 3) cls = 'hit'; if (s.ball.move) txt += ' · ' + s.ball.move.k; }
-  label(txt, x + cw / 2, y + 4, cls); n++;
-}, first.key);
-const FOOT = ['right', 'left'];
-document.getElementById('info').textContent = `move=${move} · foot used: ${used == null ? '-' : FOOT[used]}${footQ ? ' (asked ' + footQ + ')' : ' (game rule)'} · view=${view}`;
 </script>
 </body>
 </html>
