@@ -6,7 +6,7 @@ import { allScenarios } from '../js/skills.js';
 import { TEAMS } from '../js/teams.js';
 import { OPTIONS } from './harness.js';
 
-const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first']);
+const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'forward-first', 'follow-shot', 'go-to-goal']);
 function makeGame(skills = ALL) {
   const events = [];
   const world = { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] };
@@ -392,4 +392,76 @@ test("the child's player keeps his head down over the ball until LOOK UP, and th
   assert.equal(g.sim.a('hero').look, 0, 'head down before LOOK UP');
   g.toggleLook(); for (let i = 0; i < 15; i++) g.tick(1 / 30, 7 + i / 30);
   assert.equal(g.sim.a('hero').look, 1, 'head up after LOOK UP');
+});
+
+// ---------- "Follow your shot!" and "Run to the goal too!" ----------
+test('follow your shot: the shot flies fast to the post or leg, comes back out slower and rests in front of goal; running in scores, watching loses it', async () => {
+  const { generate, SHOT } = await import('../js/generate.js');
+  for (const pattern of ['follow-post', 'follow-block', 'follow-friend']) for (let seed = 1; seed <= 4; seed++) for (const opt of ['spot:in', 'spot:watch']) {
+    const sc = generate('follow-shot', seed, { pattern }), { g, events } = makeGame();
+    g.mode = 'lesson'; g.load(sc);
+    let prev = null, jump = 0, fastest = 0, after = 0, hitAt = null; const b = g.sim.ball, hit = { x: sc.shot.hit[0], y: sc.shot.hit[1] };
+    // jump: how far the ball moves in a frame while it is not in the air (at someone's feet, or lying loose).
+    const track = () => { if (prev) { const d = Math.hypot(b.x - prev.x, b.y - prev.y); if (b.state !== 'flying' && prev.state !== 'flying') jump = Math.max(jump, d); if (hitAt == null) fastest = Math.max(fastest, d); else if (g.phase === 'pre') after = Math.max(after, d); } prev = { x: b.x, y: b.y, state: b.state }; if (hitAt == null && Math.hypot(b.x - hit.x, b.y - hit.y) < .05) hitAt = g.sim.time; };
+    await drive(g, g.pre(), () => null, 10, track);
+    assert.ok(hitAt != null, `${sc.id}: the ball never reached the post or leg`);
+    assert.ok(b.state === 'flying' && b.t >= SHOT.freeze - .05, `${sc.id}: the play should freeze as the rebound slows down`);
+    const p = g.decide(); for (let i = 0; i < 40 && b.state === 'flying'; i++) { g.tick(1 / 30, 50 + i / 30); track(); }
+    assert.equal(b.state, 'loose', `${sc.id}: the rebound should come to rest while he decides`); assert.ok(Math.hypot(b.x - sc.shot.loose[0], b.y - sc.shot.loose[1]) < .05, `${sc.id}: the ball is not at rest where it came out to`);
+    assert.ok(after < fastest * .5, `${sc.id}: the rebound (${after.toFixed(2)} m a frame) is not slower than the shot (${fastest.toFixed(2)})`);
+    g.choose(opt); await p;
+    await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 10, track);
+    assert.ok(jump < .35, `${sc.id}: the ball jumped ${jump.toFixed(2)} m in a frame`);
+    const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
+    assert.deepEqual(ends, [opt === 'spot:in' ? 'GOAL!' : 'They got it!'], `${sc.id} ${opt}: ${ends}`); // (he never had it: not "Stolen!")
+  }
+});
+
+test('run to the goal: the right run gets the pass in front of him and he scores; crowding the ball or staying back loses it', async () => {
+  const { generate } = await import('../js/generate.js');
+  for (const pattern of ['go-goal', 'go-far', 'go-shot']) for (let seed = 1; seed <= 4; seed++) {
+    const sc = generate('go-to-goal', seed, { pattern });
+    for (const s of sc.spots) {
+      const opt = 'spot:' + s.id, { g, events } = makeGame();
+      g.mode = 'lesson'; g.load(sc); await drive(g, g.pre(), () => null);
+      const h = g.sim.a('hero'); let took = null;
+      await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 10, gm => { if (took === null && gm.sim.ball.carrier === 'hero') took = h.sp; });
+      const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
+      if (opt === sc.best) {
+        assert.deepEqual(ends, ['GOAL!'], `${sc.id} ${opt}: ${ends}`);
+        if (!sc.shot) assert.ok(took > 3.5, `${sc.id}: he stopped for the pass (${took?.toFixed(1)} m/s): it should be in front of him`);
+      } else assert.deepEqual(ends, [sc.shot ? 'They got it!' : 'Stolen!'], `${sc.id} ${opt}: ${ends}`);
+    }
+  }
+});
+
+test('run to the goal and follow your shot: a wrong run shows the red and green lines from him, then the right run replays', async () => {
+  const { generate } = await import('../js/generate.js');
+  for (const [sk, wrong] of [['go-to-goal', 'spot:stay'], ['follow-shot', 'spot:watch']]) {
+    const sc = generate(sk, 3, { pattern: sk === 'go-to-goal' ? 'go-goal' : 'follow-post' }), { g, events } = makeGame();
+    let tries = 0, lines = null;
+    const r = await drive(g, g.round(sc, { hint: false }), gm => (tries++ ? gm.sc.best : wrong), 120, gm => { if (gm.phase === 'feedback' && gm.lines.length && !lines) lines = gm.lines.map(l => ({ ...l.a })); });
+    assert.equal(r.firstTry, false);
+    const h = sc.heroTo; assert.ok(lines && lines.every(a => Math.hypot(a.x - h[0], a.y - h[1]) < .6), `${sk}: the lines do not start at him`);
+    assert.ok(events.some(e => e[0] === 'caption' && e[1] === g.named(sc.cue)), `${sk}: the cue was not said`);
+    assert.equal(events.filter(e => e[0] === 'banner' && e[1] === 'GOAL!').length, 2, `${sk}: the replay and the retry should both score`);
+  }
+});
+
+test('matches with every lesson passed: friends attack and he picks his run, and a blocked shot can come back out to him', async () => {
+  const { generate } = await import('../js/generate.js');
+  const real = Math.random, seen = { goal: 0, follow: 0, rebound: 0 };
+  try {
+    for (let seed = 1; seed <= 6; seed++) {
+      let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      const { g } = makeGame(), extra = [1, 2, 3].flatMap(k => [generate('go-to-goal', 800 + seed * 10 + k), generate('follow-shot', 800 + seed * 10 + k)]);
+      await drive(g, g.match([...ALL], extra, 4, 'free'), gm => {
+        if (gm.sc.run === 'goal') seen.goal++; if (gm.sc.run === 'follow') seen[gm.sc.live ? 'rebound' : 'follow']++;
+        if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
+        if (gm.canShoot && !gm.sc.spots && Math.random() < .5) return 'shoot'; // shots from anywhere: some are blocked
+        return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back');
+      }, 3000);
+    }
+  } finally { Math.random = real; }
+  assert.ok(seen.goal && seen.follow && seen.rebound, JSON.stringify(seen));
 });

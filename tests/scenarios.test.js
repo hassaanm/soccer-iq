@@ -38,3 +38,44 @@ test('pickRounds never repeats a scenario back to back', () => {
   assert.equal(rounds.length, 8);
   for (let i = 1; i < rounds.length; i++) assert.notEqual(rounds[i].id.replace(/m$/, ''), rounds[i - 1].id.replace(/m$/, ''));
 });
+
+// ---------- off the ball: "Run to the goal too!" and "Follow your shot!" ----------
+import { generate, laneClear, DEF_RUN, SHOT } from '../js/generate.js';
+const D = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const spotsOf = sc => Object.fromEntries(sc.spots.map(s => [s.id, [s.x, s.y]]));
+
+test('run to the goal: the right run is ahead of the ball on the open side, with an open pass; each wrong one is plainly wrong', () => {
+  for (const pattern of ['go-goal', 'go-far', 'go-shot']) for (let seed = 1; seed <= 40; seed++) {
+    const sc = generate('go-to-goal', seed, { pattern }), sp = spotsOf(sc), best = sp[sc.best.slice(5)], [c] = sc.matesTo, opps = sc.oppsTo;
+    assert.ok(best[0] > c[0] + 2, `${sc.id}: the right run is not ahead of the ball`);
+    assert.ok(Math.abs(best[1] - PITCH.W / 2) < 6.5 && best[0] > PITCH.L - 15, `${sc.id}: the right run is not toward the goal`);
+    if (!sc.shot) {
+      assert.ok(laneClear(c, best, opps), `${sc.id}: the pass to the right run is not open`);
+      const front = opps.filter(o => o[0] > c[0] && D(o, c) < 3.6);
+      assert.equal(front.length, 1, `${sc.id}: ${front.length} defenders in front of the friend with the ball`);
+    }
+    for (const s of sc.spots) if ('spot:' + s.id !== sc.best) {
+      const p = [s.x, s.y];
+      assert.ok(D(p, c) < 2.6 || p[0] < c[0] || opps.some(o => D(o, p) < 1.6), `${sc.id}: ${s.id} is not plainly wrong`);
+    }
+  }
+});
+
+test('follow your shot: the ball comes back out off the post or a leg, slower, to rest in front of the goal; he is there first if he runs in', () => {
+  for (const pattern of ['follow-post', 'follow-block', 'follow-friend']) for (let seed = 1; seed <= 40; seed++) {
+    const sc = generate('follow-shot', seed, { pattern }), { from, hit, loose, block } = sc.shot, sp = spotsOf(sc);
+    assert.deepEqual(sp.in, loose, `${sc.id}: the right spot is the loose ball`);
+    assert.ok(loose[0] >= PITCH.L - 7 && Math.abs(loose[1] - PITCH.W / 2) <= 5.5, `${sc.id}: the ball is not in front of the goal (${loose})`);
+    // It bounces back off what it hit: away from the goal line (post) or out to the side (a leg), never on through it.
+    const din = [hit[0] - from[0], hit[1] - from[1]], dout = [loose[0] - hit[0], loose[1] - hit[1]];
+    const cos = (din[0] * dout[0] + din[1] * dout[1]) / Math.hypot(...din) / Math.hypot(...dout);
+    assert.ok(block ? cos < .5 : cos < -.3, `${sc.id}: the rebound goes on the way the shot went (cos ${cos.toFixed(2)})`);
+    if (!block) assert.ok(Math.abs(hit[0] - PITCH.L) < .3 && [PITCH.gy0, PITCH.gy1].some(y => Math.abs(hit[1] - y) < .3), `${sc.id}: it does not hit a post`);
+    assert.ok(SHOT.out * 1.5 < SHOT.speed * .5, 'the rebound is slower than the shot');
+    // The race from the freeze: he gets there first; if he waits, one of them gets there soon.
+    const tH = D(sc.heroTo, loose) / 5.2, tO = Math.min(...sc.oppsTo.map((o, i) => D(o, loose) / DEF_RUN + ('o' + (i + 1) === block ? .75 : .3)));
+    assert.ok(tH + .3 < tO && tO < 2.4, `${sc.id}: him ${tH.toFixed(2)} s, them ${tO.toFixed(2)} s`);
+    assert.ok(D(sc.heroTo, loose) >= 3, `${sc.id}: watching from right next to it`);
+    assert.equal(sc.shot.by, pattern === 'follow-friend' ? 'm1' : 'hero');
+  }
+});

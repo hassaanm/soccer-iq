@@ -524,7 +524,7 @@ export class World {
     for (const a of this.turnArrows.values()) if (a.seen !== frame) a.g.visible = false;
     for (let i = 0; i < this.spotPool.length; i++) {
       const g = this.spotPool[i], sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) continue;
-      g.position.set(sp.x, sp.y, .035); g.scale.setScalar(1 + .1 * Math.sin(time * 5 + i));
+      g.position.set(sp.x, sp.y, .035); g.scale.setScalar((ui.spotScale?.[i] || 1) * (1 + .1 * Math.sin(time * 5 + i))); // (farther rings drawn bigger: game/view.js spotView)
     }
     this.setLines(ui.lines);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.

@@ -1,7 +1,7 @@
 // Lesson demos and replays: the game plays the move itself, and a hand shows the taps that make it.
 import { demoScenario, skillById } from '../skills.js';
 import { clamp, smooth } from '../geom.js';
-import { MATE, spotKind, wrap } from './shared.js';
+import { L, MATE, spotKind, wrap } from './shared.js';
 
 export const demo = {
   // In demos he really looks around: head up, turn left, then right (past his shoulder, so he can see behind),
@@ -113,7 +113,7 @@ export const demo = {
       await this.talk(`${this.name('m1')} is running!`, .8);
     } else if (spotKind(sc)) {
       await this.lookAround(this.yaw, 1.1);
-      const q = sc.kind === 'support' ? 'Where is the space? 👀' : 'See who is open? 👀';
+      const q = sc.run === 'follow' ? 'Where is the ball? 👀' : sc.run === 'goal' ? 'Where is the goal? 👀' : sc.kind === 'support' ? 'Where is the space? 👀' : 'See who is open? 👀';
       await this.talk(q.replace(/ 👀$/, ''), 1, q);
     } else {
       await this.lookAround(0);
@@ -129,7 +129,10 @@ export const demo = {
     }
     // Then say why it worked, with a moment to take it in.
     await this.delay(.8); // let the GOAL! (or the steal) land first
-    if (!this.skipping) await this.talk(this.cue(), 2.5); // why it worked: the most important line, so it gets the longest pause
+    // Why it worked: the most important line, so it gets the longest pause. It is said over a view from above of
+    // where the play happened (him and the ball), not the celebration camera, which by then shows his legs under the
+    // words or an empty goal.
+    if (!this.skipping) { const b = this.sim.ball; this.aimAt = { x: clamp(b.x, 2, L - 3), y: b.y }; this.camMode = 'overview'; await this.talk(this.cue(), 2.5); this.aimAt = null; }
     this.hud.caption(''); this.skipping = false; this.showing = false; this.handAt = null; this.mode = 'between'; // the Skip button goes away
   },
 };

@@ -344,7 +344,17 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessons .tile.def::after{content:"defense";position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#4a6fb0;text-transform:uppercase}
 #lessons .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
 #lessons .tile.locked{opacity:.5;cursor:default}
+#lessons .tile.new::before{content:"new";position:absolute;top:4px;left:6px;font-size:9px;font-weight:700;color:var(--green-e);text-transform:uppercase}
 #lessons .tile.train{width:100%;flex-direction:row;gap:8px;min-height:44px;margin-bottom:2px}
+/* A phone held sideways: two short chapters (two lessons each) share a row, so all five chapters fit on one screen. */
+@media (max-height:520px){
+  #lessons{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:6px;align-content:start}
+  #lessons>*{grid-column:1/-1}
+  #lessons>.chap.half{grid-column:auto}
+  #lessons .chap.half .row{grid-template-columns:repeat(2,1fr)}
+  #lessons{row-gap:3px;padding-bottom:2px}
+  #lessons .tile.train{min-height:26px;margin-bottom:0;padding:2px 4px}
+}
 #lessons .tile.train .k{font-size:15px}
 #lessons .tile.train .st{font-size:12px;color:var(--ink-soft);letter-spacing:0}
 /* Sticker album: a sticker per lesson and per cup, its name underneath. The ring shows the level: none, bronze, silver, gold. */

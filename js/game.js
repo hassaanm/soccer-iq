@@ -56,11 +56,12 @@ export class Game {
   // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
   get pushAllowed() { return this.sc?.skill === 'dribble-to-space' || this.sc?.skill === 'won-it-go' || this.has('dribble-to-space'); }
   // In matches and free play, what he can do grows with the lessons he has passed:
-  //   Run into space → big pushes; Win it back! → he picks where to run after losing the ball (otherwise his team
+  //   Run into space → big pushes; Get back in front! → he picks where to run after losing the ball (otherwise his team
   //   defends for him); Steal it! → 1v1 STEAL moments; Won it? Go! → play goes straight on after he wins it;
   //   Peek, then turn! → a pass to him waits in the air for a peek and a turn; Get open! → after a pass he
-  //   sometimes stays himself and picks where to run; Pass and go! → that run goes past his defender;
-  //   Only one bee / Guard the open player → "Guard" spots when defending. Every passed lesson also adds its
+  //   sometimes stays himself and picks where to run; Pass and go! → that run goes past his defender; Run to the
+  //   goal too! → that run goes toward the goal; Follow your shot! → a blocked shot can come back out to him;
+  //   One goes, one guards → "Guard" spots when defending. Every passed lesson also adds its
   //   own situations to free play.
   has(id) { return (this.mode === 'match' || this.mode === 'free') && this.skills.has(id); }
 

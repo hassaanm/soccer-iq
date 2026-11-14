@@ -51,15 +51,43 @@ export const skills = (p, path) => new Set(path.filter(s => passed(p, s.id)).map
 // new lesson was put in before it after it had already opened (see catchUp).
 export const isOpen = (p, path, i) => i === 0 || passed(p, path[i - 1].id) || played(p, path[i].id) || !!p.opened?.includes(path[i].id);
 
-// When lessons are added to the path, a save keeps everything it had: each lesson that was open on the path the
-// save knew stays open, even if the new lesson now comes before it. `known` lists the lessons a save has seen;
-// saves from before it existed knew every lesson except those marked `added` in skills.js. Levels and stars are
-// never touched, and the new lesson opens by the usual rule (the lesson before it is passed).
+// When the path changes (lessons added, moved or merged), a save keeps everything it had: each lesson that was open
+// on the path the save knew stays open, wherever it is now. `known` is that path, in its order. Saves from before it
+// was kept (v58 and earlier) knew KNOWN_BEFORE. A lesson merged into another (MERGED) passes its stars, level and
+// "open" on to the lesson that keeps them (the better of the two). Levels and stars are never lowered, and a new
+// lesson opens by the usual rule (the lesson before it is passed). `fresh` lists the lessons new to this save, not
+// played yet, so the lesson sheet can mark them.
+export const MERGED = { 'mark-the-free-one': 'one-goes' };
+const KNOWN_BEFORE = ['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn',
+  'see-the-trap', 'get-open', 'pass-to-open', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first']; // the path before "Pass in front!" (v54), when saves started keeping `known`
 export function catchUp(p, path) {
-  const known = new Set(p.known || path.filter(s => !s.added).map(s => s.id)), old = path.filter(s => known.has(s.id));
-  if (old.length < path.length) old.forEach((s, i) => { if (isOpen(p, old, i) && !isOpen(p, path, path.indexOf(s))) (p.opened ||= []).push(s.id); });
-  p.known = path.map(s => s.id);
+  const ids = path.map(s => s.id);
+  if (!p.known && !Object.keys(p.skills || {}).length) { p.known = ids; return p; } // a new player: nothing to keep
+  const old = p.known || KNOWN_BEFORE, to = id => MERGED[id] || id;
+  if (old.join() !== ids.join() || Object.keys(MERGED).some(id => p.skills[id])) {
+    const open = new Set(old.filter((id, i) => i === 0 || passed(p, old[i - 1]) || played(p, id) || p.opened?.includes(id)).map(to));
+    for (const [from, into] of Object.entries(MERGED)) merge(p, from, into);
+    p.opened = [...new Set((p.opened || []).map(to))];
+    for (const k of ['pick']) if (MERGED[p[k]]) p[k] = MERGED[p[k]];
+    if (MERGED[p.settings?.skill]) p.settings.skill = MERGED[p.settings.skill];
+    for (const st of p.stickers || []) if (MERGED[st.skill]) st.skill = MERGED[st.skill];
+    ids.forEach((id, i) => { if (open.has(id) && !isOpen(p, path, i)) p.opened.push(id); });
+    p.fresh = [...new Set([...(p.fresh || []), ...ids.filter(id => !old.includes(id) && !old.some(o => MERGED[o] === id))])];
+  }
+  p.known = ids;
+  if (p.fresh) p.fresh = p.fresh.filter(id => ids.includes(id) && !played(p, id));
   return p;
+}
+// Folds lesson `from` into `into`: the better state (more stars, then a higher box) is kept with its days and recent
+// results; the counts add up, so it has been played if either had.
+function merge(p, from, into) {
+  const b = p.skills[from]; if (!b) return;
+  delete p.skills[from];
+  const a = p.skills[into]; if (!a) { p.skills[into] = b; return; }
+  skillState(p, into); p.skills[from] = b; skillState(p, from); delete p.skills[from];
+  const rank = s => (s.sessions > 0 ? 1 : 0) * 100 + s.top * 10 + s.box, best = rank(b) > rank(a) ? b : a;
+  p.skills[into] = { ...best, top: Math.max(a.sessions ? a.top : 0, b.sessions ? b.top : 0), sessions: a.sessions + b.sessions, firstTry: a.firstTry + b.firstTry, rounds: a.rounds + b.rounds,
+    days: a.days + b.days, last: Math.max(a.last, b.last), recent: [...best.recent] };
 }
 
 // What PLAY starts (the "coach's pick"): the grown-up's locked lesson, then the lesson he picked, then a lesson

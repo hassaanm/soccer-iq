@@ -9,7 +9,8 @@ below). Sources are listed at the end.
 
 - **The schools agree on the order.** At 5–6 a child learns "me, the ball and the goal." Teammates and
   space come in at about 6–8. Team defending, transitions and positions become formal topics only after 8.
-- **The path has four chapters in that order:** Me and the ball → Win it back → Me and my friends → Our team.
+- **The path has five chapters in that order:** Me and the ball → Win it back → Me and my friends → Our team →
+  Clever passes (v59: the lead pass and the give-and-go moved to the end; see "v59: checked against youth coaching").
 - **Four lessons are new:** "Won it? Go!" (transition), "Pass and go!" (give-and-go), "Steal it!" (1v1
   defending timing) and "Peek, then turn!" (look before the ball comes). "Get in front" is now "Win it back!".
 - **The second review (elite academies) kept the order** and added the receiving lesson, its one big gap.
@@ -40,18 +41,20 @@ Concepts that several schools teach at 5–8 and that a child can decide in a fr
 | Lots of space? Push it and run | FA, US Soccer, Coerver | 5–7 | Run into space |
 | Defender close? Keep it close and go past | FA, RBFA, KNVB, US Soccer | 5–8 | Run into space, Take him on |
 | Only one defender? Take him on | FA, RBFA, KNVB | 5–8 | Take him on |
-| Can you see the goal? Shoot! | JFA, US Soccer, DFB, FFF | 5–8 | Shoot! |
-| Lost it? Win it back now | FA, US Soccer, DFB | 5–8 | Win it back! |
-| Stand between the ball and our goal | US Soccer, JFA, FA | 5–8 | Win it back!, Only one bee |
+| Can you see the goal? Shoot! | JFA, US Soccer, DFB, FFF | 5–8 | Shoot when close! |
+| You shot? Keep running in for the rebound | FIFA grassroots | 5–8 | Follow your shot! (v59) |
+| Lost it? Win it back now | FA, US Soccer, DFB | 5–8 | Get back in front! |
+| Stand between the ball and our goal | US Soccer, JFA, FA | 5–8 | Get back in front!, One goes, one guards |
 | Won it? Go forward fast | FA ("run to that line"), DFB | 6–8 | Won it? Go! (new) |
-| Only one goes to the ball; others guard | US Soccer (compact), JFA ("defend with friends") | 6–8 | Only one bee chases |
+| Only one goes to the ball; others guard | US Soccer (compact), JFA ("defend with friends") | 6–8 | One goes, one guards |
 | Two defenders on you and a friend is free? Pass | US Soccer U7–U8, JFA | 6–8 | Two defenders? Pass! |
 | Peek before the ball comes, then turn away from pressure | Barça (Vila: "learning how to look"), futsal research | 5–8 | Peek, then turn! (new) |
 | Don't stand by the ball; go where a pass can reach you | JFA, US Soccer, DFB, Wein | 6–8 | Get open! |
 | Pass to the free friend | US Soccer, JFA, RBFA (5v5) | 7–8 | Pass to the open friend |
-| Friend running? Pass it in front of him, where he is going | US Youth Soccer (U8 passing in pairs), youth coaching guides | 6–8 | Pass in front! (added Nov 11) |
-| Pass and move (simple combinations) | FA ("combine"), US Soccer ("short combinations") | 7–8 | Pass and go! (new) |
-| Guard the player nobody is guarding | JFA, FA (covering) | 7–8 | Guard the open player |
+| Friend dribbling at goal? Run to the goal too, so the defender has to pick one (2v1) | US Youth Soccer U8, US Soccer U7–U8 | 6–8 | Run to the goal too! (v59) |
+| Friend running? Pass it in front of him, where he is going | US Youth Soccer (U8 passing in pairs), youth coaching guides | 8–9 | Pass in front! (added Nov 11) |
+| Pass and move (simple combinations) | FA ("combine"), US Soccer ("short combinations"), US Youth Soccer (wall passes at U10) | 8–9 | Pass and go! |
+| Guard the player nobody is guarding | JFA, FA (covering) | 7–8 | One goes, one guards |
 | 1v1 defending: get close, wait, steal it when it's loose | FA ("1v1 defending", "delaying"), Coerver | 7–8 | Steal it! (new) |
 | Play forward; can't go forward? Keep the ball | US Soccer U7–U8 game model | 7–8 | Forward first (capstone) |
 
@@ -62,28 +65,32 @@ check was dropped in the first pass and added back in the second (see below).
 
 ## The path
 
+(v59 order. The table in "v59: checked against youth coaching" below says what moved and why.)
+
 | # | Lesson | Side | Patterns (first = main) | The cue |
 |---|---|---|---|---|
 | **Chapter 1: Me and the ball (5–6)** | | | | |
 | 1 | Look up! 👀 | attack | carry, none-open, carry, one-open, shot-open | "Look up! Where is the space?" |
-| 2 | Run into space 💨 | attack | space-far, space-near, space-behind | "Lots of space? Push it! Defender close? Keep it close." |
-| 3 | Take him on ⚡ | attack | trap-one, trap-one, carry, trap | "Only one defender? Dribble past him!" |
-| 4 | Shoot when close! 🥅 | attack | shot-open, shot-open, shot-blocked, shot-far | "Close and nobody in the way? Shoot!" |
+| 2 | Run into space 💨 | attack | space-far, space-near, space-behind, space-friend | "Lots of space? Push it and go!" |
+| 3 | Take him on! ⚡ | attack | trap-one, trap-one, carry, trap | "Only one defender? Dribble past him!" |
+| 4 | Shoot when close! 🥅 | attack | shot-open, shot-open, shot-blocked, shot-far | "Close to the goal and nobody in the way? Shoot!" |
+| 5 | Follow your shot! 👟 (new) | attack, off the ball | follow-post, follow-block, follow-friend | "You shot? Keep running in!" |
 | **Chapter 2: Win it back (5–7)** | | | | |
-| 5 | Win it back! 💪 | defense | goal-side, you-go, goal-side | "Lost it? Get in front of the ball and win it back!" |
-| 6 | Steal it! 🦶 | defense, 1v1 timing | steal, steal-fast, steal-big | "Stay in front. Steal it when it rolls away from his feet!" |
-| 7 | Won it? Go! 🚀 | attack | counter, counter, counter-pass, counter-shot | "You won it! Go forward fast!" |
+| 6 | Get back in front! 💪 (was "Win it back!") | defense | goal-side, you-go, goal-side | "Lost the ball? Get back in front of it!" |
+| 7 | Steal it! 🦶 | defense, 1v1 timing | steal, steal-fast, steal-big | "Stay in front. Steal it when it rolls away!" |
+| 8 | Won it? Go! 🚀 | attack | counter, counter, counter-pass, counter-shot | "You won the ball? Go forward fast!" |
 | **Chapter 3: Me and my friends (6–8)** | | | | |
-| 8 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Ball coming? Peek over your shoulder, then turn away from him." |
-| 9 | Two defenders? Pass! 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to an open friend." |
-| 10 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Friend has the ball? Go where they can pass to you." |
-| 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody next to him." |
-| 12 | Pass in front! 🏃 | attack | lead, lead, lead-free | "Your friend is running? Pass it in front of him!" |
-| 13 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past him to get it back!" |
-| **Chapter 4: Our team (7–8)** | | | | |
-| 14 | Only one bee chases 🐝 | defense | one-goes, you-go, gs-covered | "A friend is on the ball? Guard the open player." |
-| 15 | Guard the open player 🛡️ | defense | mark-free, mark-free, gs-covered | "Find the player nobody is guarding." |
-| 16 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
+| 9 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Peek over your shoulder. Then turn away from the defender!" |
+| 10 | Two defenders? Pass! 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to an open friend." |
+| 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody right next to him." |
+| 12 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Your friend has the ball? Find open space!" |
+| 13 | Run to the goal too! 👬 (new) | off the ball | go-goal, go-goal, go-far, go-shot | "Your friend has the ball? Run to the goal, so he can pass to you!" |
+| **Chapter 4: Our team (7–9)** | | | | |
+| 14 | One goes, one guards 🛡️ (merged) | defense | one-goes, mark-free, one-goes, mark-free, you-go, gs-covered | "A friend is on the ball? Guard the open player. Nobody on it? You go!" |
+| 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
+| **Chapter 5: Clever passes (8–9)** | | | | |
+| 16 | Pass in front! 🏃 | attack | lead, lead, lead-free | "Your friend is running? Pass it in front of him!" |
+| 17 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past your defender to get it back!" |
 
 **Why this order**
 
@@ -322,3 +329,47 @@ of the plays where he gets in front of the attacker), so play keeps flowing.
   defender chasing him (main) or nobody near him (contrast), sometimes near their goal.
 - **Saved games:** lessons that were open before it was added stay open (`catchUp` in `js/progress.js`).
 - Sources: [US Youth Soccer U8 passing in pairs (league handout)](https://clubs.bluesombrero.com/Portals/51188/docs/Sports%20Connect-Otero%20County%20Youth%20Soccer%20League-Documents/u8_passing_in_pairs.pdf), [youth coaching tips, ages 4–8](https://www.soccerxpert.com/tips/details/youth-soccer-coaching-4-8-year-olds).
+
+## v59: checked against youth coaching
+
+The parent never played soccer, so the plan was checked against US Youth Soccer, US Soccer, The FA and FIFA's
+grassroots material (Nov 14). Every lesson's soccer was right. Five changes:
+
+| Change | Why (source) |
+|---|---|
+| **New order and a fifth chapter, "Clever passes".** "Pass in front!" and "Pass and go!" moved after the team lessons; "Pass to the open friend" moved before "Get open!". | US Youth Soccer puts "passing is another option" at U8 and combination play and wall passes at U10; at U6 "passing occurs by chance". The lead pass is real and needed by 8–9 (every through ball and give-and-go), but not a 5-year-old's first passing idea. Who to pass to comes before how to be the one passed to. |
+| **Merged "Only one bee chases" and "Guard the open player" into "One goes, one guards".** Same answer in both (guard the open player), and `gs-covered` was in both. Patterns: one-goes, mark-free, you-go, gs-covered; the "Help guard" wrong answer stays. | Coaches call the swarm "beehive" or "bumblebee soccer", so the bee picture worked against the idea. "One goes, one guards" names each child's job. US Youth Soccer: swarm ball is fine at U6–U8, so this stays in Chapter 4. |
+| **Renamed "Win it back!" to "Get back in front!"** (id unchanged). | The lesson had its chapter's name. "Get back" is what US Youth Soccer asks of U8 ("running back toward goal"). |
+| **New "Follow your shot!"** (after "Shoot when close!"). | FIFA grassroots shooting sessions: "can you follow up your shot for any rebound opportunities?" A child shooting at a crowded goal mouth gets many second balls. |
+| **New "Run to the goal too!"** (after "Get open!"). | The 2v1 to goal is the first team move children learn: US Youth Soccer U8 "1v1 attack and choosing to dribble or pass", "games of 2v1"; US Soccer U7–U8 "passes to a free player to create chances". The parent's own example. |
+| Text fixes: "Look up!" adult text now reads "goal, then space, then friends"; the `one-open` cue for a pass back is now "{m0} was open!". | US Soccer U7–U8 game model: shoot, then pass or dribble forward. The FA does not make "pass back to keep it" the goal at this age. |
+
+**Follow your shot!** He shoots from 8–11 m (no keepers in this game, so a shot comes back out only off a post or a
+defender's leg). The ball comes off fast and slower: off the post it bounces back out toward him and in toward the
+middle; off a leg it squirts out sideways. The play freezes as it comes to rest in front of the goal. Rings: the
+loose ball (3★: he is there first and scores), where he stands ("stop and watch": their nearest player gets there and
+clears it) and back toward his half. The defender who blocked it is off balance for a moment. Contrast: a friend
+shoots, and he still runs in. A round is only made when he is clearly first if he goes at once, and one of them is
+there soon if he waits. Backyard: stand in goal and knock every shot back out; a goal from the rebound counts double.
+
+**Run to the goal too!** A friend dribbles at goal with one defender in front of him; he is off the ball, level or a
+little behind on the other side. Rings: toward the goal on the open side, ahead of the ball (3★: the defender has to
+stay with the ball, the friend passes in front of him and he scores), next to the ball (his defender comes too and
+they trap both) or staying back (his defender leaves him and they trap the friend). Contrasts: a defender already
+stands in his straight run, so the open side is across, behind his friend (`go-far`); and the friend has a clear
+shot, but the run in is still right, because it comes back off the post to him (`go-shot`, which links the two new
+lessons). Backyard: 2v1 to a small goal; a goal from a pass counts double.
+
+**In matches:** "Run to the goal too!" makes his run after a pass go toward the goal, ahead of the ball, when it can.
+"Follow your shot!" makes some blocked shots come back out, and he picks his run (only when he could get there first).
+Both lessons' own situations also come up in free play, like every lesson's.
+
+**Saved games:** a child keeps every lesson he had open or passed, wherever it is now (`catchUp` and `MERGED` in
+`js/progress.js`). "Guard the open player" passes its stars and level to "One goes, one guards" (the better of the
+two). The two new lessons open by the usual rule and are marked "new" on the lesson sheet until played.
+
+Sources: [US Youth Soccer Player Development Model](https://www.playlouisianasoccer.org/wp-content/uploads/sites/205/2023/12/US_Youth_Soccer_Player_Development_Model.pdf),
+[US Soccer U7–U8 game model](https://www.ussoccer.com/us-way/player-development/game/game-models/u7-u8),
+[US Soccer U6 age guide](https://www.ussoccer.com/us-way/player-development/environment/age-group-guide/u6),
+[FA: what transition looks like for young players](https://www.thefa.com/bootroom/resources/coaching/what-does-transition-look-like-for-young-players),
+[FIFA grassroots: developing shooting skills](https://www.fifatrainingcentre.com/en/practice/grassroots/grassroots-and-youth-football-essentials/grassroots-coaching-essentials/developing-shooting-skills.php).

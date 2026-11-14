@@ -1,7 +1,7 @@
 // Outcome scripts: what happens on the pitch after his choice (pass, dribble, push, shot, run, steal), up to the
 // banner that ends the play. The scripts move the players in `scripted`; the team AI moves everyone else.
 import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } from '../geom.js';
-import { pushEnd, DEF_RUN, takeOn, LEAD } from '../generate.js';
+import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce } from '../generate.js';
 import { L, W, gy0, gy1, MATE, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
 
@@ -104,11 +104,12 @@ export const outcomes = {
     yield () => s.ball.state === 'loose';
     s.give(id); this.scripted.delete(id); yield .15;
   },
-  *steal(opp) {
+  // `ev`: the banner; 'lost' when it was a loose ball they got to first ("They got it!": he never had it).
+  *steal(opp, ev = 'stolen') {
     const s = this.sim; this.spice(null);
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
-    s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit('stolen');
+    s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
     this.scripted.add(opp.id); s.go(opp.id, Math.max(2.5, opp.x - 4), clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5), 4.8); yield .8;
   },
   *passBad(id) {
@@ -318,10 +319,28 @@ export const outcomes = {
     this.scripted.add('hero'); this.ai = false; s.stopAll();
     if (good) { yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
     const block = interceptor(s.ball, aim, s.team('them'));
+    // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
+    const sh = this.reboundOK && this.reboundFrom(block.opp);
+    if (sh) { this.rebound = sh; yield* this.shotOut(sh); this.hud.caption('Blocked!'); this.say('Blocked!'); this.scripted.add(block.opp.id); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
     this.scripted.add(block.opp.id); s.go(block.opp.id, block.x, block.y, 5);
     yield* this.strike('hero', block.x, block.y, { speed: 15, arc: .2 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);
+  },
+  // Where a blocked shot from here would go off the blocker's leg, if it would be a fair race (he clearly first, the way
+  // to it and the finish clear; see generate.js followShot). null if no way is.
+  reboundFrom(o) {
+    const s = this.sim, h = s.a('hero'), b = s.ball, from = [b.x, b.y], people = [...s.agents.values()];
+    for (const sd of [1, -1]) for (const th of [.6, .72]) {
+      const { hit, loose } = legBounce(from, [o.x, o.y], sd, th, 3.4), q = { x: loose[0], y: loose[1] };
+      if (q.x < L - 8 || q.x > L - 1.6 || q.y < 2 || q.y > W - 2 || people.some(p => dist(p, q) < 2.2)) continue; // (nobody standing on the ball's ring)
+      const tH = dist(h, q) / 5.2 + .15, tO = Math.min(...s.team('them').map(p => dist(p, q) / DEF_RUN + (p === o ? .75 : .3)));
+      if (tO < tH + .45 || dist(h, q) < 2.2) continue;
+      if (people.some(p => p !== h && p !== o && closestOnLane(p, { x: hit[0], y: hit[1] }, q, .05).d < 1)) continue;
+      if (s.team('them').some(p => p.x > q.x - 1 && closestOnLane(p, q, { x: L, y: clamp(q.y, gy0 + .8, gy1 - .8) }, 0).d < 1.6)) continue;
+      return { by: 'hero', hit, loose, block: o.id };
+    }
+    return null;
   },
   // ---------- 1v1: steal it ----------
   // 'good' when the ball is away from the attacker's feet and close enough to reach; 'early' when it is too far
@@ -393,6 +412,111 @@ export const outcomes = {
     this.spice('past-1v1', [c.id], .85); s.go(c.id, spot.x, spot.y, 4.6);
     const t1 = s.time; yield () => { s.go('hero', c.x + 1.4, c.y + (h.y > c.y ? 1 : -1), 3.2); return dist(c, spot) < .4 || s.time - t1 > 3; }; // he chases from behind
     yield* this.concede(c);
+  },
+  // ---------- shots that come back out, and the runs that go with them ----------
+  // A shot that hits the post or a defender's leg (generate.js postBounce, legBounce). It is struck at a point just past
+  // where it hits, so it is still going fast when it gets there; there it goes off on its new way, slower, and rolls
+  // out to rest. `follow`: where the shooter carries on to after the kick.
+  *shotOut(sh, follow = null) {
+    const s = this.sim, b = s.ball, hit = { x: sh.hit[0], y: sh.hit[1] };
+    const from = { x: b.x, y: b.y }, l = dist(from, hit) || 1, d = { x: (hit.x - from.x) / l, y: (hit.y - from.y) / l };
+    yield* this.strike(sh.by, hit.x + d.x * 1.2, hit.y + d.y * 1.2, { speed: SHOT.speed, arc: SHOT.arc });
+    if (follow) s.go(sh.by, follow.x, follow.y, follow.speed || 2.2);
+    yield () => b.state !== 'flying' || (b.x - from.x) * d.x + (b.y - from.y) * d.y >= l;
+    Object.assign(b, { x: hit.x, y: hit.y }); // (the step can carry it a few cm past the post: it bounces off where it touched)
+    s.kick(sh.loose[0], sh.loose[1], { speed: SHOT.out, arc: .12 });
+    // The defender it hit is knocked off balance: half a step back, away from where it went.
+    if (sh.block) { const o = s.a(sh.block), k = Math.sign((sh.loose[0] - hit.x) * -d.y + (sh.loose[1] - hit.y) * d.x) || 1; s.go(o.id, o.x - d.x * .2 + d.y * k * .15, o.y - d.y * .2 - d.x * k * .15, .8); }
+  },
+  // A loose ball after a shot: he runs to the spot he picked (or stays). Their player who can get there soonest goes for
+  // it a moment later (one who just blocked it is off balance a moment longer, see generate.js followShot). If he is
+  // first, he takes it and scores. If not, they take it away. `t0`: when the ball came loose.
+  *raceForIt(spotId, good, t0) {
+    const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), h = s.a('hero'), b = s.ball, loose = { x: sc.shot.loose[0], y: sc.shot.loose[1] };
+    const late = o => (o.id === sc.shot.block ? .75 : .3), when = o => dist(o, loose) / DEF_RUN + late(o);
+    const racer = s.team('them').sort((p, q) => when(p) - when(q))[0];
+    let gone = false, toBall = false;
+    yield () => {
+      if (!gone && s.time - t0 >= late(racer)) { gone = true; s.go(racer.id, loose.x, loose.y, DEF_RUN); }
+      // He goes on to it, to meet it where it rolls: the nearest point on its way still to come.
+      if (good && (toBall ||= spotId === 'in' || dist(h, sp) < 1.2 || b.state === 'loose')) { const m = b.state === 'flying' ? closestOnLane(h, b, loose, 0) : b; s.go('hero', m.x, m.y, 5.2); }
+      return (good && dist(h, b) < .45) || dist(racer, b) < .7 || s.time - t0 > 4;
+    };
+    if (good && dist(h, b) < .6) {
+      s.give('hero');
+      const k = dist(racer, h) || 1; s.go(racer.id, racer.x + (h.x - racer.x) / k * Math.min(.6, Math.max(0, k - 1.5)), racer.y + (h.y - racer.y) / k * Math.min(.6, Math.max(0, k - 1.5)), 2); // too late: he pulls up
+      yield* this.finish('hero'); return;
+    }
+    s.stop('hero'); yield* this.steal(racer, 'lost');
+  },
+  // "Follow your shot!": the play froze with the ball loose in front of the goal after the shot came back out.
+  *followGen(spotId, good) {
+    const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), them = s.team('them');
+    this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
+    if (spotId !== 'watch') s.go('hero', sp.x, sp.y, spotId === 'in' ? 5.2 : 3.4);
+    // Everyone else goes on with play: his friends jog up toward the box, their players step back toward their goal.
+    // (A defender marking one of his friends goes with him, staying goal-side.)
+    const marked = new Set();
+    for (const m of s.team('us')) if (m.id !== 'hero') {
+      const o = them.find(o => !marked.has(o) && o.id !== sc.shot.block && dist(o, m) < 2.5 && o.x > m.x);
+      // Up the field, or a little to one side if someone stands in the way (else he stays and watches).
+      const way = [[2, lerp(m.y, W / 2, .2) - m.y], [1.4, 1.4], [1.4, -1.4]].map(([dx, dy]) => ({ x: Math.min(L - 6, m.x + dx), y: clamp(m.y + dy, 1.5, W - 1.5) }))
+        .find(t => [...s.agents.values()].every(a => a === m || a === o || closestOnLane(a, m, t, 0).d > 1.4) && closestOnLane(t, s.a('hero'), sp, 0).d > 2);
+      if (!way) continue;
+      s.go(m.id, way.x, way.y, 2.4); if (o) { marked.add(o); s.go(o.id, o.x + way.x - m.x, o.y + way.y - m.y, 2.4); }
+    }
+    for (const o of them) if (!marked.has(o) && o.id !== sc.shot.block) s.go(o.id, Math.min(L - 1.5, o.x + .6), o.y, 1.2);
+    yield* this.raceForIt(spotId, good, s.time);
+  },
+  // "Run to the goal too!": m1 dribbles at goal with one defender in front of him; he runs to the spot he picked.
+  // In front of goal on the open side: the defender has to stay with the ball, so m1 passes in front of him as he runs
+  // on, and he scores. Beside a defender: the pass is cut out. Next to the ball, or staying back: two of them close in
+  // on m1 and take it (his own defender follows him over, or leaves him, since he is no danger back there).
+  *goalRunGen(spotId, good) {
+    const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), h = s.a('hero'), m = s.a('m1'), o1 = s.a('o1'), o2 = s.a('o2');
+    this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
+    const P = { x: sp.x, y: sp.y }, gl = Math.hypot(L - m.x, W / 2 - m.y) || 1, g = { x: (L - m.x) / gl, y: (W / 2 - m.y) / gl };
+    // Across from him, he runs round behind m1, never through him.
+    let via = !sp.crowd && closestOnLane(m, h, P, 0).d < 1.6 ? { x: m.x - 1.3, y: m.y + Math.sign(P.y - m.y) * 1.5 } : null;
+    if (spotId === 'stay') s.stop('hero'); else s.go('hero', ...(via ? [via.x, via.y] : [P.x, P.y]), 5.2);
+    const t0 = s.time;
+    if (sc.shot) { // he has a clear shot: he takes it at once, and it comes back off the post
+      if (via) s.go('hero', P.x, P.y, 5.2); // (his spots there are never across from m1)
+      s.go('o1', o1.x + g.x * 2, o1.y + g.y * 2, 3.4);
+      yield* this.shotOut(sc.shot, { x: m.x + g.x * 1.2, y: m.y + g.y * 1.2 });
+      yield* this.raceForIt(spotId, good, s.time); return;
+    }
+    // m1 drives at the defender, who steps up to stay with the ball (he can't leave it to him).
+    s.go('m1', m.x + g.x * .8, m.y + g.y * .8, 2.4); s.go('o1', o1.x - g.x * .3, o1.y - g.y * .3, 1.4);
+    // His defender: behind him, he chases him (a step behind, and slower). Standing in his way on the other side
+    // ('go-far'), he holds his place, edging toward the ball.
+    const o2at = { x: o2.x, y: o2.y }, behind = o2.x < h.x;
+    const follows = () => { if (!behind) { s.go('o2', lerp(o2at.x, m.x, .12), lerp(o2at.y, m.y, .12), 1.5); return; } const k = dist(o2, h) || 1; s.go('o2', h.x + (o2.x - h.x) / k * 1.6, h.y + (o2.y - h.y) / k * 1.6, 4.2); };
+    yield () => {
+      if (via && dist(h, via) < .5) { s.go('hero', P.x, P.y, 5.2); via = null; }
+      if (spotId === 'stay') s.go('o2', m.x - g.x * .6 - g.y * sc.side * 1.2, m.y - g.y * .6 + g.x * sc.side * 1.2, 4.4); else follows();
+      return (good ? dist(h, P) < 1.5 : spotId === 'stay' ? dist(o2, m) < 2.2 : dist(h, P) < .4) || s.time - t0 > 3;
+    };
+    if (good) {
+      const T = { x: L - 4.5, y: lerp(P.y, W / 2, .55) }, tl = Math.hypot(T.x - h.x, T.y - h.y) || 1, d = { x: (T.x - h.x) / tl, y: (T.y - h.y) / tl };
+      s.go('hero', T.x, T.y, 5.2);
+      const at = leadPoint(m, h, d, 5.2);
+      yield* this.strike('m1', at.x, at.y, { speed: LEAD.speed, arc: .1 });
+      const away = Math.sign(m.y - P.y) || 1; s.go('m1', m.x + g.x * 1.6, m.y + g.y * 1.6 + away * 1.6, 3.2); // he goes on, out to the side away from the pass
+      s.go('o1', o1.x + d.x * 2.5, o1.y + d.y * 2.5, 3.6); follows();                       // the defender turns, too late
+      yield () => s.ball.state === 'loose' || (s.ball.z < .5 && dist(h, s.ball) < .55);
+      s.give('hero');
+      yield* this.finish('hero'); return;
+    }
+    if (!sp.crowd && spotId !== 'stay') { // beside a defender: m1 passes, and the defender steps across and cuts it out
+      const cut = s.team('them').map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((p, q) => p.d - q.d)[0];
+      s.go(cut.opp.id, cut.x, cut.y, 4);
+      yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
+      yield () => s.ball.state === 'loose';
+      yield* this.steal(cut.opp); return;
+    }
+    const t1 = s.time; yield () => { s.go('o1', m.x, m.y, 3.6); if (spotId !== 'stay') follows(); return dist(o1, m) < .9 || s.time - t1 > 1.5; };
+    yield* this.steal(o1);
   },
   // Give-and-go, step 1: the pass to the wall friend. He stays where he is; step 2 asks where to run.
   *passOnly(id) {
@@ -466,6 +590,7 @@ export const outcomes = {
       else if (good && this.offBall && MATE[opt]) { this.offBall = false; yield* this.passOnly(MATE[opt]); this.result = 'support'; }
       else if (opt === 'shoot') { this.ai = true; yield* this.shootGen(good); }
       else if (opt.startsWith('spot:') && this.sc.kind === 'lead') yield* this.leadGen(opt.slice(5));
+      else if (opt.startsWith('spot:') && this.sc.run) yield* (this.sc.run === 'follow' ? this.followGen(opt.slice(5), good) : this.goalRunGen(opt.slice(5), good));
       else if (opt.startsWith('spot:')) yield* (this.sc.kind === 'support' ? this.supportGen(opt.slice(5), good) : this.defendGen(opt.slice(5), good));
       else if (opt.startsWith('push:')) yield* this.pushGen(opt.slice(5), good);
       else if (MATE[opt]) {
@@ -487,9 +612,9 @@ export const outcomes = {
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
   // the same card, at the same moment.
   emit(ev) {
-    const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'] }[ev];
+    const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'] }[ev];
     if (ev === 'goal') this.sfx('net');
-    this.fx(ev);
+    this.fx(ev === 'lost' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
     this.card = this.hud.banner(title, kind, rated);
     if (rated?.say) this.say(rated.text); else if (rated?.said) this.say(rated.said);

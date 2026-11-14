@@ -1,7 +1,7 @@
 // Matches and free play: one play runs on into the next from wherever everyone stands, and each new decision
 // (on the ball, defending, getting open, receiving, a 1v1) is built from the live positions.
 import { pickRounds } from '../skills.js';
-import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, DRIBBLE_DIRS } from '../geom.js';
+import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch } from '../generate.js';
 import { L, W, wrap } from './shared.js';
 
@@ -38,7 +38,7 @@ function liveDefense(s, guard = true) {
   const mates = [P(s.a('m1')), P(s.a('m2'))], near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
   const ok = ([x, y]) => x > 1 && x < L - 1 && y > 1 && y < W - 1;
   const cand = [{ id: 'home', p: goalSide(P(c), 2.6), label: 'In front' },
-    ...(guard ? others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with Only one bee / Guard the open player
+    ...(guard ? others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with One goes, one guards
     { id: 'chase', p: [c.x + 1.3, c.y], label: 'Behind him' }];
   const spots = [];
   for (const sp of cand) if (ok(sp.p) && dist({ x: sp.p[0], y: sp.p[1] }, h) > 1 && spots.every(t => Math.hypot(t.x - sp.p[0], t.y - sp.p[1]) > 2.2)) spots.push({ id: sp.id, x: sp.p[0], y: sp.p[1], label: sp.label });
@@ -84,7 +84,7 @@ export const live = {
   // If no spot could stop them, the play just runs on and the geometry decides what happens.
   async continueDefense() {
     const s = this.sim, c = s.a(s.ball.carrier);
-    const choose = this.has('get-goal-side'), guard = this.has('one-goes') || this.has('mark-the-free-one');
+    const choose = this.has('get-goal-side'), guard = this.has('one-goes'); // (saves that had "Guard the open player" have "One goes, one guards": progress.js MERGED)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, roles: null, ai: true, scripted: new Set(['hero', c.id]), ballTeam: 'them' });
     const h = s.a('hero');
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };
@@ -121,8 +121,9 @@ export const live = {
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
       this.offBall = !this.sc.then && this.has('get-open') && Math.random() < .6;
       this.duelOK = this.has('steal-it') && Math.random() < .6;
+      this.reboundOK = this.has('follow-shot') && opt === 'shoot' && !good && Math.random() < .7; // a blocked shot can come back out to him
       await this.outcome(opt, good);
-      await this.chain(); this.offBall = this.duelOK = false;
+      await this.chain(); this.offBall = this.duelOK = this.reboundOK = false;
       tally();
       // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
       streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
@@ -149,6 +150,7 @@ export const live = {
       else if (this.result === 'support') { if (!(await this.toSupport())) { this.result = 'kept'; return; } }
       else if (this.result === 'incoming') { if (!(await this.toReceive())) { await this.until(() => s.ball.state !== 'flying'); s.give('hero'); this.result = 'kept'; return; } }
       else if (this.result === 'duel') await this.toDuel();
+      else if (this.result === 'rebound') this.toRebound();
       else return;
       const o = await this.decide(); this.praise(o); await this.outcome(o, this.isGood(o));
     }
@@ -160,12 +162,13 @@ export const live = {
     const s = this.sim, c = s.a(s.ball.carrier), h = s.a('hero'); if (!c || c.team !== 'us' || c.id === 'hero') return false;
     const opps = s.team('them'), O = opps.map(o => [o.x, o.y]), C = [c.x, c.y];
     const press = [...opps].sort((a, b) => dist(a, c) - dist(b, c))[0], mark = opps.filter(o => o !== press).sort((a, b) => dist(a, h) - dist(b, h))[0];
-    const room = p => Math.min(...O.map(o => Math.hypot(o[0] - p[0], o[1] - p[1]))), past = this.has('give-and-go');
+    // With "Pass and go!" the run goes past his defender when it can; with "Run to the goal too!", toward the goal, ahead of the ball.
+    const room = p => Math.min(...O.map(o => Math.hypot(o[0] - p[0], o[1] - p[1]))), past = this.has('give-and-go'), goal = this.has('go-to-goal');
     let space = null, top = -1e9;
     for (let a = 0; a < 16; a++) for (const d of [3.5, 5]) {
       const p = [h.x + Math.cos(a * Math.PI / 8) * d, h.y + Math.sin(a * Math.PI / 8) * d];
       if (!inPitch(p, 1.2) || p[0] < c.x - 1 || Math.hypot(p[0] - c.x, p[1] - c.y) < 3.5 || !laneClear(C, p, O) || room(p) < 2.4) continue;
-      const score = p[0] - Math.hypot(p[0] - h.x, p[1] - h.y) * .3 + (past && p[0] > press.x + 1.2 ? 4 : 0);
+      const score = p[0] - Math.hypot(p[0] - h.x, p[1] - h.y) * .3 + (past && p[0] > press.x + 1.2 ? 4 : 0) + (goal && p[0] > c.x + 1.5 && Math.abs(p[1] - W / 2) < 6 ? 3 : 0);
       if (score > top) { top = score; space = p; }
     }
     const H = [h.x, h.y], stayOpen = laneClear(C, H, O) && Math.hypot(h.x - c.x, h.y - c.y) > 2.6, stayBlocked = laneBlocked(C, H, O);
@@ -177,7 +180,7 @@ export const live = {
     if (spots.length < 2 || !(space || stayOpen) || spots.some((p, i) => spots.some((q, j) => j > i && Math.hypot(p.x - q.x, p.y - q.y) < 2.2))) return false;
     const best = space ? 'space' : 'stay';
     this.sc = { kind: 'support', live: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
-      best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : 'Move to open space so your friend can pass to you!' };
+      best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : goal && space && space[0] > c.x + 1.5 ? 'Run to the goal, so your friend can pass to you!' : 'Move to open space so your friend can pass to you!' };
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
     s.stopAll(); this.yaw = this.frameYaw(this.sc, h, c); this.faceYaw(h);
     await this.delay(.35);
@@ -202,6 +205,21 @@ export const live = {
     this.beginStep({ lookUp: false, drag: null });
     s.stopAll(); this.yaw = face; this.faceYaw(h);
     return true;
+  },
+  // His shot was blocked and came back out (outcomes.js shootGen): where does he run? In to the loose ball, stay, or back.
+  toRebound() {
+    const s = this.sim, h = s.a('hero'), sh = this.rebound, P = a => [a.x, a.y], others = [...s.agents.values()].filter(a => a !== h), loose = { x: sh.loose[0], y: sh.loose[1] };
+    // Turning back: back toward his own half, or back and to one side, wherever has the most room (clear of everyone,
+    // and of the other two rings). None with room: just the two rings.
+    const room = q => Math.min(...others.map(a => Math.min(dist(a, q), closestOnLane(a, h, q, .1).d + .8)), dist(q, loose));
+    const back = [Math.PI, Math.PI - .6, Math.PI + .6].map(a => ({ x: h.x + Math.cos(a) * 3.6, y: h.y + Math.sin(a) * 3.6 })).filter(q => inPitch([q.x, q.y], 1.2)).sort((p, q) => room(q) - room(p))[0];
+    this.sc = { kind: 'support', run: 'follow', live: true, id: 'live-rebound', skill: this.sc?.skill, carrier: 'hero', shot: sh,
+      hero: P(h), heroTo: P(h), mates: ['m1', 'm2'].map(id => P(s.a(id))), opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))),
+      spots: [{ id: 'in', x: loose.x, y: loose.y }, { id: 'watch', x: h.x, y: h.y }, ...(back && room(back) >= 2 ? [{ id: 'back', x: back.x, y: back.y }] : [])],
+      best: 'spot:in', ok: [], cue: 'He blocked it! Keep running in, and score!' };
+    this.sc.oppsTo = this.sc.opps;
+    this.beginStep({ seen: new Set(), lookUp: false, drag: null });
+    s.stopAll(); this.yaw = this.frameYaw(this.sc, h, s.ball); this.faceYaw(h);
   },
   // He got in front of the attacker: now it's a 1v1, and he taps STEAL at the right moment.
   async toDuel() {

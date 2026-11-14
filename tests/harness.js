@@ -100,8 +100,9 @@ export function judge(r) {
     return bad;
   }
   if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept the ball!')) bad.push('good choice lost the ball');
-  if (r.good && r.banners.includes('Stolen!')) bad.push('good choice lost the ball');
-  if (!r.good && !r.banners.includes('Stolen!')) bad.push('bad choice did not lose the ball');
+  const lost = r.banners.includes('Stolen!') || r.banners.includes('They got it!'); // (a loose ball they get to first)
+  if (r.good && lost) bad.push('good choice lost the ball');
+  if (!r.good && !lost) bad.push('bad choice did not lose the ball');
   if (!r.good && r.mateStart != null && r.flight > .4 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
   if (!r.defense && r.defClosest > r.defStart + .2) bad.push('nearest defender backed off the ball');
   return bad;

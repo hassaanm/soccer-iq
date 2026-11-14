@@ -53,14 +53,17 @@ for (const el of $$('.team')) {
 export const lessonOpen = i => isOpen(P, PATH, i);
 // Once every lesson is passed, PLAY is "Today's training" unless he picked a lesson (or a grown-up locked one).
 export const trainingNext = () => graduated(P, PATH) && !(P.pick && skillById(P.pick)) && !(P.settings.skill && skillById(P.settings.skill)?.ready);
-const chapters = cell => CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(cell).join('')}</div></div>`).join('');
+// A chapter of one or two lessons is "half": on a short screen (a phone held sideways) two of them share a row, so
+// the whole path fits without scrolling (css/app.css).
+const chapters = cell => CHAPTERS.map((name, ch) => { const ls = PATH.filter(l => l.ch === ch); return `<div class="chap${ls.length <= 2 ? ' half' : ''}"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${ls.map(cell).join('')}</div></div>`; }).join('');
 // One row per chapter. Stars show the level reached (1–3); each level needs a good session on a new day.
 // Picking a tile plays it next (once); otherwise PLAY uses the coach's pick.
 function renderLessons() {
   const training = trainingNext(), cur = training ? null : nextSkill(P, PATH), sk = training ? { emoji: '💪', kid: "Today's training" } : skillById(cur);
   const tile = l => {
     const open = lessonOpen(PATH.indexOf(l)), lv = level(P, l.id);
-    return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
+    const fresh = open && !P.skills[l.id]?.sessions && P.fresh?.includes(l.id); // a lesson added since his last visit (see progress.js catchUp)
+    return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''} ${fresh ? 'new' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
       <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
   };
   const top = graduated(P, PATH) ? `<button class="tile train ${training ? 'on' : ''}" data-id=""><span class="e">💪</span><span class="k">Today's training</span><span class="st">a mix of what you need</span></button>` : '';

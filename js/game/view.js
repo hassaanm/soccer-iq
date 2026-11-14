@@ -1,6 +1,6 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
 import { lerp, smooth, rot, clamp } from '../geom.js';
-import { L, W, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
+import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
 
 // Where the eye is seen from the point it looks at: the way round, how high (radians) and how far.
 const orbit = (e, t) => { const x = e[0] - t[0], y = e[1] - t[1], z = e[2] - t[2], r = Math.hypot(x, y, z) || 1e-6; return [Math.atan2(y, x), Math.asin(clamp(z / r, -1, 1)), r]; };
@@ -11,6 +11,10 @@ const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5,
 // (with nobody to beat), how high, and the focal lengths. Low and close enough that his feet, the ball and the
 // defender fill the picture, far enough that nobody fills the screen.
 const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
+// The spot camera for runs to the goal and after a shot: a ring is drawn up to RING_GROW times bigger the farther it is
+// from the eye than the nearest one, and the view is only taken if that leaves no ring more than RING_RATIO times
+// bigger on screen than another.
+const RING_GROW = 1.7, RING_RATIO = 1.28;
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -29,7 +33,18 @@ export const view = {
     const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length}`;
     if (this.spotFit?.key === key) return this.spotFit.spec;
     const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
-    for (const sp of sc.spots) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
+    // Runs to the goal and after a shot (sc.run): the goal, the friend with the ball and their nearest player are in
+    // the picture too, clear of the prompt. A ring farther from the eye is drawn bigger (up to RING_GROW times, see
+    // World: ui.spotScale), so the nearest ring is not the biggest thing on screen, whatever it is.
+    const even = !!sc.run;
+    if (!even) for (const sp of sc.spots) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
+    else for (const sp of sc.spots) pts.push([sp.x, sp.y, 0]);
+    let scales = null;
+    if (even) {
+      for (const y of [gy0, gy1]) pts.push([L, y, 0], [L, y, 1.6]); // the posts (1.6 m high)
+      const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y))[0];
+      for (const a of [c, near]) if (a && a.id !== 'hero') pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]);
+    }
     let cx = 0, cy = 0; for (const p of pts) { cx += p[0]; cy += p[1]; } cx /= pts.length; cy /= pts.length;
     // The free part of the screen: under the prompt, in from the edges, and not where LOOK UP / HEAD DOWN sits (bottom
     // left; nothing else shows while he picks a spot).
@@ -39,10 +54,17 @@ export const view = {
       const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d, ez = Math.sin(pitch) * d;
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
-      for (const [px, py, pz] of pts) {
+      const inside = (px, py, pz) => {
         const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; if (z < .5) return false;
         const sx = v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, sy = v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z;
-        if (sx < x0 || sx > x1 || sy < y0 || sy > y1 || (sx < bx && sy > by)) return false;
+        return !(sx < x0 || sx > x1 || sy < y0 || sy > y1 || (sx < bx && sy > by));
+      };
+      for (const [px, py, pz] of pts) if (!inside(px, py, pz)) return false;
+      if (even) { // each ring at the size it will be drawn
+        const z = sc.spots.map(sp => (sp.x - ex) * fwd[0] + (sp.y - ey) * fwd[1] - ez * fwd[2]), near = Math.min(...z); // depth: the size on screen goes as 1 / depth
+        if (Math.max(...z) > near * RING_GROW * RING_RATIO) return false;
+        scales = z.map(k => Math.min(RING_GROW, k / near));
+        for (const [i, sp] of sc.spots.entries()) for (let a = 0; a < 8; a++) if (!inside(sp.x + Math.cos(a * Math.PI / 4) * .85 * scales[i], sp.y + Math.sin(a * Math.PI / 4) * .85 * scales[i], 0)) return false;
       }
       return true;
     };
@@ -50,17 +72,23 @@ export const view = {
     let best = null;
     for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4]) {
       fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
-      for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d)) { const cost = d + 4 * Math.abs(off); if (!best || cost < best.cost) best = { pitch, d, off, cost }; break; }
+      for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d)) { const cost = d + 4 * Math.abs(off); if (!best || cost < best.cost) best = { pitch, d, off, cost, scales }; break; }
     }
     const { pitch, d, off } = best || { pitch: 1.35, d: 22, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
     const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
-    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw } };
+    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null };
     return this.spotFit.spec;
   },
 
   camSpec(time) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
     if (this.camMode === 'orbit') { const a = time * .08; return { eye: [L / 2 + Math.cos(a) * 24, W / 2 + Math.sin(a) * 24, 10], tgt: [L / 2, W / 2, 0], Ff: .9, Fw: .4 }; }
+    // A shot in front of him (follow your shot): from behind him and a little above, looking past him at where it hits,
+    // so the shooter, the shot, the goal and the bounce are all in the picture.
+    if (this.camMode === 'shot' && this.aimAt) {
+      const p = this.aimAt, l = Math.hypot(p.x - h.x, p.y - h.y) || 1, ux = (p.x - h.x) / l, uy = (p.y - h.y) / l;
+      return { eye: [clamp(h.x - ux * 5, .5, L - .5), clamp(h.y - uy * 5, .5, W - .5), 3.6], tgt: [lerp(h.x, p.x, .5), lerp(h.y, p.y, .5), .4], Ff: .85, Fw: .44 };
+    }
     if (this.camMode === 'overview') {
       const p = this.aimAt || h, mx = (h.x + p.x) / 2, my = (h.y + p.y) / 2;
       return { eye: [mx - 8, my, 9], tgt: [mx + 1.5, my, 0], Ff: .85, Fw: .42 };
@@ -222,6 +250,7 @@ export const view = {
     for (const m of MATES) ui.glow[m] = deciding && this.step === 'pass' && this.seen.has(m) ? .8 : 0;
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
+    ui.spotScale = ui.spots !== NONE && this.sc.run ? this.spotFit?.scales || null : null; // (see spotView)
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
     ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero);
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';

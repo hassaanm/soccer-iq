@@ -82,7 +82,7 @@ test('told which way, he turns that way even when the other way round is shorter
 });
 
 test('in a match, a pass back to him is turned the way the tapped arrow goes too', async () => {
-  const ALL = ['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first'];
+  const ALL = ['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'forward-first', 'follow-shot', 'go-to-goal'];
   const real = Math.random, done = [];
   try {
     for (let seed = 1; seed <= 30; seed++) {

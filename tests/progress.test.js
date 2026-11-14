@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed, isOpen, skills, catchUp } from '../js/progress.js';
+import { load, save, finishSession, nextSkill, isMastered, defaultProgress, level, reviewsDue, reviewed, isOpen, skills, catchUp, MERGED } from '../js/progress.js';
 import { PATH } from '../js/skills.js';
 
 const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
@@ -146,36 +146,89 @@ test('once everything is gold and sure, training is still a full mix', () => {
   assert.equal(trainingPlan(p, PATH, { day: 103, builds: BUILDS, rnd: seq(0) }).length, 3);
 });
 
-test('a new lesson in the path never closes a lesson an older save had open, and becomes reachable', () => {
-  const old = PATH.filter(s => !s.added), st = mem();
-  assert.ok(PATH.some(s => s.added), 'the path has a lesson added after saves existed');
-  // Saves made before the new lesson: the first k lessons passed (one more played but not passed, in some).
-  for (let k = 0; k <= old.length; k++) for (const extra of [false, true]) {
-    const p = defaultProgress();
-    old.slice(0, k).forEach((s, i) => finishSession(p, s.id, 6, 6, 100 + i));
-    if (extra && old[k]) finishSession(p, old[k].id, 1, 6, 200);
-    save(p, st);
-    const before = load(st), open = old.filter((_, i) => isOpen(before, old, i)).map(s => s.id), lv = Object.fromEntries(old.map(s => [s.id, level(before, s.id)]));
-    const now = catchUp(load(st), PATH), at = id => PATH.findIndex(s => s.id === id);
-    for (const id of open) assert.ok(isOpen(now, PATH, at(id)), `k=${k}: ${id} was open and closed`);
-    for (const s of old) assert.equal(level(now, s.id), lv[s.id], `k=${k}: ${s.id} changed level`);
-    for (const s of PATH.filter(s => s.added)) assert.equal(isOpen(now, PATH, at(s.id)), isOpen(now, PATH, at(s.id) - 1) && level(now, PATH[at(s.id) - 1].id) >= 1, `k=${k}: ${s.id} should open once the lesson before it is passed`);
-    // It sticks: saved and loaded again (and caught up again), nothing changes.
-    save(now, st); const again = catchUp(load(st), PATH);
-    assert.deepEqual(PATH.map((_, i) => isOpen(again, PATH, i)), PATH.map((_, i) => isOpen(now, PATH, i)));
+// ---------- saved games across path changes (lessons added, moved and merged: see catchUp) ----------
+// The path saves knew in v58 (with `known`), and before v54 (without it).
+const V58 = ['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap',
+  'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'mark-the-free-one', 'forward-first'];
+const V53 = V58.filter(id => id !== 'lead-pass');
+const at = id => PATH.findIndex(s => s.id === id);
+// Was lesson i open on an old path (ids), by the rule the game used then?
+const openOn = (p, ids, i) => i === 0 || level(p, ids[i - 1]) >= 1 || (p.skills[ids[i]]?.sessions || 0) > 0 || !!p.opened?.includes(ids[i]);
+// A save from an old path: the first k lessons passed (on days 100+), lesson k played but not passed if `extra`.
+function oldSave(ids, k, extra, known = true) {
+  const p = defaultProgress();
+  ids.slice(0, k).forEach((id, i) => finishSession(p, id, 6, 6, 100 + i));
+  if (extra && ids[k]) finishSession(p, ids[k], 1, 6, 200);
+  if (known) p.known = [...ids];
+  return p;
+}
+const reload = p => { const st = mem(); save(p, st); return catchUp(load(st), PATH); };
+
+test('saved games: nothing that was open closes, stars and levels stay, and the new lessons open by the usual rule', () => {
+  for (const [ids, known] of [[V58, true], [V53, false]]) for (let k = 0; k <= ids.length; k++) for (const extra of [false, true]) {
+    const before = oldSave(ids, k, extra, known);
+    const open = ids.filter((_, i) => openOn(before, ids, i)), lv = Object.fromEntries(ids.map(id => [id, level(before, id)]));
+    const now = reload(before), tag = `${known ? 'v58' : 'v53'} k=${k}${extra ? '+' : ''}`;
+    for (const id of open) { const to = MERGED[id] || id; assert.ok(isOpen(now, PATH, at(to)), `${tag}: ${id} was open and closed`); }
+    for (const id of ids.filter(id => !MERGED[id])) assert.ok(level(now, id) >= lv[id], `${tag}: ${id} lost stars`);
+    for (const [from, to] of Object.entries(MERGED)) assert.equal(level(now, to), Math.max(lv[from], lv[to]), `${tag}: ${to} keeps the better level`);
+    for (const id of ['follow-shot', 'go-to-goal']) {
+      assert.equal(isOpen(now, PATH, at(id)), level(now, PATH[at(id) - 1].id) >= 1, `${tag}: ${id} opens once the lesson before it is passed`);
+      assert.equal(level(now, id), 0);
+      if (Object.keys(before.skills).length) assert.ok(now.fresh.includes(id), `${tag}: ${id} is marked new`);
+    }
+    assert.ok(!('mark-the-free-one' in now.skills), `${tag}: the merged lesson is gone from the save`);
+    // It sticks: saved and loaded again, nothing changes.
+    const again = reload(now);
+    assert.deepEqual(PATH.map((_, i) => isOpen(again, PATH, i)), PATH.map((_, i) => isOpen(now, PATH, i)), `${tag}: changed on the second load`);
+    assert.deepEqual(again.skills, now.skills);
   }
-  // A child who had passed "Pass to the open friend" but not played "Pass and go!": both the new lesson and
-  // "Pass and go!" are open, and PLAY offers the new lesson first. A child who had passed everything trains again
-  // only once the new lesson is passed too.
-  const p = defaultProgress(), upTo = old.findIndex(s => s.id === 'pass-to-open');
-  old.slice(0, upTo + 1).forEach((s, i) => { finishSession(p, s.id, 6, 6, 100 + i); finishSession(p, s.id, 6, 6, 200 + i); }); // Level 2: nothing left to learn
-  catchUp(p, PATH);
-  assert.ok(isOpen(p, PATH, PATH.findIndex(s => s.id === 'give-and-go')));
-  assert.equal(nextSkill(p, PATH, 300), 'lead-pass');
-  const all = defaultProgress(); old.forEach((s, i) => { finishSession(all, s.id, 6, 6, 100 + i); finishSession(all, s.id, 6, 6, 200 + i); }); catchUp(all, PATH);
-  assert.ok(graduated(all, old) && !graduated(all, PATH)); assert.equal(nextSkill(all, PATH, 300), 'lead-pass');
-  // A new player meets the lessons in order: "Pass and go!" waits for the new lesson.
-  const fresh = catchUp(defaultProgress(), PATH);
-  PATH.slice(0, PATH.findIndex(s => s.id === 'lead-pass')).forEach((s, i) => finishSession(fresh, s.id, 6, 6, 100 + i));
-  assert.ok(!isOpen(fresh, PATH, PATH.findIndex(s => s.id === 'give-and-go')));
+});
+
+test('saved games: a brand new player starts at the start, with nothing marked new', () => {
+  const p = catchUp(defaultProgress(), PATH);
+  assert.deepEqual(PATH.map((_, i) => isOpen(p, PATH, i)), PATH.map((_, i) => i === 0));
+  assert.deepEqual(p.known, PATH.map(s => s.id)); assert.ok(!p.fresh?.length);
+  assert.equal(nextSkill(p, PATH, 300), 'look-up');
+});
+
+test('saved games: halfway (passed up to "Two defenders? Pass!" in the old order)', () => {
+  const now = reload(oldSave(V58, V58.indexOf('see-the-trap') + 1, false));
+  // "Get open!" was next in the old order: it stays open, though "Pass to the open friend" now comes before it.
+  for (const id of ['get-open', 'pass-to-open', 'follow-shot']) assert.ok(isOpen(now, PATH, at(id)), id);
+  for (const id of ['go-to-goal', 'one-goes', 'forward-first', 'lead-pass', 'give-and-go']) assert.ok(!isOpen(now, PATH, at(id)), id);
+  assert.equal(nextSkill(now, PATH, 300), 'look-up', 'Level 1 lessons come first, as before');
+  for (const id of V58.slice(0, V58.indexOf('see-the-trap') + 1)) finishSession(now, id, 6, 6, 300);
+  assert.equal(nextSkill(now, PATH, 400), 'follow-shot', 'then the new lesson, the first open one not played');
+});
+
+test('saved games: passed "Pass in front!" and "Pass and go!" but not the guard lessons', () => {
+  const p = oldSave(V58, V58.indexOf('give-and-go') + 1, false), now = reload(p);
+  for (const id of ['lead-pass', 'give-and-go']) { assert.ok(isOpen(now, PATH, at(id)), id); assert.equal(level(now, id), 1); }
+  assert.ok(isOpen(now, PATH, at('one-goes')), 'One goes, one guards stays open (it was next)');
+  assert.ok(isOpen(now, PATH, at('go-to-goal')), 'the new lesson after "Get open!" is open');
+  assert.ok(!isOpen(now, PATH, at('forward-first')));
+});
+
+test('saved games: passed everything; the new lessons come up next, then training again', () => {
+  const p = defaultProgress(); V58.forEach((id, i) => { finishSession(p, id, 6, 6, 100 + i); finishSession(p, id, 6, 6, 200 + i); }); p.known = [...V58];
+  const now = reload(p);
+  assert.ok(PATH.every((_, i) => isOpen(now, PATH, i)));
+  assert.ok(!graduated(now, PATH)); assert.equal(nextSkill(now, PATH, 300), 'follow-shot');
+  for (const id of ['follow-shot', 'go-to-goal']) finishSession(now, id, 6, 6, 300);
+  assert.ok(graduated(now, PATH)); assert.equal(reload(now).fresh.length, 0, 'played: no longer new');
+});
+
+test('saved games: "Guard the open player" folds into "One goes, one guards" (the better of the two, passed if either was)', () => {
+  const p = defaultProgress(); p.known = [...V58];
+  finishSession(p, 'mark-the-free-one', 6, 6, 100); finishSession(p, 'mark-the-free-one', 6, 6, 101); // 2 stars
+  finishSession(p, 'one-goes', 2, 6, 102);                                                               // played, not passed
+  p.pick = 'mark-the-free-one'; p.stickers.push({ emoji: '🛡️', skill: 'mark-the-free-one', at: 1 });
+  const now = reload(p);
+  assert.equal(level(now, 'one-goes'), 2); assert.equal(now.skills['one-goes'].sessions, 3);
+  assert.equal(now.pick, 'one-goes'); assert.equal(now.stickers[0].skill, 'one-goes');
+  const q = defaultProgress(); q.known = [...V58]; finishSession(q, 'one-goes', 6, 6, 100);           // only the other one
+  assert.equal(level(reload(q), 'one-goes'), 1);
+  const r = defaultProgress(); r.known = [...V58]; finishSession(r, 'mark-the-free-one', 1, 6, 100);  // played, not passed
+  assert.equal(level(reload(r), 'one-goes'), 0); assert.ok(isOpen(reload(r), PATH, at('one-goes')), 'it was played: it stays open');
 });

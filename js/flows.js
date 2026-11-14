@@ -63,7 +63,8 @@ const howTo = (sk, hero) => sk.id === 'steal-it' ? `You are ${hero}, defending. 
   : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
   : sk.id === 'lead-pass' ? `You are ${hero}. A friend is running. Tap 👀 to look up, then tap where to pass.`
   : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
-  : sk.id === 'get-open' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
+  : sk.id === 'get-open' || sk.id === 'go-to-goal' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.`
+  : sk.id === 'follow-shot' ? `You are ${hero}. After the shot, tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
 const runLesson = flow(async () => {
   const skillId = nextSkill(P, PATH), sk = skillById(skillId), lvl = level(P, skillId);
   // Reviews: 1 round in a lesson's first session, 2 at Levels 1–2, 3 at Level 3 (mixing in more old lessons).

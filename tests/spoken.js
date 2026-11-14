@@ -23,7 +23,7 @@ export function spokenLines() {
     ...PATH.flatMap(s => [s.kid, s.tip]),
     'Your turn!', 'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, `${A} is running!`, 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
-    'See who is open?', 'Where is the space?', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
+    'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
     "Today's training!", 'Training done!', 'Train first!', 'Start a new cup?', 'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!',
     ...CUPS.map(c => c.name),
