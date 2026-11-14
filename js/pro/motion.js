@@ -15,11 +15,10 @@
 // stays where it is on the grass until he steps it), and an arm out to hold off a defender close by.
 import * as THREE from 'three';
 import { THIGH, SHIN, HALF } from './rig.js';
-import { turnFoot, turnSide, dribbleAt, skillNow } from '../sim.js';
+import { turnFoot, turnSide, touchAt, touchLen, skillNow, longLead } from '../sim.js';
 import { PITCH as FIELD } from '../geom.js';
 
 const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, SOFT = .04, BALL = .125; // BALL: the ball's radius (world.js)
-const TOUCH = 1.4; // metres between dribble touches (as in sim.js)
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), damp = (v, to, rate, dt) => v + (to - v) * (1 - Math.exp(-rate * dt)), sat = (v, a) => a * Math.tanh(v / a); // sat: a soft limit
 // A critically damped spring toward `to` (smooth time `st` s, by elapsed time, so the same at any frame rate): returns the
@@ -106,6 +105,30 @@ function join(fl, key, x, y, z, p, turn, kn, time, jw = JW) {
   return JP;
 }
 
+// A boot never goes into the ball. The boot is the rig's (pro/rig.js: an egg shape, its middle .06 m ahead of the
+// ankle along the foot and .014 m under it, half as long as .126 m, as wide as .05 m and as high as .042 m), and the
+// ball (dx, dy: from the ball to his middle; bz: its middle's height) is grown by that much. A boot found in it is
+// moved out, just far enough, the way from the ball to the boot's middle; while it stays in, it keeps going out the
+// same way (fl.bo), so a foot passing close by the ball's middle never flips to its other side. Along the grass if
+// out that way is under the grass. Every move puts the foot beside the ball or on it; this only catches what the
+// joins between moves let through.
+const bootIn = (J, dx, dy, bz, ox = 0, oy = 0, oz = 0) => {
+  const ct = Math.cos(J[4]), st = Math.sin(J[4]), cp = Math.cos(J[3]), sp = Math.sin(J[3]);
+  const cx = J[0] + ox + dx + .06 * ct * cp - .014 * ct * sp, cy = J[1] + oy + dy + .06 * st * cp - .014 * st * sp, cz = J[2] + oz - bz - .06 * sp - .014 * cp; // the boot's middle, from the ball
+  const qx = cx * ct * cp + cy * st * cp - cz * sp, qy = cy * ct - cx * st, qz = cx * ct * sp + cy * st * sp + cz * cp; // in the boot's frame
+  BO[0] = cx; BO[1] = cy; BO[2] = cz;
+  return Math.hypot(qx / (.126 + BALL), qy / (.05 + BALL), qz / (.042 + BALL)); // under 1: in the ball
+};
+const BO = [0, 0, 0];
+function bootOut(J, dx, dy, bz, fl) {
+  if (bootIn(J, dx, dy, bz) >= 1) { fl.bo = null; return; }
+  let ux, uy, uz;
+  if (fl.bo) [ux, uy, uz] = fl.bo;
+  else { const l = Math.hypot(BO[0], BO[1], BO[2]) || 1; ux = BO[0] / l; uy = BO[1] / l; uz = BO[2] / l; if (J[2] + uz * .2 < ANKLE) { const h = Math.hypot(ux, uy) || 1; ux /= h; uy /= h; uz = 0; } fl.bo = [ux, uy, uz]; }
+  let lo = 0, hi = .45; for (let n = 0; n < 10; n++) { const t = (lo + hi) / 2; if (bootIn(J, dx, dy, bz, ux * t, uy * t, uz * t) < 1) lo = t; else hi = t; }
+  J[0] += ux * hi; J[1] += uy * hi; J[2] = Math.max(J[2] + uz * hi, Math.min(J[2], ANKLE));
+}
+
 // ---------- Skill moves (sim.js picks them and when; see skillNow) ----------
 // Dribble skills run over one dribble touch (c: 0 just after a touch, 1 at the next touch, which takes the ball the
 // other way with the outside of the foot on that side). The ball rolls on as the dribble has it; the feet go round it.
@@ -129,10 +152,10 @@ function along(k, c) {
 }
 // The dribble skill's two feet, in his hip frame: SKF[leg] = [x, y, z, pitch, turn, weight]. `ball`(c): how far ahead
 // the ball is at c (the sim's dribble rule); `bl`: the ball's side; `fk`: the fake's side; a planted foot stays where it
-// landed on the grass (as he runs on, it is 1.4 m farther back for each whole touch).
+// landed on the grass (as he runs on, it is a touch's length (TL) farther back for each whole touch).
 const SKF = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]];
-function dribbleSkillFeet(k, c, ball, bl, fk) {
-  const S = fk > 0 ? 1 : 0, K = 1 - S, pl = (x0, c0, y) => [x0 - (c - c0) * 1.4, y, ANKLE];
+function dribbleSkillFeet(k, c, ball, bl, fk, TL = 1.4) {
+  const S = fk > 0 ? 1 : 0, K = 1 - S, pl = (x0, c0, y) => [x0 - (c - c0) * TL, y, ANKLE];
   const key = (list, sgn, c0, c1, from, to) => { // a swing from `from` (planted at c0) through `list` (stretched to c0..c1) to `to` (at c1)
     const k = [[c0, ...from]];
     for (const [kc, f, x, y, z] of list) { const cc = c0 + (kc - .0) / .56 * (c1 - c0); k.push([cc, (f === B ? ball(cc) : 0) + x, bl + sgn * y, z]); }
@@ -170,9 +193,9 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   if (!m || u.yaw === null || m.rs !== sim.restores || Math.hypot(a.x - m.x, a.y - m.y) > 1.5) { // new, put back for a replay, or moved in one jump: start afresh
     const it = u.seed * 9, r = k => frac(u.seed * k);
     m = u.m = { rs: sim.restores, t: now, rt: time, it, next: u.seed * 10 + 1, br: u.seed, x: a.x, y: a.y, sp: a.sp, v: a.sp, pv: a.sp, ph: u.seed, pa: u.seed, rate: 1, mv: null, vt: null, gv: a.sp, pre: 1, prv: 0, fb: 0, fby: 0, ea: 0, lead: 0, tbx: 0, tby: 0, yv: 0, ac0: 0, w: sm(a.sp / 1.1), tk: null, tR: 0, tl: 1, tlp: 1, acc: 0, bank: 0, cx: 1, cy: 0, hy: 0, hp: 0,
-      ready: .3, puff: 0, stag: u.seed % 2 < 1 ? 1 : -1, fid: null, kickAt: a.kickAt, kf: 1, hit: .2, hitY: 0, bf: .34, bl: 0, spec: null, cp: null, n: Math.floor(u.seed * 3),
+      ready: .3, puff: 0, hs: 0, cf: b.carrier === a.id ? .88 : 1, stag: u.seed % 2 < 1 ? 1 : -1, fid: null, kickAt: a.kickAt, kf: 1, hit: .2, hitY: 0, bf: .34, bl: 0, spec: null, cp: null, n: Math.floor(u.seed * 3),
       yo: 0, bs: 1, kj: 0, ss: 1, poss: null, scan: null, ns: it + .4 + 2 * r(3.1), chk: false, sn: 0, ask: null, na: it + 1 + 3 * r(4.3),
-      fl: [0, 1].map(() => ({ on: 0, s: -1, x: 0, y: 0, fx: 0, fy: 0, px: a.x, py: a.y, k: -1, bt: -9, P: [0, 0, 0, 0, 0, 0], O: [0, 0, 0, 0, 0, 0], kn: 0, kv: 0, sh: 0, nb: 0 })),
+      fl: [0, 1].map(() => ({ bo: null, on: 0, s: -1, x: 0, y: 0, fx: 0, fy: 0, px: a.x, py: a.y, k: -1, bt: -9, P: [0, 0, 0, 0, 0, 0], O: [0, 0, 0, 0, 0, 0], kn: 0, kv: 0, sh: 0, nb: 0 })),
       sw: (r(3.7) - .5) * .05, sr: .12 + .2 * r(1.7), se: r(5.3) }; // his own way of standing: feet wider or narrower, a little more or less ready, arms
     u.yaw = face;
   }
@@ -225,10 +248,12 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const cyaw = Math.cos(u.yaw), syaw = Math.sin(u.yaw);
   const bf = bx * cyaw + by * syaw, bl = by * cyaw - bx * syaw; // the ball: metres ahead of him, and to his left
   // Steps grow from 0.4 m at a walk to 1.2 m at a sprint (a little shorter with the ball), quickly at first, so an easy
-  // run is about 3 steps a second and a sprint 4.5; and the feet spend less time down.
-  const E = run * (2 - run), Ls = 2 * lerp(.42, 1.22, E) * (carrying ? .88 : 1) * lerp(1, .55, kj) * lerp(1, .7, clamp(-m.cx)), D = lerp(.6, .28, E), QT = D + .45 * (1 - D); // QT: where in its cycle a foot meets the ball (swinging through, just under his hips)
+  // run is about 3 steps a second and a sprint 4.5 (pushing the ball out ahead, he strides as he would without it); and
+  // the feet spend less time down. Held at a sprint (over 4.7 m/s for
+  // more than about a second), he opens his stride to 1.5 m: a long sprint is about 3.6 to 4 steps a second.
+  const E = run * (2 - run), Ls = 2 * lerp(.42, 1.22 + .28 * sm((m.hs - .5) / .7) * sm((m.gv - 4.7) / .5), E) * m.cf * lerp(1, .55, kj) * lerp(1, .7, clamp(-m.cx)), D = lerp(.6, .28, E), QT = D + .45 * (1 - D); // QT: where in its cycle a foot meets the ball (swinging through, just under his hips)
   const tm = carrying ? turnFoot(sim, a.id) : null, turning = carrying && !!b.move; // a turn with the ball (sim.js) owns the ball and one foot
-  const dn = dribbleAt(a) / TOUCH, dribble = carrying && w > .5 && !turning, cyc = dn - Math.floor(dn); // where he is between two dribble touches
+  const dn = touchAt(a), dribble = carrying && w > .5 && !turning, cyc = dn - Math.floor(dn); // where he is between two dribble touches
   if (turning) m.spec = null;
   let act = m.spec; // one foot busy with the ball: taking a pass ('trap') or resting on top of it ('sole')
   // Kicks: with the foot the game picked for the play (see game/outcomes.js), or else the foot on the ball's side. A kick ends any other move.
@@ -239,11 +264,13 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     // one that gets it there (none in the last moment before the touch), so his pace never changes all at once.
     let want = 1;
     if (dribble) {
-      const ti = Math.floor(dn), left = TOUCH * (1 - cyc), at = m.pa + left / Ls - QT;
+      const ti = Math.floor(dn), left = (a.tL || 1.4) * (1 - cyc), at = m.pa + left / Ls - QT;
       if (m.tk !== ti) { m.tf = m.tk === ti - 1; m.tlp = m.tl; m.tk = ti; m.tR = Math.round(at * 2); m.tl = m.tR & 1 ? 0 : 1; }
       want = 1 + (clamp(1 - (at - m.tR / 2) * Ls / left, .65, 1.4) - 1) * sm((left - .1) / .3);
     } else m.tk = null;
     m.rate = damp(m.rate, want, 12, dt);
+    m.hs = vs > 4.7 ? m.hs + dt : Math.max(0, m.hs - 3 * dt); // how long he has held a sprint
+    m.cf = damp(m.cf, carrying ? .88 + .12 * sm(((a.tL || 1.4) - 1.4) / 1.2) : 1, 3, dt); // his stride's share with the ball (eased: a touch's length changes at once)
     m.pa += ds / Ls * m.rate; m.ph = frac(m.pa);
     m.ac0 = damp(m.ac0, (vs - m.pv) / dt, 8, dt); m.acc = damp(m.acc, m.ac0, 8, dt); m.pv = vs; // speeding up or slowing down, smoothed twice so the lean it gives never starts with a jerk
     m.bank = damp(m.bank, clamp(wrap(u.yaw - yaw0) / dt * vs * .012, -.3, .3), 7, dt);
@@ -258,12 +285,13 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const dsk = sk && !turning && DRIB_SKILL[sk.k] && sk.c >= 0 && sk.c < 1.3 ? sk : null;
   // The touch before a dribble skill (c from -1 to 0, see sim.js dribbleSkill) sets it up: he gets lower, his arms go
   // out and his weight starts toward the first fake, so the move shows coming before the feet do it.
-  const lead = sk && !turning && DRIB_SKILL[sk.k] && sk.c < 0 ? sm((sk.c + .7) / .7) * w : 0;
+  // (One the child tapped for comes in over a moment from the tap, wherever the set-up has got to.)
+  const lead = sk && !turning && DRIB_SKILL[sk.k] && sk.c < 0 ? sm((sk.c + .7) / .7) * sm((now - sk.tap) / .15) * w : 0;
   let fe = 0, fs = 0, sw = 0, fk = 0, fkL = 0, pw = 0;
   if (dsk) {
     const c = dsk.c, rn = clamp(a.sp / 2.5); sw = sm(c / .25) * (1 - sm((c - 1.02) / .25)) * w;
-    const pr = cc => .34 + rn * .55 * (1 - clamp(cc)), dB = bf - pr(c); // where the ball will be: where it is now, moved on as the dribble rule moves it
-    dribbleSkillFeet(dsk.k, c, cc => pr(cc) + dB, clamp(bl, -.2, .2), dsk.fake);
+    const L = a.tL || 1.4, pr = cc => .34 + rn * .55 * (1 - clamp(cc)) + longLead(L, clamp(cc)), dB = bf - pr(c); // where the ball will be: where it is now, moved on as the dribble rule moves it
+    dribbleSkillFeet(dsk.k, c, cc => pr(cc) + dB, clamp(bl, -.2, .2), dsk.fake, L);
     const d = dropOf(dsk.k, c) + (dsk.k === 'scissors' ? -.4 : .4) * (1 - sm(c / .2)); fe = Math.abs(d) * Math.max(sw, 1 - sm(c / .2)) * w; fs = dsk.fake * Math.sign(d || 1); // the set-up lean hands over to the fake
   } else if (lead) { fe = .4 * lead; fs = sk.fake * (sk.k === 'scissors' ? -1 : 1); }
   else if (sk && turning && (sk.k === 'chop' || sk.k === 'cruyff')) {
@@ -359,7 +387,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   // The foot meets the ball (tp) over the moment of the touch; it turns for it (tt) over a longer time, so the turn
   // eases in as it swings through and out as it lands. The touch's foot (tl) was chosen with the touch (above).
   const tf = m.tf ? 1 : 0, tp = dribble ? Math.max(sm((cyc - .7) / .3), tf * (1 - sm(cyc / .18))) : 0, tt = dribble ? Math.max(sm((cyc - .5) / .5), tf * (1 - sm(cyc / .3))) : 0; // tf: the touch just made was in this run of dribbling (not before a turn)
-  const side = SIDE[(((Math.floor(dn) + (cyc > .5 ? 1 : 0)) % 3) + 3) % 3], tl = cyc > .5 ? (dsk ? +(dsk.fake < 0) : m.tl) : m.tlp; // a dribble skill's last touch: the outside of the foot away from the fake
+  const side = (cyc > .5 ? dribble && touchLen(sim, a) : a.tL || 1.4) > 1.4 ? 0 : SIDE[(((Math.floor(dn) + (cyc > .5 ? 1 : 0)) % 3) + 3) % 3], tl = cyc > .5 ? (dsk ? +(dsk.fake < 0) : m.tl) : m.tlp; // a dribble skill's last touch: the outside of the foot away from the fake; a long push: with the laces, straight on (the coming one as sim.js will choose it)
   const wid = lerp(.1, .16, rd) + (carrying ? .02 : 0) + .03 * kj + m.sw;
 
   // Eyes. The child's own player (hl 0) keeps his head down over the ball until he taps LOOK UP (game.js sets
@@ -429,6 +457,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     // foot, a dribble touch, a jump): when that changes, the foot goes on from where it was (see `join`).
     const key = (i === fLeg && fW > 0 ? (tm ? 4 + PART[tm.part] : act.k === 'trap' ? 2 : 3) : 0) + (kw > 0 ? 16 : 0) + (sw > 0 ? 32 : 0) + (fk > 0 && i === fkL ? 64 : 0) + (pw > 0 && i !== fkL ? 128 : 0) + (fl.on ? 256 : 0) + (tch ? 512 : 0) + (air > 0 ? 1024 : 0);
     const J = join(fl, key, x - ox, y, z, p, turn, kq, time, i === fLeg && tm && fW > 0 ? 34 : JW); // a foot going to the ball in a turn gets there sooner (about 0.1 s)
+    if (bd < 1.2 && b.state !== 'flying' && !(kw && i === m.kf) && !(act?.k === 'trap' && i === fLeg) && !(tm && i === fLeg && fW > .5 && b.move.k === 'first')) bootOut(J, ox - bf, oy - bl, BALL, fl); else fl.bo = null; // (a kick's foot, a trap's and the foot taking a pass on with a turn meet it as they are made to)
     fl.px = a.x + cyaw * (J[0] + ox) - syaw * (J[1] + oy); fl.py = a.y + syaw * (J[0] + ox) + cyaw * (J[1] + oy); // where this foot is on the grass now
     leg.hip.position.x = -sgn * HALF * twist;
     fl.kn = sdamp(fl.kn, fl.kv, J[5], .1, rdt); fl.kv = SDV; // the knee's way round never snaps (the foot's place is not touched)

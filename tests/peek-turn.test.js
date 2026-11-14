@@ -99,8 +99,9 @@ test('in a match, a pass back to him is turned the way the tapped arrow goes too
       }, onFrame: gm => {
         if (!cur || cur.over) return; const s = gm.sim, h = s.a('hero');
         if (s.ball.carrier === 'hero') cur.had = true; else if (cur.had) { cur.over = true; return; }
-        if (cur.had && cur.moved && !s.ball.move) { cur.over = true; return; }
-        if (cur.had && s.ball.move) { cur.moved = true; cur.sides.add(Math.sign(s.ball.move.d)); }
+        // (one turn: the first he takes it with; game time runs in small steps, so the next can start in the same frame)
+        if (cur.had && cur.moved && s.ball.move !== cur.moved) { cur.over = true; return; }
+        if (cur.had && s.ball.move) { cur.moved = s.ball.move; cur.sides.add(Math.sign(s.ball.move.d)); }
         const f = Math.atan2(h.face[1], h.face[0]); cur.rot += wrap(f - cur.prev); cur.prev = f; cur.lo = Math.min(cur.lo, cur.rot); cur.hi = Math.max(cur.hi, cur.rot);
       } });
     }

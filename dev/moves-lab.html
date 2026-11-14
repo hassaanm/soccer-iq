@@ -13,15 +13,20 @@
   takes the return pass facing his friend and goes this way, 180 by default), walk=1 (turn from a walk, not a run),
   opp=1 (a defender close in front, so a big turn is a pull back), alt=1 (turn a step later, so a cut or a small
   turn is taken with the other foot: the game picks by his steps),
-  view=front|side|top|three|back|game (side and three look from the side of the foot he uses; top looks down from in
-  front; back from behind; game: the game's head-down camera, close behind him and aimed just above the ball), seed=<n>.
+  view=front|side|top|three|back|game|skill (side and three look from the side of the foot he uses; top looks down from in
+  front; back from behind; game: the game's head-down camera, close behind him and aimed just above the ball; skill: the
+  game's skill camera, low behind him and to one side, aimed just ahead of him and a little toward the defender, as
+  game/view.js SKILL_CAM; side=-1 puts it on his right), seed=<n>.
+  slow=<x>: the game's slow motion (game/skill.js): each frame steps x of its time, in the game's own small steps.
+  frames=<n>: how many frames to show (8 by default; a multiple of 4).
   move=run: a plain run without the ball (speed=<m/s>, 4.4 by default), filmed over two strides.
   fps=60|30|uneven (the frame times the move is run with: 1/60 s, 1/30 s, or 16 ms and 40 ms in turn).
   capture=1: after drawing, window.__capture holds his joints in every frame (see `sample`), for the measuring scripts.
   Skill moves (sim.js picks the moment, pro/motion.js the feet): move=stepover|scissors|feint (he dribbles at a
   defender who backs off; the skill comes at a touch with the defender 2 to 5 m in front), move=croqueta|double|chop|cruyff|roll
   (he dribbles, then turns `turn` degrees with a defender close by, and the turn is made as that skill). speed=<m/s>
-  (the run; 4.4 as in the game, the scissors 3.2), plain=1 (a skill turn keeps the plain turn's ball path, as where the
+  (the run; 4.4 as in the game, the scissors 3.2; also for move=dribble), oy=<m> (the defender's place across, 10.2 by default), hx=<m> (where he
+  starts, 4 by default: another start puts the skill on another touch, so on the other foot), plain=1 (a skill turn keeps the plain turn's ball path, as where the
   team AI plays). The defender is a full body here, to show his reaction; view=pair films them both from the side. Each frame names the nearest part of each
   boot to the ball and its gap in cm (a red label: a boot in the ball).
   Each frame says the time from the wind-up (or from the ball's arrival, the stop, the feint). At contact it also says
@@ -43,7 +48,7 @@ import * as THREE from 'three';
 import { makeRig } from '../js/pro/rig.js';
 import { makeEnv } from '../js/pro/light.js';
 import { animateRig } from '../js/pro/motion.js';
-import { Sim, dribbleAt, skillNow } from '../js/sim.js';
+import { Sim, touchAt, skillNow } from '../js/sim.js';
 import { faceTo } from '../js/game/shared.js';
 import { team } from '../js/game/team.js';
 const pickFoot = (await import('../js/game/outcomes.js')).pickFoot || (() => null); // the game's rule for the foot
@@ -55,6 +60,8 @@ const runOnly = move === 'run', dribSkill = ['stepover', 'scissors', 'feint'].in
 const TURN = num('turn', move === 'gg' || move === 'cruyff' ? 180 : move === 'croqueta' || move === 'double' ? 40 : 90) * Math.PI / 180, SPEED = num('speed', move === 'scissors' ? 3.2 : move === 'roll' ? 2 : 4.4);
 const FPS = Q.get('fps') || '60', BALL = .125, H0 = [10, 10];
 const dtAt = k => FPS === '30' ? 1 / 30 : FPS === 'uneven' ? (k & 1 ? .04 : .016) : 1 / 60; // the frame times
+const SLOW = num('slow', 0), NF = num('frames', 8); let acc = 0; // slow motion: game time is stepped 1/480 s at a time (game/skill.js)
+const stepFrame = (s, k) => { if (!SLOW) return s.step(dtAt(k)); acc += dtAt(k) * SLOW; while (acc >= 1 / 480) { acc -= 1 / 480; s.step(1 / 480); } };
 // His joints in world space, for the measuring scripts: hip, knee, ankle, toe of the right then the left leg; shoulder,
 // elbow, hand of the right then the left arm; the head. 45 numbers.
 const SV = new THREE.Vector3(), HAND = new THREE.Vector3(0, 0, -.253), TOE = new THREE.Vector3(.18, 0, -.03);
@@ -75,12 +82,12 @@ function runMove(g, shots, snap, k0, foeRig, cap) {
   const side = forced == null ? 1 : forced ? -1 : 1, to = num('to', move === 'shot' ? 0 : 40 * side) * Math.PI / 180;
   let hero = H0;
   if (move === 'shot') hero = [22, forced === 1 ? 13 : forced === 0 ? 7 : 10];          // left or right of the goal (it is at x 30, y 8 to 12)
-  if (move === 'dribble' || move === 'stop' || move === 'knock' || skillMove || runOnly) hero = [4, 10];
+  if (move === 'dribble' || move === 'stop' || move === 'knock' || skillMove || runOnly) hero = [num('hx', 4), 10]; // hx: start a little later or sooner, so the skill falls on another touch
   if (move === 'turn') hero = [4, 10];
   if (move === 'turn' && Q.has('opp')) opp.push([4 + (Q.has('walk') ? 4.6 : 7.4) + (Q.has('alt') ? .7 : 0) + 1.6, 10.3]);
   if (move === 'gg') opp.push([13.5, 10 - 1.6 * Math.sign(TURN || 1)]);
   if (trapMove) opp.push(forced === 1 ? [10.6, 7.6] : [10.6, 12.4]);                     // a defender on the other side, so the rule picks that foot
-  if (dribSkill) opp.push([12.5, 10.2]);
+  if (dribSkill) opp.push([12.5, num('oy', 10.2)]); // oy: the defender a little to one side or the other (the fake's side follows)
   if (turnSkill) opp.push(move === 'croqueta' || move === 'double' ? [4 + 7.4 + 2.4, 9.3] : move === 'cruyff' ? [4 + 7.4 + 2.4, 10.3] : [4 + 7.4 + 1.2, 10 - 2.2 * Math.sign(TURN)]);
   if (move === 'pass' || move === 'drive') opp.push([13, 10 - 3 * side]);
   s.setup({ hero, mates: trapMove ? [[10 + 9 * Math.cos(to), 10 + 9 * Math.sin(to)]] : move === 'gg' ? [[17, 10]] : runOnly ? [[2, 3]] : [], opps: opp, carrier: runOnly ? 'm1' : 'hero' });
@@ -123,16 +130,17 @@ function runMove(g, shots, snap, k0, foeRig, cap) {
       if (Q.has('wait')) yield .2;
       s.go('hero', h.x + 9 * Math.cos(TURN), h.y + 9 * Math.sin(TURN), 5.2); yield 2;
     } else {
-      s.go('hero', 26, 10, 4.4); yield move === 'stop' ? 2.2 : 3.2;
+      s.go('hero', 26, 10, move === 'dribble' ? SPEED : 4.4); yield move === 'stop' ? 2.2 : 3.2;
       if (move === 'stop') { s.stop('hero'); key = s.time; yield 1.5; }
     }
   };
   s.run(gen());
   const want = [...shots].sort((a, b) => a - b), touches = [];
   let tch = 0;
+  acc = 0;
   for (let k = 0; s.time < 6; k++) {
-    const d0 = dribbleAt(h); s.step(dtAt(k));
-    if (Math.floor(dribbleAt(h) / 1.4) > Math.floor(d0 / 1.4) && s.time > 1.5) touches.push(s.time);
+    const d0 = touchAt(h); stepFrame(s, k);
+    if (Math.floor(touchAt(h)) > Math.floor(d0) && s.time > 1.5) touches.push(s.time);
     animateRig(g, h, s); if (foeRig) animateRig(foeRig, s.a('o1'), s);
     if (skillMove && key == null && (h.skill?.k === move || s.ball.move?.k === move)) key = s.time;
     if (skillMove && key != null && end == null && !h.skill && !s.ball.move) end = s.time;
@@ -268,7 +276,7 @@ if (SCENE) sceneLab(); else { // one player close up
   const OFF = Q.get('at') ? Q.get('at').split(',').map(Number) : runOnly ? [0, .07, .14, .21, .28, .35, .42, .49] : kickMove ? [-.12, .06, .12, .16, .2, .26, .36, .55] : trapMove ? [-.32, -.2, -.1, -.04, 0, .12, .28, .5]
     : move === 'stop' ? [-.15, .05, .2, .35, .5, .65, .85, 1.1]
     : move === 'knock' ? [-.05, .03, .07, .1, .14, .2, .3, .45] : turnMove ? (Q.get('at') || '-.1,.1,.2,.3,.4,.5,.65,.9').split(',').map(Number)
-    : skillMove ? (Q.get('at') ? Q.get('at').split(',').map(Number) : Array.from({ length: 8 }, (_, i) => -.03 + i / 7 * (((first.end ?? first.key + .6) - first.key) * (dribSkill ? .8 : 1) + .06))) : [];
+    : skillMove ? (Q.get('at') ? Q.get('at').split(',').map(Number) : Array.from({ length: NF }, (_, i) => -.03 + i / (NF - 1) * (((first.end ?? first.key + .6) - first.key) * (dribSkill ? .8 : 1) + .06))) : [];
   if (move === 'dribble' && !Q.get('at')) { for (const x of first.touches.slice(0, 4)) OFF.push(x - first.key - .05, x - first.key + .03); }
 
   // Which part of the boot is nearest the ball, and how far (cm). Points on the boot's skin are tried one by one.
@@ -287,11 +295,12 @@ if (SCENE) sceneLab(); else { // one player close up
   }
   const labels = document.getElementById('labels');
   const label = (text, x, y, cls) => { const d = document.createElement('div'); d.textContent = text; d.style.left = x + 'px'; d.style.top = y + 'px'; if (cls) d.className = cls; labels.appendChild(d); };
-  const cols = 4, rows = 2, cw = W / cols, ch = (Hh - 30) / rows;
+  const cols = 4, rows = Math.max(2, Math.ceil(NF / 4)), cw = W / cols, ch = (Hh - 30) / rows;
   renderer.setViewport(0, 0, W, Hh); renderer.setScissor(0, 0, W, Hh); renderer.setClearColor('#20242c'); renderer.clear();
   let n = 0, used = null, gy = null;
   const dirOf = { front: [1, 0, .22], side: [0, -1, .16], top: turnMove ? [.05, -.02, 1] : [.7, -.25, 1], three: [.62, -.62, .3], back: [-1, 0, .3] };
   if (view === 'game') cam.fov = 39.7; // the game's head-down lens on a phone held sideways (844 x 390)
+  if (view === 'skill') cam.fov = 49.6; // the skill camera's lens on a phone held sideways
   if (skillMove && first.key == null) document.getElementById('info').textContent = `move=${move}: no chance for the skill came`;
   runMove(rig, OFF, (off, s, h) => {
     const b = s.ball; ballM.position.set(b.x, b.y, BALL + (b.z || 0)); seam.rotation.set(0, 0, 0);
@@ -307,6 +316,11 @@ if (SCENE) sceneLab(); else { // one player close up
     const c = n % cols, r = Math.floor(n / cols), x = c * cw, y = 30 + r * ch;
     cam.aspect = cw / ch; if (pair) { const py = num('yaw', 0) / 57.3; c0.set((h.x + o1.x) / 2, (h.y + o1.y) / 2, .7); dir.set(Math.sin(py) * .9, -Math.cos(py) * .9, .35).normalize(); }
     cam.position.copy(c0).addScaledVector(dir, num('dist', pair ? 5.6 : view === 'top' ? 2.6 : 3.7)); cam.lookAt(c0);
+    if (view === 'skill') { // as game/view.js skillView (with its yaw kept from the first frame, as the game turns it only slowly)
+      gy ??= yaw; const y = gy, sd = num('side', 1), ex = h.x - 2.7 * Math.cos(y) - sd * 1.55 * Math.sin(y), ey = h.y - 2.7 * Math.sin(y) + sd * 1.55 * Math.cos(y);
+      let tx = h.x + Math.cos(y), ty = h.y + Math.sin(y); if (o1) { const f = (o1.x - h.x) * Math.cos(y) + (o1.y - h.y) * Math.sin(y); if (f > 0 && Math.hypot(o1.x - h.x, o1.y - h.y) < 7) { tx += (o1.x - tx) * .3; ty += (o1.y - ty) * .3; } }
+      cam.position.set(ex, ey, 1.25); cam.lookAt(tx, ty, .45);
+    }
     if (view === 'game') { gy ??= yaw; const y = Q.has('spin') ? yaw : gy; cam.position.set(h.x - 3.1 * Math.cos(y) - 1.3 * Math.sin(y), h.y - 3.1 * Math.sin(y) + 1.3 * Math.cos(y), 2.9); cam.lookAt(b.x, b.y, .8); } // as game/view.js, head down; the camera keeps the way he faced at the first frame (spin=1: turns with him)
     cam.updateProjectionMatrix();
     renderer.setViewport(x, Hh - y - ch, cw, ch); renderer.setScissor(x, Hh - y - ch, cw, ch); renderer.setClearColor('#2b313b'); renderer.clear(); renderer.render(scene, cam);
@@ -315,7 +329,7 @@ if (SCENE) sceneLab(); else { // one player close up
     if (kickMove && b.state === 'flying' && b.t === 0) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · CONTACT: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
     else if (kickMove && (b.state === 'carried')) { const k = contact(rig.userData.legs[m.kf], m.kf); txt += ` · ${k.part} ${k.gap.toFixed(0)} cm`; }
     if (trapMove && Math.abs(off) < 1e-6) { const k = contact(rig.userData.legs[legI], legI); txt += ` · ARRIVES: ${k.part}, gap ${k.gap.toFixed(1)} cm`; cls = 'hit'; }
-    if (move === 'dribble') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (n % 2 && !Q.get('at')) txt += ` · ball goes ${['on', 'left', 'right'][Math.floor(dribbleAt(h) / 1.4) % 3]}`; }
+    if (move === 'dribble') { const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], i = k[0].gap < k[1].gap ? 0 : 1; txt += ` · ${i ? 'left' : 'right'} ${k[i].part} ${k[i].gap.toFixed(0)} cm`; if (n % 2 && !Q.get('at')) txt += ` · ball goes ${['on', 'left', 'right'][Math.floor(touchAt(h)) % 3]}`; }
     if (skillMove) { // both boots: the nearest part to the ball and the gap; a boot in the ball shows red
       const L = rig.userData.legs, k = [contact(L[0], 0), contact(L[1], 1)], sk = skillNow(s, 'hero');
       txt += ` · R ${k[0].part} ${k[0].gap.toFixed(0)} · L ${k[1].part} ${k[1].gap.toFixed(0)} cm` + (sk ? ` · ${sk.k} ${sk.c.toFixed(2)}` : '');

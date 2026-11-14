@@ -26,13 +26,19 @@ export function makeGame() {
   return { g, events };
 }
 
-// Runs frames until the promise settles. pick(g) is asked for a choice whenever one is possible; onFrame(g) sees every frame.
+// Runs frames until the promise settles, as the browser does: a frame, then everything waiting on it runs (all of it,
+// as the browser empties its queue of finished waits before the next frame). Game time is stepped by the game itself
+// (Game.tick: small even steps, see game/skill.js), so the frame length (30 a second here, AUDIT_FPS=60|uneven to
+// check) changes nothing in a play. pick(g) is asked for a choice whenever one is possible; onFrame(g) sees every frame.
+const FPS = process.env.AUDIT_FPS || '30';
+export const frameDt = k => FPS === 'uneven' ? (k & 1 ? .04 : .016) : 1 / +FPS;
 export async function drive(g, promise, { pick = () => null, onFrame = () => {}, maxSec = 120 } = {}) {
   let done = false, value; promise.then(v => { done = true; value = v; });
-  for (let t = 0; t < maxSec && !done; t += 1 / 30) {
-    g.tick(1 / 30, t); onFrame(g);
+  for (let t = 0, k = 0; t < maxSec && !done; k++) {
+    const dt = frameDt(k); t += dt;
+    g.tick(dt, t); onFrame(g);
     if (g.canAct && g._choose) { const o = pick(g); if (o) { g.seen.add('m1'); g.seen.add('m2'); g.choose(o); } }
-    await null;
+    await new Promise(r => setImmediate(r));
   }
   if (!done) throw new Error('flow did not finish');
   return value;
@@ -49,7 +55,9 @@ export async function playOption(sc, opt) {
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
   const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y } };
   const nearestDef = s.team(sc.kind === 'defense' ? 'us' : 'them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
-  const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 };
+  // Times are game time (s.time), not frames: slow motion in a skill moment shows the same play over more frames.
+  const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 }, t0 = s.time;
+  let tPrev = t0;
   const kick = s.kick.bind(s);
   let kicker = null, aimAt = null;
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
@@ -65,17 +73,17 @@ export async function playOption(sc, opt) {
   };
   await drive(g, play(), {
     onFrame: () => {
-      m.frames++;
+      m.frames++; const gdt = s.time - tPrev; tPrev = s.time;
       const list = [...s.agents.values()];
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) m.minGap = Math.min(m.minGap, dist(list[i], list[j]));
-      if (mate && s.ball.state === 'flying') { m.flight++; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
-      if (m.frames < 30) m.defClosest = Math.min(m.defClosest, dist(nearestDef, s.ball));
+      if (mate && s.ball.state === 'flying') { m.flight += gdt; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
+      if (s.time - t0 < 1) m.defClosest = Math.min(m.defClosest, dist(nearestDef, s.ball));
       // A low ball in flight must not pass through anyone except where it's going.
       if (s.ball.state === 'flying' && s.ball.z < .9) for (const a of list) if (a.id !== kicker && dist(a, s.ball) < .4 && dist(a, aimAt) > 1) m.through = a.id;
     },
   });
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
-  return { sc: sc.id, opt: step2 && step2 !== sc.then?.best ? 'then:' + step2 : opt, good: gStep2 ?? good, defense: sc.kind === 'defense' || sc.kind === 'tackle', banners, ...m, seconds: m.frames / 30,
+  return { sc: sc.id, opt: step2 && step2 !== sc.then?.best ? 'then:' + step2 : opt, good: gStep2 ?? good, defense: sc.kind === 'defense' || sc.kind === 'tackle', banners, ...m, seconds: s.time - t0,
     mateStart: start.mate && !step2 ? dist(start.mate, start.ball) : null };
 }
 
@@ -94,7 +102,7 @@ export function judge(r) {
   if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept the ball!')) bad.push('good choice lost the ball');
   if (r.good && r.banners.includes('Stolen!')) bad.push('good choice lost the ball');
   if (!r.good && !r.banners.includes('Stolen!')) bad.push('bad choice did not lose the ball');
-  if (!r.good && r.mateStart != null && r.flight > 12 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
+  if (!r.good && r.mateStart != null && r.flight > .4 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
   if (!r.defense && r.defClosest > r.defStart + .2) bad.push('nearest defender backed off the ball');
   return bad;
 }

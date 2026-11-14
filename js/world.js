@@ -445,6 +445,7 @@ export class World {
     }
     else if (ev === 'won' || ev === 'held') { P.sparks(b.x, b.y, .3, 18); this.excite = Math.max(this.excite, .6); this.shake = Math.max(this.shake, .3); }
     else if (ev === 'kept') P.sparks(b.x, b.y, .3, 9, ['#ffffff', '#bfe8ff', '#fff3b0']);
+    else if (ev === 'skill') P.twinkle(b.x, b.y, .3); // he tapped for a skill move (game/skill.js)
     else if (ev === 'stolen') P.puff(b.x, b.y, 8, ['#c9b38a', '#e6d7b5', '#9ed46c']);
   }
 
@@ -456,7 +457,10 @@ export class World {
   }
 
   // ui: { glow: {id: 0..1}, arrows: {dir: 0..1}, lines: [...], heroRing }
+  // `time`: the picture's clock. The game's own (ui.clock) when it has one: it runs slow in a skill moment, so
+  // everything on the pitch (players, flags, the crowd) goes slow together.
   render(sim, cam, ui, time) {
+    if (ui.clock != null) time = ui.clock;
     if (!this.watched) this.measure();
     const Wpx = this.width, Hpx = this.height, c = this.camera, eye = cam.eye, tgt = cam.tgt;
     if (this.resized) { this.resized = false; this.resize(Wpx, Hpx); }

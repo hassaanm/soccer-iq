@@ -28,7 +28,7 @@ addEventListener('blur', () => { if (press) { press = null; game.lookEnd(); } })
 
 const BUTTONS = {
   '#lookBtn': () => game.toggleLook(), '#passBtn': () => game.pass(), '#dribBtn': () => game.dribble(), '#shootBtn': () => game.shoot(),
-  '#stealBtn': () => game.stealTap(), '#touchSmall': () => game.touch('small'), '#touchBig': () => game.touch('big'),
+  '#stealBtn': () => game.stealTap(), '#skillBtn': () => game.skillTap(), '#touchSmall': () => game.touch('small'), '#touchBig': () => game.touch('big'),
 };
 for (const [sel, act] of Object.entries(BUTTONS)) onPress($(sel), act);
 // No long-press menu (copy, save image) while he plays.

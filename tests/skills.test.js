@@ -2,7 +2,7 @@
 // where the plain turn leaves it, the ball only bends with a foot on it, and who does which move is fixed per play.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Sim, turnFoot, skillNow, dribbleAt } from '../js/sim.js';
+import { Sim, turnFoot, skillNow, touchAt } from '../js/sim.js';
 import { flairOf } from '../js/flair.js';
 
 const DT = 1 / 60, deg = Math.PI / 180, wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -20,7 +20,7 @@ function run({ turn = 0, speed = 4.4, at = 1.7, opp = [13, 10.3], flair = null, 
     s.step(DT);
     const tf = turnFoot(s, 'hero'), sk = skillNow(s, 'hero');
     out.push({ t: s.time, hx: h.x, hy: h.y, ox: s.a('o1')?.x, oy: s.a('o1')?.y, bx: b.x, by: b.y, k: b.move?.k, jump: Math.hypot(b.x - h.x - rx, b.y - h.y - ry),
-      vx: b.x - wx, vy: b.y - wy, foot: tf && { ...tf }, sk: sk && { ...sk }, n: Math.floor(dribbleAt(h) / 1.4), skill: h.skill && { ...h.skill } });
+      vx: b.x - wx, vy: b.y - wy, foot: tf && { ...tf }, sk: sk && { ...sk }, n: Math.floor(touchAt(h)), skill: h.skill && { ...h.skill } });
   }
   return out;
 }
@@ -69,8 +69,8 @@ test('the croqueta goes from the inside of one foot to the inside of the other; 
 });
 
 test('a dribble skill changes nothing in the game: everyone and the ball go exactly as without it', () => {
-  for (const k of ['stepover', 'feint', 'scissors']) {
-    const plain = run({ back: 1.4, speed: 4.4 }), sk = run({ back: 1.4, speed: 4.4, flair: only(k) });
+  for (const k of ['stepover', 'feint', 'scissors']) { // (the scissors, two stepovers in one touch, only at a jog)
+    const speed = k === 'scissors' ? 3 : 4.4, plain = run({ back: 1.4, speed }), sk = run({ back: 1.4, speed, flair: only(k) });
     assert.ok(sk.some(r => r.skill?.k === k), `${k} was used`);
     for (let i = 0; i < plain.length; i++) assert.ok(near(plain[i].hx, sk[i].hx) && near(plain[i].bx, sk[i].bx) && near(plain[i].by, sk[i].by) && near(plain[i].ox, sk[i].ox), `${k}: same at ${plain[i].t.toFixed(2)} s`);
   }

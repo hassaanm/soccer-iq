@@ -132,6 +132,10 @@ const SFX = {
   net: () => noise(.5, { f0: 2400, f1: 700, q: .8, vol: .22, attack: .02 }),
   yay: () => { [523, 659, 784].forEach((f, i) => tone(f, .2, { vol: .1, type: 'triangle', at: i * .07 })); cheer(.05, 1.2); },
   goal: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, .28, { vol: .13, type: 'triangle', at: i * .08 })); cheer(.14, 2.2); },
+  // A skill move is on offer: a quick rising swoosh and two bright notes, so he looks for the button.
+  offer: () => { noise(.22, { f0: 500, f1: 2600, q: 2, vol: .08, attack: .05 }); [880, 1319].forEach((f, i) => tone(f, .16, { vol: .12, type: 'triangle', at: .05 + i * .08 })); },
+  // He did it: a sparkle of high notes running up.
+  skill: () => { [1047, 1319, 1568, 2093].forEach((f, i) => tone(f, .22, { vol: .09, type: 'sine', at: i * .05 })); noise(.35, { type: 'highpass', f0: 5000, f1: 7000, vol: .04, attack: .02 }); },
   aww: () => { tone(330, .5, { vol: .08, type: 'triangle', f1: 220 }); noise(.9, { type: 'lowpass', f0: 900, f1: 300, vol: .06, attack: .15 }); },
 };
 export function sfx(name, arg) { if (!ctx || !enabled) return; try { SFX[name]?.(arg); } catch { /* audio not ready */ } }

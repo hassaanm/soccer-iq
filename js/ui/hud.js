@@ -4,7 +4,7 @@ import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
 
 export const hudEl = $('#hud');
-const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext']
+const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag']
   .map(id => [id, $('#' + id)]));
 const timers = {};
 const flash = (el, cls, text, ms) => {
@@ -52,7 +52,7 @@ export const hud = {
     const big = ui.banner, el = ui.rate, good = kind !== 'bad', splash = !!text && (good || !rated);
     sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
     clearTimeout(timers.rate); clearTimeout(timers.big);
-    hudEl.classList.add('rating');
+    hudEl.classList.add('rating'); ui.skillName.classList.remove('show'); // the result's big letters take over from a move's name
     if (splash) {
       big.querySelector('b').innerHTML = [...text].map((ch, i) => `<i style="--i:${i}">${ch}</i>`).join('');
       big.className = kind; void big.offsetWidth; big.classList.add('show');
@@ -75,6 +75,8 @@ export const hud = {
       ui.rateWatch.onclick = () => res(done('watch')); ui.rateNext.onclick = () => res(done('next'));
     });
   },
+  // A new play begins: the last result's big words (a match's, which have no card to wait for) fade out now.
+  bannerOff() { if (!hudEl.classList.contains('rating') || !ui.rate.classList.contains('show')) { clearTimeout(timers.big); ui.banner.classList.remove('show', 'up'); hudEl.classList.remove('rating'); } },
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.
   seen(text) { flash(ui.seenNote, '', text, 1400); sfx('ping'); },
   // The teaching hand: `pos` is a button id or a screen point [x, y]; null hides it. A new `tap` number taps once.
@@ -94,6 +96,22 @@ export const hud = {
     if (el.style.transform !== at) el.style.transform = at;
     if (tap && el.dataset.tap !== String(tap)) { el.dataset.tap = tap; replay(el, 'tap'); }
   },
+  // The SKILL button (game/skill.js): the move on offer (null hides it) and how much of the window is left (0 to 1),
+  // shown by the ring around it. It shows when a move is offered and nothing else is on screen to tap.
+  skill(name, left = 1) {
+    if (changed('skillName', name)) { if (name) { ui.skillBtn.querySelector('span').textContent = name.toUpperCase(); ui.toast.classList.remove('show'); } hudEl.classList.toggle('skilling', !!name); } // (a praise pill from his choice gives way)
+    if (name && changed('skillLeft', left)) ui.skillBtn.style.setProperty('--left', left);
+  },
+  // The name of the move he just did, in big letters for a moment.
+  skillName(text) {
+    const el = ui.skillName; el.querySelector('b').innerHTML = [...text].map((ch, i) => ch === ' ' ? '<i class="sp"></i>' : `<i style="--i:${i}">${ch}</i>`).join('');
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    for (const n of [ui.skillTag, ui.seenNote, ui.toast]) n.classList.remove('show'); // nothing else up there while it shows: one name at a time
+    if (ui.caption.classList.contains('show')) this.caption('');
+    clearTimeout(timers.skillName); timers.skillName = setTimeout(() => el.classList.remove('show'), 1700);
+  },
+  // Someone else's skill move: a small tag in the corner (not while his own move's name shows).
+  skillTag(move, who) { if (!ui.skillName.classList.contains('show')) flash(ui.skillTag, '', `⚡ ${move} · ${who}`, 1500); },
   toast(text, warn) { flash(ui.toast, warn ? 'warn' : '', text, 1600); },
   caption(text) { ui.caption.textContent = text; ui.caption.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
   // One dot per round: gold = right on the first try. The dot just earned pops.

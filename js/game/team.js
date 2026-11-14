@@ -1,6 +1,7 @@
 // Team shape while the ball is live: who presses, covers and marks, and where the attackers without the ball run.
 import { lerp, clamp, dist, closestOnLane } from '../geom.js';
 import { L, W } from './shared.js';
+import { longLead, touchAt } from '../sim.js';
 
 export const team = {
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
@@ -11,7 +12,10 @@ export const team = {
     if (carrier) this.ballTeam = carrier.team;
     const atk = this.ballTeam, def = atk === 'us' ? 'them' : 'us';
     const goalX = def === 'them' ? L : 0, dir = atk === 'us' ? 1 : -1;
-    const ball = b.state === 'flying' ? { x: b.tx, y: b.ty } : { x: b.x, y: b.y };
+    // Where the ball is for them: where a pass is going; in a long touch in open space (sim.js touchLen), where a close
+    // touch would have it, so pushing it ahead does not pull anyone out of place.
+    const lead = carrier && b.state === 'carried' && !b.move && !b.reach ? longLead(carrier.tL || 1.4, touchAt(carrier) % 1) : 0;
+    const ball = b.state === 'flying' ? { x: b.tx, y: b.ty } : { x: b.x - Math.cos(b.h) * lead, y: b.y - Math.sin(b.h) * lead };
     const free = a => !this.scripted.has(a.id) && a.id !== b.carrier;
     const attackers = s.team(atk);
     if (def === 'us') { this.ourDefense(ball, attackers, free); }

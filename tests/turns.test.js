@@ -8,7 +8,7 @@ const DT = 1 / 60, deg = Math.PI / 180;
 // He dribbles up the field (+x), then at `at` seconds runs off `turn` degrees to his left (minus: right).
 // Returns what happened each step from the turn on.
 function turnRun(turn, { speed = 4.4, at = 1.7, opp = null, go = 9 } = {}) {
-  const s = new Sim(); s.setup({ hero: [4, 10], mates: [], opps: opp ? [opp] : [] });
+  const s = new Sim(); s.setup({ hero: [4, 10], mates: [], opps: opp ? [opp] : [] }); s.close = true; // close control: these are about the turn (long touches: see the last test)
   const h = s.a('hero'), out = []; let t0 = null;
   s.go('hero', 28, 10, speed);
   for (let k = 0; k < 60 * 4; k++) {
@@ -107,4 +107,28 @@ test('turning his body on the spot leaves the ball where it is', () => {
   for (let k = 0; k < 30; k++) s.step(DT);
   assert.ok(Math.hypot(b.x - x, b.y - y) < .01, 'the ball did not swing round him');
   assert.ok(s.turn('hero', 10, 14) > .3 && s.ball.move, 'turning with it is a move');
+});
+
+// In open space at speed the touches get longer (sim.js touchLen): he pushes the ball ahead and runs onto it. Close in
+// (a defender within 4 m), at a jog, near the goal and near the end of his run, they stay 1.4 m.
+test('in open space at speed he pushes the ball farther ahead and runs onto it; close in, a touch stays 1.4 m', () => {
+  const touches = (speed, opp, to = [27, 10]) => {
+    const s = new Sim(); s.setup({ hero: [2, 4], mates: [], opps: opp ? [opp] : [] }); const h = s.a('hero'), b = s.ball;
+    s.go('hero', ...to, speed); if (opp) s.go('o1', opp[0] + 30, opp[1], speed);
+    const out = []; let n = 0, lead = 0, back = 0, prev = null;
+    for (let k = 0; k < 60 * 6; k++) {
+      s.step(1 / 60); const r = (b.x - h.x) * Math.cos(b.h) + (b.y - h.y) * Math.sin(b.h);
+      if (h.tN !== n) { n = h.tN; out.push({ t: s.time, L: h.tL, at: r }); }
+      if (s.time > 1.5 && !b.move && !b.reach) { lead = Math.max(lead, r); if (prev != null) back = Math.max(back, prev - r - h.sp / 60); } prev = r;
+    }
+    return { out, lead, back, h };
+  };
+  const fast = touches(4.4, null, [27, 4]), sprint = touches(5.2, null, [29, 4]), jog = touches(3, null, [27, 4]), close = touches(4.4, [5, 4.6], [27, 4]);
+  const L = r => Math.max(...r.out.map(t => t.L));
+  assert.ok(L(fast) > 2.5 && L(fast) < 3.1, `4.4 m/s: ${L(fast).toFixed(2)} m`);
+  assert.ok(L(sprint) > 3.5 && L(sprint) <= 4.5, `5.2 m/s: ${L(sprint).toFixed(2)} m`);
+  assert.equal(L(jog), 1.4); assert.equal(L(close), 1.4, 'a defender running with him');
+  assert.ok(fast.lead > 1 && sprint.lead > 1.4 && sprint.lead < 2.2, `the ball runs ahead: ${fast.lead.toFixed(2)}, ${sprint.lead.toFixed(2)} m`);
+  for (const r of [fast, sprint]) for (const t of r.out.slice(2)) assert.ok(t.at < .6, `at each touch it is back at his feet (${t.at.toFixed(2)} m)`);
+  assert.ok(Math.abs(sprint.h.x - 29) < .1, 'he stops at the end of his run with the ball');
 });

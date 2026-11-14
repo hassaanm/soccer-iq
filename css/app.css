@@ -146,6 +146,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
 #hud.showing[data-kind=tackle] #stealBtn{display:flex}
 #hud.shoot #shootBtn{display:flex}
+/* The skill moment (game/skill.js): SKILL in the thumb corner where STEAL sits (the two never show together: STEAL only
+   while he decides, SKILL only while a play runs). The ring around it runs down with the time left to tap. */
+#skillBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:12px;line-height:1.05;text-align:center;--left:1}
+#skillBtn i{font-size:40px}
+#skillBtn span{max-width:92px}
+#skillBtn .ring{position:absolute;left:-14px;top:-14px;width:146px;height:146px;transform:rotate(-90deg);pointer-events:none;overflow:visible}
+#skillBtn .ring circle{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round;stroke-dasharray:295.3;stroke-dashoffset:calc(295.3 * (1 - var(--left)));filter:drop-shadow(0 0 3px rgba(255,190,0,.9))}
+#hud.skilling #skillBtn{display:flex;animation:popIn .28s var(--bounce) backwards,nudge .7s ease-in-out infinite}
+/* The move he did, in big letters for a moment (high up under the score or the dots, clear of him: the skill camera keeps him lower in the picture); someone else's: a small tag. */
+#skillName{position:absolute;top:62px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .4s;pointer-events:none;z-index:3}
+#skillName.show{opacity:1;transition:none}
+#skillName b{display:flex;white-space:pre;font-weight:700;font-size:clamp(30px,6.5vw,58px);line-height:1;letter-spacing:.02em;color:var(--gold);
+  -webkit-text-stroke:.075em var(--ink);paint-order:stroke fill;text-shadow:0 .07em 0 var(--ink),0 .14em .3em rgba(0,0,0,.35)}
+#skillName i{font-style:normal;display:inline-block}
+#skillName i.sp{width:.32em}
+#skillName.show i{animation:letter .4s var(--bounce) backwards;animation-delay:calc(var(--i) * 18ms)}
+#skillTag{position:absolute;top:68px;left:calc(14px + var(--safe-l));background:rgba(36,25,58,.8);color:#fff;font-size:14px;padding:6px 12px;border-radius:999px;opacity:0;transition:opacity .3s;white-space:nowrap;pointer-events:none}
+#skillTag.show{opacity:1}
 #hud:is([data-kind=defense],[data-kind=support]) :is(#passBtn,#dribBtn){display:none!important}
 #hud[data-kind=lead] :is(#passBtn,#dribBtn,#shootBtn){display:none!important}
 #hud[data-kind=tackle] :is(#lookBtn,#passBtn,#dribBtn){display:none!important}

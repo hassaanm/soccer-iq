@@ -7,6 +7,10 @@ const orbit = (e, t) => { const x = e[0] - t[0], y = e[1] - t[1], z = e[2] - t[2
 // The head-down player view: back, to the side, height (m), target ahead of him (m) and how far toward the ball
 // (part), target height, then focal lengths (see World.render). TURN_CAM: the same while choosing a turn.
 const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5, 5.2, 3, .2, .4, .68, .35];
+// The skill camera (see game/skill.js): metres behind him, to the side, eye height, how far ahead of him it looks
+// (with nobody to beat), how high, and the focal lengths. Low and close enough that his feet, the ball and the
+// defender fill the picture, far enough that nobody fills the screen.
+const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -14,6 +18,44 @@ export const view = {
     const v = this.view;
     if (!(Math.abs(this.clock - v.at) < .5)) { const cv = this.world.canvas; v.w = cv.clientWidth; v.h = cv.clientHeight; v.at = this.clock; }
     return v;
+  },
+
+  // The camera for picking a spot: it looks the way he faces (this.yaw, so a drag still turns it), from behind and
+  // above, at the middle of him, the ball and the spots, and comes only as close as keeps every spot ring whole inside
+  // the part of the screen nothing covers (under the prompt, clear of the button in the corner, in from the sides).
+  // Tried from a steep look down to a flatter one, the nearest view that fits wins. Kept until the view's size, the
+  // round or his facing changes.
+  spotView() {
+    const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length}`;
+    if (this.spotFit?.key === key) return this.spotFit.spec;
+    const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
+    for (const sp of sc.spots) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
+    let cx = 0, cy = 0; for (const p of pts) { cx += p[0]; cy += p[1]; } cx /= pts.length; cy /= pts.length;
+    // The free part of the screen: under the prompt, in from the edges, and not where LOOK UP / HEAD DOWN sits (bottom
+    // left; nothing else shows while he picks a spot).
+    const Ff = .9, Fw = .45, F = Math.max(v.h * Ff, v.w * Fw), x0 = v.w * .05, x1 = v.w * .95, y0 = 104, y1 = v.h - 16, bx = 160, by = v.h - 150;
+    let fx, fy;
+    const fits = (pitch, d) => { // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
+      const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d, ez = Math.sin(pitch) * d;
+      if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
+      const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
+      for (const [px, py, pz] of pts) {
+        const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; if (z < .5) return false;
+        const sx = v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, sy = v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z;
+        if (sx < x0 || sx > x1 || sy < y0 || sy > y1 || (sx < bx && sy > by)) return false;
+      }
+      return true;
+    };
+    // The way he faces first; turned a little either way only if that lets it come nearer (or fit at all).
+    let best = null;
+    for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4]) {
+      fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
+      for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d)) { const cost = d + 4 * Math.abs(off); if (!best || cost < best.cost) best = { pitch, d, off, cost }; break; }
+    }
+    const { pitch, d, off } = best || { pitch: 1.35, d: 22, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
+    const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
+    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw } };
+    return this.spotFit.spec;
   },
 
   camSpec(time) {
@@ -42,6 +84,8 @@ export const view = {
       const c = s.a(b.carrier); if (c) f.yawT = c.team === 'them' ? Math.PI : 0;
       return { eye: [f.x - Math.cos(f.yaw) * 7, f.y - Math.sin(f.yaw) * 7, 4.2], tgt: [f.x + Math.cos(f.yaw) * 4, f.y + Math.sin(f.yaw) * 4, .3], Ff: .9, Fw: .46 };
     }
+    // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView).
+    if (this.step === 'spot' && this.phase === 'decide' && this.sc?.spots?.length) return this.spotView();
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
     // 1v1: a bit higher and farther back, aimed between him and the ball, so the ball and the attacker's feet
@@ -74,10 +118,18 @@ export const view = {
       f.x = lerp(f.x, b.x + ahead, k); f.y = lerp(f.y, lerp(b.y, W / 2, .4), k);
       f.yaw += (f.yawT - f.yaw) * (1 - Math.exp(-dt * 1.4));
     }
-    const want = this.camSpec(time);
+    let want = this.camSpec(time);
+    // In a skill moment the view comes round to the skill camera and back on the same orbit, eased (no cut), and
+    // follows it closely meanwhile.
+    const sw = smooth(this.skCam || 0); if (sw > 0) want = this.skillView(want, sw, dt);
     if (!this.cam) { this.cam = { eye: [...want.eye], tgt: [...want.tgt], Ff: want.Ff, Fw: want.Fw }; return; }
+    // While play waits for him to tap for a turn, the camera stays where it is (it comes in only if he taps).
+    if (this.sk?.kind === 'turn' && this.sk.phase === 'offer') { this.camT0 = this.clock; return; }
+    if (this.camMode !== this.camWas) { this.camWas = this.camMode; this.camT0 = this.clock; }
     if (this.glide > 0) this.glide -= dt;
-    const k = 1 - Math.exp(-dt * (this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4)), c = this.cam;
+    // (When the camera sets off for a new view, or for the skill camera, its speed builds up over a moment, so it never
+    // starts with a jerk.)
+    const k = 1 - Math.exp(-dt * lerp(this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4, 12, sw) * smooth((this.clock - Math.max(this.skView?.t0 ?? -9, this.camT0 ?? -9)) / .35)), c = this.cam;
     // The point looked at slides over; the eye goes round it (way round, how high, how far), so on the way from
     // one view to another the camera always looks at the play. Sliding the eye and the point each on its own
     // straight line made them cross when the new view looks the other way (behind him facing the passer, to the
@@ -87,6 +139,48 @@ export const view = {
     const yaw = o0[0] + wrap(o1[0] - o0[0]) * k, pitch = lerp(o0[1], o1[1], k), r = lerp(o0[2], o1[2], k);
     c.eye[0] = c.tgt[0] + Math.cos(yaw) * Math.cos(pitch) * r; c.eye[1] = c.tgt[1] + Math.sin(yaw) * Math.cos(pitch) * r; c.eye[2] = c.tgt[2] + Math.sin(pitch) * r;
     c.Ff = lerp(c.Ff, want.Ff, k); c.Fw = lerp(c.Fw ?? want.Fw, want.Fw, k);
+  },
+  // The skill camera starts: which way it looks (his run), from which side, and at whom (the nearest defender, if one
+  // is close).
+  skillCamStart() {
+    const s = this.sim, h = s.a('hero'), b = s.ball, c = this.cam; if (!h) return;
+    const y = b.move ? b.move.a0 : b.h, cy = Math.cos(y), sy = Math.sin(y), C = SKILL_CAM;
+    let foe = null, fd = 7; for (const o of s.team('them')) { const d = Math.hypot(o.x - h.x, o.y - h.y); if (d < fd) { fd = d; foe = o; } }
+    // Where everyone else will be in a moment (on the way to where he is going), and how crowded the eye's place and
+    // its way there would be on one side: nobody may come close to the eye, or he would fill the screen.
+    const soon = a => { const dx = a.tx - a.x, dy = a.ty - a.y, l = Math.hypot(dx, dy), k = Math.min(l, a.sp * .7) / (l || 1); return [a.x + dx * k, a.y + dy * k]; };
+    const others = s.list.filter(a => a !== h).flatMap(a => [[a.x, a.y], soon(a)]);
+    const crowd = sd => { const ex = h.x - cy * C[0] - sd * sy * C[1], ey = h.y - sy * C[0] + sd * cy * C[1], pts = c ? [[ex, ey], [(ex + c.eye[0]) / 2, (ey + c.eye[1]) / 2]] : [[ex, ey]];
+      let k = 0; for (const [ax, ay] of others) for (const [x, y] of pts) k += Math.max(0, 3.2 - Math.hypot(ax - x, ay - y)); return k; };
+    // A turn: the side he turns to (the ball comes across in front of the camera, not behind his body). Else the side
+    // away from the nearest defender (so it looks past him at the defender), else the side the camera is on already
+    // (so it swings the short way). Unless that side is the more crowded one.
+    const fl = foe ? cy * (foe.y - h.y) - sy * (foe.x - h.x) : 0, tw = this.sk?.kind === 'turn' ? Math.atan2(Math.sin(Math.atan2(h.ty - h.y, h.tx - h.x) - y), Math.cos(Math.atan2(h.ty - h.y, h.tx - h.x) - y)) : 0;
+    let side = Math.abs(tw) > .3 ? Math.sign(tw) : Math.abs(fl) > .3 ? -Math.sign(fl) : c ? Math.sign(cy * (c.eye[1] - h.y) - sy * (c.eye[0] - h.x)) || 1 : 1;
+    if (crowd(side) > crowd(-side) + .3) side = -side;
+    this.skView = { yaw: y, side, foe: foe?.id, t0: this.clock };
+    // How long the camera takes to come in: half a second, longer from farther away (so it never rushes: about 0.4 m a
+    // frame at most), up to 1.1 s.
+    const ex = h.x - cy * C[0] - side * sy * C[1], ey = h.y - sy * C[0] + side * cy * C[1];
+    this.skIn = c ? Math.min(1.1, Math.max(.5, Math.hypot(c.eye[0] - ex, c.eye[1] - ey, c.eye[2] - C[2]) / 10)) : .5;
+  },
+  // The view mixed `w` of the way toward the skill camera: the point looked at slides, the eye goes round it.
+  skillView(want, w, dt) {
+    const s = this.sim, h = s.a('hero'), b = s.ball, v = this.skView; if (!h || !v) return want;
+    // It turns with his run slowly (in a turn, only part of the way), so a big turn never swings the picture round.
+    const to = b.carrier === 'hero' ? (b.move ? b.move.a0 + b.move.d * .35 : b.h) : v.yaw; v.yaw += wrap(to - v.yaw) * (1 - Math.exp(-dt * 1.5));
+    // It looks just ahead of him, a little toward a defender in front of him (so both are in the picture).
+    const C = SKILL_CAM, [ex, ey] = rot(-C[0], v.side * C[1], v.yaw), cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), o = v.foe && s.a(v.foe);
+    let tx = h.x + cy * C[3], ty = h.y + sy * C[3];
+    if (o) { const f = (o.x - h.x) * cy + (o.y - h.y) * sy, l = (o.y - h.y) * cy - (o.x - h.x) * sy, k = .3 * smooth(f / 1.5) * (1 - smooth((Math.hypot(f, l) - 6) / 2)); tx += (o.x - tx) * k; ty += (o.y - ty) * k; }
+    const o0 = orbit(want.eye, want.tgt), o1 = orbit([h.x + ex, h.y + ey, C[2]], [tx, ty, C[4]]);
+    const tgt = [lerp(want.tgt[0], tx, w), lerp(want.tgt[1], ty, w), lerp(want.tgt[2], C[4], w)];
+    const yaw = o0[0] + wrap(o1[0] - o0[0]) * w, pitch = lerp(o0[1], o1[1], w), r = lerp(o0[2], o1[2], w);
+    const eye = [tgt[0] + Math.cos(yaw) * Math.cos(pitch) * r, tgt[1] + Math.sin(yaw) * Math.cos(pitch) * r, tgt[2] + Math.sin(pitch) * r];
+    // Someone else running close by the eye: it rises over him (smoothly, as he comes), so he never fills the screen.
+    let lift = 0; for (const a of s.list) if (a !== h) lift = Math.max(lift, 2.6 - Math.hypot(a.x - eye[0], a.y - eye[1]));
+    eye[2] += 1.1 * lift * w;
+    return { eye, tgt, Ff: lerp(want.Ff, C[5], w), Fw: lerp(want.Fw ?? C[6], C[6], w) };
   },
   // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
   // per round, so the scene only builds it once.
@@ -129,7 +223,7 @@ export const view = {
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
-    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player';
+    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero);
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

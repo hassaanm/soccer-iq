@@ -56,6 +56,14 @@ export class Particles {
       this.spawn({ x, y, z: .05, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(1.2, 3.2), g: -9, drag: 1, size: rnd(.04, .08), life: rnd(.35, .7), spin: rnd(6, 14), color: pick(colors) });
     }
   }
+  // A few small twinkles rising from a point and gone in a moment (a skill move, seen up close): nothing lands on the
+  // grass by his feet.
+  twinkle(x, y, z, n = 10) {
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + rnd(-.3, .3), r = rnd(.4, 1.1);
+      this.spawn({ x, y, z, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(.8, 1.8), g: 0, drag: 2.5, size: rnd(.035, .06), life: rnd(.3, .5), spin: rnd(3, 8), face: true, round: true, color: pick(GOLD) });
+    }
+  }
   // A ring of sparkles for a won ball or a clever play.
   sparks(x, y, z, n = 14, colors = GOLD) {
     for (let i = 0; i < n; i++) {

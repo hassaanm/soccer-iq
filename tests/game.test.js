@@ -182,7 +182,7 @@ test('free play with every lesson (1v1s and give-and-gos included) runs to the e
   const { g } = makeGame(); let decisions = 0; const kinds = new Set();
   const s = await drive(g, g.match(ids, extra, 3, 'free'), gm => { decisions++; kinds.add(gm.sc.kind); return gm.sc.best || (gm.sc.kind === 'defense' ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); }, 1500);
   assert.ok(s.us === 3 || s.them === 3 || decisions > 60, `match did not finish (${JSON.stringify(s)})`);
-  assert.ok(decisions > 3);
+  assert.ok(decisions >= 3); // three plays can be three goals
 });
 
 test('give-and-go: anything but the pass in step 1 is a miss, never a skip to step 2', async () => {
@@ -368,10 +368,13 @@ test('pass in front!: the play freezes mid-run; in front he takes it in stride, 
     assert.ok(Math.hypot(m.x - at.x, m.y - at.y) < .01, `${sc.id}: the runner moved while he decides`);
     assert.equal(g.rating('spot:lead'), 'best'); assert.equal(g.rating('spot:feet'), sc.pattern === 'lead-free' ? 'safe' : 'bad'); assert.equal(g.rating('spot:far'), 'bad');
     g.choose(opt); await p;
-    const [dx, dy] = sc.dir, b = g.sim.ball; let took = null, behind = null;
+    // (Game time runs in small steps, several a frame, so the ball can land and be taken within one frame: where it
+    // lands is its flight's end point, and he is checked the first frame it is down.)
+    const [dx, dy] = sc.dir, b = g.sim.ball; let took = null, behind = null, flew = false;
     await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 20, gm => {
       if (took === null && b.carrier === 'm1') took = m.speed;
-      if (behind === null && b.state === 'loose' && opt === 'spot:feet') behind = (b.x - m.x) * dx + (b.y - m.y) * dy;
+      if (b.state === 'flying') flew = true;
+      else if (flew && behind === null && opt === 'spot:feet') behind = (b.tx - m.x) * dx + (b.ty - m.y) * dy;
     });
     if (opt === 'spot:lead') assert.ok(took >= 5, `${sc.id}: he slowed down to take it (${took} m/s)`); // full run, then on to goal at 5.2
     else assert.ok(behind < -1.5, `${sc.id}: the ball was not behind him (${behind})`);

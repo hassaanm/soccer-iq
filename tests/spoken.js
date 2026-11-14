@@ -3,6 +3,8 @@
 import { PATH, allScenarios } from '../js/skills.js';
 import { generate } from '../js/generate.js';
 import { CUPS } from '../js/cups.js';
+import { MOVE_NAME } from '../js/flair.js';
+import { EXPLAIN } from '../js/game/skill.js';
 
 const A = 'Saka', B = 'Rice';
 const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B);
@@ -27,6 +29,7 @@ export function spokenLines() {
     ...CUPS.map(c => c.name),
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
     'You looked up!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
+    ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];
   for (const c of cues) {
     const cue = fill(c);

@@ -67,7 +67,8 @@ export const rounds = {
       const g = this; this.sim.run((function* () { if (!(yield* g.approach(false))) g.choose('tackle:none'); })());
     }
     this.delay(1.2).then(() => { if (this.phase === 'decide') this.hud.caption(''); });
-    return new Promise(res => { this._choose = res; });
+    // His choice ends what was said before it ("Your turn!"), however soon it comes.
+    return new Promise(res => { this._choose = opt => { if (this.mode !== 'demo') this.hud.caption(''); res(opt); }; });
   },
   // How good a choice is: 'best' (the star answer), 'ok' (just as good), 'safe' (keeps the ball but there was
   // a better choice) or 'bad' (loses it). Dribbles are graded by the real space on the field, so any of the
@@ -168,10 +169,14 @@ export const rounds = {
       await this.talk(this.cue(), 1.5); return;
     }
     this.sim.restore(save); this.reset(); this.camMode = 'overview'; this.phase = 'feedback'; this.leadRun();
-    const ball = { x: this.sim.ball.x, y: this.sim.ball.y }, bad = this.target(opt), best = this.target(this.sc.best);
-    this.lines = [{ a: ball, b: { x: bad.x, y: bad.y }, color: '#e5484d' }, { a: ball, b: { x: best.x, y: best.y }, color: '#30a46c' }];
+    // Where he ran to (defending, getting open): the lines start at him, and he is marked; else (a pass, a dribble)
+    // at the ball.
+    const runs = this.sc.kind === 'defense' || this.sc.kind === 'support', h = this.sim.a('hero');
+    const from = runs ? { x: h.x, y: h.y } : { x: this.sim.ball.x, y: this.sim.ball.y }, bad = this.target(opt), best = this.target(this.sc.best);
+    this.markHero = runs;
+    this.lines = [{ a: from, b: { x: bad.x, y: bad.y }, color: '#e5484d' }, { a: from, b: { x: best.x, y: best.y }, color: '#30a46c' }];
     this.aimAt = { x: (bad.x + best.x) / 2, y: (bad.y + best.y) / 2 };
     await this.talk(this.cue(), 1.5); // red line, green line, and why: wait for the whole sentence, then a beat
-    this.lines = []; this.aimAt = null;
+    this.lines = []; this.aimAt = null; this.markHero = false;
   },
 };
