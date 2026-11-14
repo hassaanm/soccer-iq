@@ -33,10 +33,12 @@ test('the move is picked by the size of the turn', () => {
   assert.equal(kindOf(turnRun(180, { opp: [13, 10.3] })), 'pull');
 });
 
-test('while carried, the ball never jumps: at most 12 cm a step (60 a second) next to him', () => {
+// (13 cm: the ball rolls to its spot at the rate it has at 30 frames a second, the rate the audits play at, now at any
+// frame rate; at 60 a second that is a little quicker than it was, so a step can be 0.8 cm longer.)
+test('while carried, the ball never jumps: at most 13 cm a step (60 a second) next to him', () => {
   for (const turn of [30, -30, 60, -60, 90, -90, 135, -135, 180, -170]) for (const speed of [2, 4.4]) for (const opp of [null, [13, 10.3]]) {
     const run = turnRun(turn, { speed, opp }), worst = Math.max(...run.map(r => r.jump));
-    assert.ok(worst < .12, `turn ${turn}° at ${speed} m/s: ${worst.toFixed(3)} m in one step`);
+    assert.ok(worst < .13, `turn ${turn}° at ${speed} m/s: ${worst.toFixed(3)} m in one step`);
   }
 });
 

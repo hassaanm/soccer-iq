@@ -1,6 +1,7 @@
 // Tiny match simulation: players walk toward targets, the ball is carried or flying,
 // and outcomes run as generator scripts that yield seconds or "wait until" predicates.
 import { lerp } from './geom.js';
+import { MOVE_W } from './flair.js';
 
 const SPACE = .75; // meters between two players' centers
 const TURN = 9;            // radians per second a player can turn
@@ -18,6 +19,10 @@ export const dribbleAt = a => a.dist - (a.d0 || 0);
 // is where the ball is now, `r` metres from him.
 const rephase = (a, r) => { const run = Math.min(1, a.sp / 2.5), k = run > .05 ? Math.max(0, Math.min(.95, 1 - (r - .34) / (.55 * run))) : 0; a.d0 = a.dist - k * 1.4; };
 const REACH = .8, CLOSE = .5; // a ball farther than REACH from his middle is out of reach of his feet; within CLOSE it is at his feet
+// The part of the gap that closes in `dt` seconds, for something that closes `k`/30 of it every 1/30 s: the same
+// motion at any frame rate (it was `min(1, dt * k)`, which is the same at 30 fps, the rate the tests and audits run at,
+// and faster or slower at others).
+const ease = (dt, k) => 1 - Math.pow(1 - k / 30, dt * 30);
 const ang = (x, y) => Math.atan2(y, x), wrapA = a => Math.atan2(Math.sin(a), Math.cos(a)), sm = t => (t = Math.max(0, Math.min(1, t)), t * t * (3 - 2 * t));
 
 // Turning with the ball. The ball sits on a line out from his feet (ball.h); it only changes line when a foot moves it,
@@ -83,9 +88,11 @@ export function skillNow(sim, id) {
   SK.fx = -Math.sin(SK.yaw) * SK.fake; SK.fy = Math.cos(SK.yaw) * SK.fake;
   return SK;
 }
-// Which way he turns (+1 to his left) from the ball's line `h` to `want`: the short way, but nearly straight back he
-// turns away from a player of the other team close by. Also used by the picture to ready the foot for a pass he will turn with.
+// Which way he turns (+1 to his left) from the ball's line `h` to `want`: the way he was told (c.openS, see Sim.open),
+// else the short way, but nearly straight back he turns away from a player of the other team close by. Also used by
+// the picture to ready the foot for a pass he will turn with.
 export function turnSide(sim, c, h, want) {
+  if (c.openS) return c.openS;
   const d = wrapA(want - h); if (Math.abs(d) <= 2.6) return Math.sign(d) || 1;
   const o = nearFoe(sim, c), ol = o ? (o.y - c.y) * Math.cos(h) - (o.x - c.x) * Math.sin(h) : 0;
   return o && Math.abs(ol) > .2 ? -Math.sign(ol) : Math.sign(d) || 1;
@@ -163,16 +170,19 @@ export class Sim {
       reach: r > CLOSE ? { stop: !(a.speed > 0 && Math.hypot(a.tx - a.x, a.ty - a.y) > .02) } : null });
   }
   // A pass is on its way to him and he will turn with it toward (x, y): he opens his body that way as it comes (and
-  // the picture readies the foot the turn uses). It ends when he gets the ball.
-  open(id, x, y) { const a = this.a(id); if (a) a.open = ang(x - a.x, y - a.y); }
+  // the picture readies the foot the turn uses). It ends when he gets the ball. `side` (+1 his left, -1 his right):
+  // the way round he was told to turn (the child's arrow), for the opening and for the turn he takes the ball with;
+  // without it he picks the way himself (turnSide).
+  open(id, x, y, side = 0) { const a = this.a(id); if (a) { a.open = ang(x - a.x, y - a.y); a.openS = side; } }
   // Turns the player with the ball toward (x, y) with a real move (see plan) when the ball's line is more than `min`
   // (radians) off. Returns how long it takes (0: no turn needed).
   turn(id, x, y, min = .35) { const a = this.a(id); return this.ball.carrier === id && this.ball.state === 'carried' ? this.startTurn(a, ang(x - a.x, y - a.y), min) : 0; }
   startTurn(c, want, min = .35, kind = null) {
     const b = this.ball; let d = wrapA(want - b.h);
     if (Math.abs(d) < min) return 0;
-    const ad = Math.abs(d), dx = b.x - c.x, dy = b.y - c.y, ch = Math.cos(b.h), sh = Math.sin(b.h), s = turnSide(this, c, b.h, want);
-    if (ad > 2.6 && Math.sign(d) !== s) d += s * 2 * Math.PI; // nearly straight back: the long way round, away from a defender
+    const ad = Math.abs(d), dx = b.x - c.x, dy = b.y - c.y, ch = Math.cos(b.h), sh = Math.sin(b.h), s = turnSide(this, c, b.h, want), told = c.openS;
+    c.openS = 0; // the way he was told to turn with this ball (see open) is used once
+    if ((ad > 2.6 || told) && Math.sign(d) !== s) d += s * 2 * Math.PI; // nearly straight back (or told which way): the long way round, away from a defender
     const near = nearFoe(this, c, 3.5), ahead = near && (near.x - c.x) * ch + (near.y - c.y) * sh > .2; // a defender close in front: pull it back away from him
     let k = kind || (this.time - b.got < .5 && ad > 1.2 ? 'first' : ad < .8 ? 'push' : ad < 2.1 ? 'cut' : ahead ? 'pull' : 'hook');
     const P = [dx * ch + dy * sh, dy * ch - dx * sh], run = c.speed > 0 && Math.hypot(c.tx - c.x, c.ty - c.y) > .5, f0 = ang(c.face[0], c.face[1]);
@@ -181,10 +191,13 @@ export class Sim {
     // defender near (a push: close in front of him, and turning enough to need it).
     const own = this.flair?.own, foe = !kind && min >= 0 && SKILL_T[k] && this.flair?.by[c.id] && nearFoe(this, c, k === 'push' ? 3.5 : 5);
     if (foe && (k !== 'push' || (ad > .45 && (foe.x - c.x) * ch + (foe.y - c.y) * sh > .5)) && (k !== 'pull' || own)) {
-      const sk = this.pickSkill(c, k === 'push' && !own ? ['double'] : SKILL_T[k].filter(x => x !== 'roll' || c.sp < 2.6), 'turn');
+      // A cut is the commonest turn: only some of them are a chance (so the chop does not crowd out the rest), and a small
+      // one can be a double touch instead.
+      const cutOK = k !== 'cut' || this.flair.by[c.id].p >= 1 || rnd(c.x * 13, c.y * 17, idn(c.id)) < (ad < 1.6 ? .7 : .3); // (one who always takes his chance: every one)
+      const sk = cutOK && this.pickSkill(c, k === 'push' && !own ? ['double'] : k === 'cut' && ad < 1.6 ? ['double', 'chop', 'roll'].filter(x => x !== 'roll' || c.sp < 2.6) : SKILL_T[k].filter(x => x !== 'roll' || c.sp < 2.6), 'turn');
       if (sk) { m = skillPlan(sk, m, s, P, own); k = sk; c.skill = null; }
     }
-    let fd = wrapA(want - f0); if (Math.abs(fd) > 1.6 && Math.sign(fd) !== s) fd += s * 2 * Math.PI; // the body turns the same way round as the ball
+    let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s) fd += s * 2 * Math.PI; // the body turns the same way round as the ball
     b.move = { k, t0: this.time, a0: b.h, d, s, P, f0, fd, ...m };
     this.on('touch');
     return m.dur;
@@ -193,8 +206,8 @@ export class Sim {
   // says, and the choice is the same whenever the play is replayed (it comes from where he is). At most one chance
   // every 3 s, taken or not, so he never does two skills close together. Returns the move, or null.
   pickSkill(c, kinds, sit) {
-    const f = this.flair?.by[c.id], w = f && kinds.map(k => f.fav.includes(k) ? 4 : f.can.includes(k) ? 1 : 0), all = w ? w.reduce((p, q) => p + q, 0) : 0;
-    if (!all || this.time - (c.skT ?? -9) < 3) return null; // none he can do here, or one too soon
+    const f = this.flair?.by[c.id], w = f && kinds.map(k => (f.fav.includes(k) ? 4 : f.can.includes(k) ? 1 : 0) * (MOVE_W[k] || 1)), all = w ? w.reduce((p, q) => p + q, 0) : 0;
+    if (!all || this.time - (c.skT ?? -9) < 2) return null; // none he can do here, or one too soon
     c.skT = this.time;
     const r = rnd(c.x * 20, c.y * 20, c.dist * 20, idn(c.id));
     let k = null, q = rnd(r * 1e6, 17) * all;
@@ -202,19 +215,27 @@ export class Sim {
     this.skillLog?.push(`${k || '-'}|${this.flair.ctx}|${sit}|${f.tier}|${c.id}`);
     return k;
   }
-  // Running at a defender with the ball (2 to 5 m in front of him, about in his way) and a touch just made: a chance
-  // to sell a fake before the next touch, which takes the ball the other way. Only when that next touch goes to one
-  // side (the dribble's touches go on, left, right), and he must be running. The ball's way is not changed: the next
-  // touch is the dribble's own. A stepover or a body feint fits one touch even at a sprint; the scissors (two
-  // stepovers) only when he is slower.
+  // Running at a defender with the ball (about 1.6 to 6 m in front of him and in his way when the move starts) and a
+  // touch just made: a chance for a skill that starts at the next touch (so he has a touch to set it up, and the
+  // picture a moment to show it coming: see skillNow, whose c runs from -1) and sells a fake before the touch after,
+  // which takes the ball the other way (or straight on). The ball's way is not changed: every touch is the dribble's
+  // own. A stepover or a body feint fits one touch even at a sprint; the scissors (two stepovers) only when he is slower.
   dribbleSkill(a) {
     const b = this.ball; if (!this.flair?.by[a.id] || a.sp < 1.8 || (a.kickAt != null && this.time - a.kickAt < .7)) return;
-    const n = Math.floor(dribbleAt(a) / 1.4), side = Math.sign(SIDE[(n + 1) % 3]); if (!side) return;
-    const ch = Math.cos(b.h), sh = Math.sin(b.h);
-    let foe = null; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > 1.6 && f < 5 && Math.abs(l) < 1.8) foe = o; }
-    if (!foe) return;
+    const ch = Math.cos(b.h), sh = Math.sin(b.h), n0 = Math.floor(dribbleAt(a) / 1.4);
+    // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
+    // for that, at this one
+    const near = ahead => { for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > 1.6 && f < 6 && Math.abs(l) < 2.5) return l; } return null; };
+    let fl = near(1.4), n = n0 + 1; if (fl == null) { fl = near(0); n = n0; } // n: the touch the move starts at
+    if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too
+      const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > -.5 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + 1; break; }
+    }
+    if (fl == null) return;
+    const side = Math.sign(SIDE[(n + 1) % 3]);
+    // The fake goes the other way from the touch that takes the ball on; when that touch goes straight on, he fakes to
+    // the side the defender stands (so the defender leans into his own side) and goes straight past.
     const k = this.pickSkill(a, a.sp < 4.6 ? ['stepover', 'feint', 'scissors'] : ['stepover', 'feint'], 'run-at');
-    if (k) a.skill = { k, n, fake: -side, yaw: b.h };
+    if (k) a.skill = { k, n, fake: side ? -side : fl > 0 ? 1 : -1, yaw: b.h };
   }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
   // kind: 'pass' (inside of the foot) or 'shot' (laces); foot: 1 his left, 0 his right (game/outcomes.js picks it), or
@@ -254,13 +275,13 @@ export class Sim {
       const m = has ? b.move : null, u = m ? (this.time - m.t0) / m.dur : 0, last = m ? m.last ?? m.t[m.t.length - 1][0] : 0;
       const sp = m ? a.speed * (u < last ? m.slow : m.slow + (1 - m.slow) * sm((u - last) / (1 - last))) : a.speed; // nearly still while a foot turns the ball
       if (d > 0.02 && a.speed > 0) {
-        if (m) a.sp = lerp(a.sp, sp, Math.min(1, dt * 10)); // he brakes into the turn and runs out of it
+        if (m) a.sp = lerp(a.sp, sp, ease(dt, 10)); // he brakes into the turn and runs out of it
         const s = Math.min((m ? a.sp : sp) * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m) turnToward(a, dx / d, dy / d, dt); a.dist += s;
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
         if (has && !m && !b.reach && Math.floor((a.dist - (a.d0 || 0)) / 1.4) > Math.floor((before - (a.d0 || 0)) / 1.4)) { this.on('touch'); b.h = ang(dx, dy); if (!a.skill) this.dribbleSkill(a); } // each dribble touch puts the ball on the way he runs
-        if (!m) a.sp = lerp(a.sp, sp, Math.min(1, dt * 8));
-      } else a.sp = lerp(a.sp, 0, Math.min(1, dt * 8));
+        if (!m) a.sp = lerp(a.sp, sp, ease(dt, 8));
+      } else a.sp = lerp(a.sp, 0, ease(dt, 8));
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.
@@ -283,7 +304,7 @@ export class Sim {
       const c = this.a(b.carrier), run = Math.min(1, c.sp / 2.5), n = dribbleAt(c) / 1.4, k = n - Math.floor(n), kind = ((Math.floor(n) % 3) + 3) % 3;
       const ahead = .34 + run * .55 * (1 - k), side = run * SIDE[kind] * (1 - k), hx = Math.cos(b.h), hy = Math.sin(b.h);
       // The ball rolls toward its spot at his feet instead of jumping there.
-      const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = Math.min(1, dt * 14);
+      const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = ease(dt, 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
@@ -291,11 +312,12 @@ export class Sim {
       b.x = lerp(b.fx, b.tx, e); b.y = lerp(b.fy, b.ty, e); b.z = b.arc * 4 * u * (1 - u) + b.z1 * u;
       if (u >= 1) b.state = 'loose';
     }
-    // Players standing still turn to watch the ball. One who will turn with a pass to him opens his body that way a little.
+    // Players standing still turn to watch the ball. One who will turn with a pass to him opens his body that way a little
+    // (and stays open as it stops at his feet, until he takes it).
     for (const a of this.agents.values()) {
       if (a.sp < 0.3 && b.carrier !== a.id) {
         const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
-        if (a.open != null && b.state === 'flying') { const h = ang(dx, dy), f = h + turnSide(this, a, h, a.open) * Math.min(.75, Math.abs(wrapA(a.open - h))); turnToward(a, Math.cos(f), Math.sin(f), dt * .5); }
+        if (a.open != null && b.state !== 'carried') { const h = ang(dx, dy), f = h + turnSide(this, a, h, a.open) * Math.min(.75, Math.abs(wrapA(a.open - h))); turnToward(a, Math.cos(f), Math.sin(f), dt * .5); }
         else if (l > 0.3) turnToward(a, dx / l, dy / l, dt);
       }
     }

@@ -141,6 +141,7 @@ export class Game {
       const to = { x: fb.tx, y: fb.ty };
       for (const p of this.sim.agents.values()) {
         if (this.scripted.has(p.id) || closestOnLane(p, fb, to, 0).d >= 1) continue; // the receiver and the interceptor are scripted; everyone else gets out of the way
+        if (p.id === 'hero' && this.sc?.kind === 'receive') continue; // the pass he will turn with is for him (also while he decides, and on a retry)
         this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, fb, to, fb.z < .9);
       }
     }

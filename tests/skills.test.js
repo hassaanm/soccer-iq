@@ -76,22 +76,27 @@ test('a dribble skill changes nothing in the game: everyone and the ball go exac
   }
 });
 
+// (Changed with the move's set-up touch: it is chosen just after a touch for the touch after, c from -1, so the picture
+// shows it coming; the defender's distance is checked where the move starts.)
 test('a dribble skill fakes one way and the next touch takes the ball the other way', () => {
   const r = run({ back: 1.4, flair: only('stepover') }), i = r.findIndex(q => q.skill), first = r[i].skill;
-  assert.ok(i > 0 && r[i].sk.c >= 0 && r[i].sk.c < .2, 'it starts just after a touch');
-  const j = r.findIndex((q, k) => k > i && q.n > first.n); // the next touch
-  const side = Math.sign((r[j + 8].by - r[j].by)); // the ball's sideways roll after that touch (he runs along +x)
-  assert.equal(side, -first.fake);
-  const o = r[i], d = o.ox - o.hx; assert.ok(d > 1.6 && d < 5, `the defender is ${d.toFixed(1)} m in front`);
+  assert.ok(i > 0 && r[i].sk.c >= -1 && r[i].sk.c < -.8, 'it is chosen just after a touch, for the next one');
+  const i0 = r.findIndex(q => q.sk && q.sk.c >= 0); assert.ok(i0 > i && r[i0].sk.c < .2, 'it starts at that touch');
+  const j = r.findIndex((q, k) => k > i0 && q.n > first.n); // the touch after: it takes the ball away
+  const side = Math.sign((r[j + 8].by - r[j].by)), roll = Math.abs(r[j + 8].by - r[j].by); // the ball's sideways roll after that touch (he runs along +x)
+  const o = r[i0], d = o.ox - o.hx; assert.ok(d > 1.6 && d < 6.5, `the defender is ${d.toFixed(1)} m in front`);
+  if (roll > .02) assert.equal(side, -first.fake); // to one side: the fake went the other way
+  else assert.equal(first.fake, Math.sign(o.oy - o.hy) || 1); // straight on: he faked to the defender's side
 });
 
-test('no skill without a defender near, for a player who is not allowed, or twice within 3 s', () => {
+// (2 s apart now, so a match shows more of them.)
+test('no skill without a defender near, for a player who is not allowed, or twice within 2 s', () => {
   assert.ok(!run({ opp: null, flair: only('stepover') }).some(r => r.skill), 'nobody to beat');
   assert.ok(!run({ back: 1.4 }).some(r => r.skill || r.sk), 'no flair: never');
   const r = run({ back: 1.4, secs: 7, flair: { ...only('stepover'), by: { hero: { p: 1, can: ['stepover', 'feint'], fav: [], tier: 't' } } } });
   const starts = r.filter((q, i) => q.skill && !r[i - 1].skill).map(q => q.t);
   assert.ok(starts.length >= 1);
-  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 3, 'two skills close together');
+  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 2, 'two skills close together');
 });
 
 test('the choice is the same for the same play, and stars try more often than a made-up player', () => {
@@ -99,8 +104,10 @@ test('the choice is the same for the same play, and stars try more often than a 
   for (let y = 2; y < 18; y += .37) assert.equal(pick('VINI JR', y), pick('VINI JR', y));
   const rate = name => { let n = 0, m = 0; for (let y = 1; y < 19; y += .011) { m++; if (pick(name, y)) n++; } return n / m; };
   const star = rate('VINI JR'), plain = rate('RICE'), made = rate('SILVA');
-  assert.ok(star > .4 && star < .6 && plain > .2 && plain < .36 && made > .09 && made < .21, `star ${star.toFixed(2)}, plain ${plain.toFixed(2)}, made-up ${made.toFixed(2)}`);
+  // (Raised so a match shows about five skills: stars 85%, plain 60%, made-up 45% of their chances.)
+  assert.ok(star > .75 && star < .95 && plain > .5 && plain < .7 && made > .35 && made < .55 && star > plain && plain > made, `star ${star.toFixed(2)}, plain ${plain.toFixed(2)}, made-up ${made.toFixed(2)}`);
   let sc = 0; for (let y = 1; y < 19; y += .011) if (pick('VINI JR', y) === 'scissors') sc++;
   assert.ok(sc > 250, 'his favourite comes up most');
-  for (let y = 1; y < 19; y += .05) assert.ok(pick('RICE', y) !== 'scissors', 'the scissors are for players with flair');
+  let rs = 0; for (let y = 1; y < 19; y += .05) if (pick('RICE', y) === 'scissors') rs++;
+  assert.ok(rs > 0 && rs < sc / 2, 'anyone can do the scissors now, a star whose favourite it is far more often'); // (changed: the scissors are one of the common moves)
 });

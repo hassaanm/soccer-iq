@@ -1,6 +1,12 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
 import { lerp, smooth, rot, clamp } from '../geom.js';
-import { L, W, MATES, DIRS, NONE, facesBall } from './shared.js';
+import { L, W, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
+
+// Where the eye is seen from the point it looks at: the way round, how high (radians) and how far.
+const orbit = (e, t) => { const x = e[0] - t[0], y = e[1] - t[1], z = e[2] - t[2], r = Math.hypot(x, y, z) || 1e-6; return [Math.atan2(y, x), Math.asin(clamp(z / r, -1, 1)), r]; };
+// The head-down player view: back, to the side, height (m), target ahead of him (m) and how far toward the ball
+// (part), target height, then focal lengths (see World.render). TURN_CAM: the same while choosing a turn.
+const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5, 5.2, 3, .2, .4, .68, .35];
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -48,12 +54,18 @@ export const view = {
     // prompt at the top of a phone screen does not cover his head.
     // Head up: just above head height, looking out across the field.
     const k = smooth(this.look);
-    const [bx, by] = rot(-lerp(3.1, 5.2, k), lerp(1.3, .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
+    // Choosing a turn as the pass comes (head down): a little higher and farther back, so both curved arrows round
+    // his feet, the ball and the passer are all on screen. Head up is the same as everywhere.
+    const C = this.step === 'turn' && this.phase === 'decide' ? TURN_CAM : HEAD_DOWN;
+    const [bx, by] = rot(-lerp(C[0], 5.2, k), lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.
+    // Dribbling, the ball surges out and back at every touch: head down looks at a steady point just ahead of his
+    // feet instead, so the picture doesn't shake with each touch (the camera's own easing covers the switch).
     let dx = b.x, dy = b.y;
-    if (facesBall(this.sc)) { const [ax, ay] = rot(3.5, 0, this.yaw); dx = lerp(h.x + ax, b.x, .25); dy = lerp(h.y + ay, b.y, .25); }
-    return { eye: [h.x + bx, h.y + by, lerp(2.9, 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(.8, .5, k)], Ff: lerp(1.05, .9, k), Fw: lerp(.64, .52, k) };
+    if (b.state === 'carried' && b.carrier === 'hero' && !b.move) { const [ax, ay] = rot(.45, 0, this.yaw); dx = h.x + ax; dy = h.y + ay; }
+    if (facesBall(this.sc)) { const [ax, ay] = rot(C[3], 0, this.yaw); dx = lerp(h.x + ax, b.x, C[4]); dy = lerp(h.y + ay, b.y, C[4]); }
+    return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
   },
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;
@@ -65,9 +77,16 @@ export const view = {
     const want = this.camSpec(time);
     if (!this.cam) { this.cam = { eye: [...want.eye], tgt: [...want.tgt], Ff: want.Ff, Fw: want.Fw }; return; }
     if (this.glide > 0) this.glide -= dt;
-    const k = 1 - Math.exp(-dt * (this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4));
-    for (let i = 0; i < 3; i++) { this.cam.eye[i] = lerp(this.cam.eye[i], want.eye[i], k); this.cam.tgt[i] = lerp(this.cam.tgt[i], want.tgt[i], k); }
-    this.cam.Ff = lerp(this.cam.Ff, want.Ff, k); this.cam.Fw = lerp(this.cam.Fw ?? want.Fw, want.Fw, k);
+    const k = 1 - Math.exp(-dt * (this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4)), c = this.cam;
+    // The point looked at slides over; the eye goes round it (way round, how high, how far), so on the way from
+    // one view to another the camera always looks at the play. Sliding the eye and the point each on its own
+    // straight line made them cross when the new view looks the other way (behind him facing the passer, to the
+    // chase camera up the field): for a few frames it looked straight down at the grass or at a defender.
+    const o0 = orbit(c.eye, c.tgt), o1 = orbit(want.eye, want.tgt);
+    for (let i = 0; i < 3; i++) c.tgt[i] = lerp(c.tgt[i], want.tgt[i], k);
+    const yaw = o0[0] + wrap(o1[0] - o0[0]) * k, pitch = lerp(o0[1], o1[1], k), r = lerp(o0[2], o1[2], k);
+    c.eye[0] = c.tgt[0] + Math.cos(yaw) * Math.cos(pitch) * r; c.eye[1] = c.tgt[1] + Math.sin(yaw) * Math.cos(pitch) * r; c.eye[2] = c.tgt[2] + Math.sin(pitch) * r;
+    c.Ff = lerp(c.Ff, want.Ff, k); c.Fw = lerp(c.Fw ?? want.Fw, want.Fw, k);
   },
   // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
   // per round, so the scene only builds it once.

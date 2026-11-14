@@ -368,7 +368,9 @@ export class World {
       glow.visible = false; this.scene.add(glow); this.glows.set(id, glow);
     }
     // "Peek, then turn": two curved arrows on the grass around him, each sweeping from facing the ball around to
-    // the way that turn takes him. Gold with a white edge; rebuilt only when the angles change.
+    // the way that turn takes him. Gold with a white edge; rebuilt only when the angles change. The gold lies on a
+    // solid white band, so it is never see-through: blended over white (in the picture's linear colours, before the
+    // tone curve) even 70% gold comes out a pale cream, and the arrows looked white. The white edge pulses instead.
     this.turnArrows = new Map(); this.frame = 0;
     this.lines = new THREE.Group(); this.scene.add(this.lines); this.linesKey = ''; this.linesList = null;
     // A soft pulse under the ball when it is loose (hint for the 1v1 "Steal it!" lesson).
@@ -481,9 +483,10 @@ export class World {
       const id = IDS[i], g = this.rigs.get(id); if (!g) continue; // no players before the first setTeams
       const a = sim.a(id), glow = this.glows.get(id);
       g.visible = !!a; glow.visible = false; if (!a) continue;
-      // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture.
-      if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
+      // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture. He
+      // is still posed, so when he shows again his body goes on from where it would be, without a jump.
       animateRig(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0, time);
+      if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
       const s = ui.glow?.[id] || 0, mats = g.userData.mats;
       for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
@@ -506,13 +509,13 @@ export class World {
           const g = new THREE.Group();
           const edge = new THREE.Mesh(edgeGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .95, depthWrite: false, toneMapped: false }));
           const fill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({ color: 0xffc21a, transparent: true, depthWrite: false, toneMapped: false }));
-          fill.position.z = .004; g.add(edge, fill); this.scene.add(g);
+          fill.position.z = .004; fill.renderOrder = 1; g.add(edge, fill); this.scene.add(g); // the gold after its white edge, whichever way the camera looks (the two lie at the same spot, so sorting by distance can put either first)
           a = { g, edge, fill }; this.turnArrows.set(t.id, a);
         }
         a.a0 = a0; a.a1 = a1;
       }
       a.seen = frame; a.g.visible = !!h; if (h) a.g.position.set(h.x, h.y, .03);
-      a.fill.material.opacity = .85 + .15 * Math.sin(time * 5);
+      a.edge.material.opacity = .8 + .15 * Math.sin(time * 5);
     }
     for (const a of this.turnArrows.values()) if (a.seen !== frame) a.g.visible = false;
     for (let i = 0; i < this.spotPool.length; i++) {
