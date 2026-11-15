@@ -102,6 +102,8 @@ export const demoScenario = skillId => demoFor(skillId);
 // situation (the one the demo showed) and comes back to it every other round; Level 2 and up give every
 // situation the same share. The first time through, the same scenes every time (seeds 1..n), so the lesson
 // starts familiar; after that, fresh scenes.
+// How many places to run to in a run-to round: 3 at Level 1, 4 from Level 2 (v60).
+export const runsAt = level => (level >= 2 ? 4 : 3);
 export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math.random } = {}) {
   const pats = patternsOf(skillId); if (!pats.length) return [];
   const [main, ...others] = pats, mix = first ? others : shuffle(others, rnd);
@@ -110,7 +112,7 @@ export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math
   else for (let i = 0; order.length < n; i++) order.push(i % 2 === 0 ? main : mix[(i >> 1) % mix.length]);
   const out = [];
   for (let i = 0; out.length < n && i < n * 4; i++) {
-    const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { pattern: order[out.length] });
+    const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { pattern: order[out.length], runs: runsAt(level) });
     if (sc) out.push(sc);
   }
   return out;

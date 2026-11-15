@@ -53,9 +53,7 @@ for (const el of $$('.team')) {
 export const lessonOpen = i => isOpen(P, PATH, i);
 // Once every lesson is passed, PLAY is "Today's training" unless he picked a lesson (or a grown-up locked one).
 export const trainingNext = () => graduated(P, PATH) && !(P.pick && skillById(P.pick)) && !(P.settings.skill && skillById(P.settings.skill)?.ready);
-// A chapter of one or two lessons is "half": on a short screen (a phone held sideways) two of them share a row, so
-// the whole path fits without scrolling (css/app.css).
-const chapters = cell => CHAPTERS.map((name, ch) => { const ls = PATH.filter(l => l.ch === ch); return `<div class="chap${ls.length <= 2 ? ' half' : ''}"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${ls.map(cell).join('')}</div></div>`; }).join('');
+const chapters = cell => CHAPTERS.map((name, ch) => `<div class="chap"><div class="cn"><b>${ch + 1}</b>${name}</div><div class="row">${PATH.filter(l => l.ch === ch).map(cell).join('')}</div></div>`).join('');
 // One row per chapter. Stars show the level reached (1–3); each level needs a good session on a new day.
 // Picking a tile plays it next (once); otherwise PLAY uses the coach's pick.
 function renderLessons() {

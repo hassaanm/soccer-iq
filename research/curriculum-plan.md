@@ -373,3 +373,22 @@ Sources: [US Youth Soccer Player Development Model](https://www.playlouisianasoc
 [US Soccer U6 age guide](https://www.ussoccer.com/us-way/player-development/environment/age-group-guide/u6),
 [FA: what transition looks like for young players](https://www.thefa.com/bootroom/resources/coaching/what-does-transition-look-like-for-young-players),
 [FIFA grassroots: developing shooting skills](https://www.fifatrainingcentre.com/en/practice/grassroots/grassroots-and-youth-football-essentials/grassroots-coaching-essentials/developing-shooting-skills.php).
+
+## v60: more places to run, and staying is a choice you can see
+
+After playing v59 the parent asked for more realistic choices in the rounds where a friend has the ball ("Get open!",
+"Run to the goal too!" and the run after a pass in matches): there were only ever two or three rings, one plainly
+right, and standing still did not look like an option.
+
+- **Staying is shown.** A gold pin floats over his head (the same family as the rings) and the prompt says "Tap where
+  to run, or stay". The pin and his ring both pick it. It is right only where it was right before ("You were
+  already open").
+- **3 places to run at Level 1, 4 from Level 2** (3 in matches), each 4–10 m from him, on the pitch, out of the far
+  corners and at least 2.5 m from every other ring.
+- **Three grades.** One best place (3 stars: he gets the ball with room and plays on). One or two places that are only
+  okay (2 stars: he gets the ball, but a defender closes him down and the play stops there), each for a reason a
+  coach would give and says out loud: going backwards, level and far from the goal, a defender close, a narrow
+  path past a defender, or (when a friend shoots) getting to the rebound only just in time. One or two bad places
+  (hidden behind a defender, crowding the friend, or too late for the rebound).
+- **Not guessable from the layout.** The best place changes side and distance with the scene; it is not always the
+  farthest ring, the nearest, the leftmost or the one nearest the goal.

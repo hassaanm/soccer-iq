@@ -417,7 +417,7 @@ test('follow your shot: the shot flies fast to the post or leg, comes back out s
   }
 });
 
-test('run to the goal: the right run gets the pass in front of him and he scores; crowding the ball or staying back loses it', async () => {
+test('run to the goal: the right run gets the pass in front of him and he scores; an okay run keeps it; crowding the ball or staying back loses it', async () => {
   const { generate } = await import('../js/generate.js');
   for (const pattern of ['go-goal', 'go-far', 'go-shot']) for (let seed = 1; seed <= 4; seed++) {
     const sc = generate('go-to-goal', seed, { pattern });
@@ -430,7 +430,8 @@ test('run to the goal: the right run gets the pass in front of him and he scores
       if (opt === sc.best) {
         assert.deepEqual(ends, ['GOAL!'], `${sc.id} ${opt}: ${ends}`);
         if (!sc.shot) assert.ok(took > 3.5, `${sc.id}: he stopped for the pass (${took?.toFixed(1)} m/s): it should be in front of him`);
-      } else assert.deepEqual(ends, [sc.shot ? 'They got it!' : 'Stolen!'], `${sc.id} ${opt}: ${ends}`);
+      } else if (sc.safe.includes(opt)) assert.deepEqual(ends, ['Kept the ball!'], `${sc.id} ${opt}: ${ends}`); // only okay: he has it, going nowhere
+      else assert.ok(ends.length === 1 && (sc.shot ? ['They got it!'] : ['Stolen!', 'Cut out!']).includes(ends[0]), `${sc.id} ${opt}: ${ends}`); // (a pass to him cut out says so)
     }
   }
 });
@@ -464,4 +465,27 @@ test('matches with every lesson passed: friends attack and he picks his run, and
     }
   } finally { Math.random = real; }
   assert.ok(seen.goal && seen.follow && seen.rebound, JSON.stringify(seen));
+});
+
+test('get open and run to the goal (v60): staying is a choice he can see and tap; an okay run gets 2 stars and says what was better', async () => {
+  const { generate, OKAY } = await import('../js/generate.js');
+  for (const [sk, pattern] of [['get-open', 'shadow'], ['get-open', 'stay-open'], ['go-to-goal', 'go-goal']]) {
+    const sc = generate(sk, 2, { pattern, runs: 4 }), { g, events } = makeGame();
+    g.mode = 'lesson'; g.load(sc); await drive(g, g.pre(), () => null);
+    const p = g.decide(); g.lookUp = true; for (let i = 0; i < 3; i++) g.tick(1 / 30, 40 + i / 30);
+    assert.ok(g.stayOffered(), `${sc.id}: staying should be offered`);
+    assert.equal(g.targets().filter(t => t.opt === 'spot:stay').length, 2, `${sc.id}: the ring and the badge over his head both pick staying`);
+    assert.ok(g.ui.stayAt, `${sc.id}: the badge shows`);
+    assert.ok(events.some(e => e[0] === 'state' && e[1].prompt === 'Tap where to run, or stay'), `${sc.id}: the prompt says he can stay`);
+    g.choose(sc.best); await p;
+  }
+  // An okay pick: 2 stars, and the line says it worked and what would be better.
+  const sc = generate('get-open', 3, { pattern: 'shadow', runs: 4 }), { g, events } = makeGame(), ok = sc.safe[0], why = sc.spots.find(x => 'spot:' + x.id === ok).why;
+  let first = true;
+  const r = await drive(g, g.round(sc, { hint: false }), gm => { if (first) { first = false; return ok; } return null; }, 60, gm => { if (gm.card && !gm.rated && events.some(e => e[0] === 'banner')) gm.card = null; });
+  assert.deepEqual(r, { firstTry: false, stars: 2 });
+  assert.ok(events.some(e => e[0] === 'banner' && e[3]?.stars === 2 && e[3].text === OKAY[why]), `the 2-star card should say: ${OKAY[why]}`);
+  // Where staying is not one of the choices (follow your shot, pass and go), no badge.
+  const f = generate('follow-shot', 2), m = makeGame(); m.g.mode = 'lesson'; m.g.load(f); await drive(m.g, m.g.pre(), () => null); m.g.decide(); m.g.tick(1 / 30, 50);
+  assert.ok(!m.g.stayOffered() && !m.g.ui.stayAt);
 });

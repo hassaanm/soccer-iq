@@ -10,7 +10,7 @@ import { fillResults } from './ui/results.js';
 import { renderPickers, lessonOpen, trainingNext } from './ui/home.js';
 import { shirtImg } from './ui/shirt.js';
 import { teamById, displayName } from './teams.js';
-import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds } from './skills.js';
+import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds, runsAt } from './skills.js';
 import { CUPS, cupById, newCup, roundsOf, goalsToWin } from './cups.js';
 import { generate } from './generate.js';
 import { preloadClips } from './sound.js';
@@ -63,7 +63,7 @@ const howTo = (sk, hero) => sk.id === 'steal-it' ? `You are ${hero}, defending. 
   : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
   : sk.id === 'lead-pass' ? `You are ${hero}. A friend is running. Tap 👀 to look up, then tap where to pass.`
   : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
-  : sk.id === 'get-open' || sk.id === 'go-to-goal' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run.`
+  : sk.id === 'get-open' || sk.id === 'go-to-goal' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run, or stay.`
   : sk.id === 'follow-shot' ? `You are ${hero}. After the shot, tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;
 const runLesson = flow(async () => {
   const skillId = nextSkill(P, PATH), sk = skillById(skillId), lvl = level(P, skillId);
@@ -80,7 +80,7 @@ const runLesson = flow(async () => {
   // This lesson's rounds (the same scenes the first time, fresh ones after), with one review round from each
   // lesson that is due mixed in after the first two.
   const own = sessionRounds(skillId, P.settings.rounds - reviews.length, { first: firstTime, level: Math.max(1, lvl) });
-  const rev = reviews.map(id => generate(id, seed(), { even: true })).filter(Boolean);
+  const rev = reviews.map(id => generate(id, seed(), { even: true, runs: runsAt(level(P, id)) })).filter(Boolean);
   const rounds = [...own.slice(0, 2), ...shuffle([...own.slice(2), ...rev])], need = Math.ceil(rounds.length * 2 / 3);
   const results = await playRounds(rounds, lvl <= 1 ? 2 : 0, (sc, right) => { if (sc.skill !== skillId) { reviewed(P, sc.skill, right); save(); } });
   // Score the lesson before the mini match, so a skill passed just now is already in it.
@@ -121,7 +121,7 @@ const runTraining = flow(async () => {
   setStage(teamById(P.us), teamById(P.them), 'park');
   await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${tipAfterName(k)}</small></span>`).join('')}</span>`,
     lines: sks.map(k => k.kid), button: 'Play' });
-  const scene = id => { for (let k = 0; k < 8; k++) { const sc = generate(id, seed(), { even: true }); if (sc) return sc; } return null; };
+  const scene = id => { for (let k = 0; k < 8; k++) { const sc = generate(id, seed(), { even: true, runs: runsAt(level(P, id)) }); if (sc) return sc; } return null; };
   const rounds = Array.from({ length: P.settings.rounds }, (_, i) => scene(plan[i % plan.length])).filter(Boolean), per = {};
   const results = await playRounds(rounds, 0, (sc, right) => (per[sc.skill] ||= []).push(right));
   const ups = plan.filter(id => per[id] && trained(P, id, per[id], { day, builds: BUILDS }).leveledUp);

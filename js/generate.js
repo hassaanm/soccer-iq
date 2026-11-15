@@ -1,7 +1,7 @@
 // Endless scenarios for every lesson. Each one is built around a teaching pattern, then every option is graded
 // with the same geometry the game uses. Anything unclear (a pass lane that is half open, a push the defender
 // might or might not win) is thrown away and rebuilt, so every round has a clear right answer.
-import { PITCH, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, DRIBBLE_DIRS, BACKWARD } from './geom.js';
+import { PITCH, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, shuffle, DRIBBLE_DIRS, BACKWARD } from './geom.js';
 
 const { L, W } = PITCH;
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
@@ -387,7 +387,53 @@ function defense(r, pattern) {
 export const laneClear = (from, to, opps) => opps.every(o => closestOnLane(P(o), P(from), P(to), .1).d > 1.3 && dist(P(o), P(to)) > 2.2);
 const laneRoom = (from, to, opps) => Math.min(...opps.map(o => closestOnLane(P(o), P(from), P(to), .1).d));
 export const laneBlocked = (from, to, opps) => opps.some(o => closestOnLane(P(o), P(from), P(to), .1).d < .7);
-function support(r, pattern) {
+// ---------- more places to run (v60) ----------
+// Besides the one best place, he gets other real places to run: 4–10 m from him, on the pitch and out of the far
+// corners, apart from every other ring. Each is graded by what a pass there does, for a reason a coach would give:
+// okay (2 stars: the pass reaches him, but) going backwards ('back'), level and far from the goal ('wide'), with a
+// defender close ('pressure'), or along a narrow path past a defender ('narrow'); or bad: hidden behind a defender,
+// so the pass is cut out ('hidden'). A place as good as the best one is never added. `goal`: a run to the goal, where
+// only a run ahead of the ball and in front of the goal is best. `okay`, `bad`: how many of each; `left`: how many of
+// either (picked at random). Returns the new spots ({ id, p, why }) or null if there are not enough.
+export const OKAY = {
+  back: 'You got the ball! Even better: find space up the field, nearer the goal.',
+  wide: 'You got the ball, but far from the goal. Even better: run toward the goal!',
+  pressure: 'You got the ball, but a defender was close. Even better: find space away from him.',
+  narrow: 'You got the ball, but the pass went close to a defender. Even better: find a wide open path.',
+  late: 'You got there, but just in time. Even better: run straight in!',
+};
+export const RING_GAP = 2.5; // meters between two rings, at least
+// `best`: where the best spot is. So that the best one is not always the farthest ring (or the one nearest the goal),
+// the first one picked is, more often than not, farther from him than it (or, running to the goal, nearer the goal).
+export function moreSpots(r, { c, h, opps, mates = [], have, okay = 0, bad = 0, either = 0, goal = false, kind: own = null, best = null, badFirst = false }) {
+  const found = { okay: [], bad: [] }, a0 = r() * Math.PI / 8;
+  // (Kept to 8.2 m, and running to the goal never more than 2.5 m back, so a round's rings stay close enough together to
+  // be seen with his player big on screen.)
+  for (let a = 0; a < 16; a++) for (const d of [3.6, 4.4, 5.6, 6.8, 8.2]) {
+    const p = [h[0] + Math.cos(a0 + a * Math.PI / 8) * d, h[1] + Math.sin(a0 + a * Math.PI / 8) * d];
+    if (!inPitch(p, 1.8) || p[0] < 3 || (p[0] > L - 4 && Math.abs(p[1] - W / 2) > 5.5) || (goal && p[0] < h[0] - 2.5)) continue; // not in a far corner, not back by our goal
+    if (mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < 1.6) || [...opps, ...mates].some(o => closestOnLane(P(o), P(h), P(p), .1).d < 1)) continue; // nobody on it or in the way of his run
+    const lane = laneRoom(c, p, opps), mark = Math.min(...opps.map(o => Math.hypot(o[0] - p[0], o[1] - p[1]))), dc = Math.hypot(p[0] - c[0], p[1] - c[1]);
+    if (dc < 3.2 || dc > 11) continue;
+    const ahead = goal ? p[0] > c[0] + 2 && Math.abs(p[1] - W / 2) < 6.5 : p[0] >= c[0] - .5, behind = goal ? p[0] < c[0] + .5 : p[0] < c[0] - 2, open = mark > 2.8;
+    const why = own ? own(p) : lane < .6 && mark > 1.4 ? 'hidden' : lane >= 1.5 && open && behind ? (goal ? 'wide' : 'back')
+      : lane >= 1.5 && mark >= 1.5 && mark <= 2 && ahead ? 'pressure' : lane >= 1 && lane <= 1.2 && open && ahead ? 'narrow' : null;
+    if (why) found[why === 'hidden' || why === 'slow' ? 'bad' : 'okay'].push({ p, why });
+  }
+  const out = [], free = q => [...have, ...out.map(x => x.p)].every(t => Math.hypot(t[0] - q.p[0], t[1] - q.p[1]) >= RING_GAP);
+  // (Each pick leans one way, by chance: farther than the best one, or nearer him; and toward the goal more often than not.)
+  const db = best && Math.hypot(best[0] - h[0], best[1] - h[1]), up = best && r() < (goal ? .7 : .45);
+  const lean = () => { const u = r(); return u < (goal ? .6 : .3) ? 'far' : u < .95 ? 'near' : null; }, leans = Array.from({ length: okay + bad + either }, lean);
+  const liked = q => { const w = best && leans[out.length], d = Math.hypot(q.p[0] - h[0], q.p[1] - h[1]); return !best || ((w !== 'far' || d > db + .6) && (w !== 'near' || d < db - .6) && (out.length || !up || q.p[0] > best[0] + .5)); };
+  const take = list => { const l = shuffle(list, r); for (const q of [...l.filter(liked), ...l]) if (free(q)) { out.push(q); return true; } return false; };
+  if (badFirst) for (let i = 0; i < bad; i++) if (!take(found.bad)) return null;
+  for (let i = 0; i < okay; i++) if (!take(found.okay)) return null;
+  if (!badFirst) for (let i = 0; i < bad; i++) if (!take(found.bad)) return null;
+  for (let i = 0; i < either; i++) if (!take(r() < .5 ? found.okay : found.bad) && !take([...found.okay, ...found.bad])) return null;
+  return out.map((q, i) => ({ id: 'run' + (i + 1), p: q.p, why: q.why }));
+}
+
+function support(r, pattern, runs = 3) {
   const c = [8 + r() * 8, 6 + r() * 8], side = c[1] < W / 2 ? 1 : -1;   // the open side of the pitch
   const o1 = [c[0] + 1.5, c[1] - side * (.5 + r() * .3)];                 // presser in front of the carrier (forward passes are blocked)
   const at = (ang, d) => { const [dx, dy] = rot(d, 0, ang); return [c[0] + dx, c[1] + dy]; };
@@ -397,15 +443,15 @@ function support(r, pattern) {
   if (pattern === 'shadow') {                     // he's standing right behind a defender: move out of the shadow
     hero = at(side * (.8 + r() * .5), 6.5 + r() * 1.5);
     o2 = [lerp(c[0], hero[0], .62) + (r() - .5) * .3, lerp(c[1], hero[1], .62) + (r() - .5) * .3];
-    const k = 3 + r() * .8, a1 = perp(c, hero, k), a2 = perp(c, hero, -k);
+    const k = 3.8 + r() * 3.6, a1 = perp(c, hero, k), a2 = perp(c, hero, -k);
     const space = laneRoom(c, a1, [o1, o2]) > laneRoom(c, a2, [o1, o2]) ? a1 : a2;   // step out to the side with the clearer path
     spots = [{ id: 'space', p: space }, { id: 'stay', p: hero }, { id: 'ball', p: [c[0] - .6, c[1] + side * 1.6] }];
     best = 'space'; cue = 'A defender was between you and the ball. Move to open space so {m0} can pass!';
   } else if (pattern === 'spread') {              // he's crowding the ball: spread out into space
     hero = [c[0] - .4, c[1] + side * 2.2];
     o2 = [hero[0] - 1, hero[1] - side * .2];
-    spots = [{ id: 'space', p: at(side * (1 + r() * .45), 6.5 + r() * 1.5) }, { id: 'stay', p: hero }, { id: 'hide', p: hero }];
-    spots[2].p = [o3[0] + (o3[0] - c[0]) * .25, o3[1] + (o3[1] - c[1]) * .25];  // behind the other defender
+    spots = [{ id: 'space', p: at(side * (.35 + r() * 1.05), 5.2 + r() * 4) }, { id: 'stay', p: hero }, { id: 'hide', p: hero }];
+    { const u = unit(c, o1), k = 2.6 + r() * 1.4; spots[2].p = [o1[0] + u[0] * k, o1[1] + u[1] * k]; } // hiding behind the defender in front of the ball
     best = 'space'; cue = 'Give {m0} room! Find open space.';
   } else {                                        // 'stay-open': he's already open, so stay and be ready
     hero = at(side * (1 + r() * .45), 6.5 + r() * 1.5);
@@ -415,14 +461,20 @@ function support(r, pattern) {
   }
   const opps = [o1, o2, o3], all = [c, o1, o2, o3, m2, hero, ...spots.map(s => s.p)];
   if (!all.every(p => inPitch(p, 1))) return null;
-  if (spots.some((s, i) => spots.some((t, j) => j > i && Math.hypot(s.p[0] - t.p[0], s.p[1] - t.p[1]) < 2.2))) return null;
+  if (!apart(spots, RING_GAP)) return null;
   // The right spot must have a clear pass; every wrong one must be blocked, or right next to the ball.
   const ok = sp => laneClear(c, sp.p, opps), crowd = sp => Math.hypot(sp.p[0] - c[0], sp.p[1] - c[1]) < 2.6;
   if (!ok(spots.find(s => s.id === best))) return null;
   for (const s2 of spots) if (s2.id !== best && !crowd(s2) && (ok(s2) || !laneBlocked(c, s2.p, opps))) return null;
   if (spots.find(s => s.id === best).p[0] < c[0] - 1) return null;   // open space ahead or level, not behind
-  return { kind: 'support', carrier: 'm1', hero: [hero[0] - .8, hero[1]], heroTo: hero, mates: [c, m2], opps, oppsTo: opps,
-    spots: spots.map(s => ({ id: s.id, x: s.p[0], y: s.p[1], crowd: crowd(s) })), best: 'spot:' + best, ok: [], cue };
+  // Every place to run is a real run: 3.4–8.6 m from him (kept close, so his player can be big on screen). Then the other places (3 to run to at Level 1, 4 after).
+  if (spots.some(s => s.id !== 'stay' && !(Math.hypot(s.p[0] - hero[0], s.p[1] - hero[1]) >= 3.4 && Math.hypot(s.p[0] - hero[0], s.p[1] - hero[1]) <= 8.6))) return null;
+  const base = spots.filter(s => s.id !== 'stay').length, n = runs - base, wrong = spots.filter(s => s.id !== 'stay' && s.id !== best).length; // (at most two bad runs)
+  const extra = moreSpots(r, { c, h: hero, opps, mates: [c, m2], have: spots.map(s => s.p), okay: wrong >= 2 ? n : 1, either: wrong >= 2 ? 0 : Math.max(0, n - 1), best: best === 'stay' ? null : spots.find(s => s.id === best).p });
+  if (!extra) return null;
+  return { kind: 'support', even: true, carrier: 'm1', hero: [hero[0] - .8, hero[1]], heroTo: hero, mates: [c, m2], opps, oppsTo: opps,
+    spots: [...spots, ...extra].map(s => ({ id: s.id, x: s.p[0], y: s.p[1], crowd: crowd(s), ...(s.why ? { why: s.why } : {}) })), best: 'spot:' + best, ok: [],
+    safe: extra.filter(s => OKAY[s.why]).map(s => 'spot:' + s.id), cue };
 }
 // Give-and-go, step 2: he has passed to the wall friend (m1). The defender who pressed him turns to press m1 and
 // now stands between them, so standing still is blocked. The run past that defender into the space ahead is open.
@@ -573,7 +625,7 @@ export function legBounce(from, B, sd, th, len) {
 // both) or staying back (nobody to pass to, so his defender leaves him and they trap m1). 'go-far': a defender already
 // stands in his straight run, so the open side is across, behind m1. 'go-shot': m1 has a clear shot. The run in is
 // still right: the shot comes back off the post, and the child is there first.
-function goalRun(r, pattern) {
+function goalRun(r, pattern, runs = 3) {
   const s = pick(r, [1, -1]); // the side of m1 he is on (+y is left)
   let c, h, o1, o2, spots, best, cue, shot = null;
   if (pattern === 'go-goal') {
@@ -581,14 +633,14 @@ function goalRun(r, pattern) {
     h = [c[0] - .5 - r() * 1.8, c[1] + s * (5 + r() * 1.5)];             // level with the ball or a little behind it
     o1 = goalSideOf(c, 2.5 + r() * .5);                                  // in front of m1
     o2 = [h[0] - 2.6 - r() * 1.4, h[1] - s * (.4 + r() * .8)];          // his defender, caught behind the play
-    spots = [{ id: 'goal', p: [c[0] + 3.8 + r() * 1.4, c[1] + s * (4.6 + r() * .8)] }, { id: 'ball', p: [c[0] + .3, c[1] + s * 1.6] }, { id: 'stay', p: h }];
+    spots = [{ id: 'goal', p: [c[0] + 2.6 + r() * 1.6, c[1] + s * (4.2 + r() * .9)] }, { id: 'ball', p: [c[0] + .3, c[1] + s * 1.6] }, { id: 'stay', p: h }];
     best = 'goal'; cue = '{m0} had the ball! Run to the goal, so he can pass to you.';
   } else if (pattern === 'go-far') {
     c = [12 + r() * 4, W / 2 + s * (r() * 1.2)];
-    h = [c[0] - 2.4 - r() * 1.2, c[1] + s * (2 + r() * 1)];             // behind m1, on one side
+    h = [c[0] - 1.3 - r() * 1.2, c[1] + s * (1.4 + r() * 1)];           // behind m1, on one side
     o1 = goalSideOf(c, 2.5 + r() * .5);
-    o2 = [c[0] + 2.6 + r() * 1.2, c[1] + s * (4.3 + r() * .8)];          // already standing in his run on that side
-    spots = [{ id: 'far', p: [c[0] + 3.6 + r() * 1.2, c[1] - s * (4.6 + r() * .8)] }, { id: 'near', p: [o2[0] + .6 + r() * .4, o2[1] + s * (r() - .3) * .6] }, { id: 'ball', p: [c[0] + .3, c[1] + s * 1.6] }];
+    o2 = [c[0] + 3 + r() * 1.6, c[1] + s * (4.3 + r() * .8)];            // already standing in his run on that side
+    spots = [{ id: 'far', p: [c[0] + 2.2 + r() * 1.2, c[1] - s * (3 + r() * 1)] }, { id: 'near', p: [o2[0] + .6 + r() * .4, o2[1] + s * (r() - .3) * .6] }, { id: 'stay', p: h }]; // (he is too close to m1 for a run to the ball)
     best = 'far'; cue = 'A defender was in the way. Run to the open side, so {m0} can pass to you!';
   } else { // 'go-shot'
     c = [L - 8.6 - r() * 2, W / 2 - s * (.3 + r() * 1.5)];
@@ -597,11 +649,13 @@ function goalRun(r, pattern) {
     o2 = [L - 1.3 - r() * 1, W / 2 + s * (6 + r() * 1.5)];               // deep and wide, on the child's side
     const gy = W / 2 + s * 2, ball = [c[0] + .5, c[1]];
     shot = { by: 'm1', ...postBounce(ball, gy, r() * .05, 3.4 + r() * 1) };
-    spots = [{ id: 'goal', p: [shot.loose[0] - .4, shot.loose[1] + s * .3] }, { id: 'ball', p: [c[0] + .3, c[1] + s * 1.6] }, { id: 'stay', p: h }];
+    // The run in: most of the way from him to where it will come out (from there he goes on to the ball).
+    const k = .58 + r() * .3, end = [shot.loose[0] - .4, shot.loose[1] + s * .3];
+    spots = [{ id: 'goal', p: [lerp(h[0], end[0], k), lerp(h[1], end[1], k)] }, { id: 'stay', p: h }]; // (no crowding run here: he shoots at once)
     best = 'goal'; cue = '{m0} could shoot, but you run in too. The ball can bounce out to you!';
   }
   const m2 = [c[0] - 6 - r() * 2, clamp(c[1] - s * (3 + r() * 2), 2, W - 2)], o3 = goalSideOf(m2, 1.2), opps = [o1, o2, o3];
-  if (![c, o1, o2, o3, m2, h, ...spots.map(x => x.p)].every(p => inPitch(p, 1.2)) || !apart(spots, 2.4)) return null;
+  if (![c, o1, o2, o3, m2, h, ...spots.map(x => x.p)].every(p => inPitch(p, 1.2)) || !apart(spots, RING_GAP)) return null;
   const sp = id => spots.find(x => x.id === id).p, B = sp(best), c2 = [c[0] + 1, c[1]];  // c2: m1 a step on, when he passes
   // The right run: nobody in his way, the pass to it open, ahead of the ball and in front of the goal, with a clear shot.
   if (opps.some(o => closestOnLane(P(o), P(h), P(B), 0).d < 1.4) || B[0] < c[0] + 2) return null;
@@ -620,11 +674,26 @@ function goalRun(r, pattern) {
   }
   // Where the run-up starts: m1 dribbles up to the freeze, he jogs up off the ball, their defender in front of m1
   // steps up to him and the one behind him jogs after him.
+  // The other places to run (v60): 3 runs at Level 1, 4 after, at least one only okay. With a shot on, okay is a run
+  // that still gets there first but only just ('late'); bad, one that gets there after their defender ('slow').
+  if (spots.some(x => x.id !== 'stay' && !(Math.hypot(x.p[0] - h[0], x.p[1] - h[1]) >= 3.4 && Math.hypot(x.p[0] - h[0], x.p[1] - h[1]) <= 8.6))) return null;
+  let own = null;
+  if (shot) {
+    const L0 = [c[0] + .5, c[1]], tHit = .2 + Math.hypot(shot.hit[0] - L0[0], shot.hit[1] - L0[1]) / SHOT.speed * 1.3, lo = P(shot.loose);
+    const tH = dist(P(h), P(B)) / 5.2 + dist(P(B), lo) / 5.2 + .1, tO = Math.min(...opps.map(o => tHit + .25 + dist(P(o), lo) / DEF_RUN));
+    own = p => { const t = dist(P(h), P(p)) / 5.2 + dist(P(p), lo) / 5.2 + .1; return dist(P(p), lo) < 2.5 ? null : t > tH + .35 && t < tO - .25 ? 'late' : t > tO + .45 ? 'slow' : null; };
+  }
+  const base = spots.filter(x => x.id !== 'stay').length, n = runs - base, wrong = base - 1; // (at most two bad runs)
+  const extra = shot ? moreSpots(r, { c, h, opps, mates: [c, m2], have: spots.map(x => x.p), bad: 1, okay: 1, either: n - 2, goal: true, kind: own, best: B, badFirst: true })
+    : moreSpots(r, { c, h, opps, mates: [c, m2], have: spots.map(x => x.p), okay: wrong >= 2 ? n : 1, either: wrong >= 2 ? 0 : Math.max(0, n - 1), goal: true, kind: own, best: B });
+  if (!extra) return null;
+  spots.push(...extra);
   const start = [c[0] - RUN_UP * 2.6, c[1]], heroStart = [h[0] - 2.6, h[1]], o1s = shot ? [o1[0] - 2.4, o1[1]] : goalSideOf(o1, .8), o2s = shot ? o2 : [o2[0] - 2.6, o2[1]];
   const m2s = [m2[0] - 1.2, m2[1]], o3s = [o3[0] - 1.2, o3[1]]; // the other friend jogs up too, his defender with him
   if (![start, heroStart, o1s, o2s, m2s, o3s].every(p => inPitch(p, 1))) return null;
-  return { kind: 'support', run: 'goal', carrier: 'm1', hero: heroStart, heroTo: h, mates: [start, m2s], matesTo: [c, m2], opps: [o1s, o2s, o3s], oppsTo: opps, side: s, shot,
-    spots: spots.map(x => ({ id: x.id, x: x.p[0], y: x.p[1], crowd: Math.hypot(x.p[0] - c[0], x.p[1] - c[1]) < 2.6 })), best: 'spot:' + best, ok: [], cue };
+  return { kind: 'support', run: 'goal', even: true, carrier: 'm1', hero: heroStart, heroTo: h, mates: [start, m2s], matesTo: [c, m2], opps: [o1s, o2s, o3s], oppsTo: opps, side: s, shot,
+    spots: spots.map(x => ({ id: x.id, x: x.p[0], y: x.p[1], crowd: Math.hypot(x.p[0] - c[0], x.p[1] - c[1]) < 2.6, ...(x.why ? { why: x.why } : {}) })), best: 'spot:' + best, ok: [],
+    safe: extra.filter(x => OKAY[x.why]).map(x => 'spot:' + x.id), cue };
 }
 export const RUN_UP = 1.3; // seconds of the run-up before a "run to the goal" round freezes (m1 dribbling at goal)
 
@@ -729,15 +798,16 @@ export function demoFor(skill) {
 
 // A fresh, clean scenario for a lesson. Same seed, same scenario (handy for tests). `even` gives every pattern
 // the same share (Level 2 and up), instead of mostly the main one.
-export function generate(skill, seed, { even = false, pattern: want = null } = {}) {
+// `runs`: how many places to run to in a run-to round (3 at Level 1, 4 after; v60), not counting staying.
+export function generate(skill, seed, { even = false, pattern: want = null, runs = 3 } = {}) {
   const r = rng(seed), pats = want ? [want] : even ? [...new Set(PATTERNS[skill] || [])] : PATTERNS[skill];
   if (!PATTERNS[skill]) return null;
   // Pick the pattern once, then retry only its layout, so patterns that are harder to build still come up as often.
   const first = Math.floor(r() * pats.length), high = r() < .3; // about 3 in 10 scenes happen near their goal (where it fits)
   for (let i = 0; i < 4000; i++) {
     const pattern = i < 3000 ? pats[first] : pats[Math.floor(r() * pats.length)];
-    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern) : TACKLE.has(pattern) ? tackle(r, pattern) : RECEIVE.has(pattern) ? receive(r, pattern, high) : LEADS.has(pattern) ? lead(r, pattern, high)
-      : GOAL_RUN.has(pattern) ? goalRun(r, pattern) : FOLLOW.has(pattern) ? followShot(r, pattern) : attack(r, pattern, high);
+    const sc = DEFENSE.has(pattern) ? defense(r, pattern) : SUPPORT.has(pattern) ? support(r, pattern, runs) : TACKLE.has(pattern) ? tackle(r, pattern) : RECEIVE.has(pattern) ? receive(r, pattern, high) : LEADS.has(pattern) ? lead(r, pattern, high)
+      : GOAL_RUN.has(pattern) ? goalRun(r, pattern, runs) : FOLLOW.has(pattern) ? followShot(r, pattern) : attack(r, pattern, high);
     const fixed = DEFENSE.has(pattern) || SUPPORT.has(pattern) || TACKLE.has(pattern) || RECEIVE.has(pattern) || LEADS.has(pattern) || GOAL_RUN.has(pattern) || FOLLOW.has(pattern) || pattern === 'give-go' || pattern === 'give-go-ahead'; // give-and-go's step 2 depends on which friend is the wall; the runner is always m1
     if (sc) return { ...(fixed || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
   }

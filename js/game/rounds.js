@@ -1,7 +1,7 @@
 // One decision round: the run-up, the moment he chooses, and how good each choice is. Around it, the lesson
 // loop: play the choice, show why a wrong one failed, replay the better way, and let him try again.
 import { dist, dribbleEnd, lerp } from '../geom.js';
-import { grade, pushEnd, LEAD, RUN_UP, SHOT } from '../generate.js';
+import { grade, pushEnd, LEAD, RUN_UP, SHOT, OKAY } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
 import { pickFoot } from './outcomes.js';
 
@@ -20,6 +20,9 @@ export const rounds = {
     (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
     await this.delay(1.3);
     s.stopAll();
+    // Getting open (v60): he looks out over where he could go (the rings and his friend on the ball), not only at the
+    // ball, so the place nearest the camera is not always the same kind of place.
+    if (sc.even && !sc.run) { const h = s.a('hero'), c = s.a(sc.carrier), pts = [...sc.spots, c]; this.yaw = this.frameYaw(sc, h, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); this.faceYaw(h); }
   },
   // "Won it? Go!": their player dribbles straight at him, he steps in and pokes the ball off him, and their player
   // stumbles on past him (around him, on the camera's side) and ends up behind him.
@@ -174,7 +177,8 @@ export const rounds = {
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
       const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
-      const tip = 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
+      const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY)
+      const tip = OKAY[why] || 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase());
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
         : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : 'Oops, lost it!' };
@@ -211,10 +215,12 @@ export const rounds = {
     // at the ball.
     const runs = this.sc.kind === 'defense' || this.sc.kind === 'support', h = this.sim.a('hero');
     const from = runs ? { x: h.x, y: h.y } : { x: this.sim.ball.x, y: this.sim.ball.y }, bad = this.target(opt), best = this.target(this.sc.best);
-    this.markHero = runs;
-    this.lines = [{ a: from, b: { x: bad.x, y: bad.y }, color: '#e5484d' }, { a: from, b: { x: best.x, y: best.y }, color: '#30a46c' }];
+    // Staying put was the wrong choice: no red arrow from him to himself; his own ring turns red instead.
+    const stayed = runs && Math.hypot(bad.x - from.x, bad.y - from.y) < .8;
+    this.markHero = runs; this.markRed = stayed;
+    this.lines = [...(stayed ? [] : [{ a: from, b: { x: bad.x, y: bad.y }, color: '#e5484d' }]), { a: from, b: { x: best.x, y: best.y }, color: '#30a46c' }];
     this.aimAt = { x: (bad.x + best.x) / 2, y: (bad.y + best.y) / 2 };
     await this.talk(this.cue(), 1.5); // red line, green line, and why: wait for the whole sentence, then a beat
-    this.lines = []; this.aimAt = null; this.markHero = false;
+    this.lines = []; this.aimAt = null; this.markHero = this.markRed = false;
   },
 };

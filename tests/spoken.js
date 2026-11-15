@@ -1,7 +1,7 @@
 // Every line the game can say out loud, for recording the voice clips and for checking none is missing.
 // Names don't matter here: lines are cut at player names, and each name has its own clip.
 import { PATH, allScenarios } from '../js/skills.js';
-import { generate } from '../js/generate.js';
+import { generate, OKAY } from '../js/generate.js';
 import { CUPS } from '../js/cups.js';
 import { MOVE_NAME } from '../js/flair.js';
 import { EXPLAIN } from '../js/game/skill.js';
@@ -29,7 +29,8 @@ export function spokenLines() {
     ...CUPS.map(c => c.name),
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
     'You looked up!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
-    ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, // the skill move he tapped for, and the demo's line about the button (game/skill.js)
+    ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN,
+    ...Object.values(OKAY), // only-okay runs (v60) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];
   for (const c of cues) {
     const cue = fill(c);

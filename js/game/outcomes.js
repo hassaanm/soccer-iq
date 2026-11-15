@@ -289,21 +289,24 @@ export const outcomes = {
     const o1 = s.a(this.sc.pressId || 'o1'), o2 = s.a(this.sc.markId || 'o2'), o2id = o2.id;
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
-    const t0 = s.time;
-    yield () => { s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); return dist(h, sp) < .4 || s.time - t0 > 1.8; };
+    const t0 = s.time, alive = this.sc.even && this.underPressure(c, o1);
+    yield () => { s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); alive?.(); return dist(h, sp) < .4 || s.time - t0 > (this.sc.even ? 2.6 : 1.8); }; // (v60 rings can be up to 10 m away)
     s.stop('hero'); s.stop(o2id);
     if (sp.crowd) { // two defenders on two players right together: they win it
       const t1 = s.time; yield () => { s.go(o1.id, c.x, c.y, 4); s.go(o2id, lerp(h.x, c.x, .5), lerp(h.y, c.y, .5), 3.5); return dist(o1, c) < .9 || s.time - t1 > 1.5; };
       yield* this.steal(o1); return;
     }
-    faceTo(h, c.x, c.y); yield .25;
+    faceTo(h, c.x, c.y);
+    if (alive) { const tp = s.time; yield () => { alive(); return s.time - tp > .25; }; } else yield .25;
     if (good) {
       // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
       if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { const k = .3 / (dist(c, h) || 1); yield* this.strike(c.id, h.x + (c.x - h.x) * k, h.y + (c.y - h.y) * k, { speed: 8, arc: .05 }); this.result = 'incoming'; return; } // to his feet on the side the pass comes from, so it comes straight at him
       s.open('hero', L - 3.5, W / 2); // he opens his body toward goal as the pass comes, and turns with his first touch
       yield* this.strike(c.id, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
-      s.give('hero'); this.scripted = new Set(['hero']); this.ai = true;
+      s.give('hero');
+      if (this.rating('spot:' + spotId) === 'safe') { yield* this.closedDown(); return; } // only okay: he has it, but going nowhere
+      this.scripted = new Set(['hero']); this.ai = true;
       yield* this.finish('hero'); return;
     }
     // The pass goes, but the defender standing in its path cuts it out.
@@ -311,7 +314,28 @@ export const outcomes = {
     s.go(cut.opp.id, cut.x, cut.y, 4);
     yield* this.strike(c.id, cut.x, cut.y, { speed: 11, arc: .1 });
     yield () => s.ball.state === 'loose';
-    yield* this.steal(cut.opp);
+    yield* this.steal(cut.opp, this.sc.even ? 'cut' : 'stolen'); // (he never had it: "Cut out!")
+  },
+  // While he runs to his spot (v60): his friend on the ball keeps it under pressure, shielding it with small touches from
+  // side to side, and the defender in front of him jockeys, staying goal-side about 1.3 m off him. Nobody wins or loses
+  // the ball here, and nobody moves more than a step. Returns a function to call every step.
+  underPressure(c, o) {
+    const s = this.sim, base = { x: c.x, y: c.y }, ob = o && { x: o.x, y: o.y }, t0 = s.time, gl = Math.hypot(L - c.x, W / 2 - c.y) || 1, g = { x: (L - c.x) / gl, y: (W / 2 - c.y) / gl };
+    const ol = ob && (Math.hypot(c.x - ob.x, c.y - ob.y) || 1), u = ob && { x: (c.x - ob.x) / ol, y: (c.y - ob.y) / ol }; // the defender toward him
+    return () => {
+      const t = s.time - t0, k = Math.sin(t * 2.3) * .3;
+      if (s.ball.carrier === c.id) s.go(c.id, base.x - g.y * k - g.x * .1, base.y + g.x * k - g.y * .1, 1.1);
+      if (ob && o.id !== c.id) { const j = .3 * Math.sin(t * 3.1 + .6); s.go(o.id, ob.x + u.x * j - g.y * k * .8, ob.y + u.y * j + g.x * k * .8, 1.8); } // around his own place: in a step, back a step, across with him
+    };
+  },
+  // An "okay" run (v60, generate.js moreSpots): he has the ball, but their nearest player gets to him, goal-side, and
+  // there is nothing on: he keeps it, and the play ends there.
+  *closedDown() {
+    const s = this.sim, h = s.a('hero'), o = s.team('them').sort((p, q) => dist(p, h) - dist(q, h))[0];
+    const gl = Math.hypot(L - h.x, W / 2 - h.y) || 1, to = { x: h.x + (L - h.x) / gl * 1.4, y: h.y + (W / 2 - h.y) / gl * 1.4 };
+    this.scripted.add(o.id); s.go(o.id, to.x, to.y, 4.2); s.stop('hero'); faceTo(h, o.x, o.y);
+    const t0 = s.time; yield () => dist(o, to) < .3 || s.time - t0 > 1.6;
+    yield* this.end('kept', 1.1);
   },
   // He shoots: a clear shot goes in; a blocked one is stopped by the defender in the way.
   *shootGen(good) {
@@ -444,6 +468,7 @@ export const outcomes = {
     };
     if (good && dist(h, b) < .6) {
       s.give('hero');
+      if (this.rating('spot:' + spotId) === 'safe') { yield* this.closedDown(); return; } // only just first: he keeps it, but no shot
       const k = dist(racer, h) || 1; s.go(racer.id, racer.x + (h.x - racer.x) / k * Math.min(.6, Math.max(0, k - 1.5)), racer.y + (h.y - racer.y) / k * Math.min(.6, Math.max(0, k - 1.5)), 2); // too late: he pulls up
       yield* this.finish('hero'); return;
     }
@@ -492,11 +517,21 @@ export const outcomes = {
     // ('go-far'), he holds his place, edging toward the ball.
     const o2at = { x: o2.x, y: o2.y }, behind = o2.x < h.x;
     const follows = () => { if (!behind) { s.go('o2', lerp(o2at.x, m.x, .12), lerp(o2at.y, m.y, .12), 1.5); return; } const k = dist(o2, h) || 1; s.go('o2', h.x + (o2.x - h.x) / k * 1.6, h.y + (o2.y - h.y) / k * 1.6, 4.2); };
+    let alive = null;
     yield () => {
       if (via && dist(h, via) < .5) { s.go('hero', P.x, P.y, 5.2); via = null; }
+      if (!alive && s.time - t0 > .5 && spotId !== 'stay') alive = this.underPressure(m, o1); // once he has driven at him: shielding, the defender jockeying
+      alive?.();
       if (spotId === 'stay') s.go('o2', m.x - g.x * .6 - g.y * sc.side * 1.2, m.y - g.y * .6 + g.x * sc.side * 1.2, 4.4); else follows();
       return (good ? dist(h, P) < 1.5 : spotId === 'stay' ? dist(o2, m) < 2.2 : dist(h, P) < .4) || s.time - t0 > 3;
     };
+    if (good && this.rating('spot:' + spotId) === 'safe') { // only okay: the pass reaches him there, but it goes nowhere
+      const t1 = s.time; yield () => { alive?.(); return dist(h, P) < .4 || s.time - t1 > 1.5; };
+      s.stop('hero'); faceTo(h, m.x, m.y);
+      yield* this.strike('m1', h.x, h.y, { speed: 11, arc: .15 });
+      yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
+      s.give('hero'); yield* this.closedDown(); return;
+    }
     if (good) {
       const T = { x: L - 4.5, y: lerp(P.y, W / 2, .55) }, tl = Math.hypot(T.x - h.x, T.y - h.y) || 1, d = { x: (T.x - h.x) / tl, y: (T.y - h.y) / tl };
       s.go('hero', T.x, T.y, 5.2);
@@ -513,7 +548,7 @@ export const outcomes = {
       s.go(cut.opp.id, cut.x, cut.y, 4);
       yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
       yield () => s.ball.state === 'loose';
-      yield* this.steal(cut.opp); return;
+      yield* this.steal(cut.opp, 'cut'); return;
     }
     const t1 = s.time; yield () => { s.go('o1', m.x, m.y, 3.6); if (spotId !== 'stay') follows(); return dist(o1, m) < .9 || s.time - t1 > 1.5; };
     yield* this.steal(o1);
@@ -612,9 +647,9 @@ export const outcomes = {
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
   // the same card, at the same moment.
   emit(ev) {
-    const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'] }[ev];
+    const [title, kind] = { goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'] }[ev];
     if (ev === 'goal') this.sfx('net');
-    this.fx(ev === 'lost' ? 'stolen' : ev);
+    this.fx(ev === 'lost' || ev === 'cut' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
     this.card = this.hud.banner(title, kind, rated);
     if (rated?.say) this.say(rated.text); else if (rated?.said) this.say(rated.said);

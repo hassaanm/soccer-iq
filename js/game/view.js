@@ -11,10 +11,15 @@ const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5,
 // (with nobody to beat), how high, and the focal lengths. Low and close enough that his feet, the ball and the
 // defender fill the picture, far enough that nobody fills the screen.
 const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
-// The spot camera for runs to the goal and after a shot: a ring is drawn up to RING_GROW times bigger the farther it is
-// from the eye than the nearest one, and the view is only taken if that leaves no ring more than RING_RATIO times
-// bigger on screen than another.
-const RING_GROW = 1.7, RING_RATIO = 1.28;
+// The spot camera for runs to the goal and after a shot: a ring far from the eye is drawn up to RING_GROW times bigger
+// and one near it down to RING_SHRINK times, and the view is only taken if that leaves no ring more than RING_RATIO
+// times bigger on screen than another.
+const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
+// His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
+// held sideways; if that cannot be had, a little less), so a child finds him at once (v60).
+const HERO_MIN = .2;
+// The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
+const STAY_Z = 1.62;
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -33,50 +38,78 @@ export const view = {
     const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length}`;
     if (this.spotFit?.key === key) return this.spotFit.spec;
     const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
-    // Runs to the goal and after a shot (sc.run): the goal, the friend with the ball and their nearest player are in
-    // the picture too, clear of the prompt. A ring farther from the eye is drawn bigger (up to RING_GROW times, see
-    // World: ui.spotScale), so the nearest ring is not the biggest thing on screen, whatever it is.
-    const even = !!sc.run;
+    // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
+    // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
+    // and one near it smaller (World: ui.spotScale), so the nearest ring is not the biggest thing on screen. And his own
+    // player is big enough to find (v60): that comes first. If it cannot all be had, the view gives up first the far
+    // post (the near post and the goal mouth's middle stay), then a little on the ring sizes, then the goal.
+    const even = !!(sc.run || sc.even), stay = this.stayOffered();
     if (!even) for (const sp of sc.spots) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
     else for (const sp of sc.spots) pts.push([sp.x, sp.y, 0]);
     let scales = null;
+    const goalAll = [], goalNear = [];
     if (even) {
-      for (const y of [gy0, gy1]) pts.push([L, y, 0], [L, y, 1.6]); // the posts (1.6 m high)
-      const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y))[0];
-      for (const a of [c, near]) if (a && a.id !== 'hero') pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]);
+      const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2);
+      for (const a of [c, ...near]) if (a && a.id !== 'hero') pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]);
+      if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
+      if (sc.run) {
+        const ny = Math.abs(h.y - gy0) < Math.abs(h.y - gy1) ? gy0 : gy1;
+        for (const y of [gy0, gy1]) goalAll.push([L, y, 0, 1], [L, y, 1.6, 1]); // the posts (1.6 m high; 1: may sit beside the prompt, see inside)
+        goalNear.push([L, ny, 0, 1], [L, ny, 1.6, 1], [L, (gy0 + gy1) / 2, 0, 1]);
+      }
     }
-    let cx = 0, cy = 0; for (const p of pts) { cx += p[0]; cy += p[1]; } cx /= pts.length; cy /= pts.length;
+    let mx = 0, my = 0; for (const p of [...pts, ...goalAll]) { mx += p[0]; my += p[1]; } mx /= pts.length + goalAll.length; my /= pts.length + goalAll.length;
+    let cx = mx, cy = my; // where the camera looks: the middle of it all, or (for a closer view) a little toward him
     // The free part of the screen: under the prompt, in from the edges, and not where LOOK UP / HEAD DOWN sits (bottom
     // left; nothing else shows while he picks a spot).
     const Ff = .9, Fw = .45, F = Math.max(v.h * Ff, v.w * Fw), x0 = v.w * .05, x1 = v.w * .95, y0 = 104, y1 = v.h - 16, bx = 160, by = v.h - 150;
     let fx, fy;
-    const fits = (pitch, d) => { // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
+    const fits = (pitch, d, { goal, ratio, heroMin }) => { // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
       const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d, ez = Math.sin(pitch) * d;
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
-      const inside = (px, py, pz) => {
-        const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; if (z < .5) return false;
-        const sx = v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, sy = v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z;
-        return !(sx < x0 || sx > x1 || sy < y0 || sy > y1 || (sx < bx && sy > by));
+      const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
+      if (heroMin) { const a = proj(h.x, h.y, 0), b = proj(h.x, h.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall
+      // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
+      // under them, nor under the buttons in the top corners.)
+      const inside = (px, py, pz, side = 0) => {
+        const q = proj(px, py, pz); if (!q) return false; const [sx, sy] = q;
+        const top = (side || even) && Math.abs(sx - v.w / 2) > 200 && sx > 80 && sx < v.w - 80 ? 64 : y0; // (these views: anything may sit up beside the prompt)
+        return !(sx < x0 || sx > x1 || sy < top || sy > y1 || (sx < bx && sy > by));
       };
-      for (const [px, py, pz] of pts) if (!inside(px, py, pz)) return false;
+      for (const [px, py, pz, side] of [...pts, ...(goal === 'all' ? goalAll : goal === 'near' ? goalNear : [])]) if (!inside(px, py, pz, side)) return false;
       if (even) { // each ring at the size it will be drawn
         const z = sc.spots.map(sp => (sp.x - ex) * fwd[0] + (sp.y - ey) * fwd[1] - ez * fwd[2]), near = Math.min(...z); // depth: the size on screen goes as 1 / depth
-        if (Math.max(...z) > near * RING_GROW * RING_RATIO) return false;
-        scales = z.map(k => Math.min(RING_GROW, k / near));
+        // A ring far off is drawn bigger and one close by smaller (down to RING_SHRINK), but never so big that it would
+        // touch its nearest neighbour ring (each takes half the gap).
+        const mid = Math.sqrt(near * Math.max(...z));
+        scales = z.map((k, i) => Math.max(RING_SHRINK, Math.min(RING_GROW, k / mid, ...sc.spots.filter((_, j) => j !== i).map(b => (Math.hypot(b.x - sc.spots[i].x, b.y - sc.spots[i].y) - .15) / 1.6))));
+        const size = scales.map((k, i) => k / z[i]); if (Math.max(...size) > ratio * Math.min(...size)) return false;
         for (const [i, sp] of sc.spots.entries()) for (let a = 0; a < 8; a++) if (!inside(sp.x + Math.cos(a * Math.PI / 4) * .85 * scales[i], sp.y + Math.sin(a * Math.PI / 4) * .85 * scales[i], 0)) return false;
       }
       return true;
     };
     // The way he faces first; turned a little either way only if that lets it come nearer (or fit at all).
-    let best = null;
-    for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4]) {
-      fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
-      for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d)) { const cost = d + 4 * Math.abs(off); if (!best || cost < best.cost) best = { pitch, d, off, cost, scales }; break; }
-    }
-    const { pitch, d, off } = best || { pitch: 1.35, d: 22, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
+    const search = rule => {
+      let best = null;
+      for (const lean of even ? [0, .3, .55, .8] : [0]) {
+        cx = lerp(mx, h.x, lean); cy = lerp(my, h.y, lean);
+        for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75]) {
+          fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
+          for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d, rule)) { const cost = d + 4 * Math.abs(off) + 2 * lean; if (!best || cost < best.cost) best = { pitch, d, off, cost, scales, cx, cy }; break; }
+        }
+      }
+      return best;
+    };
+    // Tried in this order: the whole goal, then only its near post and the middle of its mouth, then rings a little less
+    // even, then his player a little smaller, and only then (never running to the goal unless nothing else fits) no goal.
+    const hm = HERO_MIN * F, tiers = !even ? [{ goal: 'all', ratio: RING_RATIO }] : [{ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm },
+      ...[1, .88, .78, .66].map(k => ({ goal: 'near', ratio: RING_RATIO_MAX, heroMin: hm * k })), { goal: 'none', ratio: RING_RATIO_MAX, heroMin: hm * .78 },
+      { goal: 'none', ratio: 3, heroMin: hm * .6 }, { goal: 'all', ratio: RING_RATIO }];
+    let best = null, rule = null; for (const t of tiers) if ((best = search(t))) { rule = t; break; }
+    const { pitch, d, off } = best || { pitch: 1.35, d: 22, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? mx; cy = best?.cy ?? my;
     const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
-    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null };
+    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null, rule };
     return this.spotFit.spec;
   },
 
@@ -217,6 +250,8 @@ export const view = {
     if (this.arrow?.sc !== sc) this.arrow = { sc, lines: [{ a: { x: m.x + dx * .6, y: m.y + dy * .6 }, b: { x: m.x + dx * 3.2, y: m.y + dy * 3.2 }, color: '#ffffff' }] };
     return this.arrow.lines;
   },
+  // Run-to rounds with a friend on the ball where staying put is one of the choices (not the shot rounds' "watch").
+  stayOffered() { const sc = this.sc; return sc?.kind === 'support' && !!sc.even && !!sc.spots?.some(sp => sp.id === 'stay'); },
   updateHud() {
     const hud = this.hud, s = this.sim;
     let prompt = '';
@@ -226,7 +261,7 @@ export const view = {
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
         this.step === 'turn' ? (this.peeked ? 'Tap the arrow for your turn' : 'Ball coming! Drag to peek, then tap a turn arrow') :
         this.step === 'spot' && this.sc?.kind === 'lead' ? (this.lookUp ? 'Tap where to pass' : 'Tap 👀 to look up') :
-        this.step === 'spot' ? (this.lookUp ? 'Tap where to run' : 'Watch the ball… tap 👀 to look up') :
+        this.step === 'spot' ? (this.lookUp ? (this.stayOffered() ? 'Tap where to run, or stay' : 'Tap where to run') : 'Watch the ball… tap 👀 to look up') :
         this.pendingDir ? 'Small touches or big push?' :
         this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Drag to look for a friend') :
         this.step === 'dribble' ? 'Tap an arrow' :
@@ -250,9 +285,12 @@ export const view = {
     for (const m of MATES) ui.glow[m] = deciding && this.step === 'pass' && this.seen.has(m) ? .8 : 0;
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
-    ui.spotScale = ui.spots !== NONE && this.sc.run ? this.spotFit?.scales || null : null; // (see spotView)
+    ui.spotScale = ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView)
+    // Staying is one of the choices: a badge floats over his head (and his ring stays under his feet). Tapping either picks it.
+    const h = this.sim.a('hero'), st = ui.spots !== NONE && this.stayOffered() && h;
+    if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
-    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero);
+    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

@@ -41,6 +41,13 @@ const glowTex = canvasTex(128, 128, g => {
   r.addColorStop(0, 'rgba(255,230,120,1)'); r.addColorStop(.55, 'rgba(255,210,63,.55)'); r.addColorStop(1, 'rgba(255,210,63,0)');
   g.fillStyle = r; g.fillRect(0, 0, 128, 128);
 });
+// The "stay here" badge over the child's player (v60): a dark disc with a white rim and a raised hand (stay), and a
+// short tail pointing down at him. Not gold, so it never looks like a ring to run to.
+const stayTex = canvasTex(128, 156, g => {
+  g.beginPath(); g.arc(64, 62, 52, Math.PI * .72, Math.PI * .28); g.lineTo(64, 150); g.closePath();
+  g.fillStyle = '#2b2140'; g.fill(); g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
+  g.font = '62px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✋', 64, 66);
+});
 const IDS = ['hero', 'm1', 'm2', 'o1', 'o2', 'o3']; // the sim's player ids: three of ours, three of theirs
 
 // Frees what one player's body owns: its shapes, its materials, its bones' texture and the two painted textures
@@ -377,7 +384,9 @@ export class World {
     this.ballGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.ballGlow.visible = false; this.scene.add(this.ballGlow);
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
-    this.spotPool = Array.from({ length: 4 }, () => {
+    this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+    this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
+    this.spotPool = Array.from({ length: 6 }, () => {
       const g = new THREE.Group();
       const disc = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
       const ring = new THREE.Mesh(new THREE.RingGeometry(.55, .75, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false, toneMapped: false }));
@@ -497,6 +506,7 @@ export class World {
     }
     const h = sim.a('hero');
     this.heroRing.visible = !!ui.heroRing && !!h; if (h) this.heroRing.position.set(h.x, h.y, .02);
+    this.heroRing.material.color.setHex(ui.heroRingRed ? 0xe5484d : 0xffd23f); // red: "staying here was the wrong choice" (game/rounds.js feedback)
     for (let i = 0; i < this.arrowList.length; i++) {
       const k = this.arrowList[i][0], m = this.arrowList[i][1], s = ui.arrows?.[k] || 0; m.visible = !!s && !!h;
       if (m.visible) { m.position.set(h.x, h.y, .03); m.material.opacity = s >= 1 ? .92 + .08 * Math.sin(time * 5) : s * .9; }
@@ -526,6 +536,8 @@ export class World {
       const g = this.spotPool[i], sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) continue;
       g.position.set(sp.x, sp.y, .035); g.scale.setScalar((ui.spotScale?.[i] || 1) * (1 + .1 * Math.sin(time * 5 + i))); // (farther rings drawn bigger: game/view.js spotView)
     }
+    const st = ui.stayAt; this.stayBadge.visible = !!st;
+    if (st) { const k = 1 + .04 * Math.sin(time * 5); this.stayBadge.position.set(st.x, st.y, st.z); this.stayBadge.scale.set(.82 * k, 1 * k, 1); } // (a softer pulse than the rings)
     this.setLines(ui.lines);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
     const b = sim.ball, bp = this.ballPrev;

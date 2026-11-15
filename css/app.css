@@ -344,16 +344,41 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessons .tile.def::after{content:"defense";position:absolute;top:4px;right:6px;font-size:9px;font-weight:700;color:#4a6fb0;text-transform:uppercase}
 #lessons .tile.on{background:var(--gold);box-shadow:0 0 0 3px #fff,0 0 0 5px var(--gold-d),0 4px 0 var(--gold-e)}
 #lessons .tile.locked{opacity:.5;cursor:default}
+#lessons .tile.locked.def{background:#d3e2ff;opacity:.62} /* still blue when locked, so a defending lesson is recognisable */
 #lessons .tile.new::before{content:"new";position:absolute;top:4px;left:6px;font-size:9px;font-weight:700;color:var(--green-e);text-transform:uppercase}
 #lessons .tile.train{width:100%;flex-direction:row;gap:8px;min-height:44px;margin-bottom:2px}
-/* A phone held sideways: two short chapters (two lessons each) share a row, so all five chapters fit on one screen. */
+/* A phone held sideways: one row per chapter still, so the tiles lie flat: the picture with the stars under it on the
+   left, the name beside them (up to three short lines). The title is smaller, and the sheet uses the height the title
+   gave back. Every tile stays at least 48 px tall. The "defense" word gives way to the blue tile alone; "new" sits
+   on the tile's top edge. */
 @media (max-height:520px){
-  #lessons{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:6px;align-content:start}
-  #lessons>*{grid-column:1/-1}
-  #lessons>.chap.half{grid-column:auto}
-  #lessons .chap.half .row{grid-template-columns:repeat(2,1fr)}
-  #lessons{row-gap:3px;padding-bottom:2px}
-  #lessons .tile.train{min-height:26px;margin-bottom:0;padding:2px 4px}
+  .sheet:has(#lessons){padding:6px 14px 8px}
+  .sheet:has(#lessons) h2{font-size:19px!important;margin:0 0 2px!important}
+  .sheet:has(#lessons) h2{line-height:44px}
+  .sheet:has(#lessons) #sheetClose{top:6px;padding:0 18px;min-height:44px;font-size:15px}
+  #lessons{max-height:calc(100dvh - 54px);gap:4px;padding:2px 3px 3px}
+  #lessons .chap{grid-template-columns:72px 1fr;gap:6px}
+  #lessons .cn{font-size:11px}
+  #lessons .row{gap:6px}
+  #lessons .tile{display:grid;grid-template:"e k" auto "s k" auto / auto 1fr;align-content:center;column-gap:6px;row-gap:1px;height:48px;min-height:0;padding:2px 6px 2px 5px;text-align:left}
+  #lessons .tile .e{grid-area:e;font-size:20px;line-height:1;justify-self:center;align-self:end}
+  #lessons .tile .st{grid-area:s;font-size:8px;letter-spacing:0;min-height:9px;line-height:1;align-self:start}
+  #lessons .tile .k{grid-area:k;font-size:11px;line-height:1.08;align-self:center}
+  #lessons .tile.def::after{content:none}
+  #lessons .tile.new::before{top:3px;right:4px;left:auto;padding:0 4px;border-radius:6px;background:var(--green);color:#fff;font-size:8px;line-height:12px}
+  /* Today's training sits up in the title row (between the title and Done), so the five rows still fit. */
+  #lessons .tile.train{position:absolute;top:6px;left:50%;transform:translateX(-50%);width:auto;min-width:min(300px,44%);display:flex;flex-direction:row;align-items:center;justify-content:center;gap:8px;height:44px;min-height:44px;margin:0;padding:1px 12px}
+  #lessons .tile.train:active{transform:translateX(-50%) translateY(2px)}
+  .sheet:has(#lessons .train) h2{text-align:left;padding-left:4px}
+  #lessons .tile.train .k{font-size:14px!important}
+  #lessons .tile.train :is(.e,.k,.st){align-self:center}
+  #lessons .tile.train .st{font-size:11px!important;white-space:nowrap}
+}
+@media (max-height:520px) and (max-width:700px){
+  #lessons .chap{grid-template-columns:60px 1fr}
+  #lessons .cn{font-size:10.5px}
+  #lessons .cn b{display:grid;margin:0 0 2px}
+  #lessons .tile .k{font-size:10.5px}
 }
 #lessons .tile.train .k{font-size:15px}
 #lessons .tile.train .st{font-size:12px;color:var(--ink-soft);letter-spacing:0}
@@ -464,8 +489,15 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* ---------- small screens ---------- */
 /* A phone held upright: ask to turn it. */
 #rotate{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:var(--peach);z-index:70;font-weight:700;font-size:22px}
-#rotate div{font-size:64px;animation:turn 1.8s ease-in-out infinite}
-@keyframes turn{0%,20%{rotate:0deg}60%,100%{rotate:-90deg}}
+/* One instruction, in one rhythm: the phone fades in upright, turns a quarter turn on its own middle while the arrow
+   beside it sweeps the same way (a half turn, on its own middle), holds sideways for a beat, then both fade out and
+   come back upright unseen: the phone never turns back. Each sits in its own fixed square, so nothing moves the other. */
+#rotate .turn{display:flex;align-items:center;gap:14px;font-size:64px;line-height:1}
+#rotate .turn span{display:grid;place-items:center;width:1.25em;height:1.25em;transform-origin:50% 50%}
+#rotate .phone{animation:phoneTurn 2.6s ease-in-out infinite}
+#rotate .arrow{font-size:.8em;width:1.1em;height:1.1em;color:var(--ink);animation:arrowTurn 2.6s ease-in-out infinite}
+@keyframes phoneTurn{0%{rotate:0deg;opacity:0}8%,22%{rotate:0deg;opacity:1}55%,82%{rotate:90deg;opacity:1}94%{rotate:90deg;opacity:0}95%,100%{rotate:0deg;opacity:0}}
+@keyframes arrowTurn{0%{rotate:0deg;opacity:0}8%,22%{rotate:0deg;opacity:1}55%,82%{rotate:180deg;opacity:1}94%{rotate:180deg;opacity:0}95%,100%{rotate:0deg;opacity:0}}
 @media (orientation:portrait) and (max-width:900px){#rotate{display:flex}}
 /* Short screens (a phone held sideways): tighter cards, so the buttons always show without scrolling. */
 @media (max-height:500px){
@@ -500,4 +532,5 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 @media (prefers-reduced-motion:reduce){
   .btn-xl,.btn-xl::after,.vs,.brand .logo,.shirts .main,.cuppath .now,#banner.goal::before,.sticker.trophy::before,#dots span.now{animation:none}
   #flash.go{animation:none}
+  #rotate .turn span{animation:none}
 }

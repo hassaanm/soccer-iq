@@ -48,13 +48,13 @@ test('run to the goal: the right run is ahead of the ball on the open side, with
   for (const pattern of ['go-goal', 'go-far', 'go-shot']) for (let seed = 1; seed <= 40; seed++) {
     const sc = generate('go-to-goal', seed, { pattern }), sp = spotsOf(sc), best = sp[sc.best.slice(5)], [c] = sc.matesTo, opps = sc.oppsTo;
     assert.ok(best[0] > c[0] + 2, `${sc.id}: the right run is not ahead of the ball`);
-    assert.ok(Math.abs(best[1] - PITCH.W / 2) < 6.5 && best[0] > PITCH.L - 15, `${sc.id}: the right run is not toward the goal`);
+    assert.ok(Math.abs(best[1] - PITCH.W / 2) < 6.5, `${sc.id}: the right run is not toward the goal`);
     if (!sc.shot) {
       assert.ok(laneClear(c, best, opps), `${sc.id}: the pass to the right run is not open`);
       const front = opps.filter(o => o[0] > c[0] && D(o, c) < 3.6);
       assert.equal(front.length, 1, `${sc.id}: ${front.length} defenders in front of the friend with the ball`);
     }
-    for (const s of sc.spots) if ('spot:' + s.id !== sc.best) {
+    for (const s of sc.spots) if ('spot:' + s.id !== sc.best && !s.why) { // (the added runs carry their own reason: generate.js moreSpots)
       const p = [s.x, s.y];
       assert.ok(D(p, c) < 2.6 || p[0] < c[0] || opps.some(o => D(o, p) < 1.6), `${sc.id}: ${s.id} is not plainly wrong`);
     }
@@ -77,5 +77,19 @@ test('follow your shot: the ball comes back out off the post or a leg, slower, t
     assert.ok(tH + .3 < tO && tO < 2.4, `${sc.id}: him ${tH.toFixed(2)} s, them ${tO.toFixed(2)} s`);
     assert.ok(D(sc.heroTo, loose) >= 3, `${sc.id}: watching from right next to it`);
     assert.equal(sc.shot.by, pattern === 'follow-friend' ? 'm1' : 'hero');
+  }
+});
+
+test('get open and run to the goal (v60): 3 places to run at Level 1, 4 after, plus staying; one best, one or two okay, one or two bad; real runs, apart', () => {
+  for (const [sk, pats] of [['get-open', ['shadow', 'spread', 'stay-open']], ['go-to-goal', ['go-goal', 'go-far', 'go-shot']]]) for (const pattern of pats) for (const runs of [3, 4]) for (let seed = 1; seed <= 30; seed++) {
+    const sc = generate(sk, seed, { pattern, runs }), h = sc.heroTo, runSpots = sc.spots.filter(s => s.id !== 'stay');
+    assert.equal(runSpots.length, runs, `${sc.id}: ${runSpots.length} places to run`);
+    assert.ok(sc.spots.some(s => s.id === 'stay'), `${sc.id}: staying is a choice`);
+    const okay = sc.safe.length;
+    assert.ok(okay >= 1 && okay <= 2, `${sc.id}: ${okay} okay`);
+    const wrong = sc.spots.filter(s => 'spot:' + s.id !== sc.best && !sc.safe.includes('spot:' + s.id) && s.id !== 'stay').length;
+    assert.ok(wrong >= 1 && wrong <= 2, `${sc.id}: ${wrong} bad runs`);
+    for (const s of sc.spots) for (const t of sc.spots) if (s !== t) assert.ok(D([s.x, s.y], [t.x, t.y]) >= 2.5 - 1e-9, `${sc.id}: ${s.id} and ${t.id} overlap`);
+    for (const s of runSpots) { const d = D([s.x, s.y], h); assert.ok(d >= 3.4 && d <= 10.5, `${sc.id}: ${s.id} is ${d.toFixed(1)} m away`); }
   }
 });

@@ -108,7 +108,8 @@ export const input = {
   },
   targets() {
     const h = this.sim.a('hero');
-    if (this.step === 'spot') return this.sc.spots.map(sp => ({ opt: 'spot:' + sp.id, x: sp.x, y: sp.y, z: 0 }));
+    if (this.step === 'spot') return [...this.sc.spots.map(sp => ({ opt: 'spot:' + sp.id, x: sp.x, y: sp.y, z: 0 })),
+      ...(this.stayOffered() ? [{ opt: 'spot:stay', x: h.x, y: h.y, z: 2.15 }] : [])]; // the "stay here" badge over his head (view.js)
     if (this.step === 'pass') return Object.entries(MATE).filter(([, id]) => this.seen.has(id)).map(([opt, id]) => ({ opt, ...this.sim.a(id), z: .8 }));
     if (this.step === 'dribble') return Object.keys(DRIBBLE_DIRS).map(d => { const e = dribbleEnd(h, d, L, W); return { opt: 'drib:' + d, x: lerp(h.x, e.x, .8), y: lerp(h.y, e.y, .8), z: 0 }; });
     if (this.step === 'turn') return this.turnArcs().flatMap(t => [t.a0 + (t.a1 - t.a0) * .5, t.a1].map(a => ({ opt: 'turn:' + t.id, x: h.x + Math.cos(a) * 1.35, y: h.y + Math.sin(a) * 1.35, z: 0 })));

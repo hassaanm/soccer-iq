@@ -2,7 +2,7 @@
 // (on the ball, defending, getting open, receiving, a 1v1) is built from the live positions.
 import { pickRounds } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
-import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch } from '../generate.js';
+import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
 import { L, W, wrap } from './shared.js';
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
@@ -165,7 +165,7 @@ export const live = {
     // With "Pass and go!" the run goes past his defender when it can; with "Run to the goal too!", toward the goal, ahead of the ball.
     const room = p => Math.min(...O.map(o => Math.hypot(o[0] - p[0], o[1] - p[1]))), past = this.has('give-and-go'), goal = this.has('go-to-goal');
     let space = null, top = -1e9;
-    for (let a = 0; a < 16; a++) for (const d of [3.5, 5]) {
+    for (let a = 0; a < 16; a++) for (const d of [4, 5.5, 7]) {
       const p = [h.x + Math.cos(a * Math.PI / 8) * d, h.y + Math.sin(a * Math.PI / 8) * d];
       if (!inPitch(p, 1.2) || p[0] < c.x - 1 || Math.hypot(p[0] - c.x, p[1] - c.y) < 3.5 || !laneClear(C, p, O) || room(p) < 2.4) continue;
       const score = p[0] - Math.hypot(p[0] - h.x, p[1] - h.y) * .3 + (past && p[0] > press.x + 1.2 ? 4 : 0) + (goal && p[0] > c.x + 1.5 && Math.abs(p[1] - W / 2) < 6 ? 3 : 0);
@@ -176,11 +176,16 @@ export const live = {
     const spots = [];
     if (space) spots.push({ id: 'space', x: space[0], y: space[1] });
     if (stayOpen || stayBlocked) spots.push({ id: 'stay', x: h.x, y: h.y });
-    spots.push({ id: 'ball', x: crowd[0], y: crowd[1], crowd: true });
-    if (spots.length < 2 || !(space || stayOpen) || spots.some((p, i) => spots.some((q, j) => j > i && Math.hypot(p.x - q.x, p.y - q.y) < 2.2))) return false;
+    if (Math.hypot(crowd[0] - h.x, crowd[1] - h.y) >= 3.4) spots.push({ id: 'ball', x: crowd[0], y: crowd[1], crowd: true }); // (a run, not a ring under his feet)
+    if (spots.length < 2 || !(space || stayOpen) || spots.some((p, i) => spots.some((q, j) => j > i && Math.hypot(p.x - q.x, p.y - q.y) < RING_GAP))) return false;
+    // Three places to run in all (v60): the other ones only okay (the pass reaches him, but…) or hidden behind a defender.
+    const other = s.team('us').find(a => a !== h && a !== c), runs = spots.filter(p => p.id !== 'stay').length;
+    const extra = moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, [other.x, other.y]], have: spots.map(p => [p.x, p.y]), okay: 1, either: Math.max(0, 2 - runs) })
+      || moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, [other.x, other.y]], have: spots.map(p => [p.x, p.y]), either: 1 }) || [];
+    for (const e of extra) spots.push({ id: e.id, x: e.p[0], y: e.p[1], why: e.why });
     const best = space ? 'space' : 'stay';
-    this.sc = { kind: 'support', live: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
-      best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : goal && space && space[0] > c.x + 1.5 ? 'Run to the goal, so your friend can pass to you!' : 'Move to open space so your friend can pass to you!' };
+    this.sc = { kind: 'support', live: true, even: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
+      best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], safe: extra.filter(e => OKAY[e.why]).map(e => 'spot:' + e.id), cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : goal && space && space[0] > c.x + 1.5 ? 'Run to the goal, so your friend can pass to you!' : 'Move to open space so your friend can pass to you!' };
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
     s.stopAll(); this.yaw = this.frameYaw(this.sc, h, c); this.faceYaw(h);
     await this.delay(.35);
