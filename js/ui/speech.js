@@ -1,6 +1,6 @@
 // The coach's voice: recorded clips first, the device's speech voice as the fallback.
 import { P } from './store.js';
-import { voiceVolume, duck, loadVoice, canSpeak, speakClips, stopVoice } from '../sound.js';
+import { voiceVolume, loadVoice, canSpeak, speakClips, stopVoice } from '../sound.js';
 import { pieces, clipKey } from '../voice.js';
 
 const synth = 'speechSynthesis' in window ? speechSynthesis : null;
@@ -25,7 +25,7 @@ export const SAMPLE = 'Nice pass! You looked up!';
 export function say(text) {
   if (!P.settings.voice || P.settings.muted) return null;
   const line = text.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '');
-  // Recorded clips first: they play through the speakers like the game sounds (loud in the car too).
+  // Recorded clips first: they play through an audio player like the game sounds (loud in the car too).
   // If a clip turns out not to load (no signal), the device's voice says the line instead.
   const keys = pieces(line).map(clipKey);
   if (P.settings.recorded !== false && canSpeak(keys)) { synth?.cancel(); return speakClips(keys).then(ok => (ok === false ? speak(line) : ok)); }
@@ -37,11 +37,8 @@ function speak(line) {
   stopVoice();
   const u = new SpeechSynthesisUtterance(line);
   if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12; u.volume = voiceVolume();
-  // The music dips while he talks, so the words stand out (in the car the voice can come through quieter).
-  u.onstart = () => duck(true);
-  // iOS sometimes never fires onend, so a timeout (about the time the line takes) finishes it too. Every way out
-  // brings the music back up.
-  const done = new Promise(res => { const fin = () => { duck(false); res(); }; u.onend = u.onerror = fin; setTimeout(fin, 1500 + line.length * 90); });
+  // iOS sometimes never fires onend, so a timeout (about the time the line takes) finishes it too.
+  const done = new Promise(res => { u.onend = u.onerror = res; setTimeout(res, 1500 + line.length * 90); });
   synth.cancel(); synth.speak(u);
   return done;
 }
@@ -50,5 +47,8 @@ export function hush() { stopVoice(); synth?.cancel(); }
 // iOS only lets the speech voice talk after a tap has used it once, so a tap that starts a game says a silent line.
 export function unlockSpeech() {
   if (!synth || !P.settings.voice) return;
+  // With the recorded voice ready, the speech voice is not needed. Leaving it out keeps the device's speech (which
+  // a car may play on its own channel, over the music) out of the sound altogether.
+  if (P.settings.recorded !== false && canSpeak([])) return;
   const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u);
 }

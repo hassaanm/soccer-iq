@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Sound lab</title>
+<!-- A developer page for a phone in a parked car: each row plays about 10 seconds of sound one way, and logs what the
+  audio players and the audio session did. Rows 1-5 use the game's own sound code (js/sound.js); rows 6-8 carry
+  their own small copy of the old live Web Audio path, for comparison only. It is linked from nowhere in the game. -->
+<style>
+  :root { --bg: #f4f6f8; --card: #fff; --ink: #111; --mute: #5b6470; --go: #18a34a; --line: #d9dee4; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1216; --card: #1a1f26; --ink: #eef1f4; --mute: #9aa4af; --line: #2c333c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 17px/1.4 -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  .how { margin: 0 0 6px; font-size: 18px; }
+  .info { color: var(--mute); font-size: 14px; margin: 0 0 14px; word-break: break-word; }
+  .row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 0 0 12px; }
+  .row h2 { font-size: 19px; margin: 0 0 2px; }
+  .row .sub { color: var(--mute); font-size: 14px; margin: 0 0 10px; }
+  .row.old h2::after { content: ' (old way, comparison)'; color: var(--mute); font-weight: 400; font-size: 14px; }
+  button { font: inherit; border: 0; border-radius: 12px; cursor: pointer; }
+  .play { width: 100%; min-height: 64px; background: var(--go); color: #fff; font-size: 21px; font-weight: 700; }
+  .play:disabled { opacity: .45; }
+  .verdict { display: flex; gap: 8px; margin-top: 10px; }
+  .verdict button { flex: 1; min-height: 52px; background: var(--line); color: var(--ink); font-weight: 600; }
+  .verdict button.on { background: #2563eb; color: #fff; }
+  .log { font: 12px/1.35 ui-monospace, Menlo, monospace; color: var(--mute); white-space: pre-wrap; margin-top: 8px; max-height: 9em; overflow: auto; }
+  #copy { width: 100%; min-height: 60px; background: #2563eb; color: #fff; font-size: 20px; font-weight: 700; margin-top: 4px; }
+  #summary { font: 12px/1.35 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+</style>
+</head>
+<body>
+<h1>Sound lab</h1>
+<p class="how"><b>Parked, with CarPlay on and the volume up:</b> tap each green button from top to bottom and listen for about 10 seconds. Then tap <b>Clear</b>, <b>Choppy</b> or <b>Silent</b> for that row. At the end, tap <b>Copy results</b> and paste them into a message to us.</p>
+<p class="info" id="info"></p>
+<div id="rows"></div>
+<button id="copy">Copy results</button>
+<pre id="summary"></pre>
+<script type="module">
+import { SR, wav, renderEffect, renderTune, decode, trim, joinLine, loadVoice, unlock, sfx, setMusicOn, setSoundOn, setMuted, setVolumes, speakClips, pauseAll, audioPlayers } from '../js/sound.js';
+
+const $ = s => document.querySelector(s), sleep = ms => new Promise(r => setTimeout(r, ms));
+const session = () => navigator.audioSession ? `${navigator.audioSession.type}/${navigator.audioSession.state}` : 'no audioSession API';
+const info = () => { $('#info').textContent = `Audio session: ${session()} · home-screen app: ${!!navigator.standalone} · ${navigator.userAgent.match(/OS [\d_]+/)?.[0]?.replace(/_/g, '.') || navigator.userAgent}`; };
+info();
+// As the game does on its first tap: media playback, so the silent switch doesn't mute it.
+const setSession = () => { try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ } };
+
+// Voice lines made of recorded clips (the same files the game uses).
+const BASE = '../audio/voice/';
+loadVoice(BASE);
+let index = null;
+const getIndex = async () => (index ||= (await (await fetch(BASE + 'index.json')).json()).clips);
+const LINES = [['nice pass you looked up'], ['name:messi', 'you kept it even better you won it and their team was behind you go forward fast'], ['you got the ball but a defender was close even better find space away from him']];
+const lineKeys = async () => { const ix = await getIndex(); return LINES.map(l => l.filter(k => ix[k])).filter(l => l.length); };
+const clipData = async (key, dec) => dec(await (await fetch(BASE + (await getIndex())[key])).arrayBuffer());
+
+// Logs every event an audio player sends: 'waiting' and 'stalled' mean it ran out of sound to play.
+function watch(el, name, L) {
+  for (const ev of ['playing', 'pause', 'ended', 'waiting', 'stalled', 'error']) el.addEventListener(ev, () => L(`${name} ${ev}${ev === 'error' ? ' ' + (el.error?.code || '') : ''}`));
+  return el;
+}
+const fresh = () => { const el = new Audio(wav(new Float32Array(SR / 10))); el.play().catch(() => {}); return el; }; // started inside the tap
+function playOn(el, url, L, name) {
+  return new Promise(res => {
+    const t = setTimeout(() => { L(`${name} gave up waiting for the end`); res(); }, 9000);
+    el.onended = () => { clearTimeout(t); res(); };
+    el.src = url; el.play().then(() => L(`${name} play() ok`), e => { L(`${name} play() failed: ${e.name}`); clearTimeout(t); res(); });
+  });
+}
+const until = (t0, ms) => performance.now() - t0 < ms;
+
+// ---------- the old live Web Audio path (comparison only) ----------
+function oldCtx(L) {
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) throw new Error('no Web Audio');
+  let ctx; try { ctx = new AC({ latencyHint: 'playback' }); } catch { ctx = new AC(); }
+  ctx.onstatechange = () => L(`web audio ${ctx.state}`);
+  L(`web audio created: ${ctx.sampleRate} Hz, state ${ctx.state}, base latency ${Math.round((ctx.baseLatency || 0) * 1000)} ms`);
+  ctx.resume?.().catch(() => {});
+  const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = nb.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const noise = (dur, { type = 'bandpass', f0 = 1000, f1 = f0, q = 1, vol = .2, attack = .005 } = {}) => {
+    const t = ctx.currentTime, src = ctx.createBufferSource(), flt = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = nb; flt.type = type; flt.Q.value = q; flt.frequency.setValueAtTime(f0, t); flt.frequency.exponentialRampToValueAtTime(Math.max(40, f1), t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(flt).connect(g).connect(ctx.destination); src.start(t, Math.random()); src.stop(t + dur + .05);
+  };
+  const tone = (freq, dur, { type = 'sine', vol = .15, f1 = freq } = {}) => {
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .005); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(ctx.destination); o.start(t); o.stop(t + dur + .05);
+  };
+  return {
+    ctx,
+    kick: () => { tone(110, .14, { vol: .5, f1: 55 }); noise(.06, { type: 'lowpass', f0: 2500, vol: .25 }); },
+    step: () => noise(.04, { type: 'highpass', f0: 1600, vol: .06 }),
+    click: () => tone(720, .07, { vol: .16, f1: 520 }),
+    close: () => ctx.close().catch(() => {}),
+  };
+}
+// Effects as the old game played them while players run: footsteps several times a second, a kick now and then.
+async function oldEffects(w, ms) {
+  const t0 = performance.now(); let n = 0;
+  while (until(t0, ms)) { w.step(); if (n % 3 === 0) w.kick(); if (n % 7 === 0) w.click(); n++; await sleep(240); }
+}
+
+// ---------- the rows ----------
+const ROWS = [
+  { id: 'voice', title: '1. Voice line through an audio player', sub: 'Three coach lines, one audio player, nothing else playing.',
+    async run(L) {
+      const el = watch(fresh(), 'voice', L), t0 = performance.now();
+      const lines = await Promise.all((await lineKeys()).map(async l => wav(joinLine(await Promise.all(l.map(async k => trim(await clipData(k, decode))))))));
+      for (let i = 0; until(t0, 7500) && i < 6; i++) { await playOn(el, lines[i % lines.length], L, 'line ' + (i + 1)); await sleep(700); }
+      el.pause();
+    } },
+  { id: 'fx', title: '2. Effects through audio players', sub: 'Kicks, taps, clicks and cheers, each on its own player, about two a second.',
+    async run(L) {
+      const names = ['kick', 'tap', 'click', 'ping', 'up', 'yay', 'net'], els = Object.fromEntries(names.map(n => [n, watch(fresh(), n, L)])), t0 = performance.now();
+      for (const n of names) { els[n].src = wav(await renderEffect(n)); els[n].load(); }
+      L('effects recorded');
+      for (let i = 0; until(t0, 10000); i++) { const el = els[names[i % names.length]]; try { el.currentTime = 0; } catch { /* not loaded */ } el.play().catch(e => L('play() failed: ' + e.name)); await sleep(500); }
+      names.forEach(n => els[n].pause());
+    } },
+  { id: 'music', title: '3. Music loop through an audio player', sub: 'The game tune, a little louder than in the game so it is easy to hear.',
+    async run(L) {
+      const el = watch(fresh(), 'music', L), t0 = performance.now(), t = await renderTune();
+      el.loop = true; el.src = wav(t.map(x => x * .15)); await el.play().then(() => L('music play() ok'), e => L('music play() failed: ' + e.name));
+      while (until(t0, 10000)) await sleep(200);
+      el.pause();
+    } },
+  { id: 'game', title: '4. All three together, as the game does now', sub: 'The game\'s own sound code: music, effects and voice lines at once.', game: true, music: true },
+  { id: 'hush', title: '5. Voice and effects with the music off', sub: 'The game\'s own sound code with the music switched off (a very quiet stream keeps the car\'s audio open).', game: true, music: false },
+  { id: 'oldfx', old: true, title: '6. Effects through live Web Audio', sub: 'Footsteps and kicks played live, as the game did up to v60.',
+    async run(L) { const w = oldCtx(L); await oldEffects(w, 10000); await sleep(300); await w.close(); } },
+  { id: 'oldvoice', old: true, title: '7. Voice through live Web Audio', sub: 'The coach lines played live, as the game did before v44.',
+    async run(L) {
+      const w = oldCtx(L), t0 = performance.now(), dec = b => w.ctx.decodeAudioData(b).then(x => x.getChannelData(0));
+      const lines = await Promise.all((await lineKeys()).map(async l => joinLine(await Promise.all(l.map(async k => trim(await clipData(k, dec)))))));
+      L('lines decoded (at ' + w.ctx.sampleRate + ' Hz)');
+      for (let i = 0; until(t0, 7500) && i < 6; i++) {
+        const d = lines[i % lines.length], b = w.ctx.createBuffer(1, d.length, w.ctx.sampleRate); b.getChannelData(0).set(d);
+        const src = w.ctx.createBufferSource(); src.buffer = b; src.connect(w.ctx.destination);
+        await new Promise(r => { src.onended = r; src.start(); L('line ' + (i + 1) + ' started'); }); await sleep(700);
+      }
+      await w.close();
+    } },
+  { id: 'oldgame', old: true, title: '8. The old game (v60) all together', sub: 'Live Web Audio footsteps and kicks, with music and voice through audio players.',
+    async run(L) {
+      const music = watch(fresh(), 'music', L), voice = watch(fresh(), 'voice', L), w = oldCtx(L), t0 = performance.now();
+      const t = await renderTune(); music.loop = true; music.src = wav(t.map(x => x * .05)); music.play().catch(() => {});
+      const lines = await Promise.all((await lineKeys()).map(async l => wav(joinLine(await Promise.all(l.map(async k => trim(await clipData(k, decode))))))));
+      const talk = (async () => { for (let i = 0; until(t0, 7500); i++) { await playOn(voice, lines[i % lines.length], L, 'line ' + (i + 1)); await sleep(900); } })();
+      await oldEffects(w, 10000); await talk; music.pause(); voice.pause(); await w.close();
+    } },
+];
+// Rows 4 and 5: the game's sound code, driven the way a match drives it.
+async function runGame(row, L) {
+  setMuted(false); setSoundOn(true); setVolumes({ sfx: 1, music: 1, voice: 1 }); setMusicOn(row.music);
+  unlock(); // inside the tap, as in the game
+  const p = audioPlayers(); watch(p.bed, 'stream', L); watch(p.voice, 'voice', L);
+  const t0 = performance.now(), keys = await lineKeys();
+  const talk = (async () => { await sleep(1000); for (let i = 0; until(t0, 7500); i++) { L('line ' + (i + 1) + ' ' + (await speakClips(keys[i % keys.length]) === false ? 'could not load' : 'said')); await sleep(900); } })();
+  const fx = ['kick', 'tap', 'click', 'kick', 'up', 'ping', 'kick', 'yay'];
+  for (let i = 0; until(t0, 10000); i++) { sfx(fx[i % fx.length]); await sleep(450); }
+  await talk; pauseAll();
+}
+
+let busy = false;
+const results = {};
+for (const row of ROWS) {
+  const box = document.createElement('section'); box.className = 'row' + (row.old ? ' old' : '');
+  box.innerHTML = `<h2></h2><p class="sub"></p><button class="play">▶ Play</button><div class="verdict"><button>Clear</button><button>Choppy</button><button>Silent</button></div><div class="log"></div>`;
+  box.querySelector('h2').textContent = row.title; box.querySelector('.sub').textContent = row.sub;
+  const log = box.querySelector('.log'), btn = box.querySelector('.play');
+  results[row.id] = { title: row.title, verdict: '', log: [] };
+  box.querySelectorAll('.verdict button').forEach(b => b.onclick = () => {
+    box.querySelectorAll('.verdict button').forEach(x => x.classList.toggle('on', x === b)); results[row.id].verdict = b.textContent; summary();
+  });
+  btn.onclick = async () => {
+    if (busy) return; busy = true; document.querySelectorAll('.play').forEach(b => b.disabled = true); btn.textContent = 'Playing…';
+    setSession(); info();
+    const r = results[row.id], t0 = performance.now(); r.log = [];
+    const L = s => { r.log.push(`${((performance.now() - t0) / 1000).toFixed(1)}s ${s}`); log.textContent = r.log.join('\n'); log.scrollTop = 1e9; };
+    L('started, audio session ' + session());
+    try { await (row.game ? runGame(row, L) : row.run(L)); L('ended, audio session ' + session()); }
+    catch (e) { L('error: ' + (e?.message || e)); }
+    busy = false; document.querySelectorAll('.play').forEach(b => b.disabled = false); btn.textContent = '▶ Play again'; info(); summary();
+  };
+  $('#rows').append(box);
+}
+function summary() {
+  const lines = [`Sound lab results · ${$('#info').textContent}`];
+  for (const r of Object.values(results)) if (r.verdict || r.log.length) lines.push('', `${r.title}: ${r.verdict || '(no answer)'}`, ...r.log.slice(0, 40));
+  return ($('#summary').textContent = lines.join('\n'));
+}
+$('#copy').onclick = async () => {
+  const text = summary();
+  try { await navigator.clipboard.writeText(text); $('#copy').textContent = 'Copied! Paste it in a message'; }
+  catch { getSelection().selectAllChildren($('#summary')); $('#copy').textContent = 'Select the text below and copy it'; }
+};
+window.__lab = { ROWS, results, summary }; // for the browser checks
+</script>
+</body>
+</html>

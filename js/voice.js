@@ -1,6 +1,6 @@
 // Pre-recorded voice: every spoken line is cut into player names and the text between them, and each piece is
-// a short recorded clip (audio/voice/). Clips play through Web Audio like the game sounds, so they come out of
-// car speakers at media volume (CarPlay plays the built-in speech voice very quietly). scripts/voice-build.js
+// a short recorded clip (audio/voice/). Clips play through an audio player like the game sounds, so they come out
+// of car speakers at media volume (CarPlay plays the built-in speech voice very quietly). scripts/voice-build.js
 // records the clips; this module is shared by it and by the game.
 import { TEAMS, displayName } from './teams.js';
 
