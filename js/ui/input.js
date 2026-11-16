@@ -31,6 +31,9 @@ const BUTTONS = {
   '#stealBtn': () => game.stealTap(), '#skillBtn': () => game.skillTap(), '#touchSmall': () => game.touch('small'), '#touchBig': () => game.touch('big'),
   '#footIn': () => game.foot('in'), '#footLaces': () => game.foot('las'),
 };
-for (const [sel, act] of Object.entries(BUTTONS)) onPress($(sel), act);
+// (round 2) Play moves while he chooses: a friend he is passing to can run under a button. A press on the button right
+// over a friend's body, while he picks who to pass to, is a tap on that friend.
+const OVER = new Set(['#passBtn', '#dribBtn', '#shootBtn', '#lookBtn']);
+for (const [sel, act] of Object.entries(BUTTONS)) onPress($(sel), e => { if (OVER.has(sel) && game.tapPlayer?.(e.clientX, e.clientY)) return; act(); });
 // No long-press menu (copy, save image) while he plays.
 document.addEventListener('contextmenu', e => e.preventDefault());

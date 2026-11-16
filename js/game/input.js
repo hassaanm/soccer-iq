@@ -110,6 +110,12 @@ export const input = {
   // time again (game/window.js windowReal).
   choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; if (this.win) this.toStreak = opt === 'timeout' ? (this.toStreak || 0) + 1 : 0; f(opt); } },
   // Returns true when the tap picked a pass target or dribble arrow.
+  // A press on a button over a friend he is choosing to pass to (round 2): that friend, if his body is under it.
+  tapPlayer(x, y) {
+    if (!this.canAct || this.step !== 'pass') return false;
+    const hit = this.targets().some(t => { const a = this.world.project(t.x, t.y, 0), b = this.world.project(t.x, t.y, 1.6); return a && b && Math.abs(x - a[0]) < 26 && y < a[1] + 10 && y > b[1] - 10; });
+    return hit && this.tap(x, y);
+  },
   tap(x, y) {
     if (!this.canAct || !this.step) return false;
     // Players: near their body. Arrows: anywhere along the arrow.
