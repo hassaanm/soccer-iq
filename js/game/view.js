@@ -40,8 +40,9 @@ export const view = {
     const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
     // (v64) Play goes on while he chooses: the view takes in where he and the rings will be as the window ends too, so it
     // never has to move to keep them in (one fit for the whole window).
-    const end = win ? this.spotsEnd() : null;
-    if (win) { const e = this.windowEnd('hero'); pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
+    // (Only what moves a metre or more: the rest is in the picture already, and every extra point costs his size.)
+    const far = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) >= 1, end = win ? (this.spotsEnd() || []).filter((e, i) => far(e, sc.spots[i])) : null;
+    if (win) { const e = this.windowEnd('hero'); if (far(e, h)) pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
     // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
     // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
     // and one near it smaller (World: ui.spotScale), so the nearest ring is not the biggest thing on screen. And his own
@@ -55,7 +56,7 @@ export const view = {
     const goalAll = [], goalNear = [];
     if (even) {
       const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2);
-      for (const a of [c, ...near]) if (a && a.id !== 'hero') { pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]); if (win) { const e = this.windowEnd(a.id); pts.push([e.x, e.y, 0], [e.x, e.y, 1.5]); } }
+      for (const a of [c, ...near]) if (a && a.id !== 'hero') { pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]); if (win) { const e = this.windowEnd(a.id); if (far(e, a)) pts.push([e.x, e.y, 0], [e.x, e.y, 1.5]); } }
       if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
         const ny = Math.abs(h.y - gy0) < Math.abs(h.y - gy1) ? gy0 : gy1;

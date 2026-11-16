@@ -2,7 +2,7 @@
 // move as the choice opens; then play drops into slow motion and goes on, each player on his planned way, until he
 // chooses or the threat's reach gets to the ball (the time-out: outcomes.js timeoutGen). His player's own ring and the
 // threat's reach on the grass show how long he has (ui.reach, drawn by world.js).
-import { planWindow, pathAt, windowSeconds, kindOf, attackOptions, spotsNow, spotRef, GAME } from '../window.js';
+import { planWindow, pathAt, windowSeconds, kindOf, attackOptions, spotsNow } from '../window.js';
 import { L, W, facesBall } from './shared.js';
 import { clamp } from '../geom.js';
 
@@ -168,4 +168,3 @@ export const moving = {
     return out;
   },
 };
-export { GAME, spotRef };

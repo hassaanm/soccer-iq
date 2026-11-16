@@ -59,7 +59,7 @@ test('a tap or none: the play ends the same, with everyone in the same place; on
 test('a tap after the window, or a second tap, does nothing', async () => {
   // (v64: the first play with an offer, as which ones have one changes with how play goes on into the choice)
   let sc = null, opt = null;
-  for (const s of allScenarios('take-him-on')) { for (const o of ['drib:fl', 'drib:fr', 'drib:fwd']) if ((await play(s, o, () => false)).offers.length) { sc = s; opt = o; break; } if (sc) break; }
+  for (const s of [...allScenarios('take-him-on'), ...allScenarios('dribble-to-space')]) { for (const o of optionsFor(s).filter(o => /^(drib|push):/.test(o))) if ((await play(s, o, () => false)).offers.length) { sc = s; opt = o; break; } if (sc) break; }
   assert.ok(sc, 'some play offers a skill move');
   // two taps at once: one move, one name
   const twice = await play(sc, opt, g => { if (g.clock - g.sk.t0 > .3) { g.skillTap(); return true; } return false; });

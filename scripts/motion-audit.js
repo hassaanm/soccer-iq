@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from 'fs';
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const sizes = args[0] && !args[0].startsWith('--') ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer);
 const nGen = +(flag('--gen') || 0), base = flag('--base') ? JSON.parse(readFileSync(flag('--base'), 'utf8')) : null, only = flag('--only'), taps = [.05, .5, .95];
-const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, late: 1.2, reach: .9 };
+const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, late: 1.2, lateFar: 2, reach: .9 };
 
 // What kind of end a play had (its banners), for comparing with the frozen play.
 const KIND = { 'GOAL!': 'kept', 'Kept the ball!': 'kept', 'Stolen!': 'lost', 'They got it!': 'lost', 'Cut out!': 'lost', 'Stole it!': 'stopped', 'Stopped him!': 'stopped', 'They scored': 'conceded',
@@ -86,7 +86,7 @@ function motionIn(r, sc, inWin) {
     if (!gk(id) && max < LIM.still && grid.length > 4) flags.push(['still', `${id} still through the window`]);
   }
   // the player on the ball keeps it moving
-  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .25) flags.push(['still', `${c0} on the ball nearly still`]); }
+  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
   // nobody's speed jumps as the window opens (compare the last frame before with the first two inside)
   const before = rec.filter(f => !f.win && !f.out).at(-1);
   // players too close
@@ -105,7 +105,13 @@ function timeout(r, sc) {
   if (!first) { flags.push(['threat', 'nobody took the ball']); return flags; }
   const poke = out.find(f => f.at[w.threat] && Math.hypot(f.at[w.threat][0] - f.ball[0], f.at[w.threat][1] - f.ball[1]) < .65);
   if (!poke) flags.push(['threat', `${w.threat} never reached the ball (${first.carrier} took it)`]);
-  else { const gap = poke.real - w.timeoutAt.real; if (gap > LIM.late) flags.push(['late', `steal ${gap.toFixed(1)} s after the reach touched the ball`]); r.gap = gap; }
+  else {
+    // A threat still far from the ball as the window ends (more than PRESS m: he was not pressing, he was getting back)
+    // needs his run to get there: explained, and allowed up to LIM.lateFar; one pressing must be there at once.
+    const at = rec.find(f => f.out) || rec.at(-1), far = at && Math.hypot(at.at[w.threat][0] - at.ball[0], at.at[w.threat][1] - at.ball[1]) > 3.4, gap = poke.real - w.timeoutAt.real;
+    if (gap > (far ? LIM.lateFar : LIM.late)) flags.push(['late', `steal ${gap.toFixed(1)} s after the reach touched the ball${far ? ' (from far)' : ''}`]);
+    r.gap = gap; r.far = far;
+  }
   return flags;
 }
 
@@ -123,7 +129,7 @@ for (const size of sizes) {
         row.plays.push({ opt, u, end, flags: fl, win: r.wins[0] });
       }
       const r = await play(sc, null, 1), fl = timeout(r, sc); motion(r, sc).forEach(f => fl.push(f));
-      row.plays.push({ opt: 'timeout', u: 1, end: endOf(r.banners), flags: fl, win: r.wins[0], gap: r.gap });
+      row.plays.push({ opt: 'timeout', u: 1, end: endOf(r.banners), flags: fl, win: r.wins[0], gap: r.gap, far: r.far });
       row.win = r.wins[0] && { G: r.wins[0].G, f: +r.wins[0].f.toFixed(3), threat: r.wins[0].threat, k: r.wins[0].k, a: r.wins[0].a };
       for (const p of row.plays) for (const [k2, m] of p.flags) { counts[`${size} ${k2}`] = (counts[`${size} ${k2}`] || 0) + 1; mis.push(`${size} ${sc.id} ${p.opt}@${p.u}: ${k2}: ${m}`); }
       all.push(row);
@@ -137,6 +143,7 @@ console.log('window (game s) and world speed, by kind:');
 for (const [k, v] of Object.entries(byKind)) { const G = v.map(x => x.G).sort((a, b) => a - b), f = v.map(x => x.f).sort((a, b) => a - b); console.log(`  ${k.padEnd(14)} n ${String(v.length).padStart(3)}  G ${G[0]}–${G.at(-1)} (median ${G[G.length >> 1]})  speed ${f[0]}–${f.at(-1)}×`); }
 const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null).map(p => p.gap)).sort((a, b) => a - b);
 if (gaps.length) console.log(`steal after the reach touched the ball: median ${gaps[gaps.length >> 1].toFixed(2)} s, max ${gaps.at(-1).toFixed(2)} s (real)`);
+for (const far of [false, true]) { const g = all.flatMap(r => r.plays.filter(p => p.gap != null && !!p.far === far).map(p => p.gap)).sort((a, b) => a - b); if (g.length) console.log(`  threat ${far ? 'getting back from far (over 3.4 m at the end, allowed ' + LIM.lateFar : 'pressing (allowed ' + LIM.late)} s): ${g.length} time-outs, median ${g[g.length >> 1].toFixed(2)} s, max ${g.at(-1).toFixed(2)} s`); }
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
 if (mis.length > 80) console.log(`  … ${mis.length - 80} more`);

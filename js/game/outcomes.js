@@ -101,7 +101,7 @@ export const outcomes = {
     for (const p of s.agents.values()) if (p.id !== id && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
-    const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, kind, [...s.agents.values()].filter(o => o.team !== a.team));
+    const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, x > L - .5 || x < .5 ? 'shot' : kind, [...s.agents.values()].filter(o => o.team !== a.team)); // (at goal, the side's foot, also for a placed inside-foot shot: v64, he may come to it from any way he was carrying the ball)
     faceTo(a, x, y); s.windup(id, kind, foot); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   },
