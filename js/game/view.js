@@ -134,9 +134,20 @@ export const view = {
     // To the side (sd): his head comes up between two low targets, never on one. Of the two sides, the one where nobody
     // stands between the camera and him (the defender he got past is often right behind him).
     const off = (spaces()[3].y - mid) / 2 / r, hz = clamp(((H - 28 - gcY) / pxm - .9) / r, 1.6, 7); // (hz: his feet and the ball well over the bottom edge)
-    const eyeAt = sd => [h.x - ux * back - uy * sd, clamp(h.y - uy * back + ux * sd, -4, W + 4), hz];
+    const eyeAt = (sd, up = 0) => [h.x - ux * back - uy * sd, clamp(h.y - uy * back + ux * sd, -4, W + 4), hz + up];
     const clear = e => { let m = 9; for (const a of this.sim.agents.values()) { if (a === h || a.gk) continue; const c = closestOnLane(a, { x: e[0], y: e[1] }, h, 0); if (c.t < .98) m = Math.min(m, c.d); } return m; };
-    const pref = Math.sign(h.y - mid) || 1, eye = clear(eyeAt(-pref * off)) > clear(eyeAt(pref * off)) + .3 ? eyeAt(-pref * off) : eyeAt(pref * off), dg = Math.hypot(L - eye[0], mid - eye[1], .9 - hz);
+    // (Round 4) How much of the targets (and the keeper, and him) the players hide from an eye: for each target and each outfield player (him too),
+    // whether the line from the eye to the target passes through the player (about .4 m to each side, 1.7 m tall with his hair) on its way.
+    // The keeper (where he stands is the point of the step) and his own player count double.
+    const K = this.sim.keeper('them'), looks = [...spaces().map(t => ({ x: L, y: t.y, z: t.top ? t.z : .4, w: 1 })), ...(K ? [{ x: K.x, y: K.y, z: 1, w: 2, not: K }] : []), { x: h.x, y: h.y, z: .9, w: 2, not: h }];
+    const covered = e => { let n = 0; for (const t of looks) for (const a of this.sim.agents.values()) { if (a.gk || a === t.not) continue;
+      const c = closestOnLane(a, { x: e[0], y: e[1] }, t, 0); if (c.t > .97) continue;
+      const z = e[2] + (t.z - e[2]) * c.t; if (c.d < .4 && z < 1.7) n += t.w * (1 - c.d / .5); } return n; };
+    const pref = Math.sign(h.y - mid) || 1, cands = [[pref * off, 0], [-pref * off, 0], [pref * off * 2.2, 0], [-pref * off * 2.2, 0]].map(([sd, up], i) => { const e = eyeAt(sd, up); return { e, i, cov: covered(e), cl: clear(e) }; });
+    // The least covered (his side or the other, a little or farther to the side); between near equals, his side, unless
+    // the other is much clearer of people in front of him.
+    cands.sort((p, q) => (Math.abs(p.cov - q.cov) > .15 ? p.cov - q.cov : p.i < 2 && q.i < 2 && Math.abs(p.cl - q.cl) > .3 ? q.cl - p.cl : p.i - q.i));
+    const eye = cands[0].e, dg = Math.hypot(L - eye[0], mid - eye[1], .9 - eye[2]);
     // (the goal a little left of the middle, AIM_GOAL_X of the width)
     const cx = L - eye[0], cy = mid - eye[1], cl = Math.hypot(cx, cy) || 1, sh = (.5 - AIM_GOAL_X) * (v.w || 667) / pxm;
     return { eye, tgt: [L + cy / cl * sh, mid - cx / cl * sh, .9 - (H / 2 - gcY) / pxm], Ff: pxm * dg / H, Fw: 0 };
