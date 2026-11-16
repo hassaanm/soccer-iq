@@ -20,6 +20,7 @@ const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8
 const HERO_MIN = .2;
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
+const BACK_SCALE = [2];
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -252,7 +253,7 @@ export const view = {
   // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
   // per round, so the scene only builds it once.
   runArrow() {
-    const sc = this.sc, m = this.sim.a('m1'), [dx, dy] = sc.dir;
+    const sc = this.sc, m = this.sim.a('m1'), [dx, dy] = sc.dir || sc.dribbling; // (v64: also a friend dribbling, "Don't crowd your friend")
     if (this.arrow?.sc !== sc) this.arrow = { sc, lines: [{ a: { x: m.x + dx * .6, y: m.y + dy * .6 }, b: { x: m.x + dx * 3.2, y: m.y + dy * 3.2 }, color: '#ffffff' }] };
     return this.arrow.lines;
   },
@@ -292,14 +293,16 @@ export const view = {
     const ui = this.ui, deciding = this.phase === 'decide';
     for (const m of MATES) ui.glow[m] = deciding && ((this.step === 'pass' && this.seen.has(m)) || (this.step === 'turn' && this.sc?.back && m === (this.sc.carrier || 'm1'))) ? .8 : 0; // (v64: the passer, for the pass back)
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
-    ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
+    const back = deciding && this.step === 'turn' && this.sc?.back && this.sim.a(this.sc.carrier || 'm1'); // (v64: the passer is a choice too: his glow and a gold ring under him)
+    if (back) ui.glow[back.id] = 1;
+    ui.spots = deciding && this.step === 'spot' ? this.sc.spots : back ? (this.backRing?.sc === this.sc ? this.backRing.v : (this.backRing = { sc: this.sc, v: [{ id: 'back', x: back.x, y: back.y }] }).v) : NONE;
     ui.aims = deciding && this.step === 'aim' ? (this.aimList?.sc === this.sc ? this.aimList.v : (this.aimList = { sc: this.sc, v: this.aimSpots() }).v) : NONE; // the spaces in the goal (v62)
-    ui.spotScale = ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView)
+    ui.spotScale = back ? BACK_SCALE : ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView; the passer's ring bigger, as he is farther off)
     // Staying is one of the choices: a badge floats over his head (and his ring stays under his feet). Tapping either picks it.
     const h = this.sim.a('hero'), st = ui.spots !== NONE && this.stayOffered() && h;
     if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
-    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
+    ui.lines = deciding && (this.sc?.kind === 'lead' || this.sc?.dribbling) ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

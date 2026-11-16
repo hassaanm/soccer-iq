@@ -149,8 +149,8 @@ export const outcomes = {
     const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
     yield* this.steal(ic.opp);
   },
-  *dribbleGen(dir, good) {
-    const s = this.sim, h = s.a('hero'), end = dribbleEnd(h, dir, L, W), gkOut = this.sc?.gk?.out && s.keeper('them');
+  *dribbleGen(dir, good, aim = null) {
+    const s = this.sim, h = s.a('hero'), end = aim || dribbleEnd(h, dir, L, W), gkOut = this.sc?.gk?.out && s.keeper('them');
     if (gkOut && (dir === 'fwd' || dir === 'fl' || dir === 'fr')) { yield* this.roundKeeper(dir, good, gkOut); return; } // (at him, or round him)
     const cut = good && takeOn(h, dir, s.team('them'));
     // A good dribble with a defender near his way: he beats him with a skill (the reward for the right choice).
@@ -160,7 +160,7 @@ export const outcomes = {
     // A take-on: the defender bites, stepping in toward where the ball was, and he cuts past him on the open side.
     if (cut?.good) { const f = cut.foe; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
     if (good) {
-      yield () => dist(h, end) < .3 || s.time - t0 > 2.5;
+      yield () => dist(h, end) < (aim ? 1.2 : .3) || s.time - t0 > 2.5; // (after a turn: on toward goal once he is nearly there, not a last steer onto the exact point)
       if (BACKWARD.has(dir) || this.keepOnly) { s.stop('hero'); yield* this.end('kept', 1.1); return; }
       yield* this.finish('hero');
     } else {
@@ -789,7 +789,7 @@ export const outcomes = {
       else if (opt.startsWith('turn:')) { // the ball arrives, and his first touch turns him that way: round his left (L) or right (R) shoulder, as the arrow he tapped goes
         const s = this.sim, h = s.a('hero'), to = dribbleEnd(h, this.sc.turns[opt[5]], L, W); this.scripted.add('hero'); s.stop('hero'); s.open('hero', to.x, to.y, opt[5] === 'L' ? 1 : -1);
         const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
-        s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good);
+        s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good, to); // (v64: on to where the turn was aimed, not a new point from where the first touch left him, which made him steer back the other way)
       }
       else if (good && this.sc.then && opt === this.sc.best) yield* this.passOnly(MATE[opt]);
       else if (good && this.offBall && MATE[opt]) { this.offBall = false; yield* this.passOnly(MATE[opt]); this.result = 'support'; }

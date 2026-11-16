@@ -65,7 +65,7 @@ test('follow your shot: the ball comes back out off the post or a leg, slower, t
   for (const pattern of ['follow-post', 'follow-block', 'follow-friend']) for (let seed = 1; seed <= 40; seed++) {
     const sc = generate('follow-shot', seed, { pattern }), { from, hit, loose, block } = sc.shot, sp = spotsOf(sc);
     assert.deepEqual(sp.in, loose, `${sc.id}: the right spot is the loose ball`);
-    assert.ok(loose[0] >= PITCH.L - 7 && Math.abs(loose[1] - PITCH.W / 2) <= 5.5, `${sc.id}: the ball is not in front of the goal (${loose})`);
+    assert.ok(loose[0] >= PITCH.L - 7 && Math.abs(loose[1] - PITCH.W / 2) <= (PITCH.gy1 - PITCH.gy0) / 2 + 3.5, `${sc.id}: the ball is not in front of the goal (${loose})`); // (up to 3.5 m outside a post: 5.5 m from the middle with a 4 m goal, 6 m with the 5 m goal at 5v5)
     // It bounces back off what it hit: away from the goal line (post) or out to the side (a leg), never on through it.
     const din = [hit[0] - from[0], hit[1] - from[1]], dout = [loose[0] - hit[0], loose[1] - hit[1]];
     const cos = (din[0] * dout[0] + din[1] * dout[1]) / Math.hypot(...din) / Math.hypot(...dout);

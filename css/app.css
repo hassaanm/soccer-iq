@@ -305,15 +305,16 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #lessonBtn .le{font-size:26px;width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:#fff;box-shadow:0 0 0 2px var(--line),inset 0 -3px 0 rgba(36,25,58,.08)}
 #lessonBtn .ln{display:flex;flex-direction:column;line-height:1.1;min-width:0}
 #lessonBtn small{font-size:11px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
-#lessonBtn b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lessonBtn b{font-size:16px;line-height:1.08;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden} /* (v64: a long name takes two lines, never cut) */
 #lessonBtn .caret{font-size:14px;color:var(--ink-soft)}
 .freebox{display:flex;justify-content:flex-end;gap:8px}
 .freebox .btn{position:relative;min-width:116px;display:inline-flex;align-items:center;justify-content:center;font-size:18px}
 /* Match and Cup: locked until today's lesson or training is done. */
 .freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
-.freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
-/* v64: a locked Cup shows what opens it (PLAY's picture), and PLAY (or the results tile for it) glows a little. */
-#cupBtn.locked[data-key]::after{content:attr(data-key) "🔒";background:#fff;border-radius:12px;padding:1px 5px;box-shadow:0 0 0 2px #2fcf6a;font-size:15px;top:-13px;right:-10px}
+/* v64: locked, the button's own picture becomes the lock (no badge over its corner); a tap says how to open it. */
+.freebox .btn.locked .ico{font-size:0}
+.freebox .btn.locked .ico::before{content:"🔒";font-size:18px}
+/* v64: PLAY (or the results tile for training) glows a little while the Cup is still locked today. */
 #playBtn.hot,#results .go.hot{animation:hot 1.6s ease-in-out infinite}
 @keyframes hot{50%{box-shadow:0 0 0 5px rgba(255,216,77,.85),0 0 18px 4px rgba(255,216,77,.6)}}
 @media (prefers-reduced-motion:reduce){#playBtn.hot,#results .go.hot{animation:none;box-shadow:0 0 0 4px rgba(255,216,77,.85)}}

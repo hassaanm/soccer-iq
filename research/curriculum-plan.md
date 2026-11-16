@@ -451,3 +451,11 @@ Backyard game: the ball on a line and a cone as a defender (research section 4).
 lesson. While the Cup is locked, PLAY and the results tile for training glow a little, and the locked Cup shows
 PLAY's picture by its lock, so the day tends to go match, training, match. To revert: `MATCH_ANY_DAY = false` and
 `TRAINING_ROUNDS = null` in `js/progress.js`.
+
+**v64, second pass.** "Don't crowd your friend": he stands a step behind the friend who dribbles (so the friend and the
+ball are in view), and a white arrow on the grass shows which way the friend is going. "One goes, one guards": he can
+stand on either side of the ball, so the open player is not always the farthest place. Left as they are on purpose:
+"Nobody on the ball, you are closest: you go" (the place by the ball is nearest him because he is the nearest player:
+that is the lesson) and "You were already open: stay" (staying is where he stands, under him on screen). At 5v5: their
+keeper covers his near post when a friend's shot hits the far post ("Run to the goal too!"), deep defenders start on the
+pitch (most "two open" scenes used to be thrown away), and after a turn he runs on toward goal without a last steer back.

@@ -101,7 +101,7 @@ function attack(r, pattern, high = false) {
   const mates = [], opps = [], oppsTo = [];
   const at = (ang, d) => { const [dx, dy] = rot(d, 0, ang); return [heroTo[0] + dx, heroTo[1] + dy]; };
   const onLane = (to, t) => [ball[0] + (to[0] - ball[0]) * t + (r() - .5) * .5, ball[1] + (to[1] - ball[1]) * t + (r() - .5) * .5];
-  const closeIn = p => [p[0] + (p[0] - heroTo[0]) * .35, p[1] + (p[1] - heroTo[1]) * .35]; // defenders start a bit farther out
+  const closeIn = p => { const q = [p[0] + (p[0] - heroTo[0]) * .35, p[1] + (p[1] - heroTo[1]) * .35]; return big() ? [clamp(q[0], 1, L - 1), clamp(q[1], 1, W - 1)] : q; }; // defenders start a bit farther out (v64, 5v5: on the pitch; a deep defender's start used to land past the goal line, so most "two open" scenes were thrown away)
   const add = p => { opps.push(closeIn(p)); oppsTo.push(p); };
   // Teammates sit anywhere around him, including behind, so he has to turn to find them.
   let angles = [r() * 2.6 - 1.3, pick(r, [1, -1]) * (1.3 + r() * 1.4)];
@@ -356,7 +356,7 @@ function defense(r, pattern, runs = 3) {
     addOpp(o2); addOpp(o3);
     if (pattern === 'one-goes') {
       mates.push(goalSide(c, 1.1), goalSide(o3, 1.1));                       // a friend is already on the ball
-      hero = [c[0] - 3 - r() * 2, c[1] - sgn * (1 + r() * 2)];
+      hero = [c[0] - 3 - r() * 2, c[1] + (r() < .45 ? sgn * (2 + r() * 2.5) : -sgn * (1 + r() * 2))]; // (v64: on either side of the ball, so the open player is not always the farthest)
       best = 'o2'; cue = 'A friend was chasing the ball. You guard the open player!';
     } else {
       mates.push(goalSide(o2, 1.1), goalSide(o3, 1.1));                      // everyone is marking; nobody is on the ball
@@ -488,9 +488,9 @@ function support(r, pattern, runs = 3) {
   } else if (pattern === 'crowd') {               // (v64) "Don't crowd your friend": a friend dribbles up, and he has come right up beside him
     if (r() < .4) side = -side;                    // (beside him on either side: the space he goes to is on his side)
     o1 = [c[0] + 3 + r() * .8, c[1] - side * (.3 + r() * .5)];          // their player coming to meet the dribble, not on him yet
-    hero = [c[0] - .3 - r() * .7, c[1] + side * (1.8 + r() * .4)];      // two metres beside him: one defender can get them both
+    hero = [c[0] - 1 - r() * .6, c[1] + side * (1.6 + r() * .4)];      // two metres beside him and a step behind (so the view shows his friend and the ball ahead): one defender can get them both
     o2 = [hero[0] - 2 - r() * .6, hero[1] + side * (.4 + r() * .4)]; // his own defender, who followed him over (a step or two behind)
-    spots = [{ id: 'space', p: at(side * (.5 + r() * .9), 4 + r() * 2) }, { id: 'stay', p: hero, why: 'close' },
+    spots = [{ id: 'space', p: at(side * (.5 + r() * .9), 3.6 + r() * 2) }, { id: 'stay', p: hero, why: 'close' },
       { id: 'ball', p: [c[0] + 1.3 + r() * .3, c[1] - side * (1.2 + r() * .3)], why: 'inway' }]; // across the front of his dribble
     start = { m1: [c[0] - 3.4, c[1] + (r() - .5) * .6], hero: [hero[0] - 1.8, hero[1] + side * 1.2], o1: [o1[0] + 1.6, o1[1]], o2: [o2[0] - 1.6, o2[1] + side * .9] };
     best = 'space'; cue = '{m0} was dribbling. Move away to open space, so he can pass to you!';
@@ -513,12 +513,12 @@ function support(r, pattern, runs = 3) {
   const base = spots.filter(s => s.id !== 'stay').length, n = runs - base, wrong = spots.filter(s => s.id !== 'stay' && s.id !== best).length; // (at most two bad runs)
   // (crowd: his defender follows him close behind, so no place where the pass would go past him on the way)
   const skip = pattern === 'crowd' ? p => { const u = unit(c, p), e = [p[0] - u[0] * 1.6, p[1] - u[1] * 1.6]; return [0, .2, .4, .6, .8].some(t => closestOnLane(P([lerp(o2[0], p[0], t), lerp(o2[1], p[1], t)]), P(c), P(e), .1).d < 1.2); } : null;
-  const extra = moreSpots(r, { c, h: hero, opps, mates: [c, m2], have: spots.map(s => s.p), okay: wrong >= 2 ? n : 1, either: wrong >= 2 ? 0 : Math.max(0, n - 1), best: best === 'stay' ? null : spots.find(s => s.id === best).p, skip, farLean: pattern === 'crowd' ? .2 : null });
+  const extra = moreSpots(r, { c, h: hero, opps, mates: [c, m2], have: spots.map(s => s.p), okay: wrong >= 2 ? n : 1, either: wrong >= 2 ? 0 : Math.max(0, n - 1), best: best === 'stay' ? null : spots.find(s => s.id === best).p, skip, farLean: pattern === 'crowd' ? .55 : null });
   if (!extra) return null;
   // (crowd: the run-up shows the friend dribbling up, with him drifting over to the ball and their players coming.)
   const moving = start ? { hero: start.hero, mates: [start.m1, m2], matesTo: [c, m2], opps: [start.o1, start.o2, o3] } : { hero: [hero[0] - .8, hero[1]], mates: [c, m2], opps };
   if (start && ![start.m1, start.hero, start.o1, start.o2].every(p => inPitch(p, 1))) return null;
-  return { kind: 'support', even: true, carrier: 'm1', heroTo: hero, oppsTo: opps, ...moving,
+  return { kind: 'support', even: true, carrier: 'm1', heroTo: hero, oppsTo: opps, ...moving, ...(start ? { dribbling: unit(start.m1, c) } : {}),
     spots: (pattern === 'crowd' ? shuffle([...spots, ...extra], r) : [...spots, ...extra]).map(s => ({ id: s.id, x: s.p[0], y: s.p[1], crowd: crowd(s), ...(s.why ? { why: s.why } : {}) })), best: 'spot:' + best, ok: [], // (crowd, v64: in no set order)
     safe: extra.filter(s => OKAY[s.why]).map(s => 'spot:' + s.id), cue };
 }
@@ -1146,7 +1146,7 @@ function finishShots(sc) {
 const ballOf = sc => sc.kind === 'defense' || sc.kind === 'tackle' ? sc.oppsTo[0] : sc.run === 'follow' ? sc.shot.loose : sc.kind === 'support' ? (sc.matesTo || sc.mates)[0] : sc.heroTo;
 function withKeepers(sc, r) {
   if (sc.gk?.them) return sc; // (a shot scene places its own keeper)
-  const b = ballOf(sc), f = .15 + r() * .25, off = .5 + r() * .4;
+  const b = ballOf(sc), f = sc.run === 'goal' && sc.shot ? .55 + r() * .25 : .15 + r() * .25, off = .5 + r() * .4; // (v64: a friend's shot off the far post: their keeper has stepped across to cover the near side, as keepers do)
   const at = (gx, out, bb) => [gx + out * off, clamp(W / 2 + (bb[1] - W / 2) * f, PITCH.gy0 + .4, PITCH.gy1 - .4)];
   const atk = sc.kind === 'defense' || sc.kind === 'tackle';
   const them = at(L, -1, atk ? [0, W / 2 + (r() - .5) * 4] : b), us = at(0, 1, atk ? b : [0, W / 2 + (r() - .5) * 4]);

@@ -103,9 +103,9 @@ function renderLessons() {
   $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
   for (const c of $$('#lessons .tile')) c.onclick = () => { P.pick = c.dataset.id || null; save(); renderLessons(); $('#lessonSheet').classList.add('hidden'); };
   // Match is open once his first lesson is passed; the Cup for the day once he has done today's lesson or training
-  // (v64). A locked Cup shows what opens it (the picture on PLAY, by its lock), and PLAY glows a little.
+  // (v64). While the Cup is locked, PLAY glows a little (a tap on the Cup says how to open it).
   $('#freeBtn').classList.toggle('locked', !matchOpen(P)); $('#cupBtn').classList.toggle('locked', !playOpen(P));
-  $('#cupBtn').dataset.key = sk.emoji; $('#playBtn').classList.toggle('hot', !playOpen(P) && matchOpen(P));
+  $('#playBtn').classList.toggle('hot', !playOpen(P) && matchOpen(P));
 }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 wireSheet('#lessonSheet', '#sheetClose');
