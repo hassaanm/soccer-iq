@@ -846,7 +846,7 @@ const standOff = () => (sizeOf().keeper ? 4.6 : 3);
 function restart(r, pattern, runs) {
   const K = sizeOf().keeper, off = standOff(), n = sizeOf().out;
   const s = pick(r, [1, -1]); // which way is "in from the line" (+y: the line at y = 0), or which side is ours to go to
-  let c, carrier = 'm1', hero, mates = [], opps = [], spots = [], best, cue, gk = null, take = false;
+  let c, carrier = 'm1', hero, mates = [], opps = [], spots = [], best, cue, gk = null, take = false, keeperFw = false;
   const rel = (o, a, d) => [o[0] + Math.cos(a) * d, o[1] + s * Math.sin(a) * d]; // a: 0 up the field, PI/2 straight in
   const shadow = (o, k) => { const u = unit(c, o); return [o[0] + u[0] * k, o[1] + u[1] * k]; };
   if (pattern === 'side-in' || pattern === 'side-two' || pattern === 'side-take' || pattern === 'side-pass') {
@@ -898,13 +898,20 @@ function restart(r, pattern, runs) {
   } else if (pattern === 'keeper-ball') { // (with keepers) our keeper has it in his hands after a save; their team goes back to the halfway line, as at a goal kick
     if (!K) return null;
     c = [1.4, W / 2 + (r() - .5) * 2]; carrier = 'k1'; gk = { us: c, them: [L - .7, W / 2], f: .3, off: .7, hold: true };
-    const h2 = L / 2 + .6;
+    const h2 = L / 2 + .6, a = pick(r, [1, -1]), u0 = r(), v = u0 < .25 ? 0 : u0 < .75 ? 1 : 2; // a: the side with the free wide place; v: which of three pictures (v64 round 6)
     hero = [5.2 + r() * .8, W / 2 + (r() - .5) * 1.2];                     // in the middle, right in front of our keeper
-    const mate = [6.5 + r() * 1.5, W / 2 + s * (5.6 + r())];               // a friend is already out wide on one side
-    mates = [mate, [h2 - 2.5 - r() * 2, W / 2 - s * (1 + r() * 3)]];
-    opps = [[h2 + r() * 2, W / 2 + (r() - .5) * 4], [h2 + .5 + r() * 2, W / 2 + s * (4 + r() * 2)], [h2 + 1 + r() * 2, W / 2 - s * (4 + r() * 3)]];
-    spots = [{ id: 'wide', p: [5 + r() * 2, W / 2 - s * (4.6 + r())] }, { id: 'stay', p: hero, why: 'ourgoal' }, { id: 'same', p: [mate[0] - 1.2 - r() * .4, mate[1] - s * (1.1 + r() * .4)], why: 'same' },
-      { id: 'far', p: [9.6 + r(), W / 2 - s * (1 + r() * 2)], why: 'toofar' }];
+    // v 0: a friend is already wide on the other side. v 1 and 2: one of theirs has stepped up on the other side (play is
+    // on once the keeper holds it), and our friend is up the field: wide on our side (so the free place is below him),
+    // or in the middle.
+    const fw = v ? [11.6 + r(), W / 2 - a * (3.8 + r())] : null;
+    const mate = v === 0 ? [6.5 + r() * 1.5, W / 2 - a * (5.4 + r())] : v === 1 ? [10 + r() * 1.5, W / 2 + a * (5 + r())] : [10 + r(), W / 2 + (r() - .5) * 2];
+    mates = [mate, [h2 - 2.5 - r() * 2, W / 2 - a * (1 + r() * 2)]];
+    opps = [[h2 + r() * 2, W / 2 + (r() - .5) * 4], fw || [h2 + .5 + r() * 2, W / 2 - a * (4 + r() * 2)], [h2 + 1 + r() * 2, W / 2 + a * (4 + r() * 3)]];
+    const best0 = v === 1 ? [4.5 + r() * 1.5, W / 2 + a * (4.2 + r())] : v === 2 ? [6.5 + r() * 1.5, W / 2 + a * (4.2 + r())] : [5 + r() * 2, W / 2 + a * (4.2 + r())];
+    spots = [{ id: 'wide', p: best0 }, { id: 'stay', p: hero, why: 'ourgoal' },
+      v === 0 ? { id: 'same', p: [mate[0] - 1.2 - r() * .4, mate[1] + a * (1.1 + r() * .4)], why: 'same' } : { id: 'marked', p: (u => [fw[0] + u[0] * 1.6, fw[1] + u[1] * 1.6])(unit(fw, c)), why: 'near' }, // (by their player who stepped up)
+      v === 2 ? { id: 'same', p: [mate[0] - 1.4 - r() * .4, mate[1] - a * (.9 + r() * .4)], why: 'same' } : { id: 'far', p: [8.8 + r(), W / 2 + a * (.5 + r() * 1.5) * (v === 1 ? -1 : 1)], why: 'toofar' }];
+    keeperFw = !!fw;
     best = 'wide'; cue = "Keeper's ball? Go wide!";
   }
   if (K && !gk) gk = { us: [.7, W / 2], them: [L - .7, W / 2], f: .3, off: .7 };
@@ -916,7 +923,7 @@ function restart(r, pattern, runs) {
   const all = [hero, ...mates, ...opps, ...spots.map(x => x.p)].filter(p => p !== c);
   if (!all.every(p => inPitch(p, 1)) || !apart(spots, RING_GAP)) return null;
   if (opps.some(o => Math.hypot(o[0] - c[0], o[1] - c[1]) < off - .05)) return null; // they stand off the ball
-  if ((pattern === 'goal-kick' || pattern === 'keeper-ball') && opps.some(o => o[0] < L / 2)) return null; // (behind the retreat line)
+  if ((pattern === 'goal-kick' || pattern === 'keeper-ball') && opps.some((o, i) => o[0] < L / 2 && !(keeperFw && i === 1))) return null; // (behind the retreat line; at the keeper's ball one of theirs may have stepped up, as play is on)
   const people = [hero, ...mates, ...opps]; if (people.some((p, i) => people.some((q, j) => j > i && Math.hypot(p[0] - q[0], p[1] - q[1]) < .9))) return null;
   if (take) {
     const sc = { hero: c, heroTo: c, mates, opps, oppsTo: opps, restart: true, ...(gk ? { gk } : {}) };
