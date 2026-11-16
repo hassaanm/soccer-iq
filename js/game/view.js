@@ -43,6 +43,8 @@ export const view = {
     // (Only what moves a metre or more: the rest is in the picture already, and every extra point costs his size.)
     const far = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) >= 1, end = win ? (this.spotsEnd() || []).filter((e, i) => far(e, sc.spots[i])) : null;
     if (win) { const e = this.windowEnd('hero'); if (far(e, h)) pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
+    { const t = win?.threat && s.a(win.threat.id); if (t && sc.kind !== 'receive') pts.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // (round 2: the threat in the picture as he comes)
+    if (win && sc.run === 'follow' && sc.shot) pts.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (round 2: it opens as he shoots: where it hits, and where it comes out to)
     // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
     // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
     // and one near it smaller (World: ui.spotScale), so the nearest ring is not the biggest thing on screen. And his own

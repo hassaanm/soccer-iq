@@ -412,9 +412,12 @@ export const outcomes = {
   shotOf(opt) {
     const s = this.sim, sc = this.sc, h = s.a('hero'), [, sp, ft] = opt.split(':'), K = s.keeper('them');
     const from = sc.shots ? { x: sc.heroTo[0] + .5, y: sc.heroTo[1] } : { x: s.ball.x, y: s.ball.y }; // (a lesson: from where the scene says)
-    const foot = ft === '*' || !ft ? rightFoot(from) : ft, y = !sp || sp === '*' ? bestSpaceY(from, K) : spaceY(sp);
+    // (round 2: a lesson's keeper takes small steps with the ball while he chooses, and is set as he shoots: the shot is
+    // worked out from where the scene sets him, like the shooter and the defenders)
+    const Ks = sc.shots && K && sc.gk?.them ? { ...K, x: sc.gk.them[0], y: sc.gk.them[1] } : K;
+    const foot = ft === '*' || !ft ? rightFoot(from) : ft, y = !sp || sp === '*' ? bestSpaceY(from, Ks) : spaceY(sp);
     const stray = sc.stray ?? .25 + .2 * seeded(h.x, h.y), defs = sc.shots ? sc.oppsTo.map(([x, y]) => ({ x, y })) : s.team('them');
-    return { ...resolve(from, y, foot, K, { stray, defs }), from, foot, K, aimY: y, spill: sc.spill ?? seeded(h.y, h.x, 3) < .5 };
+    return { ...resolve(from, y, foot, Ks, { stray, defs }), from, foot, K, aimY: y, spill: sc.spill ?? seeded(h.y, h.x, 3) < .5 };
   },
   // The two parts of a shot he picked (v62), each graded on its own: the space (the one that goes in with the right foot,
   // as the lesson "Shoot to the space!" teaches) and the foot (the rule of "Inside or laces?": close, inside; the edge,
@@ -635,9 +638,23 @@ export const outcomes = {
   // A shot that hits the post or a defender's leg (generate.js postBounce, legBounce). It is struck at a point just past
   // where it hits, so it is still going fast when it gets there; there it goes off on its new way, slower, and rolls
   // out to rest. `follow`: where the shooter carries on to after the kick.
-  *shotOut(sh, follow = null) {
+  *shotOut(sh, follow = null, open = false) {
     const s = this.sim, b = s.ball, hit = { x: sh.hit[0], y: sh.hit[1] };
     const from = { x: b.x, y: b.y }, l = dist(from, hit) || 1, d = { x: (hit.x - from.x) / l, y: (hit.y - from.y) / l };
+    if (open) { // (round 2: the choice opens as he winds up to strike it; the strike and the bounce are jobs on game time)
+      const tx = hit.x + d.x * 1.2, ty = hit.y + d.y * 1.2, a = s.a(sh.by);
+      yield* this.turnTo(sh.by, tx, ty);
+      for (const p of s.agents.values()) if (p.id !== sh.by && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, { x: tx, y: ty }, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, { x: tx, y: ty }, true); }
+      const line = s.ball.carrier === sh.by ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
+      faceTo(a, tx, ty); const foot = pickFoot(line, tx, ty, 'shot', [...s.agents.values()].filter(o => o.team !== a.team));
+      // (kept: a retry puts play back where the window opens, and the shot is struck again from there)
+      this.reshoot = () => {
+        this.bounced = null; s.windup(sh.by, 'shot', foot); let struck = false;
+        this.job(.2, u => { if (u < 1 || struck) return; struck = true; s.kick(tx, ty, { speed: SHOT.speed, arc: SHOT.arc }); this.kicked = true; if (follow) s.go(sh.by, follow.x, follow.y, follow.speed || 2.2); this.shotBounce(sh, from); });
+      };
+      this.reshoot();
+      return;
+    }
     yield* this.strike(sh.by, hit.x + d.x * 1.2, hit.y + d.y * 1.2, { speed: SHOT.speed, arc: SHOT.arc });
     if (follow) s.go(sh.by, follow.x, follow.y, follow.speed || 2.2);
     yield () => b.state !== 'flying' || (b.x - from.x) * d.x + (b.y - from.y) * d.y >= l;
@@ -653,12 +670,14 @@ export const outcomes = {
     const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), h = s.a('hero'), b = s.ball, loose = { x: sc.shot.loose[0], y: sc.shot.loose[1] };
     const late = o => (o.id === sc.shot.block ? .75 : .3), when = o => dist(o, loose) / DEF_RUN + late(o);
     const racer = s.team('them').sort((p, q) => when(p) - when(q))[0];
+    // (round 2: tapped while the shot is still on its way, they set off only once it comes back out: this.bounced)
+    const out0 = () => (this.bounced === null ? null : Math.max(t0, this.bounced ?? t0));
     let gone = false, toBall = false;
     yield () => {
-      if (!gone && s.time - t0 >= late(racer)) { gone = true; s.go(racer.id, loose.x, loose.y, DEF_RUN); }
+      if (!gone && out0() != null && s.time - out0() >= late(racer)) { gone = true; s.go(racer.id, loose.x, loose.y, DEF_RUN); }
       // He goes on to it, to meet it where it rolls: the nearest point on its way still to come.
       if (good && (toBall ||= spotId === 'in' || dist(h, sp) < 1.2 || b.state === 'loose')) { const m = b.state === 'flying' ? closestOnLane(h, b, loose, 0) : b; s.go('hero', m.x, m.y, 5.2); }
-      return (good && dist(h, b) < .45) || dist(racer, b) < .7 || s.time - t0 > 4;
+      return (good && out0() != null && dist(h, b) < .45) || (gone && dist(racer, b) < .7) || s.time - (out0() ?? s.time) > 4; // (the ball going past the one it hits is not his yet)
     };
     if (good && dist(h, b) < .6) {
       s.give('hero');
@@ -671,6 +690,7 @@ export const outcomes = {
   // "Follow your shot!": the play froze with the ball loose in front of the goal after the shot came back out.
   *followGen(spotId, good) {
     const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), them = s.team('them');
+    yield () => s.ball.state !== 'carried' || this.bounced !== null; // (round 2: he chose as he wound up: the shot goes first)
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     if (spotId !== 'watch') s.go('hero', sp.x, sp.y, spotId === 'in' ? 5.2 : 3.4);
     // Everyone else goes on with play: his friends jog up toward the box, their players step back toward their goal.

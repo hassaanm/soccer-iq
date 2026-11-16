@@ -5,14 +5,16 @@ import { grade, pushEnd, LEAD, SHOT, OKAY } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
 // The rule for the foot ("Inside or laces?"), in his coach's words: said when he picked the right space with the wrong foot.
 const FOOT_TIP = { in: 'Close? Inside, for control.', las: 'Far? Laces, for power!' };
-// (v64) How early a lead pass's choice opens (s before the scene's picture: a friend sprinting into space gives about half a
-// second of soccer, window.js), and how far through its roll a shot that came back out is when the choice opens (the
-// scene's picture is at SHOT.freeze; earlier, their players have not reacted yet).
-const LEAD_EARLY = .45, FOLLOW_OPEN = SHOT.freeze;
+// (v64) A pass to him (peek, then turn) travels at this speed (m/s); the choice opens as it is played. After a shot that
+// comes back out, the choice opens as it comes off the post or the leg, and runs while it rolls to rest.
+const PASS_IN = 5, FOLLOW_OPEN = 0;
+// Won it (round 2): game seconds from the start until he pokes it away, and from then on to the scene's picture.
+const WON = { poke: 1.1, lead: 1.7 };
 // What he hears and sees when the defender gets there first (v64): kind words, never a buzzer; the first time in a
 // lesson, more about what to do.
 export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! Choose before he gets there.', again: 'Choose a bit quicker!' };
 import { pickFoot } from './outcomes.js';
+import { arrAt, hermAt, pathAt } from '../window.js';
 
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
@@ -36,41 +38,84 @@ export const rounds = {
   },
   // "Won it? Go!": their player dribbles straight at him, he steps in and pokes the ball off him, and their player
   // stumbles on past him (around him, on the camera's side) and ends up behind him.
+  // (round 2) The choice opens the moment he wins it (WON.poke s in), and the scene's own picture is its end (WON.lead s
+  // on): meanwhile the player he took it from stumbles on to his place behind him, the rest run on to theirs (planned
+  // from the start of the intro, so they are on their way all through it), and he carries it on into the picture.
   async wonIntro() {
+    const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1');
+    const plan = this.wplan = this.plan(false, { skip: ['o1'], Gpre: [WON.poke + WON.lead] });
+    if (!plan?.arrival) return this.wonIntroOld();
+    plan.sc = sc;
+    const hp = plan.paths.hero, at = (p, t) => arrAt(p, t), meetH = at(hp, -WON.lead); // where he is as he wins it
+    const o0 = { x: sc.oppsTo[0][0], y: sc.oppsTo[0][1] }, side = Math.sign(o0.y - meetH.y) || 1, meet = { x: meetH.x + 1, y: meetH.y + side * .45 }; // (a little to the side he stumbles past on)
+    Object.assign(o1, { x: meetH.x + 3.6, y: meetH.y + side * .2, tx: meetH.x + 3.6, ty: meetH.y + side * .2, face: [-1, 0] });
+    Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1'); // the ball at his feet first, so it is his straight away
+    const h0 = at(hp, -WON.lead - WON.poke); Object.assign(h, { x: h0.x, y: h0.y, tx: h0.x, ty: h0.y });
+    s.go('hero', meetH.x, meetH.y, Math.hypot(meetH.x - h.x, meetH.y - h.y) / WON.poke); s.go('o1', meet.x, meet.y, Math.hypot(meet.x - o1.x, meet.y - o1.y) / WON.poke);
+    const base = -(WON.poke + WON.lead);
+    for (const [id, p] of Object.entries(plan.paths)) {
+      const a = s.a(id); if (!a || id === 'hero' || id === 'o1') continue;
+      const q = arrAt(p, base); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
+      const v = Math.hypot(q.vx, q.vy); if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
+      a.track = { at: tt => arrAt(p, base + tt), t0: s.time, watch: plan.watch.has(id) };
+    }
+    await this.delay(WON.poke);
+    s.give('hero'); this.sfx('tap'); this.say('You won the ball!');
+    // The window from here: he carries on into the picture; the player he took it from stumbles on to his place behind
+    // him, braking as a child does, getting his balance back (a smooth way from how he moves now).
+    const ov = { x: (meet.x - (meetH.x + 3.6)) / WON.poke, y: (meet.y - (meetH.y + side * .2)) / WON.poke }, back = Math.hypot(o0.x - o1.x, o0.y - o1.y) || 1;
+    // (round the camera's side of him: he goes past, not through him)
+    plan.paths.o1 = { herm: true, S: [o1.x, o1.y], V0: [ov.x, ov.y], E: [o0.x, o0.y], V1: [(o0.x - o1.x) / back * .3, (o0.y - o1.y) / back * .3], T: WON.lead + .4 }; // (stumbling, he gets his balance back a moment after the picture)
+    for (const p of Object.values(plan.paths)) if (p.arr) p.base = -WON.lead;
+    // (where he stumbles to, a little aside of anyone whose way comes by it: never through a player)
+    const op = plan.paths.o1;
+    for (let n = 0; n < 4; n++) {
+      let worst = null;
+      for (let t = 0; t <= plan.Gpost + WON.lead + 1e-6; t += .1) { const q = hermAt(op, t); for (const [id, p] of Object.entries(plan.paths)) { if (id === 'o1' || !p.arr) continue; const r = pathAt(p, t), d = Math.hypot(q.x - r.x, q.y - r.y); if (d < .65 && (!worst || d < worst.d)) worst = { d, dx: q.x - r.x, dy: q.y - r.y }; } }
+      if (!worst) break;
+      const l = Math.hypot(worst.dx, worst.dy) || 1; op.E = [op.E[0] + worst.dx / l * (.7 - worst.d), op.E[1] + worst.dy / l * (.7 - worst.d)];
+    }
+    plan.at0 = { ...plan.at0, o1: { x: op.E[0], y: op.E[1] } };
+    Object.assign(plan, { a: -WON.lead, Gpre: WON.lead, G: WON.lead + plan.Gpost, ready: true });
+  },
+  async wonIntroOld() {
     const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), [hx, hy] = sc.heroTo, meet = { x: hx + 1, y: hy };
     Object.assign(o1, { x: hx + 4.6, y: hy + .2, tx: hx + 4.6, ty: hy + .2, face: [-1, 0] });
-    Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1'); // the ball at his feet first, so it is his straight away
+    Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1');
     s.go('hero', hx, hy, 2.6); s.go('o1', meet.x, meet.y, 3.2);
     (sc.oppsTo || []).forEach((p, i) => i && p && s.go('o' + (i + 1), ...p, 3));
     const t0 = s.time;
     await this.until(() => dist(o1, h) < 1.3 || dist(o1, meet) < .15 || s.time - t0 > 3);
-    s.give('hero'); this.sfx('tap'); s.go('hero', hx, hy, 2); // the ball is at his feet now (it rolls the last bit)
+    s.give('hero'); this.sfx('tap'); s.go('hero', hx, hy, 2);
     this.hud.caption('You won the ball! 💪'); this.say('You won the ball!');
     s.go('o1', hx + .3, hy + 1.5, 3); await this.until(() => dist(o1, { x: hx + .3, y: hy + 1.5 }) < .3 || s.time - t0 > 4);
-    // (v64) He stumbles on to where the scene has him, braking as a child does (window.js ACC), and is just getting
-    // his balance back as the choice opens.
     const o0 = { x: sc.oppsTo[0][0], y: sc.oppsTo[0][1] }, t2 = s.time;
     await this.until(() => { const d = dist(o1, o0); s.go('o1', o0.x, o0.y, clamp(Math.sqrt(2 * 3 * d), .1, 3.8)); return d < .03 || s.time - t2 > 2.5; });
     this.hud.caption('');
   },
   // "Peek, then turn": he checks toward his friend, the friend passes, and he chooses his turn while the ball comes.
   async passIn() {
-    const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo;
-    s.go('hero', hx, hy, 2.5); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
-    await this.delay(.5);
-    const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
-    faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2);
-    s.kick(hx - .45, hy, { speed: 5, arc: .05 }); await this.delay(.1); // (v64) the choice opens as the pass is on its way, and stays open while it travels
+    const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo, b = s.ball;
+    // (round 2) Everyone comes on as the pass travels, and is where the scene has him as it gets to him: the window is
+    // the pass's flight (it is played as the window opens), and he picks his turn before it arrives.
+    const dur = Math.max(.25, Math.hypot(hx - .45 - (m.x + .4), hy - m.y) / PASS_IN);
+    await this.plannedRunUp({ skip: ['m1'], Gpre: [dur], during: async T => {
+      await this.delay(Math.max(0, T - .2));
+      const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
+      this.scripted.add('m1'); faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2); // (the passer: not one to step out of his own pass's way)
+      s.kick(hx - .45, hy, { speed: Math.hypot(hx - .45 - b.x, hy - b.y) / dur, arc: .05 });
+      // Pass and move: he steps on after it, off its line.
+      const dx = hx - m.x, dy = hy - m.y, l = Math.hypot(dx, dy) || 1, side = Math.sign(W / 2 - m.y) || 1;
+      if (this.wplan?.paths) this.wplan.paths.m1 = { go: true, S: [m.x, m.y], E: [m.x + dx / l * .9 - dy / l * side * .9, m.y + dy / l * .9 + dx / l * side * .9], a: 2.5, vMax: 1.2, t0: 0 };
+    } });
   },
   // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the choice opens
-  // mid-run (LEAD_EARLY s before the scene's picture) and the run goes on while he chooses, the rings with the runner.
+  // mid-run and the run goes on while he chooses, the rings with the runner.
   async runIn() {
-    const sc = this.sc, s = this.sim;
-    sc.oppsTo.forEach((p, i) => s.go('o' + (i + 1), ...p, 3)); this.leadRun();
-    // (v64) The choice opens a moment before the scene's own picture, and the run goes on. He dribbles up and is still
-    // rolling it as it opens (slowing, to look up), not standing on the ball.
-    const h = s.a('hero'), [hx, hy] = sc.heroTo, T = LEAD.pre - LEAD_EARLY, t0 = s.time;
-    await this.until(() => { const left = T - (s.time - t0), d = Math.hypot(hx - h.x, hy - h.y); s.go('hero', hx + (hx - h.x) / (d || 1) * .4, hy + (hy - h.y) / (d || 1) * .4, clamp(d / Math.max(.1, left), .6, 3.6)); return left <= 0; });
+    const sc = this.sc, mv = sc.moves, d = sc.dir, line = (p, v) => ({ arr: true, P: [...p.at], u: [...d], vRun: v, vEnd: v, dB: 0, T: 0, base: 0 });
+    // (round 2) His friend (and a defender chasing him) run on through the window and are where the scene has them as
+    // it ends; the rings go with the runner.
+    await this.plannedRunUp({ keep: { m1: line(mv.m1, mv.m1.speed), ...(mv.o2 ? { o2: line(mv.o2, mv.o2.speed) } : {}) } });
   },
   // "Follow your shot!": the shooter (he, or a friend) dribbles up and shoots; it comes back out off the post or a
   // defender's leg, and a short call says which. The choice opens as the rebound slows down, loose in front of the
@@ -84,20 +129,51 @@ export const rounds = {
     this.phase = 'shot'; this.camMode = 'shot'; this.aimAt = { x: sh.hit[0], y: sh.hit[1] }; // (see view.js camSpec)
     const at = sh.by === 'hero' ? { x: sh.hit[0], y: sh.hit[1] } : { x: lerp(by.x, sh.hit[0], .6), y: lerp(by.y, sh.hit[1], .6) };
     this.yaw = Math.atan2(at.y - h.y, at.x - h.x); this.faceYaw(h);
-    const rollT = Math.hypot(sh.loose[0] - sh.hit[0], sh.loose[1] - sh.hit[1]) / SHOT.out * SHOT.freeze, flyT = Math.hypot(sh.hit[0] - sh.from[0], sh.hit[1] - sh.from[1]) / SHOT.speed * 1.3;
+    const flyT = Math.hypot(sh.hit[0] - sh.from[0], sh.hit[1] - sh.from[1]) / SHOT.speed * 1.3, outT = Math.hypot(sh.loose[0] - sh.hit[0], sh.loose[1] - sh.hit[1]) / SHOT.out;
+    const runT = Math.min(1.2, Math.hypot(sh.from[0] - by.x, sh.from[1] - by.y) / 3.2) + .2, total = runT + flyT + outT; // (to the strike, then the window: the shot's flight and the rebound's roll)
     const to = (id, p, sec) => { const a = s.a(id), d = Math.hypot(p[0] - a.x, p[1] - a.y); if (d > .05) s.go(id, p[0], p[1], Math.max(.8, d / sec)); };
-    const moves = [['hero', sc.heroTo], ...sc.matesTo.map((p, i) => ['m' + (i + 1), p]), ...sc.oppsTo.map((p, i) => ['o' + (i + 1), p])].filter(([id]) => id !== sh.by && id !== sh.block && id !== sh.cover);
-    for (const [id, p] of moves) to(id, p, .6 + flyT + rollT);
+    // (round 2) The one of theirs who gets to the loose ball first (outcomes.js raceForIt) runs in for it all along, and
+    // is where the scene has him as the rebound stops (a racer who blocked the shot is there already).
+    const lo = sh.loose, late = id => (id === sh.block ? .75 : .3), racer = sc.oppsTo.map((p, i) => ({ id: 'o' + (i + 1), p })).filter(o => s.a(o.id))
+      .sort((p, q) => Math.hypot(p.p[0] - lo[0], p.p[1] - lo[1]) / 4.8 + late(p.id) - Math.hypot(q.p[0] - lo[0], q.p[1] - lo[1]) / 4.8 - late(q.id))[0];
+    this.followRuns = []; this.bounced = null; this.followRacer = racer?.id || null;
+    // (the covering defender too: he comes across from the side as it is struck)
+    for (const o of [racer, sc.oppsTo[+(sh.cover || 'o0')[1] - 1] && { id: sh.cover, p: sc.oppsTo[+sh.cover[1] - 1] }]) {
+      if (!o || o.id === sh.block || this.followRuns.some(f => f.id === o.id) || !s.a(o.id)) continue;
+      const P = o.p, u = [lo[0] - P[0], lo[1] - P[1]], l = Math.hypot(...u) || 1, run = { arr: true, P: [...P], u: [u[0] / l, u[1] / l], vRun: o === racer ? 3.4 : 2.2, vEnd: o === racer ? 1 : .6, dB: 1.6, T: 0, base: 0 };
+      const off = () => { const q = arrAt(run, -total); return q.x < .8 || q.x > L - .8 || q.y < .8 || q.y > W - .8; }, u0 = [...run.u];
+      // (off the pitch: he comes in on a line turned about his place, up to 90°, the least that keeps him on it)
+      if (off()) for (let k = 1, ok = false; k <= 9 && !ok; k++) for (const sg of [1, -1]) { const a = sg * k * .17; run.u = [u0[0] * Math.cos(a) - u0[1] * Math.sin(a), u0[0] * Math.sin(a) + u0[1] * Math.cos(a)]; if (!off()) { ok = true; break; } if (k === 9 && sg === -1) run.u = u0; }
+      for (let k = 0; k < 6 && off(); k++) run.vRun = Math.max(1.6, run.vRun * .85);
+      const a = s.a(o.id), q = arrAt(run, -total); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y, face: [run.u[0], run.u[1]] });
+      a.track = { at: tt => arrAt(run, -total + tt), t0: s.time, watch: false };
+      this.followRuns.push({ id: o.id, run, t0: s.time, total });
+    }
+    const moves = [['hero', sc.heroTo], ...sc.matesTo.map((p, i) => ['m' + (i + 1), p]), ...sc.oppsTo.map((p, i) => ['o' + (i + 1), p])].filter(([id]) => id !== sh.by && id !== sh.block && id !== sh.cover && !this.followRuns.some(f => f.id === id));
+    for (const [id, p] of moves) to(id, p, .6 + flyT + outT * SHOT.freeze);
     s.go(sh.by, ...sh.from, 3.2);
     await this.until(() => dist(by, { x: sh.from[0], y: sh.from[1] }) < .2 || s.time - t0 > 1.2);
     if (sh.block === 'k2') this.keeperReact(s.a('k2'), { res: 'save', at: { x: sh.hit[0], y: sh.hit[1] }, t: flyT, arc: .1, parry: true }, { x: sh.from[0], y: sh.from[1] }); // (v62: he gets to it, and it comes back out)
     const end = sh.by === 'hero' ? sc.heroTo : sc.matesTo[0];
-    await this.play(this.shotOut(sh, { x: end[0], y: end[1], speed: Math.max(1.2, Math.hypot(end[0] - by.x, end[1] - by.y) / (.2 + flyT + rollT)) }));
-    const call = sh.block === 'k2' ? 'Saved!' : sh.block ? 'Blocked!' : 'Off the post!'; this.hud.caption(call); this.say(call);
-    if (sh.cover) to(sh.cover, sc.oppsTo[+sh.cover[1] - 1], rollT);
-    const t1 = s.time; await this.until(() => b.state !== 'flying' || b.t >= FOLLOW_OPEN || s.time - t1 > 2.5);
-    this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null; // (v64: the ball rolls on while he chooses)
-    this.yaw = this.frameYaw(sc, h, { x: sh.loose[0], y: sh.loose[1] }); this.faceYaw(h);
+    // (round 2) The choice opens as he strikes it ("follow your shot!"): the flight and the rebound go on in the window,
+    // on game time (a job, so his tap's play does not cut them off).
+    await this.play(this.shotOut(sh, { x: end[0], y: end[1], speed: Math.max(1.2, Math.hypot(end[0] - by.x, end[1] - by.y) / (.2 + flyT + outT * SHOT.freeze)) }, true));
+    this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null;
+    this.yaw = this.frameYaw(sc, h, { x: sh.loose[0], y: sh.loose[1] }); if (b.carrier !== 'hero') this.faceYaw(h); // (he may still be winding up to shoot: his body stays on the shot)
+  },
+  // The shot's flight on from the strike and its bounce off the post, the keeper or the leg, as a job on game time.
+  shotBounce(sh, from) {
+    const s = this.sim, b = s.ball, hit = { x: sh.hit[0], y: sh.hit[1] }, l = dist(from, hit) || 1, d = { x: (hit.x - from.x) / l, y: (hit.y - from.y) / l };
+    let done = false;
+    this.job(8, () => {
+      if (done || !(b.state !== 'flying' || (b.x - from.x) * d.x + (b.y - from.y) * d.y >= l)) return;
+      done = true; this.bounced = s.time;
+      Object.assign(b, { x: hit.x, y: hit.y }); // (the step can carry it a few cm past the post: it bounces off where it touched)
+      s.kick(sh.loose[0], sh.loose[1], { speed: SHOT.out, arc: .12 });
+      if (sh.block) { const o = s.a(sh.block), k = Math.sign((sh.loose[0] - hit.x) * -d.y + (sh.loose[1] - hit.y) * d.x) || 1; s.go(o.id, o.x - d.x * .2 + d.y * k * .15, o.y - d.y * .2 - d.x * k * .15, .8); }
+      const call = sh.block === 'k2' ? 'Saved!' : sh.block ? 'Blocked!' : 'Off the post!'; this.hud.caption(call); this.say(call);
+      if (sh.cover && !this.followRuns?.some(f => f.id === sh.cover)) { const sc = this.sc, p = sc.oppsTo[+sh.cover[1] - 1], a = s.a(sh.cover), dd = Math.hypot(p[0] - a.x, p[1] - a.y); if (dd > .05) s.go(sh.cover, p[0], p[1], Math.max(.8, dd / (dist(hit, { x: sh.loose[0], y: sh.loose[1] }) / SHOT.out * SHOT.freeze))); }
+    }, () => done);
   },
   // The players running in a lead-pass round go on with their runs (also after a replay puts them back).
   leadRun() { for (const [id, mv] of Object.entries(this.sc.moves || {})) Object.assign(this.sim.a(id), { tx: mv.to[0], ty: mv.to[1], speed: mv.speed, sp: mv.speed }); },
@@ -179,8 +255,8 @@ export const rounds = {
     const sc = this.sc, save = this.sim.save(), yawSave = this.yaw;
     // After a replay the round starts over facing the same way as before (toward the ball on a receive or on
     // defense), not up the field.
-    const plan = this.wplan; // (v64: the window's plan from the run-up; a restart puts the play back where it opens)
-    const restart = () => { this.sim.restore(save); this.reset(); this.spotsReset(); if (plan) plan.ready = true; this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
+    const plan = this.wplan, runs = { followRuns: this.followRuns, followRacer: this.followRacer, reshoot: this.reshoot }, t00 = this.sim.time; // (v64: the window's plan from the run-up; a restart puts the play back where it opens, with its runs and shot)
+    const restart = () => { this.sim.restore(save); this.reset(); this.spotsReset(); if (plan) plan.ready = true; Object.assign(this, runs, { followRuns: (runs.followRuns || []).map(f => ({ ...f, t0: f.t0 + this.sim.time - t00 })) }); this.reshoot?.(); /* (the sim's clock runs on through a restart: the runs keep their place in the play) */ /* (round 2: a shot still to be struck as it opens) */ this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
     let firstTry = true;
     for (let attempt = 1; ; attempt++) {
       this.hint = hint || attempt > 1;

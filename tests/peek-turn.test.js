@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { allScenarios } from '../js/skills.js';
 import { generate } from '../js/generate.js';
 import { Sim } from '../js/sim.js';
-import { makeGame, drive } from './harness.js';
+import { makeGame, drive, toPicture } from './harness.js';
 
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), deg = 180 / Math.PI;
 const plays = [...allScenarios('peek-and-turn'), ...Array.from({ length: 30 }, (_, i) => generate('peek-and-turn', i + 1)).filter(Boolean)];
@@ -16,7 +16,7 @@ const leftOf = (f, dx, dy) => dy * Math.cos(f) - dx * Math.sin(f);
 // Plays one arrow the way the game does (the pass, the decision, the tap) and measures his body while the ball is his.
 async function turnPlay(sc, opt) {
   const { g, events } = makeGame(); g.mode = 'lesson'; g.load(sc); await drive(g, g.pre());
-  const p = g.decide(); g.tick(1 / 30, 0);
+  const p = g.decide(); g.tick(1 / 30, 0); toPicture(g); // (round 2: he turns as the scene has it, the pass nearly there)
   const arcs = g.turnArcs(), f0 = g.yaw0, good = g.isGood(opt);
   g.choose(opt); await p;
   const s = g.sim, h = s.a('hero'), x0 = h.x, y0 = h.y, r = { arcs, f0, good, rot: 0, lo: 0, hi: 0, sides: new Set(), side: 0 };
@@ -26,7 +26,7 @@ async function turnPlay(sc, opt) {
     if (lost || n++ > 75) return; // the turn and the run out of it, while it is still his ball
     const f = Math.atan2(h.face[1], h.face[0]); r.rot += wrap(f - prev); prev = f; r.lo = Math.min(r.lo, r.rot); r.hi = Math.max(r.hi, r.rot);
     if (s.ball.carrier === 'hero' && s.ball.move) r.sides.add(Math.sign(s.ball.move.d));
-    r.side = leftOf(f0, h.x - x0, h.y - y0);
+    if ((r.turned = Math.abs(r.rot) > 1.6 ? (r.turned || 0) + 1 : 0) < 15) r.side = leftOf(f0, h.x - x0, h.y - y0); // (the side he leaves on: as he comes out of the turn, not where his run on to goal takes him later)
   } });
   r.stolen = events.some(e => e[0] === 'banner' && e[1] === 'Stolen!');
   return r;
@@ -35,7 +35,7 @@ async function turnPlay(sc, opt) {
 test('the turn arrows: L sweeps round his left shoulder, R round his right, both from the way he faces', async () => {
   for (const sc of plays.slice(0, 6)) {
     const { g } = makeGame(); g.mode = 'lesson'; g.load(sc); await drive(g, g.pre());
-    const p = g.decide(); g.tick(1 / 30, 0);
+    const p = g.decide(); g.tick(1 / 30, 0); toPicture(g); // (round 2: he turns as the scene has it, the pass nearly there)
     const f = g.yaw0, by = Object.fromEntries(g.turnArcs().map(t => [t.id, t]));
     assert.ok(by.L.a1 > by.L.a0 && by.R.a1 < by.R.a0, `${sc.id}: L goes counterclockwise (his left), R clockwise`);
     for (const [id, sgn] of [['L', 1], ['R', -1]]) { const mid = (by[id].a0 + by[id].a1) / 2; assert.ok(Math.sign(leftOf(f, Math.cos(mid), Math.sin(mid))) === sgn, `${sc.id}: arrow ${id} on his ${sgn > 0 ? 'left' : 'right'}`); }

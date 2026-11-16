@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
 import { allScenarios } from '../js/skills.js';
 import { TEAMS } from '../js/teams.js';
-import { OPTIONS } from './harness.js';
+import { OPTIONS, toPicture, pictureU } from './harness.js';
 
 const ALL = new Set(['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'forward-first', 'follow-shot', 'go-to-goal']);
 function makeGame(skills = ALL) {
@@ -152,6 +152,8 @@ test('won it? go!: he takes the ball off their player before deciding', async ()
   const p = g.pre(); let done = false; p.then(() => { done = true; });
   for (let t = 0; t < 10 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
   assert.equal(g.sim.ball.carrier, 'hero');
+  // (round 2: the choice opens as he wins it; the player he beat stumbles on past him while he chooses)
+  g.decide(); toPicture(g, 10);
   assert.ok(g.sim.a('o1').x < g.sim.a('hero').x, 'the player he beat ends up behind him');
 });
 
@@ -403,16 +405,19 @@ test('follow your shot: the shot flies fast to the post or leg, comes back out s
   for (const pattern of ['follow-post', 'follow-block', 'follow-friend']) for (let seed = 1; seed <= 4; seed++) for (const opt of ['spot:in', 'spot:watch']) {
     const sc = generate('follow-shot', seed, { pattern }), { g, events } = makeGame();
     g.mode = 'lesson'; g.load(sc);
-    let prev = null, jump = 0, fastest = 0, after = 0, hitAt = null; const b = g.sim.ball, hit = { x: sc.shot.hit[0], y: sc.shot.hit[1] };
+    let prev = null, jump = 0, fastest = 0, after = 0, hitAt = null, rolling = true; const b = g.sim.ball, hit = { x: sc.shot.hit[0], y: sc.shot.hit[1] };
     // jump: how far the ball moves in a frame while it is not in the air (at someone's feet, or lying loose).
-    const track = () => { if (prev) { const d = Math.hypot(b.x - prev.x, b.y - prev.y); if (b.state !== 'flying' && prev.state !== 'flying') jump = Math.max(jump, d); if (hitAt == null) fastest = Math.max(fastest, d); else if (g.phase === 'pre') after = Math.max(after, d); } prev = { x: b.x, y: b.y, state: b.state }; if (hitAt == null && Math.hypot(b.x - hit.x, b.y - hit.y) < .05) hitAt = g.sim.time; };
+    const track = () => { if (prev) { const d = Math.hypot(b.x - prev.x, b.y - prev.y); if (b.state !== 'flying' && prev.state !== 'flying') jump = Math.max(jump, d * Math.min(1, (1 / 30) / Math.max(1e-6, g.sim.time - prev.t))); if (hitAt == null) fastest = Math.max(fastest, d); else if (rolling) after = Math.max(after, d); } prev = { x: b.x, y: b.y, state: b.state, t: g.sim.time }; if (hitAt == null && Math.hypot(b.x - hit.x, b.y - hit.y) < .05) hitAt = g.sim.time; };
     await drive(g, g.pre(), () => null, 10, track);
+    // (round 2) The choice opens as he winds up to shoot ("follow your shot!"): the flight to the post or leg and the
+    // rebound's roll are the window. He chooses as it slows down, as the scene has it.
+    assert.ok(hitAt == null && b.state !== 'flying', `${sc.id}: the choice should open before the shot`);
+    let open = true;
+    await drive(g, g.decide(), gm => { if (!(hitAt != null && b.state === 'flying' && b.t >= SHOT.freeze - .05)) return null; open = !!gm.win; return opt; }, 20, track);
     assert.ok(hitAt != null, `${sc.id}: the ball never reached the post or leg`);
-    assert.ok(b.state === 'flying' && b.t >= SHOT.freeze - .05, `${sc.id}: the choice should open as the rebound slows down`);
-    const p = g.decide(); for (let i = 0; i < 400 && b.state === 'flying' && g._choose; i++) { g.tick(1 / 30, 50 + i / 30); track(); }
-    assert.equal(b.state, 'loose', `${sc.id}: the rebound should come to rest while he decides`); assert.ok(Math.hypot(b.x - sc.shot.loose[0], b.y - sc.shot.loose[1]) < .05, `${sc.id}: the ball is not at rest where it came out to`);
+    assert.ok(open, `${sc.id}: the window should still be open as the rebound slows down`);
     assert.ok(after < fastest * .5, `${sc.id}: the rebound (${after.toFixed(2)} m a frame) is not slower than the shot (${fastest.toFixed(2)})`);
-    g.choose(opt); await p;
+    rolling = false;
     await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 10, track);
     assert.ok(jump < .35, `${sc.id}: the ball jumped ${jump.toFixed(2)} m in a frame`);
     const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
@@ -427,6 +432,7 @@ test('run to the goal: the right run gets the pass in front of him and he scores
     for (const s of sc.spots) {
       const opt = 'spot:' + s.id, { g, events } = makeGame();
       g.mode = 'lesson'; g.load(sc); await drive(g, g.pre(), () => null);
+      { const p = g.decide(); toPicture(g); g.choose(opt); await p; } // (round 2: he picks his run at the scene's own moment)
       const h = g.sim.a('hero'); let took = null;
       await drive(g, g.outcome(opt, g.isGood(opt)), () => null, 10, gm => { if (took === null && gm.sim.ball.carrier === 'hero') took = h.sp; });
       const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
@@ -445,7 +451,8 @@ test('run to the goal and follow your shot: a wrong run shows the red and green 
     const sc = generate(sk, 3, { pattern: sk === 'go-to-goal' ? 'go-goal' : 'follow-post' }), { g, events } = makeGame();
     let tries = 0, lines = null;
     let h = null; // (v64: where he was when he chose: play goes on while he chooses, so not always the scene's own spot)
-    const r = await drive(g, g.round(sc, { hint: false }), gm => (tries++ ? gm.sc.best : wrong), 120, gm => { if (gm.phase === 'feedback' && gm.lines.length && !lines) { lines = gm.lines.map(l => ({ ...l.a })); const a = gm.sim.a('hero'); h = [a.x, a.y]; } });
+    const r = await drive(g, g.round(sc, { hint: false }), gm => (gm.win && (gm.win.u ?? 0) < pictureU(gm.win) ? null : tries++ ? gm.sc.best : wrong), 120, // (round 2: he chooses at the scene's own moment)
+      gm => { if (gm.phase === 'feedback' && gm.lines.length && !lines) { lines = gm.lines.map(l => ({ ...l.a })); const a = gm.sim.a('hero'); h = [a.x, a.y]; } });
     assert.equal(r.firstTry, false);
     assert.ok(lines && lines.every(a => Math.hypot(a.x - h[0], a.y - h[1]) < .6), `${sk}: the lines do not start at him`);
     assert.ok(events.some(e => e[0] === 'caption' && e[1] === g.named(sc.cue)), `${sk}: the cue was not said`);
@@ -457,7 +464,7 @@ test('matches with every lesson passed: friends attack and he picks his run, and
   const { generate } = await import('../js/generate.js');
   const real = Math.random, seen = { goal: 0, follow: 0, rebound: 0 };
   try {
-    for (let seed = 1; seed <= 6; seed++) {
+    for (let seed = 1; seed <= 40 && !(seen.goal && seen.follow && seen.rebound); seed++) { // (a blocked shot that can come back out is rare: as many matches as it takes, up to 40)
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame(), extra = [1, 2, 3].flatMap(k => [generate('go-to-goal', 800 + seed * 10 + k), generate('follow-shot', 800 + seed * 10 + k)]);
       await drive(g, g.match([...ALL], extra, 4, 'free'), gm => {

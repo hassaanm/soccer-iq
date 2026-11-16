@@ -71,3 +71,30 @@ test('in a match the time-out hands them the ball and play goes on', async () =>
     assert.ok(theirs >= 1, 'their team has the ball after it');
   } finally { Math.random = real; }
 });
+
+// Round 2: the scene's own picture is the end of the window. The threat runs in from well out, on a child's run, and is
+// where the scene has him as it ends; whoever is still in the picture moves.
+test('round 2: the threat arrives at the scene\'s own picture as the window ends, from at least 2.5 m further out', async () => {
+  let n = 0;
+  for (const id of ['look-up', 'take-him-on', 'pass-to-open', 'see-the-trap']) for (const sc of allScenarios(id).slice(0, 3)) {
+    const { g } = makeGame(); g.mode = 'lesson'; g.load(sc); await drive(g, g.pre());
+    const p = g.decide(), w = g.win, th = w.threat.id, a = g.sim.a(th), start = { x: a.x, y: a.y };
+    if (w.plan.Gpost) { g.choose(sc.best); await p; continue; } // (one getting back from far runs on past his place)
+    let last = null; await drive(g, p, { pick: gm => { if (gm.win) last = { x: a.x, y: a.y }; return null; } });
+    const want = sc.oppsTo[+th.slice(1) - 1], end = Math.hypot(last.x - want[0], last.y - want[1]), ran = Math.hypot(last.x - start.x, last.y - start.y);
+    assert.ok(end < .4, `${sc.id}: ${th} ends ${end.toFixed(2)} m from his place in the scene`);
+    assert.ok(ran >= 2.5, `${sc.id}: ${th} ran only ${ran.toFixed(2)} m in the window`);
+    n++;
+  }
+  assert.ok(n >= 6, `only ${n} scenes checked`);
+});
+
+test('round 2: after three time-outs in a row the next window is Relaxed, until he chooses in time again', () => {
+  const { g } = makeGame(); g.mode = 'lesson'; g.load(allScenarios('look-up')[0]);
+  const base = g.windowReal();
+  g.win = { u: 0 }; g.phase = 'decide';
+  for (let i = 0; i < 3; i++) { g._choose = () => {}; g.choose('timeout'); }
+  assert.equal(g.windowReal(), base * THINK.relaxed);
+  g._choose = () => {}; g.choose('pass:0');
+  assert.equal(g.windowReal(), base);
+});

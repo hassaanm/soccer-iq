@@ -45,6 +45,11 @@ export async function drive(g, promise, { pick = () => null, onFrame = () => {},
   return value;
 }
 
+// (round 2) The window's own time at which play is where the scene put it (the end of its lead-in), as u (0..0.95).
+export const pictureU = w => Math.min(.95, (w.plan.Gpre ?? 0) / w.G);
+// Steps an open window on (choosing nothing) until play is at the scene's own picture.
+export function toPicture(g, t = 0) { const w = g.win; if (!w) return t; const u = pictureU(w); for (let i = 0; i < 4000 && g.win && (g.win.u ?? 0) < u; i++) g.tick(1 / 30, t += 1 / 30); return t; }
+
 // Plays one option of one scenario from the freeze and measures how the play looked.
 export async function playOption(sc, opt) {
   const { g, events } = makeGame();
@@ -53,6 +58,13 @@ export async function playOption(sc, opt) {
   // A give-and-go option: the right pass first, then this run (or the right run, after a plain right pass).
   let step2 = null;
   if (sc.then && opt.startsWith('then:')) { step2 = opt.slice(5); opt = sc.best; } else if (sc.then && opt === sc.best) step2 = sc.then.best;
+  // (round 2) The scene's own picture is where its window gets to (the end of the lead-in), not where it opens: he
+  // chooses there, with play moving as it does.
+  if (sc.kind !== 'tackle') {
+    let ua = null;
+    const pick = gm => { if (!gm.win) return opt; ua ??= pictureU(gm.win); return gm.win.u >= ua ? opt : null; };
+    await drive(g, g.decide(), { pick });
+  }
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
   const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y }, rolling: s.ball.state === 'flying' };
   // (v64: a ball still rolling as the choice opens, a rebound or a pass on its way, counts where it is going)

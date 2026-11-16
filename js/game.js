@@ -72,7 +72,7 @@ export class Game {
     this.reset(); this.sc = sc = sc.spots ? { ...sc, spots: sc.spots.map(sp => ({ ...sp })) } : sc; // (v64: its own rings, which move in the window, so the scene itself is never changed)
     this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; this.hud.bannerOff?.(); // (a new play: the last one's result words go)
     this.roster = { ...ROSTER }; this.world.resetRigs?.();
-    this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; // (v64: the rings' own places; the window's plan)
+    this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; this.bounced = undefined; this.followRuns = []; this.followRacer = null; this.reshoot = null; // (v64: the rings' own places; the window's plan)
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
     if (sc.shots && sc.gk) { // (v62) a shot lesson's scene with a keeper: he faces the goal and anyone of his close to it (a friend free at the far post)

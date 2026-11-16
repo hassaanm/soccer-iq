@@ -106,7 +106,9 @@ export const input = {
   // In the "Look up" lesson he has to look up before he can pass or dribble.
   get locked() { return this.mode === 'lesson' && this.sc?.skill === 'look-up' && !this.scanned; },
   lookFirst() { this.hud.toast('Look up first! 👀', true); },
-  choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; f(opt); } },
+  // (round 2) Time-outs in a row: after three, the next windows get the Relaxed length, quietly, until he chooses in
+  // time again (game/window.js windowReal).
+  choose(opt) { if (this.canAct && this._choose) { const f = this._choose; this._choose = null; if (this.win) this.toStreak = opt === 'timeout' ? (this.toStreak || 0) + 1 : 0; f(opt); } },
   // Returns true when the tap picked a pass target or dribble arrow.
   tap(x, y) {
     if (!this.canAct || !this.step) return false;
