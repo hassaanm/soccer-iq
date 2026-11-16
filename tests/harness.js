@@ -11,10 +11,10 @@ export function optionsFor(sc) {
   if (sc.kind === 'tackle') return ['tackle:good', 'tackle:early', 'tackle:tight', 'tackle:none'];
   if (sc.kind === 'receive') return ['turn:L', 'turn:R'];
   const push = sc.skill === 'dribble-to-space' || sc.skill === 'won-it-go' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
-  const shoot = sc.skill === 'shoot-close' || sc.heroTo[0] > 17; // the SHOOT button shows from 13 m out
+  const shoot = !sc.shots && (sc.skill === 'shoot-close' || sc.heroTo[0] > PITCH.L - 13); // the SHOOT button shows from 13 m out (a shot lesson's scene: each shot it offers, sc.shots)
   // Give-and-go: after the right pass, each run he could make (written then:spot:<id>).
   const then = sc.then ? sc.then.spots.filter(s => 'spot:' + s.id !== sc.then.best).map(s => 'then:spot:' + s.id) : [];
-  return [...(sc.mates.length > 2 ? [...PASS3, ...OPTIONS.slice(2)] : OPTIONS), ...push, ...(shoot ? ['shoot'] : []), ...then];
+  return [...(sc.mates.length > 2 ? [...PASS3, ...OPTIONS.slice(2)] : OPTIONS), ...push, ...(shoot ? ['shoot'] : []), ...Object.keys(sc.shots || {}), ...then];
 }
 const MATE = { 'pass:0': 'm1', 'pass:1': 'm2', 'pass:2': 'm3' };
 
@@ -84,13 +84,22 @@ export async function playOption(sc, opt) {
     },
   });
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
-  return { sc: sc.id, opt: step2 && step2 !== sc.then?.best ? 'then:' + step2 : opt, good: gStep2 ?? good, defense: sc.kind === 'defense' || sc.kind === 'tackle', banners, ...m, seconds: s.time - t0,
+  return { sc: sc.id, expect: sc.shots?.[opt] && SHOT_BANNER[sc.shots[opt]], opt: step2 && step2 !== sc.then?.best ? 'then:' + step2 : opt, good: gStep2 ?? good, defense: sc.kind === 'defense' || sc.kind === 'tackle', banners, ...m, seconds: s.time - t0,
     mateStart: start.mate && !step2 ? dist(start.mate, start.ball) : null };
 }
 
+// A shot in a shot lesson ends as its scene says (generate.js finishShots): the banner for each result.
+const SHOT_BANNER = { goal: 'GOAL!', save: 'Saved!', over: 'Over the bar!', wide: 'Wide!', cleared: 'Cleared!', blocked: 'Stolen!' };
 // The rules a play has to follow to look like real soccer. Returns a list of broken rules.
 export function judge(r) {
   const bad = [];
+  if (r.expect) { // his shot: it ends as the scene says, whatever its stars (a right space with the wrong foot is 2 stars and a miss)
+    if (!r.banners.includes(r.expect)) bad.push(`shot ended ${r.banners.join(',') || 'with nothing'}, the scene says ${r.expect}`);
+    if (r.minGap < .5) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
+    if (r.through) bad.push(`ball went through ${r.through}`);
+    if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
+    return bad;
+  }
   if (r.minGap < .5) bad.push(`players overlapped (${r.minGap.toFixed(2)} m apart)`);
   if (r.shotBlocked) bad.push('shot went through a defender');
   if (r.seconds > 10) bad.push(`play dragged on (${r.seconds.toFixed(1)} s)`);
@@ -101,7 +110,7 @@ export function judge(r) {
     return bad;
   }
   if (r.good && !r.banners.some(b => b === 'GOAL!' || b === 'Kept the ball!')) bad.push('good choice lost the ball');
-  const lost = r.banners.includes('Stolen!') || r.banners.includes('They got it!') || r.banners.includes('Cut out!'); // (a loose ball they get to first; a pass to him cut out)
+  const lost = ['Stolen!', 'They got it!', 'Cut out!', 'Saved!', 'Over the bar!', 'Wide!', 'Cleared!'].some(b => r.banners.includes(b)); // (a loose ball they get to first; a pass to him cut out; a shot that does not go in)
   if (r.good && lost) bad.push('good choice lost the ball');
   if (!r.good && !lost) bad.push('bad choice did not lose the ball');
   if (!r.good && r.mateStart != null && r.flight > .4 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');

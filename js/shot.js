@@ -51,6 +51,9 @@ export function resolve(from, aimY, foot, k = null, { gx = L, stray = 0, defs = 
   }
   return { ...base, res: 'goal', t: d / F.speed, gap };
 }
+// The space a shot of his own goes to when he does not pick one (the lesson about it not passed yet): the one farthest
+// from the keeper's reach for a true (inside of the foot) shot; with no keeper, as SHOOT always aimed.
+export const bestSpaceY = (from, k) => (k ? spaces(2).map(s => ({ y: s.y, g: resolve(from, s.y, 'in', k).gap })).sort((p, q) => q.g - p.g)[0].y : clamp(from.y, gy0 + .8, gy1 - .8));
 // The placed shot that is farthest from the keeper's reach: the aim point (y on the line at gx).
 export function placedAim(from, k, gx = L) {
   const ys = [gy1 - .55, gy0 + .55];

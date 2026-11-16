@@ -1,5 +1,5 @@
 // The learning path (see research/curriculum-plan.md) and the scenarios for each lesson.
-import { shuffle, PITCH } from './geom.js';
+import { shuffle, PITCH, onSize, sizeOf } from './geom.js';
 import { generate, generates, demoFor, patternsOf } from './generate.js';
 export { PITCH };
 
@@ -11,7 +11,9 @@ export const CHAPTERS = ['Me and the ball', 'Win it back', 'Me and my friends', 
 // side: 'attack' (he has the ball, or his team has it) or 'defense' (the other team has it). tip: the one cue, said to him.
 // outside: a backyard game for the grown-up (shown on the results screen, not spoken).
 // added: a lesson put in after children already had saved games (js/progress.js keeps their open lessons open).
-export const PATH = [
+// `keeper`: a lesson only for sizes with a keeper (5v5): it is on the path only then (PATH, below), and the lessons after
+// it never wait for it (progress.js isOpen).
+const ALL = [
   { id: 'look-up', ch: 0, emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding: goal, then space, then friends', ready: true,
     tip: 'Look up! Where is the space?', outside: 'Dribble around the yard. Hold up some fingers: he shouts how many without stopping.' },
   { id: 'dribble-to-space', ch: 0, emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true,
@@ -20,6 +22,12 @@ export const PATH = [
     tip: 'Only one defender? Dribble past him!', outside: 'Play 1v1 to a small goal. A goal only counts if he dribbles past you first.' },
   { id: 'shoot-close', ch: 0, emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true,
     tip: 'Close to the goal and nobody in the way? Shoot!', outside: 'Mark a line near the goal. Goals only count from inside the line, so he dribbles closer first.' },
+  { id: 'inside-laces', ch: 0, emoji: '🦶', kid: 'Inside or laces?', side: 'attack', added: true, ready: true,
+    adult: 'Choose the shot: the inside of the foot to place it from close (in the box); the laces for pace from the edge of the box; farther out, get closer first. (The game makes its close shots need placing: from very close, laces are not always wrong.)',
+    tip: 'Close? Inside, for control. Far? Laces, for power!', outside: 'Two lines of cones. From the near line only inside-of-the-foot goals count; from the far line only laces goals, while you walk slowly across the goal.' },
+  { id: 'shoot-space', ch: 0, emoji: '🎯', kid: 'Shoot to the space!', side: 'attack', added: true, ready: true, keeper: true,
+    adult: 'Finishing past a keeper: look, then pass it low into the bigger open side of the goal. If the keeper rushes out, go round him; if a friend is free at the far post, pass it across.',
+    tip: 'Keeper in goal? Shoot to the big space!', outside: 'Pass it into the goal: stand in goal, a step off the middle. Goals count only into the bigger side, along the ground with the inside of the foot. Then swap.' },
   { id: 'follow-shot', ch: 0, emoji: '👟', kid: 'Follow your shot!', side: 'attack', adult: 'Follow up every shot: keep running in for the rebound off a block or the post', ready: true, added: true,
     tip: 'You shot? Keep running in!', outside: 'Stand in goal and knock every shot back out. A goal from the rebound counts double.' },
   { id: 'get-goal-side', ch: 1, emoji: '💪', kid: 'Get back in front!', side: 'defense', adult: 'Lost the ball: the closest player gets between the ball and goal and wins it back', ready: true,
@@ -47,7 +55,11 @@ export const PATH = [
   { id: 'give-and-go', ch: 4, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
     tip: 'Pass it, then run past your defender to get it back!', outside: 'Be a wall: he passes to you, runs past a cone, and you pass it back in front of him.' },
 ];
-export const skillById = id => PATH.find(s => s.id === id);
+// The lessons of the size being played, in order (kept up to date in place when the size changes).
+export const PATH = [];
+onSize(() => { PATH.length = 0; PATH.push(...ALL.filter(s => !s.keeper || sizeOf().keeper)); });
+export const ALL_LESSONS = ALL;
+export const skillById = id => ALL.find(s => s.id === id);
 
 // What passing each lesson adds to matches and free play (shown when it unlocks). Every lesson also adds its
 // own situations to free play.
@@ -56,6 +68,8 @@ export const UNLOCKS = {
   'dribble-to-space': 'Big pushes into space',
   'take-him-on': '1v1 chances',
   'shoot-close': 'Chances to shoot',
+  'inside-laces': 'Pick your shot: inside or laces',
+  'shoot-space': 'Pick the space in the goal',
   'follow-shot': 'Blocked shots: run in for the rebound',
   'get-goal-side': 'You pick where to run when they have the ball',
   'steal-it': 'STEAL when you get in front of him',
@@ -77,6 +91,8 @@ export const BUILDS = {
   'dribble-to-space': ['look-up'],
   'take-him-on': ['look-up', 'dribble-to-space'],
   'shoot-close': ['look-up'],
+  'inside-laces': ['shoot-close'],
+  'shoot-space': ['shoot-close', 'inside-laces'],
   'follow-shot': ['shoot-close'],
   'steal-it': ['get-goal-side'],
   'won-it-go': ['look-up', 'dribble-to-space'],

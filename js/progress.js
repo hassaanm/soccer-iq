@@ -49,7 +49,8 @@ export const skills = (p, path) => new Set(path.filter(s => passed(p, s.id)).map
 
 // A lesson opens once the one before it is passed (or once it has been played itself, for older saves), or when a
 // new lesson was put in before it after it had already opened (see catchUp).
-export const isOpen = (p, path, i) => i === 0 || passed(p, path[i - 1].id) || played(p, path[i].id) || !!p.opened?.includes(path[i].id);
+// (A lesson only for some sizes, `keeper`, is never the one a later lesson waits for: it waits for the one before it.)
+export const isOpen = (p, path, i) => { const prev = path.slice(0, i).reverse().find(s => !s.keeper); return i === 0 || !prev || passed(p, prev.id) || played(p, path[i].id) || !!p.opened?.includes(path[i].id); };
 
 // When the path changes (lessons added, moved or merged), a save keeps everything it had: each lesson that was open
 // on the path the save knew stays open, wherever it is now. `known` is that path, in its order. Saves from before it

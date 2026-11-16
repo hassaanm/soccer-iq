@@ -18,9 +18,12 @@ export const TEAM = { size: '3v3' };
 export const PITCH = { ...SIZES['3v3'].pitch };
 export let L = PITCH.L, W = PITCH.W, gy0 = PITCH.gy0, gy1 = PITCH.gy1;
 export const sizeOf = (id = TEAM.size) => SIZES[id] || SIZES['3v3'];
+const SIZE_HOOKS = [];
+export const onSize = f => { SIZE_HOOKS.push(f); f(); }; // (skills.js: the lessons that belong to a size)
 export function setSize(id) {
   TEAM.size = SIZES[id] ? id : '3v3';
   Object.assign(PITCH, sizeOf().pitch); ({ L, W, gy0, gy1 } = PITCH);
+  for (const f of SIZE_HOOKS) f();
 }
 export const SAVE_KEY = 'soccer-iq:v1'; // where progress.js keeps the save
 try { setSize(globalThis.process?.env?.SOCCER_SIZE || JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }

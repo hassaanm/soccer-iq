@@ -32,7 +32,7 @@ export class Game {
     this.tweens = []; this.speechWaits = [];
     // What tick() hands on each frame is kept and updated in place, so a frame makes no new objects for it:
     // `ui` (what the 3D scene highlights; 0 in glow/arrows means off), the canvas size, and where the hand last was.
-    this.ui = { glow: { m1: 0, m2: 0, m3: 0 }, arrows: Object.fromEntries(DIRS.map(d => [d, 0])), spots: NONE, lines: NONE, heroRing: false, ballGlow: false, turnArrows: NONE, clock: skillTaps ? 0 : null }; // clock: the picture's own (slow in a skill moment), or null for the frame loop's
+    this.ui = { glow: { m1: 0, m2: 0, m3: 0 }, arrows: Object.fromEntries(DIRS.map(d => [d, 0])), spots: NONE, aims: NONE, lines: NONE, heroRing: false, ballGlow: false, turnArrows: NONE, clock: skillTaps ? 0 : null }; // clock: the picture's own (slow in a skill moment), or null for the frame loop's
     this.view = { w: 0, h: 0, at: NaN }; this.clock = 0;
     this.handLast = { on: null, id: null, x: null, y: null, tap: null };
     this.skills = new Set(); // lessons he has passed: each adds its part to matches (see has())

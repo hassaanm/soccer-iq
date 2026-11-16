@@ -3,7 +3,7 @@
 // toward the line from the ball to the goal's middle, late (the spot he heads for is renewed only every LAG seconds)
 // and short of it (only part `f` of the way), and never out of the area. What a shot does against him is decided by
 // shot.js (the same rule the lessons are graded with); here he acts it out.
-import { clamp, dist } from '../geom.js';
+import { clamp, dist, closestOnLane } from '../geom.js';
 import { L, W, gy0, gy1 } from './shared.js';
 import { GK, spill } from '../shot.js';
 import { sizeOf } from '../geom.js';
@@ -46,13 +46,15 @@ export const keeper = {
     if (!k || !r) return;
     const s = this.sim, gx = k.team === 'us' ? 0 : L, line = r.at || r.to;
     // where his hands go: the point on the ball's way nearest him (a goal: as far toward it as he gets in time)
-    const c = { x: line.x, y: line.y }, d = dist(k, c), reach = GK.reach + Math.max(0, r.t - GK.react) * GK.speed;
-    const k2 = r.res === 'save' ? c : { x: k.x + (c.x - k.x) / (d || 1) * Math.min(d, reach - .1), y: k.y + (c.y - k.y) / (d || 1) * Math.min(d, reach - .1) };
-    const lat = Math.abs(k2.y - k.y), dive = lat > GK.reach + .15, side = Math.sign((k2.y - k.y) * (gx ? -1 : 1)) || 1; // side: +1 his left
-    // his middle moves by what his arms do not reach
-    const body = { x: k.x + (k2.x - k.x) * (dive ? .55 : .2), y: k.y + (k2.y - k.y) * (dive ? Math.max(0, 1 - GK.reach / Math.max(lat, .01)) : .25) };
+    const c = r.res === 'save' ? { x: line.x, y: line.y } : closestOnLane(k, from, line, 0), d = dist(k, c) || .01, u = { x: (c.x - k.x) / d, y: (c.y - k.y) / d };
+    const reach = GK.reach + Math.max(0, r.t - GK.react) * GK.speed, save = r.res === 'save';
+    // his middle: a save, close enough for his hands to be on the ball; a goal, after it, but never nearer its way than a
+    // metre (it goes past his fingertips)
+    const mv = save ? Math.max(0, d - .55) : Math.max(0, Math.min(d - 1.1, reach - .75)), body = { x: k.x + u.x * mv, y: k.y + u.y * mv };
+    const k2 = { x: k.x + u.x * Math.min(d, mv + .8), y: k.y + u.y * Math.min(d, mv + .8) };
+    const dive = Math.abs(c.y - k.y) > GK.reach + .1, side = Math.sign((c.y - k.y) * (gx ? -1 : 1)) || 1; // side: +1 his left
     const go = Math.min(GK.react, r.t * .6), dur = Math.max(.2, r.t - go);
-    k.gkm = { k: dive ? 'dive' : 'reach', t0: s.time + lead + go, dur, side, hand: k2, low: (r.arc ?? .3) < .2, save: r.res === 'save', keep: r.res === 'save',
+    k.gkm = { k: dive ? 'dive' : 'reach', t0: s.time + lead + go, dur, side, hand: k2, low: (r.arc ?? .3) < .2, save: r.res === 'save', keep: r.res === 'save' && !r.parry,
       body: { x: body.x, y: clamp(body.y, gy0 - 1, gy1 + 1) }, spd: Math.max(1, dist(k, body) / dur) };
     this.scripted.add(k.id); s.stop(k.id);
     void from;

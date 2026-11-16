@@ -53,9 +53,14 @@ export const demo = {
       this.seen.add(MATE[opt]);
       await this.tapAt('passBtn'); this.step = 'pass'; await this.delay(.3);
       await this.tapAt({ x: m.x, y: m.y, z: .9 });
-    } else if (opt === 'shoot') {
+    } else if (opt === 'shoot' || opt.startsWith('shoot:')) {
       if (Math.abs(wrap(this.yaw)) > .5) await this.dragTo(0, .8);
       await this.tapAt('shootBtn');
+      if (opt !== 'shoot') { // then the space in the goal, and the foot (v62)
+        const [, sp, ft] = opt.split(':'), parts = this.shotParts();
+        if (parts.space && sp !== '*') { this.step = 'aim'; await this.delay(.6); const t = this.targets().find(x => x.opt === 'aim:' + sp); if (t) await this.tapAt(t); this.shotSpace = sp; }
+        if (parts.foot && ft !== '*') { this.step = 'foot'; await this.delay(.5); await this.tapAt(ft === 'in' ? 'footIn' : 'footLaces'); }
+      }
     } else if (/^(drib|push):/.test(opt)) {
       const d = opt.slice(5);
       await this.tapAt('dribBtn'); this.step = 'dribble'; await this.delay(.5); // the camera rises to show the arrows
@@ -117,7 +122,7 @@ export const demo = {
       await this.talk(q.replace(/ 👀$/, ''), 1, q);
     } else {
       await this.lookAround(0);
-      const saw = sc.best === 'shoot' ? 'Goal ahead! 🥅' : sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
+      const saw = sc.best?.startsWith('shoot') ? 'Goal ahead! 🥅' : sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
       await this.talk(saw.replace(/ \S+$/u, ''), .8, saw);
     }
     this.hud.caption('');

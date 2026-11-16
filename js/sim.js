@@ -175,7 +175,7 @@ export class Sim {
     sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
     sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
     if (sc.gk?.us) add('k1', 'us', sc.gk.us, true);
-    if (sc.gk?.them) add('k2', 'them', sc.gk.them, true);
+    if (sc.gk?.them) add('k2', 'them', sc.gk.from || sc.gk.them, true); // (from: a keeper rushing out starts on his line)
     const c = this.a(sc.carrier || 'hero'); // in defense lessons the other team starts with the ball
     this.ball = { x: c.x + c.face[0] * .5, y: c.y, z: 0, state: 'carried', carrier: c.id, h: ang(c.face[0], c.face[1]), move: null, got: -9 };
     this.co = null; this.wait = 0; this.until = null;

@@ -391,6 +391,14 @@ export class World {
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
     this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
     this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
+    // The spaces in the goal he can shoot at (v62): the same gold rings, standing up in the goal mouth, facing the pitch.
+    this.aimPool = Array.from({ length: 3 }, () => {
+      const g = new THREE.Group();
+      const disc = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.42, .58, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(.13, 16), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, side: THREE.DoubleSide }));
+      ring.position.z = dot.position.z = .01; g.add(disc, ring, dot); g.rotation.set(0, -Math.PI / 2, 0, 'XYZ'); g.visible = false; this.scene.add(g); return g;
+    });
     this.spotPool = Array.from({ length: 6 }, () => {
       const g = new THREE.Group();
       const disc = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
@@ -551,6 +559,7 @@ export class World {
       const g = this.spotPool[i], sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) continue;
       g.position.set(sp.x, sp.y, .035); g.scale.setScalar((ui.spotScale?.[i] || 1) * (1 + .1 * Math.sin(time * 5 + i))); // (farther rings drawn bigger: game/view.js spotView)
     }
+    for (let i = 0; i < this.aimPool.length; i++) { const g = this.aimPool[i], a = ui.aims?.[i]; g.visible = !!a; if (a) { g.position.set(a.x, a.y, a.z); g.scale.setScalar(1 + .08 * Math.sin(time * 5 + i)); } }
     const st = ui.stayAt; this.stayBadge.visible = !!st;
     if (st) { const k = 1 + .04 * Math.sin(time * 5); this.stayBadge.position.set(st.x, st.y, st.z); this.stayBadge.scale.set(.82 * k, 1 * k, 1); } // (a softer pulse than the rings)
     this.setLines(ui.lines);

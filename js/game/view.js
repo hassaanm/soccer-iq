@@ -147,6 +147,12 @@ export const view = {
     }
     // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView).
     if (this.step === 'spot' && this.phase === 'decide' && this.sc?.spots?.length) return this.spotView();
+    // Choosing where to shoot, and with which foot (v62): from behind him and a little to the side, looking at the goal,
+    // so he, the keeper and the gold spots in the goal are all in the picture, and he is big.
+    if ((this.step === 'aim' || this.step === 'foot') && this.phase === 'decide') {
+      const gc = { x: L, y: (gy0 + gy1) / 2 }, dx = gc.x - h.x, dy = gc.y - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, back = clamp(l * .35, 3.2, 4.6);
+      return { eye: [h.x - ux * back - uy * .6, h.y - uy * back + ux * .6, 2.3 + l * .06], tgt: [h.x + ux * l * .62, h.y + uy * l * .62, .55], Ff: .95, Fw: .5 };
+    }
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
     // 1v1: a bit higher and farther back, aimed between him and the ball, so the ball and the attacker's feet
@@ -265,6 +271,8 @@ export const view = {
         this.pendingDir ? 'Small touches or big push?' :
         this.step === 'pass' ? (this.seen.size ? 'Tap a friend you found' : 'Drag to look for a friend') :
         this.step === 'dribble' ? 'Tap an arrow' :
+        this.step === 'aim' ? 'Tap where to shoot' :
+        this.step === 'foot' ? 'Inside or laces?' :
         this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Drag to look around' : 'Tap 👀 to look up';
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
@@ -285,6 +293,7 @@ export const view = {
     for (const m of MATES) ui.glow[m] = deciding && this.step === 'pass' && this.seen.has(m) ? .8 : 0;
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
+    ui.aims = deciding && this.step === 'aim' ? (this.aimList?.sc === this.sc ? this.aimList.v : (this.aimList = { sc: this.sc, v: this.aimSpots() }).v) : NONE; // the spaces in the goal (v62)
     ui.spotScale = ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView)
     // Staying is one of the choices: a badge floats over his head (and his ring stays under his feet). Tapping either picks it.
     const h = this.sim.a('hero'), st = ui.spots !== NONE && this.stayOffered() && h;

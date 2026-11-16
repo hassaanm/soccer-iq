@@ -53,8 +53,8 @@ export const team = {
     // middle, out wide on the far side, or back in the middle.
     if (sup.length > 2) {
       const room = p => Math.min(...spots.map(q => dist(p, q)), ...attackers.filter(a => !free(a)).map(a => dist(p, a)));
-      spots.push([{ x: fut.x + dir * 9, y: lerp(fut.y, W / 2, .7) }, { x: fut.x + dir * 2, y: wide(-side0) }, { x: fut.x - dir * 6, y: W / 2 }]
-        .map(p => clearOf({ x: clamp(p.x, 2, L - 3), y: clamp(p.y, 2, W - 2) })).sort((p, q) => room(q) - room(p))[0]);
+      const cand = [{ x: fut.x + dir * 9, y: lerp(fut.y, W / 2, .7) }, { x: fut.x + dir * 2, y: wide(-side0) }, { x: fut.x - dir * 6, y: W / 2 }].map(p => clearOf({ x: clamp(p.x, 2, L - 3), y: clamp(p.y, 2, W - 2) }));
+      while (spots.length < sup.length) spots.push(cand.sort((p, q) => room(q) - room(p))[0] && cand.splice(0, 1)[0] || spots[spots.length - 1]); // (no one has the ball, a keeper holding it: every attacker gets a place)
     }
     sup.forEach((a, i) => s.go(a.id, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
   },
