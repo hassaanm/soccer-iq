@@ -385,11 +385,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   .sheet:has(#lessons) h2{font-size:19px!important;margin:0 0 2px!important}
   .sheet:has(#lessons) h2{line-height:44px}
   .sheet:has(#lessons) #sheetClose{top:6px;padding:0 18px;min-height:44px;font-size:15px}
-  #lessons{max-height:calc(100dvh - 54px);gap:4px;padding:2px 3px 3px}
+  #lessons{max-height:calc(100dvh - 54px);gap:3px;padding:2px 3px 3px} /* (six chapters since v62: 44 px tiles, so all six rows fit) */
   #lessons .chap{grid-template-columns:72px 1fr;gap:6px}
   #lessons .cn{font-size:11px}
   #lessons .row{gap:6px}
-  #lessons .tile{display:grid;grid-template:"e k" auto "s k" auto / auto 1fr;align-content:center;column-gap:6px;row-gap:1px;height:48px;min-height:0;padding:2px 6px 2px 5px;text-align:left}
+  #lessons .tile{display:grid;grid-template:"e k" auto "s k" auto / auto 1fr;align-content:center;column-gap:6px;row-gap:1px;height:44px;min-height:0;padding:2px 6px 2px 5px;text-align:left}
   #lessons .tile .e{grid-area:e;font-size:20px;line-height:1;justify-self:center;align-self:end}
   #lessons .tile .st{grid-area:s;font-size:8px;letter-spacing:0;min-height:9px;line-height:1;align-self:start}
   #lessons .tile .k{grid-area:k;font-size:11px;line-height:1.08;align-self:center}

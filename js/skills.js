@@ -3,10 +3,10 @@ import { shuffle, PITCH, onSize, sizeOf } from './geom.js';
 import { generate, generates, demoFor, patternsOf } from './generate.js';
 export { PITCH };
 
-// Five chapters, in the order US Youth Soccer, US Soccer and the FA teach them: me and the ball, winning it back on
-// my own, playing with friends (starting with looking before the ball comes), the team, then the clever passes
+// Six chapters, in the order US Youth Soccer, US Soccer and the FA teach them: me and the ball, shooting (its own chapter
+// since v62, when "Inside or laces?" made the first too long for one row on a phone), winning it back on my own, playing with friends (starting with looking before the ball comes), the team, then the clever passes
 // (wall passes and through balls come at about 9–10). See research/curriculum-plan.md.
-export const CHAPTERS = ['Me and the ball', 'Win it back', 'Me and my friends', 'Our team', 'Clever passes'];
+export const CHAPTERS = ['Me and the ball', 'Shoot!', 'Win it back', 'Me and my friends', 'Our team', 'Clever passes']; // (v62: "Shoot!" split out of the first, so each chapter is one row on a phone)
 
 // side: 'attack' (he has the ball, or his team has it) or 'defense' (the other team has it). tip: the one cue, said to him.
 // outside: a backyard game for the grown-up (shown on the results screen, not spoken).
@@ -20,39 +20,39 @@ const ALL = [
     tip: 'Lots of space? Push it and go!', outside: 'Open grass: he pushes it far and races after it. You stand close: he keeps it close and goes around you.' },
   { id: 'take-him-on', ch: 0, emoji: '⚡', kid: 'Take him on!', side: 'attack', adult: '1v1: stay on the ball and dribble past a lone defender', ready: true,
     tip: 'Only one defender? Dribble past him!', outside: 'Play 1v1 to a small goal. A goal only counts if he dribbles past you first.' },
-  { id: 'shoot-close', ch: 0, emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true,
+  { id: 'shoot-close', ch: 1, emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true,
     tip: 'Close to the goal and nobody in the way? Shoot!', outside: 'Mark a line near the goal. Goals only count from inside the line, so he dribbles closer first.' },
-  { id: 'inside-laces', ch: 0, emoji: '🦶', kid: 'Inside or laces?', side: 'attack', added: true, ready: true,
+  { id: 'inside-laces', ch: 1, emoji: '🦵', kid: 'Inside or laces?', side: 'attack', added: true, ready: true,
     adult: 'Choose the shot: the inside of the foot to place it from close (in the box); the laces for pace from the edge of the box; farther out, get closer first. (The game makes its close shots need placing: from very close, laces are not always wrong.)',
     tip: 'Close? Inside, for control. Far? Laces, for power!', outside: 'Two lines of cones. From the near line only inside-of-the-foot goals count; from the far line only laces goals, while you walk slowly across the goal.' },
-  { id: 'shoot-space', ch: 0, emoji: '🎯', kid: 'Shoot to the space!', side: 'attack', added: true, ready: true, keeper: true,
+  { id: 'shoot-space', ch: 1, emoji: '🧤', kid: 'Shoot to the space!', side: 'attack', added: true, ready: true, keeper: true,
     adult: 'Finishing past a keeper: look, then pass it low into the bigger open side of the goal. If the keeper rushes out, go round him; if a friend is free at the far post, pass it across.',
     tip: 'Keeper in goal? Shoot to the big space!', outside: 'Pass it into the goal: stand in goal, a step off the middle. Goals count only into the bigger side, along the ground with the inside of the foot. Then swap.' },
-  { id: 'follow-shot', ch: 0, emoji: '👟', kid: 'Follow your shot!', side: 'attack', adult: 'Follow up every shot: keep running in for the rebound off a block or the post', ready: true, added: true,
+  { id: 'follow-shot', ch: 1, emoji: '👟', kid: 'Follow your shot!', side: 'attack', adult: 'Follow up every shot: keep running in for the rebound off a block or the post', ready: true, added: true,
     tip: 'You shot? Keep running in!', outside: 'Stand in goal and knock every shot back out. A goal from the rebound counts double.' },
-  { id: 'get-goal-side', ch: 1, emoji: '💪', kid: 'Get back in front!', side: 'defense', adult: 'Lost the ball: the closest player gets between the ball and goal and wins it back', ready: true,
+  { id: 'get-goal-side', ch: 2, emoji: '💪', kid: 'Get back in front!', side: 'defense', adult: 'Lost the ball: the closest player gets between the ball and goal and wins it back', ready: true,
     tip: 'Lost the ball? Get back in front of it!', outside: 'Take the ball off him and dribble to his goal. He races to get in front of you before you shoot.' },
-  { id: 'steal-it', ch: 1, emoji: '🦶', kid: 'Steal it!', side: 'defense', adult: '1v1 defending: stay in front, wait, and tackle when the touch is loose', ready: true,
+  { id: 'steal-it', ch: 2, emoji: '🦶', kid: 'Steal it!', side: 'defense', adult: '1v1 defending: stay in front, wait, and tackle when the touch is loose', ready: true,
     tip: 'Stay in front. Steal it when it rolls away!', outside: 'Dribble slowly at him with some big touches. He waits in front and pokes the ball away after a big touch.' },
-  { id: 'won-it-go', ch: 1, emoji: '🚀', kid: 'Won it? Go!', side: 'attack', adult: 'Transition: after winning the ball, attack fast while the other team is out of place', ready: true,
+  { id: 'won-it-go', ch: 2, emoji: '🚀', kid: 'Won it? Go!', side: 'attack', adult: 'Transition: after winning the ball, attack fast while the other team is out of place', ready: true,
     tip: 'You won the ball? Go forward fast!', outside: 'Dribble at him. When he wins the ball, he races to your end line before you can turn around.' },
-  { id: 'peek-and-turn', ch: 2, emoji: '🔄', kid: 'Peek, then turn!', side: 'attack', adult: 'Scan before receiving (shoulder check) and turn away from pressure with the first touch', ready: true,
+  { id: 'peek-and-turn', ch: 3, emoji: '🔄', kid: 'Peek, then turn!', side: 'attack', adult: 'Scan before receiving (shoulder check) and turn away from pressure with the first touch', ready: true,
     tip: 'Peek over your shoulder. Then turn away from the defender!', outside: 'Pass to him while you creep up behind him on one side. He peeks, then turns the other way with his first touch.' },
-  { id: 'see-the-trap', ch: 2, emoji: '🚧', kid: 'Two defenders? Pass!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball to a free friend', ready: true,
+  { id: 'see-the-trap', ch: 3, emoji: '🚧', kid: 'Two defenders? Pass!', side: 'attack', adult: 'Recognize a 2v1 trap and release the ball to a free friend', ready: true,
     tip: 'Two defenders coming? Pass to an open friend.', outside: 'Play 2v1 with a friend on his team. When you and another grown-up close in on him, he passes.' },
-  { id: 'pass-to-open', ch: 2, emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true,
+  { id: 'pass-to-open', ch: 3, emoji: '🎯', kid: 'Pass to the open friend', side: 'attack', adult: 'Choose the unmarked teammate', ready: true,
     tip: 'Pass to the friend with nobody right next to him.', outside: 'Two cones are friends. Stand next to one: he passes to the other.' },
-  { id: 'get-open', ch: 2, emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true,
+  { id: 'get-open', ch: 3, emoji: '🙋', kid: 'Get open!', side: 'attack', adult: 'Off the ball: move into a clear passing lane, away from your defender; spread out', ready: true,
     tip: 'Your friend has the ball? Find open space!', outside: 'You have the ball and a cone stands between you. He moves until you can pass to him.' },
-  { id: 'go-to-goal', ch: 2, emoji: '👬', kid: 'Run to the goal too!', side: 'attack', adult: 'Off the ball in a 2v1: when a friend dribbles at goal, run toward goal on the open side, level or ahead, so the defender has to pick one', ready: true, added: true,
+  { id: 'go-to-goal', ch: 3, emoji: '👬', kid: 'Run to the goal too!', side: 'attack', adult: 'Off the ball in a 2v1: when a friend dribbles at goal, run toward goal on the open side, level or ahead, so the defender has to pick one', ready: true, added: true,
     tip: 'Your friend has the ball? Run to the goal, so he can pass to you!', outside: 'Play 2v1 to a small goal: you defend while a friend or sibling dribbles. A goal from a pass counts double, so he runs to the goal beside the dribbler.' },
-  { id: 'one-goes', ch: 3, emoji: '🛡️', kid: 'One goes, one guards', side: 'defense', adult: 'One presses the ball; the others mark the free attackers, goal-side', ready: true,
+  { id: 'one-goes', ch: 4, emoji: '🛡️', kid: 'One goes, one guards', side: 'defense', adult: 'One presses the ball; the others mark the free attackers, goal-side', ready: true,
     tip: 'A friend is on the ball? Guard the open player. Nobody on it? You go!', outside: 'With a friend: only one of them may chase you. The other guards the cone you want to pass to.' },
-  { id: 'forward-first', ch: 3, emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Play forward (shoot, dribble or pass); nothing forward: keep the ball', ready: true,
+  { id: 'forward-first', ch: 4, emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Play forward (shoot, dribble or pass); nothing forward: keep the ball', ready: true,
     tip: 'Look to the goal first! Nothing forward? Keep the ball.', outside: 'Before he plays the ball, he points to the goal, then to a friend ahead.' },
-  { id: 'lead-pass', ch: 4, emoji: '🏃', kid: 'Pass in front!', side: 'attack', adult: 'Lead pass: to a running friend, pass into the space ahead of him, where he will be, not to his feet', ready: true, added: true,
+  { id: 'lead-pass', ch: 5, emoji: '🏃', kid: 'Pass in front!', side: 'attack', adult: 'Lead pass: to a running friend, pass into the space ahead of him, where he will be, not to his feet', ready: true, added: true,
     tip: 'Your friend is running? Pass it in front of him!', outside: 'Jog across the yard. He passes it in front of you, so you can keep running without stopping.' },
-  { id: 'give-and-go', ch: 4, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
+  { id: 'give-and-go', ch: 5, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
     tip: 'Pass it, then run past your defender to get it back!', outside: 'Be a wall: he passes to you, runs past a cone, and you pass it back in front of him.' },
 ];
 // The lessons of the size being played, in order (kept up to date in place when the size changes).

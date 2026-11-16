@@ -9,7 +9,7 @@ below). Sources are listed at the end.
 
 - **The schools agree on the order.** At 5–6 a child learns "me, the ball and the goal." Teammates and
   space come in at about 6–8. Team defending, transitions and positions become formal topics only after 8.
-- **The path has five chapters in that order:** Me and the ball → Win it back → Me and my friends → Our team →
+- **The path has six chapters (v62) in that order:** Me and the ball → Shoot! → Win it back → Me and my friends → Our team →
   Clever passes (v59: the lead pass and the give-and-go moved to the end; see "v59: checked against youth coaching").
 - **Four lessons are new:** "Won it? Go!" (transition), "Pass and go!" (give-and-go), "Steal it!" (1v1
   defending timing) and "Peek, then turn!" (look before the ball comes). "Get in front" is now "Win it back!".
@@ -69,7 +69,7 @@ check was dropped in the first pass and added back in the second (see below).
 
 | # | Lesson | Side | Patterns (first = main) | The cue |
 |---|---|---|---|---|
-| **Chapter 1: Me and the ball (5–6)** | | | | |
+| **Chapter 1: Me and the ball (5–6)** (v62: the shooting lessons are Chapter 2, "Shoot!"; the chapters below are numbered one higher in the game) | | | | |
 | 1 | Look up! 👀 | attack | carry, none-open, carry, one-open, shot-open | "Look up! Where is the space?" |
 | 2 | Run into space 💨 | attack | space-far, space-near, space-behind, space-friend | "Lots of space? Push it and go!" |
 | 3 | Take him on! ⚡ | attack | trap-one, trap-one, carry, trap | "Only one defender? Dribble past him!" |
@@ -392,3 +392,8 @@ right, and standing still did not look like an option.
   (hidden behind a defender, crowding the friend, or too late for the rebound).
 - **Not guessable from the layout.** The best place changes side and distance with the scene; it is not always the
   farthest ring, the nearest, the leftmost or the one nearest the goal.
+
+
+## v62: six chapters
+
+"Shoot!" is the second chapter: "Shoot when close!", "Inside or laces?", "Shoot to the space!" (5v5 only) and "Follow your shot!". With "Inside or laces?" the first chapter had grown to six lessons (seven at 5v5) and no longer fit one row on a phone. The chapters after it (Win it back, Me and my friends, Our team, Clever passes) are now 3 to 6; the numbers in the sections above are from before this change.
