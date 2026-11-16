@@ -572,7 +572,7 @@ export class World {
       bp.x = b.x; bp.y = b.y;
     } else this.ballPrev = { x: b.x, y: b.y };
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
-    this.ball.position.set(b.x, b.y, BALL_R + (b.z || 0));
+    this.ball.position.set(b.x, b.y, BALL_R + (b.z || 0)); this.ball.visible = this.ballBlob.visible = !b.hidden; // (hidden: out of play, see outcomes.js missedShot)
     // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.
     const bz = b.z || 0; this.ballBlob.position.set(b.x, b.y, .014); this.ballBlob.scale.setScalar(1 / (1 + bz * .5)); this.ballBlob.material.opacity = .9 / (1 + bz * .8);
     // The crowd gets louder as the ball nears a goal and calms down after.

@@ -190,8 +190,8 @@ export const rounds = {
       const tip = OKAY[why] || (opt.startsWith('shoot:') ? 'Good space! ' + FOOT_TIP[this.shotOf(opt).res === 'over' ? 'in' : 'las'] : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good && this.light && attempt === 1 ? { stars: 3, light: true, said: praise } // stars and the praise, then on
-        : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
-        : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : opt.startsWith('shoot:') && sc.shots?.[opt] !== 'blocked' ? 'So close!' : 'Oops, lost it!' };
+        : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : opt !== sc.best && MATE[opt] ? `${praise} ${this.named(`{m${opt[5]}} was open too!`)}` : `${praise} ${this.cue()}`, said: praise } // (a pass as good as the best one: the praise names the friend he picked) // show why it was right, so the idea sticks; say the praise
+        : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : opt.startsWith('shoot:') ? this.shotWhy(opt) : 'Oops, lost it!' }; // (a shot: what happened, and why: outcomes.js shotWhy)
       this.card = null;
       await this.outcome(opt, good);
       if (more && good && opt === sc.best) return { firstTry: attempt === 1, stars: 3 };

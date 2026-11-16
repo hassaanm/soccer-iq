@@ -43,6 +43,7 @@ export function touchLen(sim, a) {
 // The ball's extra lead (metres) in a long touch at part k of it: it leaves the foot quickly, gets as far as .45 m for
 // each metre over 1.4 m of the touch (about .65 m at 2.8 m, 1.2 m at 4.1 m) about a third of the way, and he catches up.
 export const longLead = (L, k) => { if (L <= 1.4) return 0; const u = 1 - k; return (L - 1.4) * .45 / .4725 * (u - u * u * u * u); };
+const HAND = 3.2, BALL_LOW = .12; // a keeper's hands with the ball (m/s); the ball's height as he bowls it along the grass
 const OFFER_END = -.3; // a skill offer (see Sim.taps) closes this far before its move starts (in dribble touches), so the move has a moment to set up
 const REACH = .8, CLOSE = .5; // a ball farther than REACH from his middle is out of reach of his feet; within CLOSE it is at his feet
 // The part of the gap that closes in `dt` seconds, for something that closes `k`/30 of it every 1/30 s: the same
@@ -377,8 +378,16 @@ export class Sim {
       const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = ease(dt, 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;
     } else if (b.state === 'held') { // a keeper has it in his hands, in front of his chest (game/keeper.js)
-      const c = this.a(b.carrier), m = c?.gkm; // (down after a dive: in his hands, on the grass; rolling it out: down low)
-      if (c && m?.k === 'dive' && m.hand) { b.x = m.hand.x; b.y = m.hand.y; b.z = .2; } else if (c) { b.x = c.x + c.face[0] * .3; b.y = c.y + c.face[1] * .3; b.z = m?.k === 'roll' ? .3 : .85; }
+      // Where his hands hold it: down after a dive, in his hands on the grass; rolling it out, down low in front of him;
+      // else at his chest. It goes there at a hand's speed (HAND m/s), never in one jump: a ball he stops on the grass
+      // is gathered up to his chest, and brought down again to roll it out.
+      const c = this.a(b.carrier), m = c?.gkm;
+      if (c) {
+        const roll = m?.k === 'roll', fwd = roll ? .45 : m?.k === 'reach' ? .42 : .3, tx = m?.k === 'dive' && m.hand ? m.hand.x : c.x + c.face[0] * fwd, ty = m?.k === 'dive' && m.hand ? m.hand.y : c.y + c.face[1] * fwd;
+        // (still down after a save, 'reach': at his hands, low; then up with him)
+        const tz = m?.k === 'dive' && m.hand ? .2 : roll ? BALL_LOW : m?.k === 'reach' ? .22 : .85, dx = tx - b.x, dy = ty - b.y, dz = tz - (b.z || 0), d = Math.hypot(dx, dy, dz), k = d > HAND * dt ? HAND * dt / d : 1;
+        b.x += dx * k; b.y += dy * k; b.z = (b.z || 0) + dz * k;
+      }
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);

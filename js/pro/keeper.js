@@ -8,7 +8,8 @@ import { tiltBody, legTo } from './motion.js';
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t));
 const damp = (v, to, rate, dt) => v + (to - v) * (1 - Math.exp(-rate * dt)), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const bump = (t, a, b, c, d) => sm((t - a) / (b - a)) * (1 - sm((t - c) / (d - c)));
-const STANCE = .21, STEP_T = .16; // feet half-apart when ready (m); how long one side-step of a foot takes (s)
+const STANCE = .21, STEP_T = .16;
+const rcOf = (kt, gk) => bump(kt, -.05, Math.max(.05, gk.dur * .8), gk.dur + .1, gk.dur + .4); // feet half-apart when ready (m); how long one side-step of a foot takes (s)
 
 export function animateKeeper(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const u = g.userData, now = sim.time, b = sim.ball;
@@ -26,12 +27,13 @@ export function animateKeeper(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   // A dive (k 'dive', side +1 his left): the fall to the side over its first part, then he lies there, then he gets up.
   const dv = k === 'dive' ? (kt < 0 ? 0 : kt < gk.dur ? sm(kt / gk.dur) : kt < gk.dur + .55 ? 1 : 1 - sm((kt - gk.dur - .55) / .5)) : 0;
   const rc = k === 'reach' ? bump(kt, -.05, Math.max(.05, gk.dur * .8), gk.dur + .1, gk.dur + .4) : 0;
-  const hold = k === 'hold' ? 1 : (k === 'dive' || k === 'reach') && gk.save && kt > gk.dur ? sm((kt - gk.dur) / .15) : 0;
+  const hold = k === 'hold' ? sm(kt / .35) : 0; // (stands up with it at his chest, over a moment)
+  const down = k === 'reach' && gk.low ? (gk.save ? sm((kt + .05) / .2) : rcOf(kt, gk)) : 0; // a ball along the grass: down to it (and, a save, he stays down with it until he stands up)
   const roll = k === 'roll' ? kt : -1, low = roll >= 0 ? bump(roll, 0, .2, .55, .85) : 0;
   const side = gk?.side || 1;
   m.roll = damp(m.roll, side * 1.38 * dv, 30, dt);                    // (a positive roll tips him to his left)
-  m.lift = damp(m.lift, (.11 + .25 * low + .05 * rc) * (1 - dv), 18, dt); // hips down: ready (knees bent), crouched to roll it out (diving, the fall itself takes him down)
-  m.lean = damp(m.lean, .16 + .35 * low - .1 * dv + .08 * rc, 12, dt);  // leaning a little over his toes
+  m.lift = damp(m.lift, (.11 + .25 * low + .05 * rc + .3 * down) * (1 - dv), 18, dt); // hips down: ready (knees bent), crouched to roll it out (diving, the fall itself takes him down)
+  m.lean = damp(m.lean, .16 + .35 * low - .1 * dv + .08 * rc + .06 * down, 12, dt); // (down on his knees he stays upright, hands down in front)  // leaning a little over his toes
   tiltBody(-m.lift, m.lean, m.roll);
   g.position.set(a.x, a.y, -m.lift); g.rotation.set(m.roll, m.lean, m.yaw);
   u.blob.position.set(0, 0, .012); u.blob.rotation.set(-m.roll, -m.lean, 0); u.blob.scale.setScalar(1 - .4 * dv);
@@ -54,6 +56,7 @@ export function animateKeeper(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     let ax = sg * .45, ay = -.75, ae = -.75;                                                // ready
     const hi = gk?.hand ? clamp(.2 + (gk.low ? 0 : .7), 0, 1) : .5;
     ax = lerp(ax, sg * (sg === side ? .25 : .05), rc); ay = lerp(ay, -1.3 - .9 * hi, rc); ae = lerp(ae, -.25, rc); // reach: both hands to the ball
+    ax = lerp(ax, -sg * .05, down); ay = lerp(ay, -.75, down); ae = lerp(ae, -.35, down);                                 // a ball on the grass: hands down to it
     ax = lerp(ax, sg * .12, dv); ay = lerp(ay, -2.85, dv); ae = lerp(ae, -.12, dv);                            // dive: arms stretched past his head
     ax = lerp(ax, -sg * .18, hold); ay = lerp(ay, -1.05, hold); ae = lerp(ae, -1.75, hold);                    // the ball held to his chest
     if (roll >= 0 && i === 0) { const sw = sm(roll / .45); ax = lerp(ax, -.1, low); ay = lerp(ay, lerp(.7, -1.1, sw), low); ae = lerp(ae, -.15, low); }

@@ -196,13 +196,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #touchPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud.touchpick #touchPick{display:flex}
 /* The foot for a shot (v62): two picture buttons where Small touches / Big push sit, control on the left, power on the right. */
-#footPick{position:absolute;top:64px;right:calc(18px + var(--safe-r));display:none;flex-direction:row;gap:12px}
-#footPick .btn{width:132px;height:112px;padding:6px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:17px;animation:fromRight .3s var(--bounce) backwards}
+#footPick{position:absolute;bottom:calc(108px + var(--safe-b));right:calc(18px + var(--safe-r));display:none;flex-direction:row;gap:12px} /* where SHOOT was: the thumb that tapped it stays put */
+#footPick .btn{width:116px;height:100px;padding:6px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:17px;animation:fromRight .3s var(--bounce) backwards}
 #footPick .btn + .btn{animation-delay:.07s}
-#footPick svg{width:96px;height:52px}
+#footPick svg{width:88px;height:46px}
 #footPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud[data-step=foot] #footPick{display:flex}
 #hud:is([data-step=foot],[data-step=aim]) :is(#passBtn,#dribBtn){display:none!important}
+#hud[data-step=foot] #shootBtn{display:none!important}
 /* With SHOOT up too (a match near the goal) the right side is full, so the pick moves to the left, where LOOK UP was. */
 #hud.touchpick.shoot #touchPick{right:auto;left:calc(18px + var(--safe-l))}
 #hud.touchpick.shoot #touchPick .btn{animation-name:fromLeft}
@@ -283,9 +284,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 @keyframes vs{50%{scale:1.1;rotate:-6deg}}
 /* Team size (v62): a chip under VS with a little pitch (a dot per player) and "3 v 3"; a tap opens the same, big. */
 .mid{position:relative;display:grid;place-items:center}
-.sizechip{position:absolute;top:calc(100% + 16px);display:grid;justify-items:center;gap:1px;width:78px;padding:6px 6px 4px;border-radius:16px}
-.sizechip svg{width:62px;height:37px;display:block}
+.sizechip{position:absolute;top:calc(100% + 12px);display:grid;justify-items:center;gap:1px;width:86px;padding:6px 6px 5px;border-radius:16px;border:3px solid var(--gold)!important;box-shadow:0 5px 0 var(--gold-e),0 8px 14px rgba(36,25,58,.3)!important}
+.sizechip:active{transform:translateY(4px);box-shadow:0 1px 0 var(--gold-e),0 3px 6px rgba(36,25,58,.3)!important}
+.sizechip svg{width:70px;height:42px;display:block}
 .sizechip b{font-size:15px;line-height:1.1;white-space:nowrap}
+.sizechip .caret{position:absolute;right:-9px;bottom:-9px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--gold);color:var(--ink);font:700 14px/1 var(--font);font-style:normal;box-shadow:0 2px 0 var(--gold-e)}
 #sizePop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(36,25,58,.45)}
 #sizePop .choices{display:flex;gap:clamp(12px,3vw,26px);padding:16px;background:var(--cream);border:3px solid #fff;border-radius:26px;box-shadow:0 16px 30px rgba(36,25,58,.35);animation:popIn .3s var(--bounce)}
 #sizePop .choice{display:grid;justify-items:center;gap:6px;padding:12px 14px 10px;border-radius:20px}

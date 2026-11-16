@@ -17,7 +17,8 @@ export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
 const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
 const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
 // A keeper (5v5): in his goal, in a keeper's colour (neither team's), with white gloves out to the sides.
-const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="21" width="5" height="18" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * 2.5}" cy="30" r="5.6" fill="#b6f22a" stroke="#24193a" stroke-width="2"/><circle cx="${x + s * 2.5}" cy="22.5" r="2.6" fill="#fff" stroke="#24193a" stroke-width="1.2"/><circle cx="${x + s * 2.5}" cy="37.5" r="2.6" fill="#fff" stroke="#24193a" stroke-width="1.2"/>`;
+const glove = (x, y) => `<path d="M${x - 3.2} ${y + 3.4}v-4.6a1.2 1.2 0 0 1 2.4 0v-1.6a1.1 1.1 0 0 1 2.2 0v1.2a1.1 1.1 0 0 1 2.2 0v2.2l1-1.2a1.1 1.1 0 0 1 1.7 1.4l-2.6 3.4z" fill="#fff" stroke="#24193a" stroke-width="1.1" stroke-linejoin="round"/>`;
+const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * 3}" cy="30" r="6.5" fill="#b6f22a" stroke="#24193a" stroke-width="2"/>${glove(x + s * 3 - .5, 19.5)}${glove(x + s * 3 - .5, 38)}`; // his shirt and two big white gloves
 const pitchPic = id => {
   const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
   const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 12 + x * .85 : x, y]); // (with keepers: the diamond steps up in front of him)
@@ -25,9 +26,9 @@ const pitchPic = id => {
     + (gk ? keeperPic(3.5, 1) + keeperPic(96.5, -1) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
 };
 const players = id => sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0); // a side, the keeper too
-const label = id => `<b>${players(id)} v ${players(id)}</b>`;
+const label = id => `<b>${players(id)} v ${players(id)}${sizeOf(id).keeper ? ' 🧤' : ''}</b>`; // (keepers: a glove)
 function renderSize() {
-  $('#sizeBtn').innerHTML = pitchPic(TEAM.size) + label(TEAM.size);
+  $('#sizeBtn').innerHTML = pitchPic(TEAM.size) + label(TEAM.size) + '<i class="caret" aria-hidden="true">▾</i>'; // (the caret: a tap opens the choices)
   $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${players(id)} players on each team${sizeOf(id).keeper ? ', with keepers' : ''}">${pitchPic(id)}${label(id)}</button>`).join('');
   for (const b of $$('#sizePop .choice')) b.onclick = () => { $('#sizePop').classList.add('hidden'); chooseSize(b.dataset.id); };
 }

@@ -326,7 +326,7 @@ export const outcomes = {
     const r = resolve(s.ball, y, 'placed', gk, { gx: 0 }), spill = seeded(sh.x, sh.y, 11) < .5;
     if (r.res !== 'save') { yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; yield* this.end('goalAgainst', 1.3); return; } // (never: he stands there)
     this.keeperReact(gk, { ...r, parry: spill }, s.ball);
-    yield* this.strike(shooter.id, r.at.x, r.at.y, { speed: 17, arc: .3 });
+    const at = this.inFront(gk, r.at); yield* this.strike(shooter.id, at.x, at.y, { speed: 17, arc: .3 });
     yield () => s.ball.state === 'loose';
     this.result = 'keeperSave'; this.emit('keeperSave');
     if (spill) { const sp = this.spillOf(r, sh); s.ball.carrier = gk.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); yield () => s.ball.state === 'loose'; gk.gkm = null; const t0 = s.time; yield () => { s.go(gk.id, s.ball.x, s.ball.y, 3); return Math.hypot(gk.x - s.ball.x, gk.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
@@ -423,6 +423,23 @@ export const outcomes = {
     const spaceOk = sp === '*' ? null : sc.shots?.[`shoot:${sp}:${right}`] ? sc.shots[`shoot:${sp}:${right}`] === 'goal' : this.shotOf(`shoot:${sp}:${right}`).res === 'goal';
     return { space: spaceOk, foot: ft === '*' ? null : ft === right };
   },
+  // Where a shot he saves comes into his hands: never behind him (it would go through his legs to get there), at least a
+  // step in front of where his save takes him.
+  inFront(k, at) {
+    const b = k.gkm?.body || k, f = k.face, ahead = (at.x - b.x) * f[0] + (at.y - b.y) * f[1];
+    return ahead >= .35 ? at : { x: at.x + f[0] * (.35 - ahead), y: at.y + f[1] * (.35 - ahead) };
+  },
+  // Why a shot he picked did not go in, for the card under its banner ("Over the bar!", "Saved!", "Cleared!", "Stolen!").
+  shotWhy(opt) {
+    const sc = this.sc, g = this.shotPartGrades(opt), r = this.shotOf(opt);
+    if (sc.shots?.[opt] === 'blocked') return 'Too far to shoot. Get closer first!';
+    if (sc.pattern === 'keeper-out') return 'The keeper came out! Go around him!';
+    if (sc.pattern === 'keeper-friend') return 'No space to shoot. Pass it across!';
+    if (g?.space === false) return 'The keeper was there. Shoot to the big space!';
+    if (r.res === 'over') return 'Laces from close fly high. Close? Inside, for control!';
+    if (r.res === 'save' || r.res === 'cleared') return 'Too slow from out here. Far? Laces, for power!';
+    return this.cue();
+  },
   // The lesson a missed shot belongs to (a match's miss count and its one spoken name): the space, else the foot.
   missIdea(opt) { const g = this.shotPartGrades(opt); return !g ? null : g.space === false ? 'shoot-space' : g.foot === false ? 'inside-laces' : null; },
   // The decision log for a shot with picked parts: each part under its own lesson ("Shoot to the space!" timed from the
@@ -457,7 +474,7 @@ export const outcomes = {
       yield* this.end('cleared', 1.3); return;
     }
     // Saved: the ball goes to his hands; he holds it, or it spills out in front of him.
-    yield* this.strike('hero', r.at.x, r.at.y, { speed: r.speed, arc: r.arc * .6 });
+    const at = this.inFront(K, r.at); yield* this.strike('hero', at.x, at.y, { speed: r.speed, arc: r.arc * .6 });
     yield () => s.ball.state === 'loose';
     if (!r.spill) { Object.assign(s.ball, { state: 'held', carrier: K.id }); yield .15; yield* this.savedShot(K); return; }
     const sp = this.spillOf(r, from); s.ball.carrier = K.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); // (off his hands)
@@ -470,7 +487,10 @@ export const outcomes = {
   *missedShot(kind) {
     const s = this.sim, K = s.keeper('them');
     this.result = kind; this.ai = false; s.stopAll(); this.emit(kind); yield 1.2;
-    if (K && (this.mode === 'match' || this.mode === 'free')) { Object.assign(s.ball, { x: K.x, y: K.y }); yield* this.rollOut(K); }
+    if (K && (this.mode === 'match' || this.mode === 'free')) { // a goal kick: out of sight behind the goal, the ball is his (no ball flies back), then he rolls it out
+      s.ball.hidden = true; yield .2; Object.assign(s.ball, { x: K.x + K.face[0] * .3, y: K.y + K.face[1] * .3, z: .85, state: 'held', carrier: K.id, move: null, reach: null }); yield .2; s.ball.hidden = false;
+      yield* this.rollOut(K);
+    }
   },
   // Saved: in a lesson the play ends there; in a match the keeper gathers a spilled ball (when he gets there first) and
   // rolls it out to a friend.

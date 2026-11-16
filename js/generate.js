@@ -237,6 +237,7 @@ function attack(r, pattern, high = false) {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'good' || g['drib:fwd'] !== 'bad') return null;
     const fwd = mates[0][0] >= mates[1][0] ? 0 : 1;
     if (Math.abs(mates[0][0] - mates[1][0]) < 3 || mates[fwd][0] < heroTo[0] - 1) return null; // "closer to goal" must be obvious, and not a pass back
+    if (Math.abs(Math.atan2(mates[fwd][1] - heroTo[1], mates[fwd][0] - heroTo[0])) > .6) return null; // (v62) and in view when he looks up the field: the cue names him
     best = 'pass:' + fwd; cue = `{m${fwd}} was open and closer to the goal!`;
   } else if (pattern === 'forward') {
     if (g['pass:0'] !== 'good' || g['pass:1'] !== 'good' || g['drib:fwd'] !== 'bad' || mates[0][0] - mates[1][0] < 4) return null;

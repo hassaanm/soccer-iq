@@ -38,6 +38,7 @@ export const keeper = {
     const m = k.gkm, t = this.sim.time - m.t0;
     if (m.body && !m.went && t >= 0) { m.went = true; this.sim.go(k.id, m.body.x, m.body.y, m.spd); }
     if ((m.k === 'dive' || m.k === 'reach') && t > m.dur + (m.k === 'dive' ? 1.1 : .4) && !m.keep) { k.gkm = null; this.scripted.delete(k.id); } // (a held ball: the script that plays the save takes it from there)
+    if (m.keep && m.k === 'reach' && t > m.dur + .7 && this.sim.ball.state === 'held' && this.sim.ball.carrier === k.id) k.gkm = { k: 'hold', t0: this.sim.time }; // gathered: he stands up with it at his chest
   },
   // His reaction to a shot (shot.js resolve's result `r`, struck from `from`): a step and reach, or a fall to the side,
   // to where it is stopped, or after a ball that goes past him (he gets there short of it). He goes after it once he
@@ -50,11 +51,11 @@ export const keeper = {
     const reach = GK.reach + Math.max(0, r.t - GK.react) * GK.speed, save = r.res === 'save';
     // his middle: a save, close enough for his hands to be on the ball; a goal, after it, but never nearer its way than a
     // metre (it goes past his fingertips)
-    const mv = save ? Math.max(0, d - .55) : Math.max(0, Math.min(d - 1.1, reach - .75)), body = { x: k.x + u.x * mv, y: k.y + u.y * mv };
+    const mv = save ? Math.max(Math.min(d, .3), d - .55) : Math.max(0, Math.min(d - 1.1, reach - .75)), body = { x: k.x + u.x * mv, y: k.y + u.y * mv }; // (a save: he always steps to it)
     const k2 = { x: k.x + u.x * Math.min(d, mv + .8), y: k.y + u.y * Math.min(d, mv + .8) };
     const dive = Math.abs(c.y - k.y) > GK.reach + .1, side = Math.sign((c.y - k.y) * (gx ? -1 : 1)) || 1; // side: +1 his left
     const go = Math.min(GK.react, r.t * .6), dur = Math.max(.2, r.t - go);
-    k.gkm = { k: dive ? 'dive' : 'reach', t0: s.time + lead + go, dur, side, hand: k2, low: (r.arc ?? .3) < .2, save: r.res === 'save', keep: r.res === 'save' && !r.parry,
+    k.gkm = { k: dive ? 'dive' : 'reach', t0: s.time + lead + go, dur, side, hand: k2, low: r.res === 'save' || (r.arc ?? .3) < .2, save: r.res === 'save', keep: r.res === 'save' && !r.parry,
       body: { x: body.x, y: clamp(body.y, gy0 - 1, gy1 + 1) }, spd: Math.max(1, dist(k, body) / dur) };
     this.scripted.add(k.id); s.stop(k.id);
     void from;
@@ -70,7 +71,8 @@ export const keeper = {
     const to = (near.length ? near : mine).sort((p, q) => (free(q) > 2.5) - (free(p) > 2.5) || dist(p, k) - dist(q, k))[0];
     k.face = [to.x - k.x, to.y - k.y].map(v => v / (dist(to, k) || 1)); this.scripted.add(to.id); s.stop(to.id);
     k.gkm = { k: 'roll', t0: s.time, low: true }; yield .45;
-    Object.assign(b, { state: 'carried', carrier: k.id, x: k.x + k.face[0] * .4, y: k.y + k.face[1] * .4, z: 0 });
+    yield () => Math.hypot(b.x - (k.x + k.face[0] * .45), b.y - (k.y + k.face[1] * .45)) < .05 && b.z < .2; // (his hands bring it down to the grass)
+    Object.assign(b, { state: 'carried', carrier: k.id });
     s.kick(to.x - (to.x - k.x) / (dist(to, k) || 1) * .4, to.y - (to.y - k.y) / (dist(to, k) || 1) * .4, { speed: 9, arc: 0 });
     yield () => b.state === 'loose';
     s.give(to.id); k.gkm = null; this.scripted.delete(k.id);

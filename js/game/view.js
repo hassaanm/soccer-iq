@@ -103,7 +103,7 @@ export const view = {
     };
     // Tried in this order: the whole goal, then only its near post and the middle of its mouth, then rings a little less
     // even, then his player a little smaller, and only then (never running to the goal unless nothing else fits) no goal.
-    const hm = HERO_MIN * F, tiers = !even ? [{ goal: 'all', ratio: RING_RATIO }] : [{ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm },
+    const hm = HERO_MIN * F, tiers = !even ? [...[1, .88, .78, .7].map(k => ({ goal: 'all', ratio: RING_RATIO, heroMin: hm * k })), { goal: 'all', ratio: RING_RATIO }] : [ // (v62: defending and lead passes too: his player big enough to find, first){ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm },
       ...[1, .88, .78, .66].map(k => ({ goal: 'near', ratio: RING_RATIO_MAX, heroMin: hm * k })), { goal: 'none', ratio: RING_RATIO_MAX, heroMin: hm * .78 },
       { goal: 'none', ratio: 3, heroMin: hm * .6 }, { goal: 'all', ratio: RING_RATIO }];
     let best = null, rule = null; for (const t of tiers) if ((best = search(t))) { rule = t; break; }
