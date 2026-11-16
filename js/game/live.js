@@ -3,14 +3,16 @@
 import { pickRounds } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
-import { L, W, wrap } from './shared.js';
+import { L, W, MATES, wrap } from './shared.js';
+// His friends' and their players' places, m1 m2 (m3) and o1 o2 o3 (o4): as many as the team size has.
+const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y]), foes = s => s.team('them').map(a => [a.x, a.y]);
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
 // moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
 function liveScenario(s, skill, pushAllowed) {
   const P = a => [a.x, a.y], h = s.a('hero');
-  const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: [P(s.a('m1')), P(s.a('m2'))],
-    opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))) };
+  const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: friends(s),
+    opps: foes(s) };
   sc.oppsTo = sc.opps;
   // Score each good option by how far it moves the ball toward goal. At this age staying on the ball comes first
   // (FA foundation phase), so a pass is the best answer only when it gains clearly more than running with it.
@@ -35,7 +37,7 @@ function liveScenario(s, skill, pushAllowed) {
 function liveDefense(s, guard = true) {
   const c = s.a(s.ball.carrier); if (!c || c.team !== 'them') return null;
   const P = a => [a.x, a.y], h = s.a('hero'), others = s.team('them').filter(o => o.id !== c.id);
-  const mates = [P(s.a('m1')), P(s.a('m2'))], near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
+  const mates = friends(s), near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
   const ok = ([x, y]) => x > 1 && x < L - 1 && y > 1 && y < W - 1;
   const cand = [{ id: 'home', p: goalSide(P(c), 2.6), label: 'In front' },
     ...(guard ? others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with One goes, one guards
@@ -95,7 +97,7 @@ export const live = {
     if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
     const stay = { kind: 'defense', live: true, id: 'live-stay', carrier: c.id, oppIds: [c.id, ...s.team('them').filter(o => o.id !== c.id).map(o => o.id)],
-      mates: [[s.a('m1').x, s.a('m1').y], [s.a('m2').x, s.a('m2').y]], spots: [{ id: 'stay', x: h.x, y: h.y }] };
+      mates: friends(s), spots: [{ id: 'stay', x: h.x, y: h.y }] };
     stay.oppsTo = [[c.x, c.y], ...stay.oppIds.slice(1).map(id => [s.a(id).x, s.a(id).y])];
     stay.exploits = { stay: exploit(stay, 'stay') };
     this.sc = stay; await this.outcome('spot:stay', !stay.exploits.stay);
@@ -179,9 +181,9 @@ export const live = {
     if (Math.hypot(crowd[0] - h.x, crowd[1] - h.y) >= 3.4) spots.push({ id: 'ball', x: crowd[0], y: crowd[1], crowd: true }); // (a run, not a ring under his feet)
     if (spots.length < 2 || !(space || stayOpen) || spots.some((p, i) => spots.some((q, j) => j > i && Math.hypot(p.x - q.x, p.y - q.y) < RING_GAP))) return false;
     // Three places to run in all (v60): the other ones only okay (the pass reaches him, but…) or hidden behind a defender.
-    const other = s.team('us').find(a => a !== h && a !== c), runs = spots.filter(p => p.id !== 'stay').length;
-    const extra = moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, [other.x, other.y]], have: spots.map(p => [p.x, p.y]), okay: 1, either: Math.max(0, 2 - runs) })
-      || moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, [other.x, other.y]], have: spots.map(p => [p.x, p.y]), either: 1 }) || [];
+    const others = s.team('us').filter(a => a !== h && a !== c).map(a => [a.x, a.y]), runs = spots.filter(p => p.id !== 'stay').length;
+    const extra = moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, ...others], have: spots.map(p => [p.x, p.y]), okay: 1, either: Math.max(0, 2 - runs) })
+      || moreSpots(Math.random, { c: C, h: H, opps: O, mates: [C, ...others], have: spots.map(p => [p.x, p.y]), either: 1 }) || [];
     for (const e of extra) spots.push({ id: e.id, x: e.p[0], y: e.p[1], why: e.why });
     const best = space ? 'space' : 'stay';
     this.sc = { kind: 'support', live: true, even: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
@@ -200,7 +202,7 @@ export const live = {
     const lean = side => Math.atan2(Math.sin(side), Math.cos(side) + 1);
     const turns = { L: nearest(lean(face + Math.PI / 2)), R: nearest(lean(face - Math.PI / 2)) };
     if (turns.L === turns.R) return false;
-    const P = a => [a.x, a.y], mates = ['m1', 'm2'].map(id => P(s.a(id))), opps = s.team('them').map(P);
+    const P = a => [a.x, a.y], mates = friends(s), opps = foes(s);
     const sc = { kind: 'receive', live: true, id: 'live-recv', skill: this.sc?.skill, carrier: s.team('us').find(a => a.id !== 'hero' && dist(a, { x: b.fx, y: b.fy }) < 1.5)?.id || 'm1',
       hero: P(h), heroTo: P(h), mates, opps, oppsTo: opps, turns };
     const g = grade(sc), goods = ['L', 'R'].filter(k => g['drib:' + turns[k]] === 'good').sort((p, q) => dribbleEnd(h, turns[q], L, W).x - dribbleEnd(h, turns[p], L, W).x);
@@ -219,7 +221,7 @@ export const live = {
     const room = q => Math.min(...others.map(a => Math.min(dist(a, q), closestOnLane(a, h, q, .1).d + .8)), dist(q, loose));
     const back = [Math.PI, Math.PI - .6, Math.PI + .6].map(a => ({ x: h.x + Math.cos(a) * 3.6, y: h.y + Math.sin(a) * 3.6 })).filter(q => inPitch([q.x, q.y], 1.2)).sort((p, q) => room(q) - room(p))[0];
     this.sc = { kind: 'support', run: 'follow', live: true, id: 'live-rebound', skill: this.sc?.skill, carrier: 'hero', shot: sh,
-      hero: P(h), heroTo: P(h), mates: ['m1', 'm2'].map(id => P(s.a(id))), opps: ['o1', 'o2', 'o3'].map(id => P(s.a(id))),
+      hero: P(h), heroTo: P(h), mates: friends(s), opps: foes(s),
       spots: [{ id: 'in', x: loose.x, y: loose.y }, { id: 'watch', x: h.x, y: h.y }, ...(back && room(back) >= 2 ? [{ id: 'back', x: back.x, y: back.y }] : [])],
       best: 'spot:in', ok: [], cue: 'He blocked it! Keep running in, and score!' };
     this.sc.oppsTo = this.sc.opps;

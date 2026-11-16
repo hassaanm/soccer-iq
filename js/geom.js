@@ -1,5 +1,27 @@
 // Small pure helpers shared by the sim, the game and the tests.
-export const PITCH = { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 };
+// Team sizes (P.settings.size), all read from this one table: `out` outfield players a side, `keeper` a goalkeeper as
+// well (5v5: four outfield and a keeper; the keeper is not built yet), `pitch` the pitch it is played on (L long, W wide,
+// the goal from gy0 to gy1 across, gh high), and `offer`: whether the home screen offers it. Pitches from the federations
+// (v62 research): 3v3 30 x 20 m (DFB 25 x 20, US 23–32 x 14–23); 4v4 32 x 22 m (the US 4v4 maximum); 5v5 38 x 26 m with a
+// 5 m goal (FA 37 x 27, DFB 40 x 25). "Close enough to shoot" stays about 9 m at every size: it is about a child's leg.
+export const SIZES = {
+  '3v3': { out: 3, keeper: false, pitch: { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 }, offer: true },
+  '4v4': { out: 4, keeper: false, pitch: { L: 32, W: 22, gy0: 9, gy1: 13, gh: 1.6 }, offer: true },
+  '5v5': { out: 4, keeper: true, pitch: { L: 38, W: 26, gy0: 10.5, gy1: 15.5, gh: 1.8 }, offer: false },
+};
+// The size being played and its pitch. PITCH is changed in place, and L, W, gy0, gy1 are live bindings: a module that
+// reads them when it runs (the generator, the game, the sim) always gets the current pitch. The 3D world builds its
+// pitch once, from the size saved when the page loads (below); changing to a size with another pitch reloads the page.
+export const TEAM = { size: '3v3' };
+export const PITCH = { ...SIZES['3v3'].pitch };
+export let L = PITCH.L, W = PITCH.W, gy0 = PITCH.gy0, gy1 = PITCH.gy1;
+export const sizeOf = (id = TEAM.size) => SIZES[id] || SIZES['3v3'];
+export function setSize(id) {
+  TEAM.size = SIZES[id] ? id : '3v3';
+  Object.assign(PITCH, sizeOf().pitch); ({ L, W, gy0, gy1 } = PITCH);
+}
+export const SAVE_KEY = 'soccer-iq:v1'; // where progress.js keeps the save
+try { setSize(JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };

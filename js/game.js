@@ -5,7 +5,7 @@ import { Sim } from './sim.js';
 import { demoScenario } from './skills.js';
 import { clamp, closestOnLane } from './geom.js';
 import { displayName } from './teams.js';
-import { MATES, DIRS, NONE, facesBall, wrap } from './game/shared.js';
+import { MATES, ROSTER, DIRS, NONE, facesBall, wrap } from './game/shared.js';
 import { rounds } from './game/rounds.js';
 import { outcomes } from './game/outcomes.js';
 import { team } from './game/team.js';
@@ -31,7 +31,7 @@ export class Game {
     this.tweens = []; this.speechWaits = [];
     // What tick() hands on each frame is kept and updated in place, so a frame makes no new objects for it:
     // `ui` (what the 3D scene highlights; 0 in glow/arrows means off), the canvas size, and where the hand last was.
-    this.ui = { glow: { m1: 0, m2: 0 }, arrows: Object.fromEntries(DIRS.map(d => [d, 0])), spots: NONE, lines: NONE, heroRing: false, ballGlow: false, turnArrows: NONE, clock: skillTaps ? 0 : null }; // clock: the picture's own (slow in a skill moment), or null for the frame loop's
+    this.ui = { glow: { m1: 0, m2: 0, m3: 0 }, arrows: Object.fromEntries(DIRS.map(d => [d, 0])), spots: NONE, lines: NONE, heroRing: false, ballGlow: false, turnArrows: NONE, clock: skillTaps ? 0 : null }; // clock: the picture's own (slow in a skill moment), or null for the frame loop's
     this.view = { w: 0, h: 0, at: NaN }; this.clock = 0;
     this.handLast = { on: null, id: null, x: null, y: null, tap: null };
     this.skills = new Set(); // lessons he has passed: each adds its part to matches (see has())
@@ -51,7 +51,7 @@ export class Game {
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
   name(id) {
     if (id[0] === 'o') return displayName(this.them.players[+id[1] - 1].name);
-    return displayName(this.us.players[(this.roster || { hero: 0, m1: 1, m2: 2 })[id]].name);
+    return displayName(this.us.players[(this.roster || ROSTER)[id]].name);
   }
   // Big pushes are offered in the dribble lesson, in free play, and in mini matches once he has played the dribble lesson.
   get pushAllowed() { return this.sc?.skill === 'dribble-to-space' || this.sc?.skill === 'won-it-go' || this.has('dribble-to-space'); }
@@ -68,7 +68,7 @@ export class Game {
   // ---------- scenario setup ----------
   load(sc) {
     this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; this.hud.bannerOff?.(); // (a new play: the last one's result words go)
-    this.roster = { hero: 0, m1: 1, m2: 2 }; this.world.resetRigs?.();
+    this.roster = { ...ROSTER }; this.world.resetRigs?.();
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
   }
@@ -184,7 +184,8 @@ export class Game {
       let found = null;
       for (const id of MATES) {
         if (this.seen.has(id)) continue;
-        const a = s.a(id), q = this.world.project(a.x, a.y, .9), v = this.viewSize();
+        const a = s.a(id); if (!a) continue; // (m3 plays only at 4v4)
+        const q = this.world.project(a.x, a.y, .9), v = this.viewSize();
         if (q && q[0] > v.w * .05 && q[0] < v.w * .95 && q[1] > v.h * .05 && q[1] < v.h * .95) { this.seen.add(id); (found ||= []).push(this.name(id)); }
       }
       if (found && this.mode !== 'demo' && !facesBall(this.sc) && this.sc?.skill !== 'dribble-to-space' && (this.step === 'pass' || (!this.step && this.lookUp))) this.hud.seen(`👀 You see ${found.join(' and ')}`);

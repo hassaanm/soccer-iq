@@ -2,7 +2,7 @@
 // banner that ends the play. The scripts move the players in `scripted`; the team AI moves everyone else.
 import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } from '../geom.js';
 import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce } from '../generate.js';
-import { L, W, gy0, gy1, MATE, faceTo } from './shared.js';
+import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
 
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
@@ -611,7 +611,7 @@ export const outcomes = {
   // `p`: how often he takes a chance here instead of his own flair's (a lesson rewards the right dribble with a skill).
   // `sure`: a defender is near the way he goes, so he takes the first chance with one beside him too (sim.js dribbleSkill).
   spice(ctx, ids, p, sure = false) { this.sim.flair = ctx ? { ctx, own: !this.ai && ctx !== 'finish', by: Object.fromEntries(ids.map(id => { const f = this.flairOf(id); return [id, p ? { ...f, p: Math.max(f.p, p), sure } : f]; })) } : null; },
-  flairOf(id) { const p = id[0] === 'o' ? this.them?.players[+id[1] - 1] : this.us?.players[(this.roster || { hero: 0, m1: 1, m2: 2 })[id]]; return flairOf(p?.name); },
+  flairOf(id) { const p = id[0] === 'o' ? this.them?.players[+id[1] - 1] : this.us?.players[(this.roster || ROSTER)[id]]; return flairOf(p?.name); },
   // Picks the script for his choice and runs it. However the play ends, the team AI stops moving players.
   *outcomeGen(opt, good) {
     try {

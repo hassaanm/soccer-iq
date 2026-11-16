@@ -21,10 +21,12 @@ export const team = {
     if (def === 'us') { this.ourDefense(ball, attackers, free); }
     else {
     const defenders = s.team(def).filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
+    // (Four a side: the third and fourth each mark one of the attackers, the more dangerous one first.)
+    const dangers = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX));
     defenders.forEach((d, i) => {
       if (i === 0) return s.go(d.id, ball.x + dir * 1.1, ball.y, 3.4); // stand goal-side, a step off the ball
       if (i === 1) return s.go(d.id, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
-      const danger = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX))[0] || ball;
+      const danger = dangers[i - 2] || dangers[0] || ball;
       s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
     });
     }
@@ -45,8 +47,11 @@ export const team = {
     };
     const sup = attackers.filter(free).sort(goalAhead), side0 = sup[0] && sup[0].y < fut.y ? -1 : 1;
     const wide = sgn => { const y = clamp(fut.y + sgn * 5, 2, W - 2); return Math.abs(y - fut.y) < 3.5 ? clamp(fut.y - sgn * 5, 2, W - 2) : y; };
-    const spots = sup.map((a, i) => clearOf(i === 0 ? { x: clamp(fut.x + dir * 5, 2, L - 3), y: wide(side0) } : { x: clamp(fut.x - dir * 3, 2, L - 2), y: wide(-side0) }));
-    if (spots.length === 2 && dist(spots[0], spots[1]) < 4) { spots[1].y = wide(spots[0].y > fut.y ? -1 : 1); clearOf(spots[1]); }
+    // Four a side: a diamond round the ball. The third free attacker goes deep up the middle, the target farthest forward.
+    const spots = sup.map((a, i) => clearOf(i === 0 ? { x: clamp(fut.x + dir * 5, 2, L - 3), y: wide(side0) } : i === 1 ? { x: clamp(fut.x - dir * 3, 2, L - 2), y: wide(-side0) }
+      : { x: clamp(fut.x + dir * 9, 2, L - 3), y: lerp(fut.y, W / 2, .7) - side0 * 2 }));
+    if (spots.length >= 2 && dist(spots[0], spots[1]) < 4) { spots[1].y = wide(spots[0].y > fut.y ? -1 : 1); clearOf(spots[1]); }
+    if (spots.length === 3) for (const k of [0, 1]) if (dist(spots[2], spots[k]) < 4) { spots[2].x = clamp(spots[2].x + dir * (4 - dist(spots[2], spots[k])), 2, L - 3); clearOf(spots[2]); }
     sup.forEach((a, i) => s.go(a.id, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
   },
 

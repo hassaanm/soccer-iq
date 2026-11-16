@@ -90,7 +90,7 @@ export const rounds = {
   async goalIn() {
     const sc = this.sc, s = this.sim;
     const to = (id, p, min) => { const a = s.a(id); s.go(id, p[0], p[1], Math.max(min, Math.hypot(p[0] - a.x, p[1] - a.y) / (RUN_UP - .1))); };
-    to('hero', sc.heroTo, 2.4); s.go('m1', ...sc.matesTo[0], 3.2); to('m2', sc.matesTo[1], 1); sc.oppsTo.forEach((p, i) => to('o' + (i + 1), p, 1));
+    to('hero', sc.heroTo, 2.4); s.go('m1', ...sc.matesTo[0], 3.2); sc.matesTo.forEach((p, i) => i && to('m' + (i + 1), p, 1)); sc.oppsTo.forEach((p, i) => to('o' + (i + 1), p, 1));
     await this.delay(RUN_UP);
     s.stopAll();
     const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h);
@@ -136,7 +136,7 @@ export const rounds = {
     return MATE[opt] ? { ...this.sim.a(MATE[opt]) } : dribbleEnd(h, opt.slice(5), L, W);
   },
   // A line with his teammates' names filled in.
-  named(text) { return text.replaceAll('{m0}', this.name('m1')).replaceAll('{m1}', this.name('m2')); },
+  named(text) { return text.replace(/\{m([012])\}/g, (_, i) => this.name('m' + (+i + 1))); },
   cue() { return this.named(this.sc.cue); },
 
   // Give-and-go, step 2: the friend has the ball; the defender who was on him turns to press the friend.

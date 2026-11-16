@@ -1,9 +1,10 @@
 // Headless game runner shared by the tests and the audit: a stub renderer, fixed 30 fps ticks, and per-play metrics.
 import { Game } from '../js/game.js';
 import { TEAMS } from '../js/teams.js';
-import { dist, closestOnLane, DRIBBLE_DIRS } from '../js/geom.js';
+import { dist, closestOnLane, DRIBBLE_DIRS, PITCH } from '../js/geom.js';
 
 export const OPTIONS = ['pass:0', 'pass:1', ...Object.keys(DRIBBLE_DIRS).map(d => 'drib:' + d)];
+const PASS3 = ['pass:0', 'pass:1', 'pass:2']; // (4v4: three friends to pass to)
 // Every choice a scenario offers: spots on defense; passes, dribbles (and big pushes in the dribble lesson) on attack.
 export function optionsFor(sc) {
   if (sc.kind === 'defense' || sc.kind === 'support' || sc.kind === 'lead') return sc.spots.map(s => 'spot:' + s.id);
@@ -13,9 +14,9 @@ export function optionsFor(sc) {
   const shoot = sc.skill === 'shoot-close' || sc.heroTo[0] > 17; // the SHOOT button shows from 13 m out
   // Give-and-go: after the right pass, each run he could make (written then:spot:<id>).
   const then = sc.then ? sc.then.spots.filter(s => 'spot:' + s.id !== sc.then.best).map(s => 'then:spot:' + s.id) : [];
-  return [...OPTIONS, ...push, ...(shoot ? ['shoot'] : []), ...then];
+  return [...(sc.mates.length > 2 ? [...PASS3, ...OPTIONS.slice(2)] : OPTIONS), ...push, ...(shoot ? ['shoot'] : []), ...then];
 }
-const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
+const MATE = { 'pass:0': 'm1', 'pass:1': 'm2', 'pass:2': 'm3' };
 
 export function makeGame() {
   const events = [];
@@ -37,7 +38,7 @@ export async function drive(g, promise, { pick = () => null, onFrame = () => {},
   for (let t = 0, k = 0; t < maxSec && !done; k++) {
     const dt = frameDt(k); t += dt;
     g.tick(dt, t); onFrame(g);
-    if (g.canAct && g._choose) { const o = pick(g); if (o) { g.seen.add('m1'); g.seen.add('m2'); g.choose(o); } }
+    if (g.canAct && g._choose) { const o = pick(g); if (o) { g.seen.add('m1'); g.seen.add('m2'); if (g.sim.a('m3')) g.seen.add('m3'); g.choose(o); } }
     await new Promise(r => setImmediate(r));
   }
   if (!done) throw new Error('flow did not finish');
@@ -62,7 +63,7 @@ export async function playOption(sc, opt) {
   let kicker = null, aimAt = null;
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
     kicker = s.ball.carrier; aimAt = { x, y };
-    if (x > 29 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
+    if (x > PITCH.L - 1 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     if (x < 1 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
     return kick(x, y, o);
   };

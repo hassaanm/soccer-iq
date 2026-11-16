@@ -2,7 +2,7 @@
 // a full stadium under four floodlights. It also draws what the game puts on the pitch: markers, arrows, effects.
 import * as THREE from 'three';
 import { PITCH } from './skills.js';
-import { DRIBBLE_DIRS, clamp } from './geom.js';
+import { DRIBBLE_DIRS, clamp, sizeOf } from './geom.js';
 import { Particles, TURF_BITS } from './fx.js';
 import { canvasTex, blobTex } from './tex.js';
 import { makeRig, RIM } from './pro/rig.js';
@@ -14,7 +14,7 @@ import { makeEnv, buildBeams, sunSprite } from './pro/light.js';
 import { makeSky } from './pro/sky.js';
 import { turf, TURF } from './pro/grass.js';
 
-const { L, W, gy0, gy1, gh } = PITCH;
+const { L, W, gy0, gy1, gh } = PITCH; // (the pitch of the size saved when the page loaded: see geom.js setSize)
 const CX = L / 2, CY = W / 2, BALL_R = .125; // the ball's radius: in proportion to the players, about as wide as a head
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .72 });
 // Everything that differs between the two times of day. `key` is the sun by day; by night it and three `fill`
@@ -48,7 +48,8 @@ const stayTex = canvasTex(128, 156, g => {
   g.fillStyle = '#2b2140'; g.fill(); g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
   g.font = '62px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✋', 64, 66);
 });
-const IDS = ['hero', 'm1', 'm2', 'o1', 'o2', 'o3']; // the sim's player ids: three of ours, three of theirs
+const IDS = ['hero', 'm1', 'm2', 'm3', 'o1', 'o2', 'o3', 'o4']; // the sim's player ids: up to four of ours, four of theirs (m3, o4: 4v4)
+const SIDE_IDS = { us: IDS.slice(0, 4), them: IDS.slice(4) };
 
 // Frees what one player's body owns: its shapes, its materials, its bones' texture and the two painted textures
 // (shirt and face). The canvases behind those textures are emptied too: iOS counts canvas memory until the garbage
@@ -62,7 +63,7 @@ function disposeRig(g) {
   }
 }
 // Everything about a team that changes how its players look. Same key: the bodies already built can stay.
-const lookKey = team => JSON.stringify([team.kit, team.players.slice(0, 3)]);
+const lookKey = team => JSON.stringify([team.kit, team.players.slice(0, sizeOf().out)]);
 
 // Parts that never move and share a material, as one mesh: one draw (and one shadow draw) instead of one each.
 function merged(parts, mat) {
@@ -401,7 +402,7 @@ export class World {
     this.resetRigs(); // every sim id drives its own body again, as it does with freshly built ones
     this.mood = null;
     let changed = false;
-    for (const [side, team, ids] of [['us', us, IDS.slice(0, 3)], ['them', them, IDS.slice(3)]]) {
+    for (const [side, team, ids] of [['us', us, SIDE_IDS.us.slice(0, sizeOf().out)], ['them', them, SIDE_IDS.them.slice(0, sizeOf().out)]]) { // (as many as the size has; the page reloads when it changes)
       const key = lookKey(team);
       if (this.teamKeys[side] === key) { for (const id of ids) this.rigs.get(id).userData.yaw = null; continue; } // kept bodies face the new way at once, like new ones
       this.teamKeys[side] = key; changed = true;

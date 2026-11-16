@@ -2,15 +2,15 @@
 // Each lesson sits in a Leitner box. A good session moves it up one box, at most once per day, so levels need
 // separate days. Boxes set the review gaps in days; the level shown is the highest box ever reached, so a bad
 // day never takes stars away.
-import { shuffle } from './geom.js';
-const KEY = 'soccer-iq:v1';
+import { shuffle, SAVE_KEY } from './geom.js';
+const KEY = SAVE_KEY;
 const INTERVALS = [0, 1, 3, 7, 14, 30]; // days before a lesson in each box comes back as review rounds
 const MASTER_BOX = 3;
 export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds passes a session
 
 export function defaultProgress() {
   return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1,
-    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false } };
+    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3' } }; // size: see geom.js SIZES
 }
 
 export function load(storage = globalThis.localStorage) {

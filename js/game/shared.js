@@ -1,10 +1,11 @@
 // Constants and small helpers that more than one part of Game uses (see js/game.js for how the parts join up).
-import { PITCH } from '../skills.js';
 import { DRIBBLE_DIRS } from '../geom.js';
 
-export const { L, W, gy0, gy1 } = PITCH;
-export const MATE = { 'pass:0': 'm1', 'pass:1': 'm2' };
-export const MATES = ['m1', 'm2'], DIRS = Object.keys(DRIBBLE_DIRS);
+export { L, W, gy0, gy1 } from '../geom.js'; // live: the pitch of the size being played (geom.js setSize)
+export const MATE = { 'pass:0': 'm1', 'pass:1': 'm2', 'pass:2': 'm3' }; // (m3 plays at 4v4)
+export const MATES = ['m1', 'm2', 'm3'], DIRS = Object.keys(DRIBBLE_DIRS);
+// Which of his team's players (teams.js, by place in the list) each sim id is, before any takeover in a match.
+export const ROSTER = { hero: 0, m1: 1, m2: 2, m3: 3 };
 export const NONE = Object.freeze([]); // "nothing to show", shared so no new list is made each frame
 // Rounds where he taps a spot on the field: where to run (defending, or getting open while a friend has the ball),
 // or where to pass (in front of a running friend).
