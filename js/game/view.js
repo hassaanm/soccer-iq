@@ -150,8 +150,8 @@ export const view = {
     // Choosing where to shoot, and with which foot (v62): from behind him and a little to the side, looking at the goal,
     // so he, the keeper and the gold spots in the goal are all in the picture, and he is big.
     if ((this.step === 'aim' || this.step === 'foot') && this.phase === 'decide') {
-      const gc = { x: L, y: (gy0 + gy1) / 2 }, dx = gc.x - h.x, dy = gc.y - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, back = clamp(l * .35, 3.2, 4.6);
-      return { eye: [h.x - ux * back - uy * .6, h.y - uy * back + ux * .6, 2.3 + l * .06], tgt: [h.x + ux * l * .62, h.y + uy * l * .62, .55], Ff: .95, Fw: .5 };
+      const gc = { x: L, y: (gy0 + gy1) / 2 }, dx = gc.x - h.x, dy = gc.y - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, back = clamp(l * .4, 4.6, 6);
+      return { eye: [h.x - ux * back - uy * .7, h.y - uy * back + ux * .7, 2.7 + l * .06], tgt: [h.x + ux * l * .55, h.y + uy * l * .55, .45], Ff: .95, Fw: .5 };
     }
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };

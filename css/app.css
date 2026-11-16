@@ -202,7 +202,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #footPick svg{width:96px;height:52px}
 #footPick small{font-size:11px;font-weight:600;opacity:.8}
 #hud[data-step=foot] #footPick{display:flex}
-#hud:is([data-step=foot],[data-step=aim]) :is(#passBtn,#dribBtn){display:none}
+#hud:is([data-step=foot],[data-step=aim]) :is(#passBtn,#dribBtn){display:none!important}
 /* With SHOOT up too (a match near the goal) the right side is full, so the pick moves to the left, where LOOK UP was. */
 #hud.touchpick.shoot #touchPick{right:auto;left:calc(18px + var(--safe-l))}
 #hud.touchpick.shoot #touchPick .btn{animation-name:fromLeft}
