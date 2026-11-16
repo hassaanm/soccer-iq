@@ -31,7 +31,7 @@ export function spokenLines() {
     ...ALL_LESSONS.flatMap(s => [s.kid, s.tip]),
     'Saved!', 'So close!', 'Good space! Close? Inside, for control.', 'Good space! Far? Laces, for power!', // shots (v62)
     'Right side! But high can go over. Keep it low.', 'He can reach that one. Find the big space.', // only-okay targets (v64, outcomes.js shotTip)
-    'Your turn!', TIMEOUT.first, TIMEOUT.again, // (v64: the defender got there first)
+    'Your turn!', TIMEOUT.first, TIMEOUT.again, TIMEOUT.restart.first, TIMEOUT.restart.again, // (v64: the defender got there first; round 2: a restart played before he found his place)
     'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, `${A} is running!`, 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
     'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Goal ahead!', 'Only one defender!', 'Space ahead!',

@@ -10,7 +10,9 @@ const PASS_IN = 5, FOLLOW_OPEN = 0;
 const WON = { poke: 1.1, lead: 1.7 };
 // What he hears and sees when the defender gets there first (v64): kind words, never a buzzer; the first time in a
 // lesson, more about what to do.
-export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! Choose before he gets there.', again: 'Choose a bit quicker!' };
+export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! Choose before he gets there.', again: 'Choose a bit quicker!',
+  // (round 2) A restart: nobody comes for the ball; the taker plays it, and he was not in his place yet.
+  restart: { title: 'Ball played!', first: 'Find your place before the ball is played!', again: 'Find your place a bit quicker!' } };
 import { pickFoot } from './outcomes.js';
 import { arrAt, hermAt, pathAt } from '../window.js';
 
@@ -314,14 +316,14 @@ export const rounds = {
   async timedOut(restart) {
     const first = !this.lessonTimeouts;
     this.lessonTimeouts = (this.lessonTimeouts || 0) + 1; this.timeouts = (this.timeouts || 0) + 1;
-    const line = first ? TIMEOUT.first : TIMEOUT.again;
-    this.rated = { stars: 0, nostars: true, text: line, said: line, soft: true };
+    const T = this.sc?.restart ? TIMEOUT.restart : TIMEOUT, line = first ? T.first : T.again;
+    this.rated = { stars: 0, nostars: true, text: line, said: line, soft: true, title: T.title };
     this.card = null;
     await this.outcome('timeout', false);
     await (this.card || this.hud.banner('', 'soft', this.rated)); this.rated = null;
     if (first && this.level1) { // see the defender come once more, at play speed
       restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null;
-      this.openWindow(); this.win.f = Math.min(1, this.win.G / 2.2); this.hud.caption('Watch him come! 👀');
+      this.openWindow(); this.win.f = Math.min(1, this.win.G / 2.2); this.hud.caption(this.sc?.restart ? 'Watch the ball! 👀' : 'Watch him come! 👀');
       await this.until(() => !this.win || this.win.u >= 1); this.closeWindow(); this.showing = false;
       await this.delay(.4); this.hud.caption('');
     }

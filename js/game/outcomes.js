@@ -963,7 +963,7 @@ export const outcomes = {
     if (ev === 'goal') this.sfx('net');
     this.fx(ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
-    if (rated?.soft) { this.card = this.hud.banner(TIMEOUT_TITLE, 'soft', rated); this.say(rated.said); return; } // (v64: out of time: whatever the play did, the card says it kindly)
+    if (rated?.soft) { this.card = this.hud.banner(rated.title || TIMEOUT_TITLE, 'soft', rated); this.say(rated.said); return; } // (v64: out of time: whatever the play did, the card says it kindly)
     // A light result (a lesson round right on the first try, Level 2 and up: rounds.js attempt): the big words, stars
     // over his player and the praise said, then on to the next round with no card.
     if (rated?.light) { this.card = this.hud.banner(title, kind); this.hud.pop?.(3); this.say(rated.said); return; }
