@@ -32,6 +32,9 @@ const P = ([x, y]) => ({ x, y });
 // How much longer (dL) and half how much wider (dW) the pitch is than the 3v3 one: places written for 30 x 20 m that are
 // measured from their goal or from the middle move with it (0 at 3v3, so its scenes stay exactly as they were).
 const dL = () => L - 30, dW = () => (W - 20) / 2;
+// How much longer the pitch is than the 4v4 one (0 at 3v3 and 4v4, so their scenes stay exactly as they were): for the
+// places that only failed on the 5v5 pitch.
+const big = () => Math.max(0, L - 32);
 export function pushEnd(from, dir) {
   const [dx, dy] = rot(PUSH_LEN, 0, DRIBBLE_DIRS[dir]);
   return { x: clamp(from.x + dx, 1, L - 1), y: clamp(from.y + dy, 1, W - 1) };
@@ -120,7 +123,7 @@ function attack(r, pattern, high = false) {
 
   if (pattern === 'forward') {
     add(at(fside * (.45 + r() * .3), 1.8 + r() * .3));         // presser in front, leaning away from the forward teammate
-    add([L - 4 - r() * 2, W / 2 + (r() - .5) * 4]); add([L - 8 - r() * 3, pick(r, [3, W - 3])]);
+    add([L - 4 - big() * .6 - r() * 2, W / 2 + (r() - .5) * 4]); add([L - 8 - big() * .6 - r() * 3, pick(r, [3, W - 3])]);
   } else if (pattern === 'one-open') {
     add(ahead0 ? at(-s0 * (.45 + r() * .35), 1.9 + r() * .3) : at((r() - .5) * .5, 1.7 + r() * .4)); // presser: dribbling forward runs into him
     add(onLane(mates[1], .55 + r() * .25));
@@ -846,7 +849,7 @@ function extraReceive(r, sc) {
   if (Object.keys(g0).some(o => o.startsWith('drib:') && g[o] !== g0[o])) return null; // (his turns are dribbles; nobody passes here)
   for (const dir of Object.values(sc.turns)) { // the two of theirs nearest where each turn goes stay the same
     const e = dribbleEnd(pt(H), dir, L, W), E = [e.x, e.y], near = sc.oppsTo.map(o => d2(o, E)).sort((p, q) => p - q);
-    if (d2(A, E) < near[1] + 1 || d2(F, E) < 3) return null;
+    if ((sizeOf().keeper ? d2(A, E) < Math.max(5, near[0] + 1) : d2(A, E) < near[1] + 1) || d2(F, E) < 3) return null; // (5v5: their others stand farther off on the big pitch; he is never the nearest)
   }
   return wide;
 }
