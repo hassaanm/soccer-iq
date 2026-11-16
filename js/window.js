@@ -680,7 +680,7 @@ export function planArrival(sc, st, opts = {}) {
   let Gpre = GP[GP.length - 1], cls = 'short';
   const sn0 = snap(); let found = false;
   for (const g of GP) {
-    const ok = [th, holder].filter(Boolean).every(id => inside(arrAt(paths[id], -g)));
+    const ok = [th, dead ? null : holder].filter(Boolean).every(id => inside(arrAt(paths[id], -g))); // (a restart's taker stands on the line)
     if (ok && settle(g)) { Gpre = g; cls = SHORT_LEAD[sc.pattern] && !opts.Gpre ? 'last-resort' : g === GP[0] ? 'full' : 'short'; found = true; break; }
     back(sn0);
   }
