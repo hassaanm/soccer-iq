@@ -1,8 +1,7 @@
 // One decision round: the run-up, the moment he chooses, and how good each choice is. Around it, the lesson
 // loop: play the choice, show why a wrong one failed, replay the better way, and let him try again.
 import { dist, dribbleEnd, lerp, clamp } from '../geom.js';
-import { grade, pushEnd, LEAD, RUN_UP, SHOT, OKAY } from '../generate.js';
-import { RETRY } from '../window.js';
+import { grade, pushEnd, LEAD, SHOT, OKAY } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
 // The rule for the foot ("Inside or laces?"), in his coach's words: said when he picked the right space with the wrong foot.
 const FOOT_TIP = { in: 'Close? Inside, for control.', las: 'Far? Laces, for power!' };
@@ -74,8 +73,8 @@ export const rounds = {
     await this.until(() => { const left = T - (s.time - t0), d = Math.hypot(hx - h.x, hy - h.y); s.go('hero', hx + (hx - h.x) / (d || 1) * .4, hy + (hy - h.y) / (d || 1) * .4, clamp(d / Math.max(.1, left), .6, 3.6)); return left <= 0; });
   },
   // "Follow your shot!": the shooter (he, or a friend) dribbles up and shoots; it comes back out off the post or a
-  // defender's leg, and a short call says which. The play freezes as the rebound slows down, loose in front of the
-  // goal (it rolls the last bit while he decides). Meanwhile the others go to where they stand at the freeze, and the
+  // defender's leg, and a short call says which. The choice opens as the rebound slows down, loose in front of the
+  // goal (it rolls the last bit while he decides, and their players set off for it: v64). Meanwhile the others go to where they stand at the freeze, and the
   // shooter carries on in his follow-through, arriving there as it freezes: nobody stands and watches it roll. The
   // shot is seen from behind and above, with no head-down blur and no prompt over it (phase 'shot'). Everyone is held to
   // the script while the ball flies (nobody steps out of its way).
@@ -100,29 +99,20 @@ export const rounds = {
     this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null; // (v64: the ball rolls on while he chooses)
     this.yaw = this.frameYaw(sc, h, { x: sh.loose[0], y: sh.loose[1] }); this.faceYaw(h);
   },
-  // "Run to the goal too!": his friend dribbles at goal, he jogs up off the ball, and the play freezes. The view looks
-  // between his friend and the goal, so both are on screen with the spots.
-  async goalIn() {
-    const sc = this.sc, s = this.sim;
-    const to = (id, p, min) => { const a = s.a(id); s.go(id, p[0], p[1], Math.max(min, Math.hypot(p[0] - a.x, p[1] - a.y) / (RUN_UP - .1))); };
-    to('hero', sc.heroTo, 2.4); s.go('m1', ...sc.matesTo[0], 3.2); sc.matesTo.forEach((p, i) => i && to('m' + (i + 1), p, 1)); sc.oppsTo.forEach((p, i) => to('o' + (i + 1), p, 1));
-    await this.delay(RUN_UP);
-    const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h);
-  },
   // The players running in a lead-pass round go on with their runs (also after a replay puts them back).
   leadRun() { for (const [id, mv] of Object.entries(this.sc.moves || {})) Object.assign(this.sim.a(id), { tx: mv.to[0], ty: mv.to[1], speed: mv.speed, sp: mv.speed }); },
 
   decide() {
     this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.decideReal = this.realTime || 0; this.pendingDir = null;
-    if (this.sc.kind === 'receive') { // the ball waits in the air
+    if (this.sc.kind === 'receive') { // the ball comes on while he chooses (v64)
       this.step = 'turn'; this.peeked = false; this.drag = null; this.facePasser();
     }
     if (this.sc.kind === 'tackle') { // the attacker comes at him; he taps STEAL (or the attacker gets past)
       this.step = 'tackle'; this.lookUp = true; this.scanned = true;
       const g = this; this.sim.run((function* () { if (!(yield* g.approach(false))) g.choose('tackle:none'); })());
     }
-    this.delay(.2).then(() => { if (this.phase === 'decide' && !this.win) this.hud.caption(''); });
     this.openWindow(); // (v64) play goes on in slow motion while he chooses (game/window.js)
+    this.delay(1.2).then(() => { if (this.phase === 'decide' && this.mode !== 'demo') this.hud.caption(''); }); // (on real time, made in the window: the words of the run-up go)
     // His choice ends what was said before it ("Your turn!"), however soon it comes.
     return new Promise(res => { this._choose = opt => { this.closeWindow(); if (this.mode !== 'demo') this.hud.caption(''); res(opt); }; });
   },

@@ -156,11 +156,12 @@ export const moving = {
   },
   // ---------- what shows ----------
   // The threat's reach (v64 research 2d): a soft patch on the grass in front of him, toward what he is going for, that
-  // reaches it as the window ends. null when no window is open.
+  // reaches it as the window ends; world.js also spreads warm segments round his own ring from the threat's side (u: how
+  // far the window has run). null when no window is open.
   reachUi() {
     const w = this.win; if (!w || this.phase !== 'decide' || !w.threat) return null;
     const s = this.sim, o = s.a(w.threat.id); if (!o) return null;
-    const to = w.threat.to ? { x: w.threat.to[0], y: w.threat.to[1] } : w.kind === 'receive' ? s.a('hero') : w.kind === 'support' || w.kind === 'goal' ? s.ball : s.ball;
+    const to = w.threat.to ? { x: w.threat.to[0], y: w.threat.to[1] } : w.kind === 'receive' ? s.a('hero') : s.ball; // (the ball he goes for; on a pass to him, where it comes to)
     const dx = to.x - o.x, dy = to.y - o.y, d = Math.hypot(dx, dy) || 1, u = clamp(w.u || 0, 0, 1), r0 = .55;
     const len = r0 + Math.max(0, d - r0 - .1) * u; // from his feet at the start to the ball (less its size) at the end
     const out = (this.ui.reach ||= {});

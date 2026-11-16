@@ -400,6 +400,12 @@ export class World {
     this.ballGlow.visible = false; this.scene.add(this.ballGlow);
     this.reachMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).translate(.5, 0, 0), new THREE.MeshBasicMaterial({ map: reachTex, transparent: true, depthWrite: false, toneMapped: false }));
     this.reachMesh.visible = false; this.reachMesh.renderOrder = -1; this.scene.add(this.reachMesh); // (under the rings and arrows)
+    // His own ring, as the threat closes (v64): warm segments spread round it from the threat's side (24 of 15°), so the
+    // pressure shows at his feet too, where the defender's own reach is hidden behind him.
+    this.pressRing = new THREE.Group(); this.pressSegs = [];
+    const segMat = new THREE.MeshBasicMaterial({ color: 0xff7a2e, transparent: true, opacity: .95, depthWrite: false, toneMapped: false });
+    for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(.47, .61, 3, 1, i * Math.PI / 12 + .02, Math.PI / 12 - .04), segMat); m.visible = false; this.pressRing.add(m); this.pressSegs.push(m); }
+    this.pressRing.visible = false; this.scene.add(this.pressRing);
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
     this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
     this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
@@ -583,6 +589,10 @@ export class World {
       if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, BALL_R + (b.z || 0)); // a hard shot leaves a trail
       bp.x = b.x; bp.y = b.y;
     } else this.ballPrev = { x: b.x, y: b.y };
+    const pr = ui.reach && ui.heroRing && h; this.pressRing.visible = !!pr; // (the segments: centred on the threat's side, as many as the window has run)
+    if (pr) { const rc = ui.reach, a = Math.atan2(rc.y - h.y, rc.x - h.x), n = Math.round(rc.u * 24), c = Math.round(a / (Math.PI / 12));
+      this.pressRing.position.set(h.x, h.y, .025); this.pressRing.scale.copy(this.heroRing.scale);
+      this.pressSegs.forEach((m, i) => { const d = ((i - c) % 24 + 36) % 24 - 12; m.visible = Math.abs(d) * 2 < n || (n >= 24); }); }
     const rc = ui.reach; this.reachMesh.visible = !!rc; // the threat's reach, from his feet to as far as it goes (a little behind him, so it starts under him)
     if (rc) { const back = .3; this.reachMesh.position.set(rc.x - rc.dx * back, rc.y - rc.dy * back, .022); this.reachMesh.rotation.z = Math.atan2(rc.dy, rc.dx); this.reachMesh.scale.set(rc.len + back + .12, 1.05, 1); }
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }

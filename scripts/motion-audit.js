@@ -21,7 +21,7 @@ import { readFileSync, writeFileSync } from 'fs';
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const sizes = args[0] && !args[0].startsWith('--') ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer);
 const nGen = +(flag('--gen') || 0), base = flag('--base') ? JSON.parse(readFileSync(flag('--base'), 'utf8')) : null, only = flag('--only'), taps = [.05, .5, .95];
-const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, late: 1.2, lateFar: 2, reach: .9 };
+const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, late: 1.25, lateFar: 2, reach: .9 };
 
 // What kind of end a play had (its banners), for comparing with the frozen play.
 const KIND = { 'GOAL!': 'kept', 'Kept the ball!': 'kept', 'Stolen!': 'lost', 'They got it!': 'lost', 'Cut out!': 'lost', 'Stole it!': 'stopped', 'Stopped him!': 'stopped', 'They scored': 'conceded',
@@ -143,7 +143,11 @@ console.log('window (game s) and world speed, by kind:');
 for (const [k, v] of Object.entries(byKind)) { const G = v.map(x => x.G).sort((a, b) => a - b), f = v.map(x => x.f).sort((a, b) => a - b); console.log(`  ${k.padEnd(14)} n ${String(v.length).padStart(3)}  G ${G[0]}–${G.at(-1)} (median ${G[G.length >> 1]})  speed ${f[0]}–${f.at(-1)}×`); }
 const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null).map(p => p.gap)).sort((a, b) => a - b);
 if (gaps.length) console.log(`steal after the reach touched the ball: median ${gaps[gaps.length >> 1].toFixed(2)} s, max ${gaps.at(-1).toFixed(2)} s (real)`);
-for (const far of [false, true]) { const g = all.flatMap(r => r.plays.filter(p => p.gap != null && !!p.far === far).map(p => p.gap)).sort((a, b) => a - b); if (g.length) console.log(`  threat ${far ? 'getting back from far (over 3.4 m at the end, allowed ' + LIM.lateFar : 'pressing (allowed ' + LIM.late)} s): ${g.length} time-outs, median ${g[g.length >> 1].toFixed(2)} s, max ${g.at(-1).toFixed(2)} s`); }
+for (const far of [false, true]) {
+  const g = all.flatMap(r => r.plays.filter(p => p.gap != null && !!p.far === far).map(p => p.gap)).sort((a, b) => a - b);
+  const what = far ? `getting back from far (over 3.4 m away as it ends; allowed ${LIM.lateFar} s)` : `pressing (allowed ${LIM.late} s)`;
+  if (g.length) console.log(`  threat ${what}: ${g.length} time-outs, median ${g[g.length >> 1].toFixed(2)} s, max ${g.at(-1).toFixed(2)} s`);
+}
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
 if (mis.length > 80) console.log(`  … ${mis.length - 80} more`);
