@@ -574,15 +574,16 @@ export function planArrival(sc, st, opts = {}) {
   const us = id => at[id].team === 'us', ballTeam = at[holder].team, defTeam = ballTeam === 'us' ? 'them' : 'us';
   const goal = { x: ballTeam === 'us' ? PITCH.L : 0, y: PITCH.W / 2 };
   const fixedPaths = opts.keep || {}; // (paths given by the scene itself: a lead pass's runners)
+  const dead = !!sc.restart; // (a restart: a dead ball)
   // The player on the ball, and the hero
   const H = P(holder), line = kind === 'defense' ? U([4.5 - H[0], PITCH.W / 2 + (H[1] - PITCH.W / 2) * .6 - H[1]]) : sc.hero && sc.heroTo && holder === 'hero' ? U([sc.heroTo[0] - sc.hero[0] || 1, sc.heroTo[1] - sc.hero[1]]) : U([goal.x - H[0], goal.y - H[1]]);
   // (a restart: a dead ball. The taker stands over it, life only in his body; their players stand off, adjusting a step;
   // friends move to find space. Nobody runs in to tackle.)
-  const dead = !!sc.restart;
   paths[holder] = arr(H, kind === 'support' ? perp(line) : line, dead ? RUN.still : kind === 'defense' ? RUN.attack : kind === 'support' ? RUN.shield : kind === 'goal' ? RUN.drive : RUN.carry); role[holder] = 'ball';
   if (holder !== 'hero') {
     const h = P('hero'), from = sc.hero && sc.heroTo ? U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]) : U([goal.x - h[0], goal.y - h[1]]);
-    paths.hero = arr(h, kind === 'defense' ? (Math.hypot(...from) > .1 ? from : [-1, 0]) : kind === 'receive' ? U([P('m1')[0] - h[0], P('m1')[1] - h[1]]) : from, kind === 'defense' ? RUN.recover : kind === 'goal' ? RUN.jog : RUN.step); role.hero = 'hero';
+    paths.hero = dead ? arr(h, Math.hypot(...from) > .1 ? from : U([goal.x - h[0], 0]), RUN.walk) // (a restart: he walks, looking for his place)
+      : arr(h, kind === 'defense' ? (Math.hypot(...from) > .1 ? from : [-1, 0]) : kind === 'receive' ? U([P('m1')[0] - h[0], P('m1')[1] - h[1]]) : from, kind === 'defense' ? RUN.recover : kind === 'goal' ? RUN.jog : RUN.step); role.hero = 'hero';
   } else if (kind === 'receive') { const m = P(sc.carrier || 'm1'), h = P('hero'); paths.hero = arr(h, [m[0] - h[0], m[1] - h[1]], RUN.step); }
   // The threat: of the other team, the one who gets to the ball first (one the camera sees as he comes first, unless
   // the idea is a defender he cannot see: peek, then turn); for their dribbler, he himself (nearing the shooting spot).

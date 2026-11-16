@@ -96,7 +96,7 @@ function floor(r, sc) {
   const ca = clampS(pa), cb = clampS(pb), h = b.at.hero, e = b.at[th], ang = Math.abs(wrapA(Math.atan2(e[1] - h[1], e[0] - h[0]) - a.yaw)), behind = ang > 2.1 && (Math.hypot(e[0] - h[0], e[1] - h[1]) < 2.8 || sc.intro === 'won'); // (won it: the idea is that they are behind him)
   void ca; void cb;
   return { close: d(a) - d(b), px, hero: Math.hypot(b.at.hero[0] - a.at.hero[0], b.at.hero[1] - a.at.hero[1]), most: Math.max(...moved), seen, kind,
-    th, from: a.at[th].map(v => +v.toFixed(1)), to: b.at[th].map(v => +v.toFixed(1)), ball: a.ball.map(v => +v.toFixed(1)), yaw: +a.yaw?.toFixed(2), scr: pa?.map(Math.round), spot: a.spot, behind };
+    th, from: a.at[th].map(v => +v.toFixed(1)), to: b.at[th].map(v => +v.toFixed(1)), ball: a.ball.map(v => +v.toFixed(1)), yaw: +a.yaw?.toFixed(2), scr: pa?.map(Math.round), spot: a.spot, behind, restart: !!sc.restart };
 }
 
 // The checks on the recorded ways.
@@ -120,10 +120,10 @@ function motionIn(r, sc, inWin) {
     for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) if (sp[i] > .4 && sp[j] > .4) {
       const c = (v[i][0] * v[j][0] + v[i][1] * v[j][1]) / (sp[i] * sp[j]); if (c < Math.cos(LIM.turn * Math.PI / 180)) { flags.push(['turn', `${id} turned ${Math.round(Math.acos(Math.max(-1, c)) * 180 / Math.PI)}° in the window`]); i = v.length; break; }
     }
-    if (!gk(id) && max < LIM.still && grid.length > 4) flags.push(['still', `${id} still through the window`]);
+    if (!gk(id) && max < LIM.still && grid.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) flags.push(['still', `${id} still through the window`]); // (a restart's taker stands over the dead ball)
   }
   // the player on the ball keeps it moving
-  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
+  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart) { /* (a restart's taker: a dead ball) */ const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
   // nobody's speed jumps as the window opens (compare the last frame before with the first two inside)
   const before = rec.filter(f => !f.win && !f.out).at(-1);
   // players too close
@@ -136,6 +136,7 @@ function timeout(r, sc) {
   const { rec, wins, flags } = r, w = wins[0]; if (!w) return flags;
   if (!w.timeoutAt) { flags.push(['late', 'no time-out']); return flags; }
   if (Math.abs(w.timeoutAt.u - 1) > .05) flags.push(['late', `time-out at u=${w.timeoutAt.u.toFixed(2)}`]);
+  if (sc.restart) return flags; // (a restart: nobody tackles; the taker plays it to where he stands, outcomes.js timeoutGen)
   const out = rec.filter(f => f.out), first = out.find(f => f.carrier && f.carrier !== out[0]?.carrier && !['hero', 'm1', 'm2', 'm3', 'k1'].includes(f.carrier) || (kindOf(sc) === 'defense' && f.carrier && f.carrier[0] === 'o'));
   if (kindOf(sc) === 'defense' || kindOf(sc) === 'follow' || kindOf(sc) === 'goal') return flags; // (the attackers go on; they got there first)
   if (kindOf(sc) === 'receive' && !first && r.banners.includes('He got there!')) return flags; // (nobody near him: they got back in front of him instead)
@@ -196,7 +197,7 @@ console.log('windows by class (full: the whole lead-in; short: a shorter one, wh
 for (const [k, v] of Object.entries(cls)) console.log(`  ${k.padEnd(18)} ${v.length}${v.length < 12 ? '  ' + v.join(' ') : ''}`);
 // (Windows whose threat is behind him by the scene's idea, or is the one the shot hit, cannot move on his screen: they
 // are counted apart.)
-const apart = r => r.floor.behind || (r.kind === 'receive' && !r.floor.seen) || (r.kind === 'follow' && r.floor.th === 'o1' && r.sc.includes('block'));
+const apart = r => r.floor.restart || r.floor.behind || (r.kind === 'receive' && !r.floor.seen) || (r.kind === 'follow' && r.floor.th === 'o1' && r.sc.includes('block'));
 const fl2 = {}, apartN = {}; for (const r of all) if (r.floor) { if (apart(r)) { apartN[r.size] = (apartN[r.size] || 0) + 1; (fl2[`${r.size} ${r.skill}`] ||= []); continue; } (fl2[`${r.size} ${r.skill}`] ||= []).push(r.floor); }
 console.log('floor per lesson (threat closes ≥ 2.5 m and moves ≥ 80 px on screen; his player travels):');
 const share = {}; for (const [k, v] of Object.entries(fl2)) { if (!v.length) { console.log(`  ${k.padEnd(26)} (all apart)`); continue; }
@@ -204,7 +205,7 @@ const share = {}; for (const [k, v] of Object.entries(fl2)) { if (!v.length) { c
   (share[sz] ||= [0, 0]); share[sz][0] += ok; share[sz][1] += v.length;
   console.log(`  ${k.padEnd(26)} ${ok}/${v.length}  close ${c[0].toFixed(1)}–${c.at(-1).toFixed(1)} m (median ${c[c.length >> 1].toFixed(1)})  px ${Math.round(px[0])}–${Math.round(px.at(-1))} (median ${Math.round(px[px.length >> 1])})  his player ${h[0].toFixed(1)}–${h.at(-1).toFixed(1)} m`);
 }
-for (const [sz, [ok, n]] of Object.entries(share)) { console.log(`  ${sz}: ${ok}/${n} windows meet the floor (${Math.round(100 * ok / n)}%), and ${apartN[sz] || 0} apart (the threat behind him by the idea, or the one the shot hit)`); if (ok < .9 * n) { counts[`${sz} floor-share`] = 1; mis.push(`${sz} floor met in only ${ok}/${n} windows`); } }
+for (const [sz, [ok, n]] of Object.entries(share)) { console.log(`  ${sz}: ${ok}/${n} windows meet the floor (${Math.round(100 * ok / n)}%), and ${apartN[sz] || 0} apart (the threat behind him by the idea, the one the shot hit, or a restart's dead ball)`); if (ok < .9 * n) { counts[`${sz} floor-share`] = 1; mis.push(`${sz} floor met in only ${ok}/${n} windows`); } }
 if (explained.length) { console.log(`explained (${explained.length}):`); for (const m of explained) console.log('  ' + m); }
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
