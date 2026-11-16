@@ -263,6 +263,17 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .vs{width:54px;height:54px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--ink);color:#fff;font-size:20px;font-weight:700;
   box-shadow:0 0 0 4px rgba(255,255,255,.85),0 6px 14px rgba(0,0,0,.3);animation:popIn .45s .3s var(--bounce) backwards,vs 2.4s 1s ease-in-out infinite}
 @keyframes vs{50%{scale:1.1;rotate:-6deg}}
+/* Team size (v62): a chip under VS with a little pitch (a dot per player) and "3 v 3"; a tap opens the same, big. */
+.mid{position:relative;display:grid;place-items:center}
+.sizechip{position:absolute;top:calc(100% + 16px);display:grid;justify-items:center;gap:1px;width:78px;padding:6px 6px 4px;border-radius:16px}
+.sizechip svg{width:62px;height:37px;display:block}
+.sizechip b{font-size:15px;line-height:1.1;white-space:nowrap}
+#sizePop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(36,25,58,.45)}
+#sizePop .choices{display:flex;gap:clamp(12px,3vw,26px);padding:16px;background:var(--cream);border:3px solid #fff;border-radius:26px;box-shadow:0 16px 30px rgba(36,25,58,.35);animation:popIn .3s var(--bounce)}
+#sizePop .choice{display:grid;justify-items:center;gap:6px;padding:12px 14px 10px;border-radius:20px}
+#sizePop .choice svg{width:clamp(130px,22vw,190px);height:auto;display:block}
+#sizePop .choice b{font-size:28px;line-height:1}
+#sizePop .choice.on{box-shadow:0 0 0 5px var(--gold),0 6px 0 rgba(36,25,58,.25)}
 /* Footer, one row: the lesson button, PLAY, then Match and Cup (a matching pair). */
 .home-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;max-width:900px;animation:riseIn .5s .15s var(--bounce) backwards}
 .home-foot > *{flex:1}

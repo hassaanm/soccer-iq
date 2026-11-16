@@ -64,7 +64,7 @@
       <div class="tname"></div>
       <div class="roster"></div>
     </div>
-    <div class="vs">VS</div>
+    <div class="mid"><div class="vs">VS</div><button id="sizeBtn" class="btn btn-glass sizechip" aria-label="Players on each team"></button></div>
     <div class="team" data-side="them">
       <div class="tag">OTHER TEAM</div>
       <div class="kind"><button data-type="club">Clubs</button><button data-type="country">Countries</button></div>
@@ -91,6 +91,8 @@
   <div class="sp-row" data-k="music" data-v="musicVol"><label class="sw"><input type="checkbox"><i></i></label><span>🎵 Music</span><input type="range" min="0" max="100" step="5"></div>
   <div class="sp-row" data-k="voice" data-v="voiceVol"><label class="sw"><input type="checkbox"><i></i></label><span>🗣️ Voice</span><input type="range" min="0" max="100" step="5"></div>
 </div>
+
+<div id="sizePop" class="hidden" role="dialog" aria-label="Players on each team"><div class="choices"></div></div>
 
 <section id="lessonSheet" class="screen hidden"><div class="panel wide sheet">
   <h2>Pick a lesson</h2>
@@ -123,6 +125,7 @@
   <div class="menubody">
   <h3>Playing</h3>
   <label>Lesson <select id="skillSel"></select></label>
+  <label>Players on each team <select id="sizeSel"></select></label>
   <label>Rounds per lesson <select id="roundsSel"><option>4</option><option>6</option><option>8</option></select></label>
   <label class="chk"><span>Match and Cup always open<small>Skips today's training</small></span><span class="sw"><input type="checkbox" id="openChk"><i></i></span></label>
   <h3>Voice</h3>

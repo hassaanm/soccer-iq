@@ -7,6 +7,35 @@ import { TEAMS, teamById, displayName } from '../teams.js';
 import { PATH, CHAPTERS, skillById } from '../skills.js';
 import { CUPS } from '../cups.js';
 import { nextSkill, level, isOpen, graduated, playOpen } from '../progress.js';
+import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
+
+// ---------- team size ----------
+// The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
+// colour, in the shape coaches teach (3: a triangle, 4: a diamond), and "3 v 3" under it. A tap opens the same pictures,
+// big, one per size; a tap on one picks it, and it is kept. It applies from the next lesson, training, match or cup.
+export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
+const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
+const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
+const pitchPic = n => {
+  const us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
+  return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>`
+    + (SHAPE[n] || SHAPE[3]).map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
+};
+const label = id => `<b>${sizeOf(id).out} v ${sizeOf(id).out}</b>`;
+function renderSize() {
+  $('#sizeBtn').innerHTML = pitchPic(sizeOf().out) + label(TEAM.size);
+  $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${sizeOf(id).out} players on each team">${pitchPic(sizeOf(id).out)}${label(id)}</button>`).join('');
+  for (const b of $$('#sizePop .choice')) b.onclick = () => { $('#sizePop').classList.add('hidden'); chooseSize(b.dataset.id); };
+}
+// Picks a size and keeps it. A size on another pitch reloads the page, so the 3D world is built for that pitch.
+export function chooseSize(id) {
+  if (!SIZES[id] || id === TEAM.size) return;
+  const before = sizeOf().pitch; P.settings.size = id; save();
+  if (JSON.stringify(SIZES[id].pitch) !== JSON.stringify(before)) { location.reload(); return; }
+  setSize(id); game.home(); renderPickers();
+}
+$('#sizeBtn').onclick = () => { renderSize(); $('#sizePop').classList.remove('hidden'); };
+$('#sizePop').onclick = e => { if (e.target === $('#sizePop')) $('#sizePop').classList.add('hidden'); };
 
 // ---------- team pickers ----------
 const otherSide = side => (side === 'us' ? P.them : P.us);
@@ -28,11 +57,11 @@ export function renderPickers(flip) {
     el.style.setProperty('--team', t.kit.colors[0]);
     el.querySelector('.tname').textContent = t.name;
     el.querySelectorAll('.kind button').forEach(b => b.classList.toggle('on', b.dataset.type === t.type));
-    el.querySelector('.roster').innerHTML = t.players.map(p => `<span>${displayName(p.name)}</span>`).join('');
+    el.querySelector('.roster').innerHTML = t.players.slice(0, sizeOf().out).map(p => `<span>${displayName(p.name)}</span>`).join(''); // (the keeper joins at 5v5)
     if (flip?.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); replay(sh, flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));
-  renderLessons();
+  renderSize(); renderLessons();
 }
 const pickTeam = (side, id, dir) => { P[side] = id; save(); renderPickers({ side, dir }); };
 const cycle = (side, dir) => pickTeam(side, neighbor(P[side], dir, otherSide(side)).id, dir);

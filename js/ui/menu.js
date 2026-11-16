@@ -4,7 +4,8 @@ import { P, save } from './store.js';
 import { voice, voices, pickVoice, say, SAMPLE } from './speech.js';
 import { applySound } from './soundmenu.js';
 import { show } from './screens.js';
-import { renderPickers } from './home.js';
+import { renderPickers, chooseSize, SIZE_IDS } from './home.js';
+import { sizeOf, TEAM } from '../geom.js';
 import { PATH, skillById } from '../skills.js';
 import { nextSkill, level, graduated, defaultProgress } from '../progress.js';
 
@@ -27,6 +28,7 @@ function openMenu() {
   const auto = graduated(P, PATH) ? "Today's training" : skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid;
   $('#skillSel').innerHTML = `<option value="">Automatic (${auto})</option>`
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
+  $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out} v ${sizeOf(id).out}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
   $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds);
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
@@ -44,6 +46,7 @@ $('#menuClose').onclick = () => {
   s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value;
   pickVoice(); applySound(); save();
   renderPickers(); show('#home');
+  chooseSize($('#sizeSel').value); // (a size on another pitch reloads the page)
 };
 $('#voiceSel').onchange = () => { P.settings.voiceName = $('#voiceSel').value; pickVoice(); say(SAMPLE); };
 $('#voiceTest').onclick = () => say(SAMPLE);
