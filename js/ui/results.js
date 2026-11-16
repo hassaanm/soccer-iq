@@ -21,16 +21,13 @@ function confetti(n) {
     + `animation-duration:${rnd(170, 330) / 100}s;animation-delay:${rnd(0, 80) / 100}s"></i>`).join('');
   document.body.append(box); setTimeout(() => box.remove(), 4500);
 }
-// The main button is big, in its activity's color (lesson green, match blue, cup gold), and ends in ▶.
-// The other one is plain white. With no main button, the other one takes its place.
-const KIND = { lesson: 'btn-green', match: 'btn-blue', cup: 'btn-gold' };
-function buttons(main, other) {
-  const set = (b, btn, big, arrow) => {
-    b.className = `btn ${big ? 'btn-lg ' + KIND[btn?.kind] : 'btn-ghost'}${btn ? '' : ' hidden'}`; if (!btn) return;
-    b.innerHTML = `${btn.icon ? `<i class="ico">${btn.icon}</i>` : ''}${btn.text}${arrow ? ' ▶' : ''}`; b.onclick = btn.go;
-  };
-  if (main) { set($('#nextLessonBtn'), main, true, true); set($('#againBtn'), other, false); }
-  else { set($('#nextLessonBtn'), other, true, false); set($('#againBtn'), null); }
+// What comes next: three tiles of the same size and weight, always in the same places (⚽ Match blue, 🏆 Cup gold, the
+// lessons green), a big picture with a short word under it. None is the "obvious" one. A tile that is null is not
+// open now and is left out. `again` is a small extra button in the corner (play this again, all cups); Home is in
+// the other corner.
+function tile(b, t) {
+  b.classList.toggle('hidden', !t); if (!t) return;
+  b.querySelector('i').textContent = t.icon; b.querySelector('b').textContent = t.text; b.onclick = t.go;
 }
 
 // Fills in the results card:
@@ -38,13 +35,16 @@ function buttons(main, other) {
 //   sticker, trophy      a sticker he earned (shown in place of the emoji); `trophy` adds the gold burst
 //   rounds, note         one circle per round (true = right on the first try), and the count in words
 //   news, extra          level news (text), and a block of HTML under it (a backyard game, the cup path)
-//   main, other          buttons: { kind, icon, text, go }
+//   match, cup, lesson   the three next steps: { icon, text, go }, or null when that one is not open
+//   again                the small corner button: { text, go }, or none
 //   paper                how many pieces of confetti
-export function fillResults({ emoji = '', sticker, trophy, title, line = '', rounds = [], note = '', news = '', extra = '', main, other, paper = 0 }) {
+export function fillResults({ emoji = '', sticker, trophy, title, line = '', rounds = [], note = '', news = '', extra = '', match, cup, lesson, again, paper = 0 }) {
   part('.sticker').classList.add('hidden'); part('.emoji').classList.remove('hidden'); part('.emoji').textContent = emoji;
   if (sticker) showSticker(sticker, trophy);
   part('h2').textContent = title; part('p').textContent = line;
   part('.roundsrow').innerHTML = rounds.map((ok, i) => `<span class="${ok ? 'star' : 'done'}" style="--i:${i}"></span>`).join('');
   part('.roundsnote').textContent = note; part('.levelup').textContent = news; part('.outside').innerHTML = extra;
-  buttons(main, other); confetti(paper);
+  tile($('#goMatch'), match); tile($('#goCup'), cup); tile($('#goLesson'), lesson);
+  const a = $('#againBtn'); a.classList.toggle('hidden', !again); if (again) { a.textContent = again.text; a.onclick = again.go; }
+  confetti(paper);
 }

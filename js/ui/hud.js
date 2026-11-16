@@ -4,7 +4,7 @@ import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
 
 export const hudEl = $('#hud');
-const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag']
+const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag', 'pop']
   .map(id => [id, $('#' + id)]));
 const timers = {};
 const flash = (el, cls, text, ms) => {
@@ -75,8 +75,9 @@ export const hud = {
       ui.rateWatch.onclick = () => res(done('watch')); ui.rateNext.onclick = () => res(done('next'));
     });
   },
-  // A new play begins: the last result's big words (a match's, which have no card to wait for) fade out now.
-  bannerOff() { if (!hudEl.classList.contains('rating') || !ui.rate.classList.contains('show')) { clearTimeout(timers.big); ui.banner.classList.remove('show', 'up'); hudEl.classList.remove('rating'); } },
+  // A new play begins: the last result's big words (a match's, which have no card to wait for) and the last choice's stars
+  // go now.
+  bannerOff() { ui.pop.classList.remove('show'); if (!hudEl.classList.contains('rating') || !ui.rate.classList.contains('show')) { clearTimeout(timers.big); ui.banner.classList.remove('show', 'up'); hudEl.classList.remove('rating'); } },
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.
   seen(text) { flash(ui.seenNote, '', text, 1400); sfx('ping'); },
   // The teaching hand: `pos` is a button id or a screen point [x, y]; null hides it. A new `tap` number taps once.
@@ -112,6 +113,24 @@ export const hud = {
   },
   // Someone else's skill move: a small tag in the corner (not while his own move's name shows).
   skillTag(move, who) { if (!ui.skillName.classList.contains('show')) flash(ui.skillTag, '', `⚡ ${move} · ${who}`, 1500); },
+  // Stars for a choice in a match (game/live.js react): 3 or 2 small stars pop one after another with a rising note each,
+  // and fade within a second. `at()` gives his place on screen each frame: they ride along over his head.
+  pop(stars, at) {
+    const el = ui.pop, inner = el.firstChild;
+    inner.innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}" style="--i:${i}">★</span>`).join('');
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    for (let i = 0; i < stars; i++) setTimeout(() => sfx('star', i), 40 + i * 110);
+    // With a praise word up, the stars sit at its end (so they never meet it, and never jump); otherwise over his head.
+    const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), side = t && [t.right + 48, t.bottom - 4];
+    const t0 = performance.now(), follow = () => {
+      const q = side || at?.();
+      if (q) el.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)`;
+      if (el.classList.contains('show') && performance.now() - t0 < 1300) requestAnimationFrame(follow);
+    };
+    follow(); clearTimeout(timers.pop); timers.pop = setTimeout(() => el.classList.remove('show'), 1200);
+  },
+  // Words are on screen or being said (a caption, a skill move's name): a spoken hint waits for another time.
+  busy() { return hudEl.classList.contains('captioning') || ui.skillName.classList.contains('show'); },
   toast(text, warn) { flash(ui.toast, warn ? 'warn' : '', text, 1600); },
   caption(text) { ui.caption.textContent = text; ui.caption.classList.toggle('show', !!text); hudEl.classList.toggle('captioning', !!text); },
   // One dot per round: gold = right on the first try. The dot just earned pops.

@@ -117,7 +117,7 @@ export function reviewsDue(p, path, current, day = today()) {
 // lesson isn't due again tomorrow; a miss moves it down a box so it comes back sooner. Levels never change here.
 export function reviewed(p, id, right, day = today()) {
   const s = skillState(p, id);
-  touchDay(s, day);
+  touchDay(s, day); practised(p, id, day);
   if (!right) s.box = Math.max(0, s.box - 1);
   remember(s, right);
   return s;
@@ -125,6 +125,10 @@ export function reviewed(p, id, right, day = today()) {
 // Adds a lesson's own rounds to how sure he is (lesson sessions; reviews and training do it themselves).
 export const note = (p, id, results) => remember(skillState(p, id), ...results);
 const remember = (s, ...right) => { s.recent.push(...right.map(r => (r ? 1 : 0))); s.recent.splice(0, s.recent.length - 8); };
+// The idea he missed most in a match (flows.js): from the next day it comes back in his practice, in today's training
+// (trainingPlan) or as a review round in a lesson (flows.js), until he has practised it on a later day.
+export const focus = (p, id, day = today()) => { p.focus = { id, day }; };
+const practised = (p, id, day) => { if (p.focus?.id === id && day > p.focus.day) p.focus = null; };
 
 // ---------- daily training (once every lesson is passed) ----------
 // Every ready lesson passed: PLAY becomes "Today's training" (unless a lesson is picked).
@@ -149,7 +153,9 @@ export function trainingPlan(p, path, { day = today(), lessons = 3, builds = {},
   };
   // Lessons he has been missing lately always come back (up to 2 a day, the shakiest first); the rest is weighted.
   const shaky = ids.filter(id => sureness(p, id) < .5).sort((a, b) => sureness(p, a) - sureness(p, b)).slice(0, Math.min(2, lessons));
-  const pool = ids.filter(id => !shaky.includes(id)).map(id => ({ id, w: need(id) })), out = [...shaky];
+  // The idea he missed most in a match on an earlier day (see focus) comes back too, if it isn't in already.
+  const f = p.focus && p.focus.day < day && ids.includes(p.focus.id) && !shaky.includes(p.focus.id) ? [p.focus.id] : [];
+  const pool = ids.filter(id => !shaky.includes(id) && !f.includes(id)).map(id => ({ id, w: need(id) })), out = [...f, ...shaky].slice(0, lessons);
   while (out.length < lessons && pool.length) {
     let r = rnd() * pool.reduce((a, b) => a + b.w, 0), i = 0;
     while (i < pool.length - 1 && (r -= pool[i].w) > 0) i++;
@@ -163,7 +169,7 @@ export function trainingPlan(p, path, { day = today(), lessons = 3, builds = {},
 // lessons it includes, so those wait for their next gap.
 export function trained(p, id, results, { day = today(), builds = {} } = {}) {
   const s = skillState(p, id), gap = INTERVALS[Math.min(s.box, INTERVALS.length - 1)], wasDue = day - s.day >= gap;
-  touchDay(s, day);
+  touchDay(s, day); practised(p, id, day);
   s.today++; s.firstTry += results.filter(Boolean).length; s.rounds += results.length;
   const before = level(p, id);
   if (results.length && results.every(Boolean) && wasDue && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }
@@ -179,7 +185,7 @@ export function trained(p, id, results, { day = today(), builds = {} } = {}) {
 export function finishSession(p, id, firstTry, rounds, day = today()) {
   p.sessions++;
   const s = skillState(p, id), before = level(p, id);
-  touchDay(s, day);
+  touchDay(s, day); practised(p, id, day);
   s.today++; s.sessions++; s.last = p.sessions; s.firstTry += firstTry; s.rounds += rounds;
   const rate = rounds ? firstTry / rounds : 0;
   if (rate >= PASS - 1e-9 && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }

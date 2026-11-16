@@ -130,6 +130,7 @@ export const rounds = {
   target(opt) {
     const h = this.sim.a('hero');
     if (opt.startsWith('tackle:')) return { x: this.sim.ball.x, y: this.sim.ball.y };
+    if (opt === 'shoot') return { x: L, y: W / 2 }; // the middle of the goal (it used to fall through to a dribble: NaN)
     if (opt.startsWith('turn:')) return dribbleEnd({ x: this.sc.heroTo[0], y: this.sc.heroTo[1] }, this.sc.turns[opt[5]], L, W);
     if (opt.startsWith('spot:')) { const sp = this.sc.spots.find(x => x.id === opt.slice(5)); return { x: sp.x, y: sp.y }; }
     if (opt.startsWith('push:')) return pushEnd(h, opt.slice(5));

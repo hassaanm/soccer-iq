@@ -112,6 +112,7 @@ export const live = {
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
     let live = false, next = 0, streak = 0;
+    this.missed = {}; this.misses = 0; this.cued = new Set(); this.hintNext = null;
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
@@ -119,7 +120,7 @@ export const live = {
       } else if (live) await this.continueLive();
       else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
       const opt = await this.decide(), good = this.isGood(opt);
-      this.praise(opt);
+      this.react(opt);
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
       this.offBall = !this.sc.then && this.has('get-open') && Math.random() < .6;
       this.duelOK = this.has('steal-it') && Math.random() < .6;
@@ -127,6 +128,7 @@ export const live = {
       await this.outcome(opt, good);
       await this.chain(); this.offBall = this.duelOK = this.reboundOK = false;
       tally();
+      if (score.us < toWin && score.them < toWin) this.sayHint();
       // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
       streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
       live = streak > 0 && streak <= 4 && (this.result !== 'won' || this.has('won-it-go')); // play on after winning it: Won it? Go!
@@ -143,6 +145,52 @@ export const live = {
     if (word) this.hud.toast(word);
   },
 
+  // What each choice in a match shows, the moment he makes it, without holding play up (nothing here waits): stars pop
+  // over his player (3 for the best choice or one just as good, 2 for one that only keeps the ball, none for a miss),
+  // with the praise word for a good one; on a 2-star choice or a miss of where to run, a soft glow shows the better place. A
+  // miss is counted for the idea it belongs to (the card at the end names the one missed most), and the first miss of
+  // an idea queues the lesson's own cue, said once the play is over (sayHint).
+  react(opt) {
+    this.praise(opt);
+    const sc = this.sc, r = this.rating(opt); if (!sc.best) return; // a tough spot: there was no better choice
+    const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? 2 : 0;
+    if (stars) this.hud.pop?.(stars, () => this.world.project?.(h.x, h.y, 1.55));
+    if (stars < 3) this.glowAt(sc.best);
+    if (r !== 'bad') return;
+    const id = this.idea(); if (!id) return;
+    this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses };
+    if (!this.cued.has(id) && this.cued.size < 3 && !this.hintNext) this.hintNext = { id, text: this.cue() };
+  },
+  // The lesson's cue for his last miss, after the play: once per idea, three at most in a match, and never over
+  // other words (a caption, a skill move's name).
+  sayHint() {
+    const h = this.hintNext; this.hintNext = null;
+    if (!h || this.cued.has(h.id) || this.hud.busy?.()) return;
+    this.cued.add(h.id); this.say(this.named(h.text));
+  },
+  // A soft glow on the grass where the better place to run was (defending, getting open, following a shot). Only for
+  // places: a glow on a friend who runs on, or ahead of him on a dribble, read as a trail or as a reward on his own path.
+  glowAt(opt) {
+    const sp = opt?.startsWith('spot:') && this.sc.spots?.find(p => 'spot:' + p.id === opt);
+    if (sp) this.world.particles?.halo?.(sp.x, sp.y);
+  },
+  // The lesson a match decision practises (for the idea he missed most).
+  idea() {
+    const sc = this.sc, b = sc.best || '';
+    if (sc.then) return 'give-and-go';
+    if (sc.kind === 'tackle') return 'steal-it';
+    if (sc.kind === 'receive') return 'peek-and-turn';
+    if (sc.kind === 'lead') return 'lead-pass';
+    if (sc.run === 'follow') return 'follow-shot';
+    if (sc.run === 'goal') return 'go-to-goal';
+    if (sc.kind === 'support') return sc.id === 'live-run' ? (/^Pass and go/.test(sc.cue) ? 'give-and-go' : /^Run to the goal/.test(sc.cue) ? 'go-to-goal' : 'get-open') : sc.skill || 'get-open';
+    if (sc.kind === 'defense') return sc.live ? (b === 'spot:home' || b === 'spot:chase' ? 'get-goal-side' : 'one-goes') : sc.skill || 'get-goal-side';
+    if (!sc.live && sc.skill) return sc.skill; // one of a lesson's own scenes
+    return b === 'shoot' ? 'shoot-close' : b.startsWith('pass:') ? 'pass-to-open' : 'dribble-to-space';
+  },
+  // The idea he missed most in this match (the latest of equals), or null.
+  mostMissed() { return Object.entries(this.missed || {}).sort((p, q) => q[1].n - p[1].n || q[1].at - p[1].at)[0]?.[0] || null; },
+
   // Follow-on decisions inside one play: the second step of a give-and-go, where to run after a pass, the pass
   // back to him (peek and turn), or a 1v1 once he's in front of the attacker.
   async chain() {
@@ -154,7 +202,7 @@ export const live = {
       else if (this.result === 'duel') await this.toDuel();
       else if (this.result === 'rebound') this.toRebound();
       else return;
-      const o = await this.decide(); this.praise(o); await this.outcome(o, this.isGood(o));
+      const o = await this.decide(); this.react(o); await this.outcome(o, this.isGood(o));
     }
   },
   // After his pass: he stays himself and picks where to run, from where everyone is right now. Spots: open space

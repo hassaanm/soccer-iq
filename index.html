@@ -31,6 +31,7 @@
   <div id="prompt"></div>
   <div id="caption"></div>
   <div id="toast"></div>
+  <div id="pop"><div></div></div>
   <div id="banner"><b></b></div>
   <div id="seenNote"></div>
   <div id="rate"><div class="title"></div><div class="stars"></div><div class="txt"></div><div class="btns"><button id="rateWatch" class="btn btn-gold">▶ Watch the 3★ play</button><button id="rateNext" class="btn btn-ghost">Next</button></div></div>
@@ -115,8 +116,9 @@
 <section id="card" class="screen hidden"><div class="panel"><div class="emoji"></div><h2></h2><p></p><div class="btns"><button id="cardMain" class="btn btn-green btn-lg"></button><button id="cardAlt" class="btn btn-ghost"></button></div></div></section>
 
 <section id="results" class="screen hidden"><div class="panel">
-  <div class="emoji"></div><div class="sticker hidden"><div class="face"><span></span><i></i></div><b>New sticker!</b></div><h2></h2><div class="roundsrow"></div><div class="roundsnote"></div><div class="levelup"></div><p></p><div class="outside"></div>
-  <div class="btns"><button id="nextLessonBtn" class="btn btn-green btn-lg">Next lesson ▶</button><button id="againBtn" class="btn btn-blue">↺ Play again</button><button id="resultsHome" class="btn btn-ghost">Home</button></div>
+  <button id="resultsHome" class="btn btn-ghost btn-icon" aria-label="Home"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3.5 11 12 4l8.5 7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9.8V19a1 1 0 0 0 1 1h3.5v-5h3v5H17a1 1 0 0 0 1-1V9.8" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/></svg></button><button id="againBtn" class="btn btn-ghost btn-sm"></button>
+  <div class="head"><div class="emoji"></div><div class="sticker hidden"><div class="face"><span></span><i></i></div><b>New sticker!</b></div><div class="sum"><h2></h2><div class="roundsrow"></div><div class="roundsnote"></div><div class="levelup"></div><p></p></div></div><div class="outside"></div>
+  <div class="next"><button id="goMatch" class="btn btn-blue go"><i>⚽</i><b>Match</b></button><button id="goCup" class="btn btn-gold go"><i>🏆</i><b>Cup</b></button><button id="goLesson" class="btn btn-green go"><i></i><b></b></button></div>
 </div></section>
 
 <section id="menu" class="screen hidden"><div class="panel wide sheet">
