@@ -4,7 +4,7 @@ import { lerp, clamp, smooth, dribbleEnd, DRIBBLE_DIRS } from '../geom.js';
 import { L, W, MATE, facesBall, wrap } from './shared.js';
 import { spaces } from '../shot.js';
 
-const AIM_LOW = .42; // (the low targets' middles: their rings stand just clear of the grass)
+const AIM_LOW = .4; // (the low targets' middles: their rings stand just clear of the grass)
 
 const segDist = (x, y, a, b) => {
   const dx = b[0] - a[0], dy = b[1] - a[1], t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
@@ -60,6 +60,7 @@ export const input = {
     const p = this.shotParts(); this.pendingDir = null; this.shotSpace = null;
     if (!p.space && !p.foot) return this.choose('shoot');
     this.step = p.space ? 'aim' : 'foot'; this.shotT = null;
+    if (this.step === 'foot') this.faceGoal();
   },
   // Which parts of the shot he picks now: in the two shot lessons' own scenes, that lesson's part and the ones before
   // it; in matches, the parts whose lessons he has passed. The space only with a keeper in goal.
@@ -68,6 +69,9 @@ export const input = {
     const keys = own ? Object.keys(sc.shots) : [];
     return { foot: own ? keys.some(k => !k.endsWith(':*')) : this.has('inside-laces'), space: !!K && (own ? keys.some(k => !k.startsWith('shoot:*')) : this.has('shoot-space')) };
   },
+  // The foot (v64 round 3): his own view, head up, turned to the goal, so he sees how far away it is (close: inside;
+  // far: laces).
+  faceGoal() { const h = this.sim.a('hero'); this.lookUp = true; if (h) this.swingTo(Math.atan2(W / 2 - h.y, L - h.x)); },
   foot(f) { if (this.canAct && this.step === 'foot') this.choose(`shoot:${this.shotSpace || '*'}:${f}`); },
   // The two turns as curved arrows around his feet: each starts just to one side of facing the ball and sweeps
   // around through that shoulder to the way the turn takes him (sc.turns). The facing is fixed for the round
@@ -126,7 +130,7 @@ export const input = {
     }
     if (!best) return false;
     if (this.step === 'dribble' && this.pushAllowed) { this.pendingDir = best.opt.slice(5); return true; } // then: small touches or big push?
-    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.sim.time; if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
+    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.sim.time; if (this.shotParts().foot) { this.step = 'foot'; this.faceGoal(); } else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
     this.choose(best.opt); return true;
   },
   targets() {

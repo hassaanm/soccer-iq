@@ -8,7 +8,10 @@ import { L, W, gy0, gy1 } from './shared.js';
 import { GK, GUESS_T, spill } from '../shot.js';
 import { sizeOf } from '../geom.js';
 
-const LAG = .4, STEP = 2.5; // seconds between looks at the ball; side-step speed (m/s)
+const LAG = .4, STEP = 2.5;
+// Lying on his side after a dive he is about DIVE_LEN m long from his feet; he is up again GET_UP s after his hands meet
+// the ball (pro/keeper.js: he lies a moment, then gets up through a kneel).
+export const DIVE_LEN = 1.8, GET_UP = 1.6; // seconds between looks at the ball; side-step speed (m/s)
 // The keeper area (m): its depth from the line and its width (sizes with a keeper; geom.js SIZES).
 export const AREA = () => sizeOf().area || { d: 8, w: 14 };
 export const inArea = (k, p) => { const A = AREA(), gx = k.team === 'us' ? 0 : L; return Math.abs(p.x - gx) <= A.d && Math.abs(p.y - W / 2) <= A.w / 2; };
@@ -22,6 +25,7 @@ export const keeper = {
     for (const id of ['k1', 'k2']) {
       const k = s.a(id); if (!k) continue;
       if (k.gkm) { this.keeperMotion(k); continue; }
+      if (k.upUntil > now) { s.stop(id); continue; } // (getting up after a dive: no steps meanwhile)
       if (this.phase !== 'outcome' || this.scripted.has(id) || b.state === 'held') continue;
       const gx = k.team === 'us' ? 0 : L, out = gx ? -1 : 1, far = Math.hypot(b.x - gx, b.y - W / 2) > 15;
       if (k.look == null || now - k.look >= LAG) { // a look at the ball: where he heads for, until the next look
@@ -36,8 +40,9 @@ export const keeper = {
   // reads it: pro/keeper.js). Here only what moves him.
   keeperMotion(k) {
     const m = k.gkm, t = this.sim.time - m.t0;
+    if (m.step && !m.stepped && t >= -m.pre) { m.stepped = true; this.sim.go(k.id, m.step.x, m.step.y, Math.max(.5, dist(k, m.step) / m.pre)); } // (a guess: one step before the kick)
     if (m.body && !m.went && t >= 0) { m.went = true; this.sim.go(k.id, m.body.x, m.body.y, m.spd); }
-    if ((m.k === 'dive' || m.k === 'reach' || m.k === 'watch') && t > m.dur + (m.k === 'dive' ? 1.1 : .4) && !m.keep) { k.gkm = null; this.scripted.delete(k.id); } // (a held ball: the script that plays the save takes it from there; after a dive, once he is up again)
+    if ((m.k === 'dive' || m.k === 'reach' || m.k === 'watch') && t > m.dur + (m.k === 'dive' ? 1.1 : .4) && !m.keep) { if (m.k === 'dive') k.upUntil = m.t0 + m.dur + GET_UP; k.gkm = null; this.scripted.delete(k.id); } // (a held ball: the script that plays the save takes it from there; after a dive he stays where he is until he is up: pro/keeper.js)
     if (m.keep && m.k === 'reach' && t > m.dur + .7 && this.sim.ball.state === 'held' && this.sim.ball.carrier === k.id) k.gkm = { k: 'hold', t0: this.sim.time }; // gathered: he stands up with it at his chest
   },
   // His reaction to a shot (shot.js shotResult's result `r`, struck from `from`), as r.act says (v64): 'stay' he blocks it
@@ -59,9 +64,12 @@ export const keeper = {
       k.gkm = { k: 'watch', t0: s.time + lead + GK.react, dur: .4, side: Math.sign((to.y - k.y) * wsign) || 1, body: to, spd: 1.2 };
       this.scripted.add(k.id); s.stop(k.id); return;
     }
-    if (act === 'wrong') { // he guessed: a lean and a step that way just before the kick, then the dive (it goes elsewhere)
-      const dir = r.dir || 1, body = { x: k.x, y: clamp(k.y + dir * 1.1, gy0 - .4, gy1 + .4) }, dur = .55;
-      k.gkm = { k: 'dive', guess: true, t0: s.time + Math.max(0, lead - GUESS_T), dur, side: Math.sign(dir * wsign) || 1, hand: { x: body.x, y: body.y + dir * .9 }, low: !r.top, high: false, save: false, keep: false, body, spd: dist(k, body) / dur };
+    // (v64 round 3) His whole body stays between the posts in every dive: lying on his side he is about DIVE_LEN m long
+    // from his feet, so his feet stop that far inside the post he dives toward (never farther out than he stood).
+    const inPosts = (y, dir) => (dir > 0 ? Math.min(y, Math.max(k.y, gy1 - DIVE_LEN)) : Math.max(y, Math.min(k.y, gy0 + DIVE_LEN)));
+    if (act === 'wrong') { // he guessed: before the kick only a lean and one step that way (GUESS_T s), then at the kick the dive (it goes elsewhere)
+      const dir = r.dir || 1, step = { x: k.x, y: inPosts(k.y + dir * .35, dir) }, body = { x: k.x, y: inPosts(k.y + dir * 1.0, dir) }, dur = .45;
+      k.gkm = { k: 'dive', guess: true, pre: GUESS_T, t0: s.time + lead, dur, side: Math.sign(dir * wsign) || 1, hand: { x: body.x, y: body.y + dir * .9 }, low: !r.top, high: false, save: false, keep: false, step, body, spd: dist(step, body) / dur };
       this.scripted.add(k.id); s.stop(k.id); return;
     }
     const reach = GK.reach + Math.max(0, r.t - GK.react) * GK.speed;
@@ -73,7 +81,9 @@ export const keeper = {
     // He sets off once he has reacted (later for a low ball beside him: he has to get down to it).
     const go = Math.min(GK.react + (act === 'low' ? GK.down * .5 : 0), r.t * .6), dur = Math.max(.2, r.t - go);
     k.gkm = { k: dive ? 'dive' : 'reach', t0: s.time + lead + go, dur, side, hand: k2, hz: line.z ?? (r.top ? 1.3 : .2), low: !r.top && (save || (r.arc ?? .3) < .2 || act === 'low'), high: act === 'high', save, keep: save && (r.held ?? !r.parry),
-      body: { x: body.x, y: clamp(body.y, gy0 - 1, gy1 + 1) }, spd: Math.max(1, dist(k, body) / dur) };
+      body: dive ? { x: body.x, y: inPosts(body.y, Math.sign(dy) || 1) } : { x: body.x, y: clamp(body.y, gy0 - 1, gy1 + 1) }, spd: Math.max(1, dist(k, body) / dur) };
+    k.gkm.spd = Math.max(1, dist(k, k.gkm.body) / dur);
+    if (r.guess && dive) { const dir = Math.sign(dy) || 1; Object.assign(k.gkm, { guess: true, pre: GUESS_T, step: { x: k.x, y: inPosts(k.y + dir * .35, dir) } }); } // (he guessed this way: the same lean and step before the kick)
     this.scripted.add(k.id); s.stop(k.id);
   },
   // He has the ball in his hands (a catch, or one he picked up): he holds it a moment, then rolls it out to a friend

@@ -184,32 +184,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #hud .pointed{animation:nudge .8s ease-in-out infinite}
 /* A pulsing button keeps its entrance in the list, so it doesn't pop in again when the pulse stops. */
 #hud .btn-round:is(.nudge,.pointed){animation:popIn .28s var(--bounce) backwards,nudge .9s ease-in-out infinite}
-#hud #touchPick .btn.pointed{animation:fromRight .3s var(--bounce) backwards,nudge .8s ease-in-out infinite}
 /* Skip (demos only) sits at the top right, beside the sound button. */
 #hud #skipBtn{display:none;position:absolute;right:calc(72px + var(--safe-r));top:12px;font-size:17px;padding:10px 18px;border-radius:16px}
 #hud[data-mode=demo] #skipBtn{display:block}
-/* Small touches or big push. */
-#touchPick{position:absolute;top:64px;right:calc(18px + var(--safe-r));display:none;flex-direction:column;gap:12px}
-#touchPick .btn{width:150px;height:74px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:17px;animation:fromRight .3s var(--bounce) backwards}
-#touchPick .btn + .btn{animation-delay:.07s}
-#touchPick i{font-style:normal;font-size:28px;line-height:1}
-#touchPick small{font-size:11px;font-weight:600;opacity:.8}
-#hud.touchpick #touchPick{display:flex}
-/* The foot for a shot (v62): two picture buttons where Small touches / Big push sit, control on the left, power on the right. */
-#footPick{position:absolute;bottom:calc(108px + var(--safe-b));right:calc(18px + var(--safe-r));display:none;flex-direction:row;gap:12px} /* where SHOOT was: the thumb that tapped it stays put */
-/* (v64) The pictures, the same shoe in both (research section 6): Inside, the shoe from above with the arch blue and the
-   ball against it, a flat path; Laces, the shoe from the side, toes down, the laces orange against the ball, a rising
-   path with speed lines. Bigger than before, so the part of the foot reads at a glance. */
-#footPick .btn{width:136px;height:122px;padding:5px 6px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:17px;line-height:1.05;animation:fromRight .3s var(--bounce) backwards}
-#footPick .btn + .btn{animation-delay:.07s}
-#footPick svg{width:118px;height:71px;flex:none}
-#footPick small{font-size:11px;font-weight:600;opacity:.8}
-#hud[data-step=foot] #footPick{display:flex}
-#hud:is([data-step=foot],[data-step=aim]) :is(#passBtn,#dribBtn){display:none!important}
-#hud[data-step=foot] #shootBtn{display:none!important}
-/* With SHOOT up too (a match near the goal) the right side is full, so the pick moves to the left, where LOOK UP was. */
-#hud.touchpick.shoot #touchPick{right:auto;left:calc(18px + var(--safe-l))}
-#hud.touchpick.shoot #touchPick .btn{animation-name:fromLeft}
+/* "Pick how" (v64, one pattern for both): after an arrow, Small touches or Big push; after SHOOT (and a target), Inside or
+   Laces. Two picture buttons in the two bottom corners, the careful choice on the left and the powerful one on the right
+   (round 3: the middle stays clear, so neither hides his player, the ball, the keeper or the goal); each picture is the
+   same drawn shoe and ball, the highlighted part or the ball's path saying the difference, then the name and a small
+   second word. While he picks how, PASS, DRIBBLE, SHOOT and LOOK UP step aside. */
+.howpick{position:absolute;inset:auto calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));display:none;flex-direction:row;justify-content:space-between;pointer-events:none}
+.howpick .btn{pointer-events:auto;width:136px;height:122px;padding:5px 6px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:17px;line-height:1.05;animation:fromLeft .3s var(--bounce) backwards}
+.howpick .btn + .btn{animation-name:fromRight}
+.howpick svg{width:118px;height:71px;flex:none}
+.howpick small{font-size:11px;font-weight:600;opacity:.8}
+#hud .howpick .btn.pointed{animation:fromLeft .3s var(--bounce) backwards,nudge .8s ease-in-out infinite}
+#hud .howpick .btn + .btn.pointed{animation-name:fromRight,nudge}
+#hud.touchpick #touchPick,#hud[data-step=foot] #footPick{display:flex}
+#hud:is(.touchpick,[data-step=foot]) :is(#passBtn,#dribBtn,#shootBtn,#lookBtn){display:none!important}
+#hud[data-step=aim] :is(#passBtn,#dribBtn,#shootBtn,#lookBtn){display:none!important} /* (round 3: SHOOT too; a second tap would cancel the shot) */
 /* Demos and replays: a hand shows which button, friend or arrow to tap, then taps it. */
 #hand{position:fixed;left:0;top:0;z-index:30;pointer-events:none;opacity:0;transition:transform .6s cubic-bezier(.4,0,.2,1),opacity .25s}
 #hand.show{opacity:1}
@@ -286,12 +278,17 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   box-shadow:0 0 0 4px rgba(255,255,255,.85),0 6px 14px rgba(0,0,0,.3);animation:popIn .45s .3s var(--bounce) backwards,vs 2.4s 1s ease-in-out infinite}
 @keyframes vs{50%{scale:1.1;rotate:-6deg}}
 /* Team size (v62): a chip under VS with a little pitch (a dot per player) and "3 v 3"; a tap opens the same, big. */
-/* (v64: the column is as wide as the chip, so the gaps beside it are the matchup's own; the chip hangs a little higher, clear of PLAY) */
-.mid{position:relative;display:grid;place-items:center;width:86px;flex:none}
-.sizechip{position:absolute;top:calc(100% + 11px);display:grid;justify-items:center;gap:1px;width:86px;padding:5px 6px 4px;border-radius:16px;border:3px solid var(--gold)!important;box-shadow:0 5px 0 var(--gold-e),0 8px 14px rgba(36,25,58,.3)!important}
+/* (v64 round 2) VS and the size chip share the middle column, the height of the team cards, with the same space above,
+   between and below them (nicer than VS at the top with the chip under it: round 2 report). */
+.mid{position:relative;align-self:stretch;width:86px;flex:none;display:flex;flex-direction:column;align-items:center;justify-content:space-evenly}
+.sizechip{position:relative;display:grid;justify-items:center;gap:1px;width:86px;padding:5px 6px 4px;border-radius:16px;border:3px solid var(--gold)!important;box-shadow:0 5px 0 var(--gold-e),0 8px 14px rgba(36,25,58,.3)!important}
 .sizechip:active{transform:translateY(4px);box-shadow:0 1px 0 var(--gold-e),0 3px 6px rgba(36,25,58,.3)!important}
 .sizechip svg{width:68px;height:41px;display:block}
 .sizechip b{font-size:15px;line-height:1.1;white-space:nowrap}
+/* (v64) The keepers' glove hangs off to the right of "5 v 5", so the words sit centred like "3 v 3". */
+:is(.sizechip,#sizePop .choice) b{position:relative}
+:is(.sizechip,#sizePop .choice) b .glv{position:absolute;left:100%;top:50%;transform:translateY(-52%);margin-left:.12em;font-style:normal;font-size:.95em}
+.sizechip b .glv{font-size:.78em;margin-left:.08em} /* (clear of the caret in the corner) */
 .sizechip .caret{position:absolute;right:-9px;bottom:-9px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--gold);color:var(--ink);font:700 14px/1 var(--font);font-style:normal;box-shadow:0 2px 0 var(--gold-e)}
 #sizePop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(36,25,58,.45)}
 #sizePop .choices{display:flex;gap:clamp(12px,3vw,26px);padding:16px;background:var(--cream);border:3px solid #fff;border-radius:26px;box-shadow:0 16px 30px rgba(36,25,58,.35);animation:popIn .3s var(--bounce)}
@@ -319,6 +316,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .freebox .btn.locked .ico{font-size:0}
 .freebox .btn.locked .ico::before{content:"🔒";font-size:18px}
 /* v64: PLAY (or the results tile for training) glows a little while the Cup is still locked today. */
+/* (v64 round 2) A results tile not open yet: dimmed like the home screen's locked Cup, its picture the plain lock. */
+#results .go.locked{filter:saturate(.35) brightness(.95);opacity:.8}
 #playBtn.hot,#results .go.hot{animation:hot 1.6s ease-in-out infinite}
 @keyframes hot{50%{box-shadow:0 0 0 5px rgba(255,216,77,.85),0 0 18px 4px rgba(255,216,77,.6)}}
 @media (prefers-reduced-motion:reduce){#playBtn.hot,#results .go.hot{animation:none;box-shadow:0 0 0 4px rgba(255,216,77,.85)}}
@@ -343,6 +342,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .btns{display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap}
 /* The scene behind a card or sheet dims and blurs. */
 #card,#results,#menu,#lessonSheet,#albumSheet,#cupSheet{background:rgba(36,25,58,.32);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);animation:fadein .2s}
+#card{z-index:10} /* (v64 round 2: a card asked from the results card, "Train first!" for a locked tile, comes up over it) */
 .sheet{padding:10px 16px 10px;width:min(780px,96vw);position:relative}
 .sheet h2{font-size:clamp(20px,3.6vw,28px)!important;margin:0 0 6px!important}
 .sheet :is(#sheetClose,#albumClose,#cupClose,#menuClose){display:block;position:absolute;top:8px;right:12px;padding:11px 18px;min-height:44px;margin:0;z-index:1}
@@ -382,6 +382,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* (v64) A lesson's own picture (ui/pics.js) stands where its emoji would, about as big. */
 .lpic{display:inline-block;width:1.45em;height:1em;vertical-align:middle}
 .lpic.sq{width:1.2em;height:1.2em} /* (v64: a square picture, as big as an emoji beside it) */
+#lessonBtn .le .lpic{width:32px;height:22px} /* (inside its 38 px box, whole) */
+#lessonBtn .le .lpic.sq{width:30px;height:30px}
 #results .go i .lpic{width:1.5em;height:1.05em}
 #results .go i .lpic.sq{width:1.1em;height:1.1em}
 #lessons .tile .k{font-size:11.5px;font-weight:700;line-height:1.12}

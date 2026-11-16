@@ -17,21 +17,20 @@ import { lessonPic } from './pics.js';
 export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
 const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
 const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
-// A keeper (5v5): in his goal, in a keeper's colour (neither team's), a little bigger than the others, with one big white
-// glove in the middle of his circle (v64: nothing outside it), so he reads as "the one who uses his hands" even on the
-// small chip. The glove: a palm, four fingers and a thumb, white over a dark outline (the same lines drawn wider first).
-const GLOVE = '<rect x="-4" y="-1.2" width="8" height="7" rx="2.4"/><path d="M-2.9 -.5V-4.8M-.95 -.5V-6.1M.95 -.5V-6.1M2.9 -.5V-4.8M-3.2 3.2L-5.9 .2"/>';
-const glove = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})" stroke-linecap="round" stroke-linejoin="round"><g fill="#24193a" stroke="#24193a" stroke-width="3.6">${GLOVE}</g><g fill="#fff" stroke="#fff" stroke-width="1.8">${GLOVE}</g></g>`;
-const KR = 7.2, KX = 8.6; // his circle's radius, and how far in from the end line its middle is
-const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * (KX - 3.5)}" cy="30" r="${KR}" fill="#b6f22a" stroke="#24193a" stroke-width="2"/>${glove(x + s * (KX - 3.5) + .15, 30.3, .56)}`;
+// A keeper (5v5): in his goal, marked by the same glove as the "5 v 5" label (v64 round 2: the owner liked that one) on a
+// dark disc ringed in the keepers' lime (round 3: the green glove stands out on it, about 6 : 1), big enough to read on the
+// small chip too. (Round 2 compared the glove alone, the glove on a lime disc and a drawn glove: report.)
+const KX = 9.6, KR = 9.2; // his disc: how far in from the end line its middle is, its radius
+const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/>`
+  + `<circle cx="${x + s * (KX - 3.5)}" cy="30" r="${KR}" fill="#24193a" stroke="#b6f22a" stroke-width="2.4"/><text x="${x + s * (KX - 3.5)}" y="30.8" font-size="14" text-anchor="middle" dominant-baseline="central">🧤</text>`;
 const pitchPic = id => {
-  const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
-  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 14 + x * .8 : x, y]); // (with keepers: the diamond steps up in front of him)
+  const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="${gk ? 5.6 : 6.5}" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
+  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 27.3 + (x - 10) * .55 : x, y]); // (with keepers: the diamond steps up in front of him, clear of him and of the other team's front player)
   return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>`
     + (gk ? keeperPic(3.5, 1) + keeperPic(96.5, -1) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
 };
 const players = id => sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0); // a side, the keeper too
-const label = id => `<b>${players(id)} v ${players(id)}${sizeOf(id).keeper ? ' 🧤' : ''}</b>`; // (keepers: a glove)
+const label = id => `<b>${players(id)} v ${players(id)}${sizeOf(id).keeper ? '<i class="glv">🧤</i>' : ''}</b>`; // (keepers: a glove, hanging off to the side: the words stay centred as on the others)
 function renderSize() {
   $('#sizeBtn').innerHTML = pitchPic(TEAM.size) + label(TEAM.size) + '<i class="caret" aria-hidden="true">▾</i>'; // (the caret: a tap opens the choices)
   $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${players(id)} players on each team${sizeOf(id).keeper ? ', with keepers' : ''}">${pitchPic(id)}${label(id)}</button>`).join('');

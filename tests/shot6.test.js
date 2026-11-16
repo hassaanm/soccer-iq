@@ -22,7 +22,7 @@ test('every target, foot, distance and keeper side gives a sane result, the same
     if (r.res === 'goal') assert.ok(r.to.y > PITCH.gy0 && r.to.y < PITCH.gy1 && r.to.z < PITCH.gh, `${tag}: a goal is inside the goal`);
     if (r.res === 'save') assert.ok(Number.isFinite(r.t) && r.t > 0 && r.at && Math.hypot(r.at.x - k.x, r.at.y - k.y) < 3, `${tag}: a save is near him`);
     if (foot === 'las' && d < CLOSE - .5) assert.equal(r.res, 'over', `${tag}: laces from close fly over the bar`);
-    for (const seed of [.1, .5, .9]) { const m = shotResult({ ...args, rand: stream(seed), duel: d <= 6 }); assert.ok(RES.has(m.res) && ACTS.has(m.act), `${tag} (match)`); assert.deepEqual(shotResult({ ...args, rand: stream(seed), duel: d <= 6 }), m, `${tag}: a match's seed gives the same answer`); }
+    for (const seed of [.1, .5, .9]) { const m = shotResult({ ...args, rand: stream(seed), duel: d <= 8 }); assert.ok(RES.has(m.res) && ACTS.has(m.act), `${tag} (match)`); assert.deepEqual(shotResult({ ...args, rand: stream(seed), duel: d <= 8 }), m, `${tag}: a match's seed gives the same answer`); }
   }
   setSize('3v3');
 });
@@ -49,7 +49,7 @@ test('a well-chosen shot (low, away from him, the right foot) scores about 9 in 
   setSize('5v5');
   const R = stream(.4242); let n = 0, goals = 0, nd = 0, gd = 0;
   for (let i = 0; i < 4000; i++) {
-    const d = 5 + R() * 7.5, from = shooter(d, (R() - .5) * 1.1), k = { x: PITCH.L - .6 - R() * .4, y: mid() + (R() - .5) * 2.4 }, rel = relations(from, k), duel = d <= 6 && R() < .5;
+    const d = 5 + R() * 7.5, from = shooter(d, (R() - .5) * 1.1), k = { x: PITCH.L - .6 - R() * .4, y: mid() + (R() - .5) * 2.4 }, rel = relations(from, k), duel = d <= 8 && R() < .6;
     for (const z of ['L', 'R']) if (rel[z] === 'away') { const r = shotResult({ from, zone: z, foot: rightFoot(from), k, rand: stream(R()), duel }); n++; goals += r.res === 'goal'; if (duel) { nd++; gd += r.res === 'goal'; } }
   }
   assert.ok(goals / n > .85 && goals / n < .95, `overall ${(goals / n).toFixed(3)}`);
@@ -57,7 +57,7 @@ test('a well-chosen shot (low, away from him, the right foot) scores about 9 in 
   setSize('3v3');
 });
 
-test('the keeper guesses only in a close 1v1, in matches only', () => {
+test('the keeper guesses only when he shoots from close with nobody in the way, in matches only', () => {
   setSize('5v5');
   let guesses = 0;
   for (let i = 0; i < 2000; i++) {
@@ -66,7 +66,7 @@ test('the keeper guesses only in a close 1v1, in matches only', () => {
     if (shotResult({ from, zone: 'R', foot: 'in', k, rand: stream(i / 2000 + 1e-4), duel: true }).guess) guesses++;
     assert.equal(shotResult({ from, zone: 'R', foot: 'in', k }).guess, 0, 'a lesson: never');
   }
-  assert.ok(guesses > 120 && guesses < 300, `about 1 in 10 (${guesses} of 2000)`);
+  assert.ok(guesses > 300 && guesses < 520, `about 1 in 5 (${guesses} of 2000)`);
   setSize('3v3');
 });
 
