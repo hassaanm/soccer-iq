@@ -16,15 +16,19 @@ import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
 const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
 const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
-const pitchPic = n => {
-  const us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
+// A keeper (5v5): in his goal, in a keeper's colour (neither team's), with white gloves out to the sides.
+const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="21" width="5" height="18" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * 2.5}" cy="30" r="5.6" fill="#b6f22a" stroke="#24193a" stroke-width="2"/><circle cx="${x + s * 2.5}" cy="22.5" r="2.6" fill="#fff" stroke="#24193a" stroke-width="1.2"/><circle cx="${x + s * 2.5}" cy="37.5" r="2.6" fill="#fff" stroke="#24193a" stroke-width="1.2"/>`;
+const pitchPic = id => {
+  const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
+  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 12 + x * .85 : x, y]); // (with keepers: the diamond steps up in front of him)
   return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>`
-    + (SHAPE[n] || SHAPE[3]).map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
+    + (gk ? keeperPic(3.5, 1) + keeperPic(96.5, -1) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
 };
-const label = id => `<b>${sizeOf(id).out} v ${sizeOf(id).out}</b>`;
+const players = id => sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0); // a side, the keeper too
+const label = id => `<b>${players(id)} v ${players(id)}</b>`;
 function renderSize() {
-  $('#sizeBtn').innerHTML = pitchPic(sizeOf().out) + label(TEAM.size);
-  $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${sizeOf(id).out} players on each team">${pitchPic(sizeOf(id).out)}${label(id)}</button>`).join('');
+  $('#sizeBtn').innerHTML = pitchPic(TEAM.size) + label(TEAM.size);
+  $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${players(id)} players on each team${sizeOf(id).keeper ? ', with keepers' : ''}">${pitchPic(id)}${label(id)}</button>`).join('');
   for (const b of $$('#sizePop .choice')) b.onclick = () => { $('#sizePop').classList.add('hidden'); chooseSize(b.dataset.id); };
 }
 // Picks a size and keeps it. A size on another pitch reloads the page, so the 3D world is built for that pitch.
@@ -57,7 +61,7 @@ export function renderPickers(flip) {
     el.style.setProperty('--team', t.kit.colors[0]);
     el.querySelector('.tname').textContent = t.name;
     el.querySelectorAll('.kind button').forEach(b => b.classList.toggle('on', b.dataset.type === t.type));
-    el.querySelector('.roster').innerHTML = t.players.slice(0, sizeOf().out).map(p => `<span>${displayName(p.name)}</span>`).join(''); // (the keeper joins at 5v5)
+    el.querySelector('.roster').innerHTML = t.players.slice(0, sizeOf().out + (sizeOf().keeper ? 1 : 0)).map(p => `<span${p.gk ? ' class="gk"' : ''}>${p.gk ? '🧤 ' : ''}${displayName(p.name)}</span>`).join(''); // (the keeper plays at 5v5)
     if (flip?.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); replay(sh, flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));

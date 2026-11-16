@@ -28,7 +28,7 @@ function openMenu() {
   const auto = graduated(P, PATH) ? "Today's training" : skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid;
   $('#skillSel').innerHTML = `<option value="">Automatic (${auto})</option>`
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
-  $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out} v ${sizeOf(id).out}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
+  $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)} v ${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
   $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds);
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';

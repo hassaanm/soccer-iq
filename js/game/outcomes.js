@@ -414,7 +414,7 @@ export const outcomes = {
     yield* this.strike('hero', r.at.x, r.at.y, { speed: r.speed, arc: r.arc * .6 });
     yield () => s.ball.state === 'loose';
     if (!r.spill) { Object.assign(s.ball, { state: 'held', carrier: K.id }); yield .15; yield* this.saved(K); return; }
-    const sp = this.spillOf(r, from); s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 });
+    const sp = this.spillOf(r, from); s.ball.carrier = K.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); // (off his hands)
     this.sfx?.('tap');
     if (this.reboundOK) { this.rebound = { by: 'hero', hit: [r.at.x, r.at.y], loose: [sp.x, sp.y], block: K.id }; this.hud.caption('Saved!'); this.say('Saved!'); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
     yield () => s.ball.state === 'loose';

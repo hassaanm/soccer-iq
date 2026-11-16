@@ -66,8 +66,8 @@ export const keeper = {
     Object.assign(b, { state: 'held', carrier: k.id, move: null, reach: null }); k.gkm = { k: 'hold', t0: s.time, low: false }; s.stop(k.id);
     yield .6;
     const free = p => Math.min(9, ...s.team(them).map(o => dist(o, p)));
-    const to = s.team(k.team).filter(p => Math.abs(p.x - gx) < 18).sort((p, q) => (free(q) > 2.5) - (free(p) > 2.5) || dist(p, k) - dist(q, k))[0];
-    if (!to) { k.gkm = null; return null; }
+    const mine = s.team(k.team), near = mine.filter(p => Math.abs(p.x - gx) < 18);
+    const to = (near.length ? near : mine).sort((p, q) => (free(q) > 2.5) - (free(p) > 2.5) || dist(p, k) - dist(q, k))[0];
     k.face = [to.x - k.x, to.y - k.y].map(v => v / (dist(to, k) || 1)); this.scripted.add(to.id); s.stop(to.id);
     k.gkm = { k: 'roll', t0: s.time, low: true }; yield .45;
     Object.assign(b, { state: 'carried', carrier: k.id, x: k.x + k.face[0] * .4, y: k.y + k.face[1] * .4, z: 0 });
