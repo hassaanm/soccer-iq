@@ -5,6 +5,7 @@ import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce } from '../g
 import { L, W, gy0, gy1, MATE, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
 
+const MATCH_HOLD = { kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 // Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
 // Fixed per scenario, so the replay of the right answer looks the same.
@@ -30,8 +31,12 @@ export function pickFoot(a, x, y, kind, opps = []) {
 }
 
 export const outcomes = {
-  // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds.
-  *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield wait; },
+  // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds
+  // (shorter in a match: see hold).
+  *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield this.hold(result, wait); },
+  // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
+  // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
+  hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
@@ -341,7 +346,7 @@ export const outcomes = {
   *shootGen(good) {
     const s = this.sim, h = s.a('hero'), aim = { x: L + .7, y: clamp(h.y, gy0 + .8, gy1 - .8) };
     this.scripted.add('hero'); this.ai = false; s.stopAll();
-    if (good) { yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
+    if (good) { yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield this.hold('goal', 1.4); return; }
     const block = interceptor(s.ball, aim, s.team('them'));
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
@@ -651,7 +656,11 @@ export const outcomes = {
     if (ev === 'goal') this.sfx('net');
     this.fx(ev === 'lost' || ev === 'cut' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
+    // A light result (a lesson round right on the first try, Level 2 and up: rounds.js attempt): the big words, stars
+    // over his player and the praise said, then on to the next round with no card.
+    if (rated?.light) { this.card = this.hud.banner(title, kind); this.hud.pop?.(3); this.say(rated.said); return; }
     this.card = this.hud.banner(title, kind, rated);
     if (rated?.say) this.say(rated.text); else if (rated?.said) this.say(rated.said);
+    this.resultCue?.(); // a match: the idea's name after a miss (live.js)
   },
 };

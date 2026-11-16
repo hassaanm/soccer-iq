@@ -10,7 +10,7 @@ function showSticker(emoji, trophy) {
   clone.querySelector('span').textContent = emoji; clone.classList.toggle('trophy', !!trophy); clone.classList.remove('hidden');
   st.replaceWith(clone); part('.emoji').classList.add('hidden'); setTimeout(() => sfx('star', 2), 250);
 }
-// Paper confetti falls over the card after a win.
+// Paper confetti falls around the card after a win (behind it).
 const PAPER = ['#ffd84d', '#2fcf6a', '#5aa2ff', '#ef4444', '#ffffff', '#ff8ad0'];
 function confetti(n) {
   $('#confetti')?.remove();
@@ -19,15 +19,16 @@ function confetti(n) {
   box.id = 'confetti';
   box.innerHTML = Array.from({ length: n }, (_, i) => `<i style="left:${rnd(0, 100)}%;background:${PAPER[i % PAPER.length]};--dx:${rnd(-90, 90)}px;--rot:${rnd(-720, 720)}deg;`
     + `animation-duration:${rnd(170, 330) / 100}s;animation-delay:${rnd(0, 80) / 100}s"></i>`).join('');
-  document.body.append(box); setTimeout(() => box.remove(), 4500);
+  el.prepend(box); setTimeout(() => box.remove(), 4500); // behind the card, so it never covers the tiles
 }
 // What comes next: three tiles of the same size and weight, always in the same places (⚽ Match blue, 🏆 Cup gold, the
-// lessons green), a big picture with a short word under it. None is the "obvious" one. A tile that is null is not
+// lessons violet with a little book), a big picture with a short word under it. None is the "obvious" one. A tile that is null is not
 // open now and is left out. `again` is a small extra button in the corner (play this again, all cups); Home is in
 // the other corner.
 function tile(b, t) {
   b.classList.toggle('hidden', !t); if (!t) return;
   b.querySelector('i').textContent = t.icon; b.querySelector('b').textContent = t.text; b.onclick = t.go;
+  if (t.small) b.querySelector('b').prepend(Object.assign(document.createElement('small'), { textContent: t.small + ' ' })); // (a cup's own emoji)
 }
 
 // Fills in the results card:
@@ -35,7 +36,8 @@ function tile(b, t) {
 //   sticker, trophy      a sticker he earned (shown in place of the emoji); `trophy` adds the gold burst
 //   rounds, note         one circle per round (true = right on the first try), and the count in words
 //   news, extra          level news (text), and a block of HTML under it (a backyard game, the cup path)
-//   match, cup, lesson   the three next steps: { icon, text, go }, or null when that one is not open
+//   match, cup, lesson   the three next steps: { icon, text, small, go }, or null when that one is not open (small:
+//                        a little picture before the word, as a cup's own emoji)
 //   again                the small corner button: { text, go }, or none
 //   paper                how many pieces of confetti
 export function fillResults({ emoji = '', sticker, trophy, title, line = '', rounds = [], note = '', news = '', extra = '', match, cup, lesson, again, paper = 0 }) {

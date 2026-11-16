@@ -5,6 +5,7 @@ import { voice, voices, pickVoice, say, SAMPLE } from './speech.js';
 import { applySound } from './soundmenu.js';
 import { show } from './screens.js';
 import { renderPickers } from './home.js';
+import { openReport } from './report.js';
 import { PATH, skillById } from '../skills.js';
 import { nextSkill, level, graduated, defaultProgress } from '../progress.js';
 
@@ -47,6 +48,7 @@ $('#menuClose').onclick = () => {
 };
 $('#voiceSel').onchange = () => { P.settings.voiceName = $('#voiceSel').value; pickVoice(); say(SAMPLE); };
 $('#voiceTest').onclick = () => say(SAMPLE);
+$('#reportBtn').onclick = openReport;
 // Reset keeps the two teams he picked and wipes the rest.
 $('#resetBtn').onclick = () => {
   if (!confirm('Reset all progress and stickers?')) return;

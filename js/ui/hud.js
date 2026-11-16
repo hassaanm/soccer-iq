@@ -121,7 +121,9 @@ export const hud = {
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     for (let i = 0; i < stars; i++) setTimeout(() => sfx('star', i), 40 + i * 110);
     // With a praise word up, the stars sit at its end (so they never meet it, and never jump); otherwise over his head.
-    const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), side = t && [t.right + 48, t.bottom - 4];
+    // With no `at` (a lesson's light result) they sit just under the result's big words.
+    const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), b = !at && ui.banner.getBoundingClientRect();
+    const side = t ? [t.right + 48, t.bottom - 4] : b ? [b.left + b.width / 2, b.top + b.height * .5 + 82] : null;
     const t0 = performance.now(), follow = () => {
       const q = side || at?.();
       if (q) el.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)`;

@@ -16,7 +16,7 @@ import { generate } from './generate.js';
 import { preloadClips } from './sound.js';
 import { pieces } from './voice.js';
 import { shuffle } from './geom.js';
-import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, trainingPlan, trained, note, today, passed, focus } from './progress.js';
+import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
 
 // ---------- shared steps ----------
 // One flow runs at a time. If one breaks, he lands back on the home screen instead of a stuck field.
@@ -39,12 +39,16 @@ function setStage(us, them, env) {
 function matchSkills() { const has = skills(P, PATH); game.skills = has; return has.size ? [...has] : ['look-up']; }
 // Plays the rounds in order. Returns, per round, whether he got it right on the first try.
 // Hints (the glowing cue, LOOK pulsing) show in the first `early` rounds, and after two misses in a row.
-async function playRounds(rounds, early, onRound) {
+// Every choice he makes goes into the decision log in the save (progress.js logChoice; game/live.js says which kind).
+game.onChoice = rec => logChoice(P, rec);
+// Rounds of lessons he has at Level 2 or more: a right answer on the first try gets the light result (no card).
+async function playRounds(rounds, early, onRound, log = 'lesson') {
+  game.choiceLog = log;
   const results = [];
   let misses = 0;
   hud.dots(results, rounds.length);
   for (const [i, sc] of rounds.entries()) {
-    const r = await game.round(sc, { hint: i < early || misses >= 2 }), right = r.firstTry && r.stars === 3;
+    const r = await game.round(sc, { hint: i < early || misses >= 2, light: level(P, sc.skill) >= 2 }), right = r.firstTry && r.stars === 3;
     results.push(right); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
     onRound?.(sc, right);
   }
@@ -69,10 +73,13 @@ function toLessons() {
 }
 // After a match or a cup round: the idea he missed most in it (game/live.js), named on the card as "Tomorrow: …" and
 // put into tomorrow's practice (progress.js focus). Only a lesson he has passed (training mixes only those).
+// Equal counts go to the idea he is weakest at overall: the lowest level, then the most misses in his saved log.
 function tomorrow() {
-  const id = game.mostMissed?.(); if (!id || !skillById(id) || !passed(P, id)) return '';
+  const missed = Object.entries(game.missed || {}).filter(([id]) => skillById(id) && passed(P, id)), past = logTotals(P);
+  const id = missed.sort(([a, p], [b, q]) => q.n - p.n || level(P, a) - level(P, b) || (past[b]?.miss || 0) - (past[a]?.miss || 0) || q.at - p.at)[0]?.[0];
+  if (!id) return '';
   focus(P, id); save();
-  const k = skillById(id); return `Tomorrow: ${k.emoji} ${k.kid}`;
+  const k = skillById(id); return `Practice next: ${k.emoji} ${k.kid}`;
 }
 const scoreLine = (us, them, s) => `${us.short} ${s.us} – ${s.them} ${them.short}`;
 const outside = sk => (sk.outside ? `<b>🏡 Try it outside</b>${sk.outside}` : '');
@@ -150,7 +157,7 @@ const runTraining = flow(async () => {
     lines: sks.map(k => k.kid), button: 'Play' });
   const scene = id => { for (let k = 0; k < 8; k++) { const sc = generate(id, seed(), { even: true, runs: runsAt(level(P, id)) }); if (sc) return sc; } return null; };
   const rounds = Array.from({ length: P.settings.rounds }, (_, i) => scene(plan[i % plan.length])).filter(Boolean), per = {};
-  const results = await playRounds(rounds, 0, (sc, right) => (per[sc.skill] ||= []).push(right));
+  const results = await playRounds(rounds, 0, (sc, right) => (per[sc.skill] ||= []).push(right), 'training');
   const ups = plan.filter(id => per[id] && trained(P, id, per[id], { day, builds: BUILDS }).leveledUp);
   P.openDay = day; P.sessions++; P.pick = null; save();
   // The backyard game is for the idea he missed most today.
@@ -173,7 +180,8 @@ export const runFreePlay = flow(async () => {
   setStage(us, them, 'crowd');
   await card({ emoji: '⚽', title: 'Match time!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
   const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
-  if (won) { P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() }); save(); }
+  if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
+  save(); // (the decision log too)
   fillResults({
     emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: scoreLine(us, them, score), note: tomorrow(),
     match: toMatch(), cup: toCup(), lesson: toLessons(),
@@ -233,7 +241,7 @@ const runCup = flow(async cupId => {
   fillResults({
     emoji: cup.emoji, title: won ? 'You won!' : 'So close!', line, note, news: won ? `On to the ${round.toLowerCase()}!` : `Play the ${round.toLowerCase()} again!`, extra: cupPath(run),
     // The cup tile plays this cup on (the next round, or this one again); every cup is the small corner button.
-    match: toMatch(), cup: ifOpen({ icon: cup.emoji, text: won ? STEP[round] : 'Try again', go: again }), lesson: toLessons(),
+    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }), lesson: toLessons(),
     again: { text: '🏆 All cups', go: openCups },
     paper: won ? 70 : 0,
   });

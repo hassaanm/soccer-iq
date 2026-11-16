@@ -1,6 +1,6 @@
 // Matches and free play: one play runs on into the next from wherever everyone stands, and each new decision
 // (on the ball, defending, getting open, receiving, a 1v1) is built from the live positions.
-import { pickRounds } from '../skills.js';
+import { pickRounds, skillById } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
 import { L, W, wrap } from './shared.js';
@@ -26,7 +26,8 @@ function liveScenario(s, skill, pushAllowed) {
   const gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] - 1.5 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
   const goods = Object.keys(g).filter(o => g[o] === 'good' && (pushAllowed || !o.startsWith('push:'))).sort((a, b) => gain(b) - gain(a));
   sc.grades = g; sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
-  sc.cue = !sc.best ? 'That was a tough spot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!` : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
+  sc.cue = !sc.best ? 'That was a tough spot!' : sc.best === 'shoot' ? 'Close to the goal and nobody in the way. Shoot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!`
+    : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
   return sc;
 }
 // A defending decision built from wherever play is right now (after we lose the ball in a match). Spots: get in
@@ -75,8 +76,9 @@ export const live = {
     if (this.sc?.kind === 'tackle') this.sc = { ...this.sc, kind: 'attack' }; // after winning a 1v1: back to the normal view and buttons
     // The nearest defender steps up to about 3 m, off to one side, so there's pressure but still room to play.
     const press = s.team('them').sort((a, b) => dist(a, h) - dist(b, h))[0], side = press.y > h.y ? 1 : -1;
-    s.go(press.id, Math.min(L - 1, h.x + 2.2), clamp(h.y + side * 1.8, 1, W - 1), 3.5);
-    await this.delay(.8); s.stopAll();
+    // (v62: a little quicker than before, to the same place, so the next choice opens sooner)
+    s.go(press.id, Math.min(L - 1, h.x + 2.2), clamp(h.y + side * 1.8, 1, W - 1), 4.6);
+    await this.delay(.6); s.stopAll();
     this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed);
   },
 
@@ -89,8 +91,8 @@ export const live = {
     const h = s.a('hero');
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };
     this.yaw = Math.atan2(c.y - h.y, c.x - h.x); this.faceYaw(h);
-    s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 2.4); s.go('hero', h.x - 1.2, h.y, 2.4);
-    await this.delay(1.1); this.ai = false; s.stopAll();
+    s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 3.3); s.go('hero', h.x - 1.2, h.y, 3.3); // (v62: quicker, same places)
+    await this.delay(.8); this.ai = false; s.stopAll();
     const sc = choose ? liveDefense(s, guard) : null;
     if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
@@ -110,7 +112,7 @@ export const live = {
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
     let live = false, next = 0, streak = 0;
-    this.missed = {}; this.misses = 0; this.cued = new Set(); this.hintNext = null;
+    this.missed = {}; this.misses = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match';
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
@@ -126,7 +128,6 @@ export const live = {
       await this.outcome(opt, good);
       await this.chain(); this.offBall = this.duelOK = this.reboundOK = false;
       tally();
-      if (score.us < toWin && score.them < toWin) this.sayHint();
       // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
       streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
       live = streak > 0 && streak <= 4 && (this.result !== 'won' || this.has('won-it-go')); // play on after winning it: Won it? Go!
@@ -145,32 +146,42 @@ export const live = {
 
   // What each choice in a match shows, the moment he makes it, without holding play up (nothing here waits): stars pop
   // over his player (3 for the best choice or one just as good, 2 for one that only keeps the ball, none for a miss),
-  // with the praise word for a good one; on a 2-star choice or a miss of where to run, a soft glow shows the better place. A
-  // miss is counted for the idea it belongs to (the card at the end names the one missed most), and the first miss of
-  // an idea queues the lesson's own cue, said once the play is over (sayHint).
+  // with the praise word for a good one; when he picked a place to run that was not the best, the best ring stays a
+  // moment in soft green. A miss is counted for the idea it belongs to (the card at the end names the one missed most),
+  // and the first miss of an idea queues that idea's name, said the moment the play's result shows (resultCue).
   react(opt) {
-    this.praise(opt);
-    const sc = this.sc, r = this.rating(opt); if (!sc.best) return; // a tough spot: there was no better choice
+    this.praise(opt); this.hintNext = null;
+    const sc = this.sc, r = this.rating(opt); this.logChoice(opt, r); if (!sc.best) return; // a tough spot: there was no better choice
     const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? 2 : 0;
     if (stars) this.hud.pop?.(stars, () => this.world.project?.(h.x, h.y, 1.55));
-    if (stars < 3) this.glowAt(sc.best);
+    if (stars < 3) this.betterRing(opt);
     if (r !== 'bad') return;
     const id = this.idea(); if (!id) return;
     this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses };
-    if (!this.cued.has(id) && this.cued.size < 3 && !this.hintNext) this.hintNext = { id, text: this.cue() };
+    if (!this.cued.has(id) && this.cued.size < 3) this.hintNext = { id };
   },
-  // The lesson's cue for his last miss, after the play: once per idea, three at most in a match, and never over
-  // other words (a caption, a skill move's name).
-  sayHint() {
+  // Called as a play's result shows (outcomes.js emit): after a miss, the idea's short name ("Look up!"), once per
+  // idea and three at most in a match, never over other words (a caption, a skill move's name). It is short, so it is
+  // over before the next decision opens.
+  resultCue() {
     const h = this.hintNext; this.hintNext = null;
     if (!h || this.cued.has(h.id) || this.hud.busy?.()) return;
-    this.cued.add(h.id); this.say(this.named(h.text));
+    this.cued.add(h.id); this.say(this.cueFor(h.id));
   },
-  // A soft glow on the grass where the better place to run was (defending, getting open, following a shot). Only for
-  // places: a glow on a friend who runs on, or ahead of him on a dribble, read as a trail or as a reward on his own path.
-  glowAt(opt) {
-    const sp = opt?.startsWith('spot:') && this.sc.spots?.find(p => 'spot:' + p.id === opt);
-    if (sp) this.world.particles?.halo?.(sp.x, sp.y);
+  cueFor: id => skillById(id)?.kid || '',
+  // He picked a place to run (a ring) that was not the best one: the best ring stays where it was for a moment, in
+  // soft green, and fades (js/fx.js mark), while the others go as usual. Not for passes, dribbles or turns: no ring.
+  betterRing(opt) {
+    const sc = this.sc, i = sc.spots?.findIndex(p => 'spot:' + p.id === sc.best) ?? -1;
+    if (!opt.startsWith('spot:') || i < 0) return;
+    const sp = sc.spots[i]; this.world.particles?.mark?.(sp.x, sp.y, this.ui.spotScale?.[i] || 1);
+  },
+  // Every choice he makes goes into the decision log (progress.js logChoice, via onChoice set by flows.js): which idea,
+  // how good, how long he took from the moment it opened, and whether he looked first (not for a steal: no look).
+  logChoice(opt, r) {
+    if (!this.onChoice || !this.choiceLog) return;
+    const sc = this.sc, looked = sc.kind === 'tackle' ? null : sc.kind === 'receive' ? !!this.peeked : !!this.scanned;
+    this.onChoice({ id: !sc.live && sc.skill ? sc.skill : this.idea(), mode: this.choiceLog, grade: r === 'best' || r === 'ok' ? 'best' : r === 'safe' ? 'okay' : 'miss', sec: this.sim.time - this.decideAt, looked });
   },
   // The lesson a match decision practises (for the idea he missed most).
   idea() {
