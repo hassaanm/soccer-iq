@@ -4,6 +4,8 @@ import { lerp, clamp, smooth, dribbleEnd, DRIBBLE_DIRS } from '../geom.js';
 import { L, W, MATE, facesBall, wrap } from './shared.js';
 import { spaces } from '../shot.js';
 
+const AIM_LOW = .42; // (the low targets' middles: their rings stand just clear of the grass)
+
 const segDist = (x, y, a, b) => {
   const dx = b[0] - a[0], dy = b[1] - a[1], t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
   return Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t);
@@ -47,8 +49,8 @@ export const input = {
 
   // Shooting is offered when he is close enough to goal to have a real chance.
   get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !facesBall(this.sc) && this.sc?.kind !== 'lead' && !!h && h.x > L - (this.sc?.skill === 'shoot-close' || this.sc?.shots ? 18 : 13); },
-  // The spaces in the goal he can pick (gold spots low in the goal mouth): as many as the scene has (a match: two).
-  aimSpots() { const n = this.sc?.shotN || 2; return spaces(n).map(s => ({ id: s.id, x: L - .1, y: s.y, z: .5 })); },
+  // The targets in the goal he can pick (v64: six gold spots in the goal mouth, two rows of three, at every level).
+  aimSpots() { return spaces().map(s => ({ id: s.id, x: L - .1, y: s.y, z: s.top ? s.z : AIM_LOW })); },
   // SHOOT (v62): one tap, until the lessons about the shot are passed. Then, with a keeper in goal ("Shoot to the
   // space!"), he picks a space in the goal (gold spots, step 'aim'), and ("Inside or laces?") the foot (two buttons where
   // Small touches / Big push sit, step 'foot'). Tapped again while picking, SHOOT un-picks, as PASS and DRIBBLE do.

@@ -1,5 +1,5 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
-import { lerp, smooth, rot, clamp } from '../geom.js';
+import { lerp, smooth, rot, clamp, closestOnLane } from '../geom.js';
 import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
 
 // Where the eye is seen from the point it looks at: the way round, how high (radians) and how far.
@@ -21,6 +21,9 @@ const HERO_MIN = .2;
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
 const BACK_SCALE = [2];
+// The aim view (v64, see aimView): px per metre at the goal (share of the screen's height), how far behind him the
+// camera is (times his distance from the goal), and where the goal's middle sits (share of the height from the top).
+const AIM_PXM = .18, AIM_BACK = 2, AIM_GOAL_Y = .43, AIM_GOAL_X = .41;
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -114,6 +117,27 @@ export const view = {
     return this.spotFit.spec;
   },
 
+  // The aim view (v64): the six targets need the goal big (AIM_PXM of the screen's height for every metre at the goal,
+  // so each target is about 48 px across on a small phone), and he must still be in the picture with the ball at his
+  // feet. So the camera is far behind him on the line from the goal through him (AIM_BACK times as far behind him as he
+  // is from the goal) and looks along it with a long lens: the goal, the keeper and the targets fill the upper middle,
+  // he stands whole below them, the ball at his feet, from behind (he shoots into the picture). It is as high as lets
+  // his feet stay above the bottom edge; to the side he is on just enough that his head comes up between two low targets.
+  aimView(h = this.sim.a('hero')) {
+    const v = this.viewSize(), H = v.h || 375, mid = (gy0 + gy1) / 2;
+    const dx = L - h.x, dy = mid - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    const back = Math.min(l * AIM_BACK, (h.x - 1) / Math.max(.2, ux)), r = l / back, pxm = AIM_PXM * H, gcY = AIM_GOAL_Y * H;
+    // To the side (sd): his head comes up between two low targets, never on one. Of the two sides, the one where nobody
+    // stands between the camera and him (the defender he got past is often right behind him).
+    const off = (gy1 - .75 - mid) / 2 / r, hz = clamp(((H - 28 - gcY) / pxm - .9) / r, 2, 7); // (hz: his feet and the ball well over the bottom edge)
+    const eyeAt = sd => [h.x - ux * back - uy * sd, clamp(h.y - uy * back + ux * sd, -4, W + 4), hz];
+    const clear = e => { let m = 9; for (const a of this.sim.agents.values()) { if (a === h || a.gk) continue; const c = closestOnLane(a, { x: e[0], y: e[1] }, h, 0); if (c.t < .98) m = Math.min(m, c.d); } return m; };
+    const pref = Math.sign(h.y - mid) || 1, eye = clear(eyeAt(-pref * off)) > clear(eyeAt(pref * off)) + .3 ? eyeAt(-pref * off) : eyeAt(pref * off), dg = Math.hypot(L - eye[0], mid - eye[1], .9 - hz);
+    // (the goal left of the middle, AIM_GOAL_X of the width: its right-hand targets stay clear of SHOOT, and he stays clear of
+    // the foot buttons that come up where SHOOT is)
+    const cx = L - eye[0], cy = mid - eye[1], cl = Math.hypot(cx, cy) || 1, sh = (.5 - AIM_GOAL_X) * (v.w || 667) / pxm;
+    return { eye, tgt: [L + cy / cl * sh, mid - cx / cl * sh, .9 - (H / 2 - gcY) / pxm], Ff: pxm * dg / H, Fw: 0 };
+  },
   camSpec(time) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
     if (this.camMode === 'orbit') { const a = time * .08; return { eye: [L / 2 + Math.cos(a) * 24, W / 2 + Math.sin(a) * 24, 10], tgt: [L / 2, W / 2, 0], Ff: .9, Fw: .4 }; }
@@ -123,6 +147,7 @@ export const view = {
       const p = this.aimAt, l = Math.hypot(p.x - h.x, p.y - h.y) || 1, ux = (p.x - h.x) / l, uy = (p.y - h.y) / l;
       return { eye: [clamp(h.x - ux * 5, .5, L - .5), clamp(h.y - uy * 5, .5, W - .5), 3.6], tgt: [lerp(h.x, p.x, .5), lerp(h.y, p.y, .5), .4], Ff: .85, Fw: .44 };
     }
+    if (this.camMode === 'aim' && this.aimFrom) return this.aimView(this.aimFrom); // (his shot, v64: the same view as he aimed, so the keeper's dive is big)
     if (this.camMode === 'overview') {
       const p = this.aimAt || h, mx = (h.x + p.x) / 2, my = (h.y + p.y) / 2;
       return { eye: [mx - 8, my, 9], tgt: [mx + 1.5, my, 0], Ff: .85, Fw: .42 };
@@ -148,12 +173,8 @@ export const view = {
     }
     // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView).
     if (this.step === 'spot' && this.phase === 'decide' && this.sc?.spots?.length) return this.spotView();
-    // Choosing where to shoot, and with which foot (v62): from behind him and a little to the side, looking at the goal,
-    // so he, the keeper and the gold spots in the goal are all in the picture, and he is big.
-    if ((this.step === 'aim' || this.step === 'foot') && this.phase === 'decide') {
-      const gc = { x: L, y: (gy0 + gy1) / 2 }, dx = gc.x - h.x, dy = gc.y - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, back = clamp(l * .4, 4.6, 6);
-      return { eye: [h.x - ux * back - uy * .7, h.y - uy * back + ux * .7, 2.7 + l * .06], tgt: [h.x + ux * l * .55, h.y + uy * l * .55, .45], Ff: .95, Fw: .5 };
-    }
+    // Choosing where to shoot, and with which foot: the aim view (v64, see aimView).
+    if ((this.step === 'aim' || this.step === 'foot') && this.phase === 'decide') return this.aimView();
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
     // 1v1: a bit higher and farther back, aimed between him and the ball, so the ball and the attacker's feet

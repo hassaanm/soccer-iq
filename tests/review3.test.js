@@ -25,7 +25,7 @@ test('a wrong shot says what happened and why', () => {
   const { g } = makeGame(), close = generate('inside-laces', 1, { pattern: 'foot-close' }), edge = generate('inside-laces', 2, { pattern: 'foot-edge' }), aim = generate('shoot-space', 1, { pattern: 'aim-open' });
   g.load(close); assert.match(g.shotWhy('shoot:*:las'), /fly high.*Inside, for control/);
   g.load(edge); assert.match(g.shotWhy('shoot:*:in'), /Too slow.*Laces, for power/);
-  const other = aim.best.split(':')[1] === 'L' ? 'R' : 'L'; g.load(aim); assert.match(g.shotWhy(`shoot:${other}:in`), /keeper was there.*big space/);
+  const other = aim.best.split(':')[1] === 'L' ? 'R' : 'L'; g.load(aim); assert.match(g.shotWhy(`shoot:${other}:in`), /(right at him|near his hands).*big space/);
   setSize('3v3');
 });
 

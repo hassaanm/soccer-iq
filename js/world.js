@@ -16,7 +16,8 @@ import { makeEnv, buildBeams, sunSprite } from './pro/light.js';
 import { makeSky } from './pro/sky.js';
 import { turf, TURF } from './pro/grass.js';
 
-const { L, W, gy0, gy1, gh } = PITCH; // (the pitch of the size saved when the page loaded: see geom.js setSize)
+const { L, W, gy0, gy1, gh } = PITCH;
+const AIM_SIZE = .62; // the goal's targets, as a share of their ring's full size (v64: six of them fit the goal mouth) // (the pitch of the size saved when the page loaded: see geom.js setSize)
 const CX = L / 2, CY = W / 2, BALL_R = .125; // the ball's radius: in proportion to the players, about as wide as a head
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .72 });
 // Everything that differs between the two times of day. `key` is the sun by day; by night it and three `fill`
@@ -392,7 +393,7 @@ export class World {
     this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
     this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
     // The spaces in the goal he can shoot at (v62): the same gold rings, standing up in the goal mouth, facing the pitch.
-    this.aimPool = Array.from({ length: 3 }, () => {
+    this.aimPool = Array.from({ length: 6 }, () => { // (v64: six, two rows of three; drawn at AIM_SIZE, so neighbours never touch)
       const g = new THREE.Group();
       const disc = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
       const ring = new THREE.Mesh(new THREE.RingGeometry(.42, .58, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
@@ -559,7 +560,7 @@ export class World {
       const g = this.spotPool[i], sp = ui.spots?.[i]; g.visible = !!sp; if (!sp) continue;
       g.position.set(sp.x, sp.y, .035); g.scale.setScalar((ui.spotScale?.[i] || 1) * (1 + .1 * Math.sin(time * 5 + i))); // (farther rings drawn bigger: game/view.js spotView)
     }
-    for (let i = 0; i < this.aimPool.length; i++) { const g = this.aimPool[i], a = ui.aims?.[i]; g.visible = !!a; if (a) { g.position.set(a.x, a.y, a.z); g.scale.setScalar(1 + .08 * Math.sin(time * 5 + i)); } }
+    for (let i = 0; i < this.aimPool.length; i++) { const g = this.aimPool[i], a = ui.aims?.[i]; g.visible = !!a; if (a) { g.position.set(a.x, a.y, a.z); g.scale.setScalar(AIM_SIZE * (1 + .06 * Math.sin(time * 5 + i))); g.rotation.set(0, -Math.PI / 2, Math.atan2(this.camera.position.y - a.y, this.camera.position.x - a.x) - Math.PI, 'ZYX'); } } // (each faces the camera: round, never squeezed)
     const st = ui.stayAt; this.stayBadge.visible = !!st;
     if (st) { const k = 1 + .04 * Math.sin(time * 5); this.stayBadge.position.set(st.x, st.y, st.z); this.stayBadge.scale.set(.82 * k, 1 * k, 1); } // (a softer pulse than the rings)
     this.setLines(ui.lines);

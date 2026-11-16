@@ -1,10 +1,10 @@
 // Outcome scripts: what happens on the pitch after his choice (pass, dribble, push, shot, run, steal), up to the
 // banner that ends the play. The scripts move the players in `scripted`; the team AI moves everyone else.
-import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } from '../geom.js';
+import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD, PITCH } from '../geom.js';
 import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce, grade } from '../generate.js';
 import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
-import { resolve, placedAim, bestSpaceY, rightFoot, spaceY } from '../shot.js';
+import { placedAim, rightFoot, shotResult, zone, zoneGrade, bestZone, stream, DUEL, GUESS_T, LOW_Z } from '../shot.js';
 import { seeded, OUR_SAVE } from './keeper.js';
 
 const MATCH_HOLD = { kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
@@ -67,7 +67,7 @@ export const outcomes = {
     for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
     s.windup(id, 'shot', foot); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
-    this.keeperReact(gk, gk && resolve(s.ball, shot.y, 'placed', gk), s.ball, 0);
+    this.keeperReact(gk, gk && shotResult({ from: s.ball, y: shot.y, foot: 'placed', k: gk, force: 'goal' }), s.ball, 0);
     s.kick(shot.x, shot.y, { speed: 17, arc: .5 }); this.kicked = true;
     yield () => s.ball.state === 'loose';
     yield* this.end('goal', 1.4);
@@ -311,7 +311,11 @@ export const outcomes = {
     this.ai = false; s.stopAll();
     const gk = s.keeper('us'), y = gk ? placedAim(shooter, gk, 0) : clamp(shooter.y, gy0 + .8, gy1 - .8); // (our keeper: past him, in the bigger space)
     if (gk && (this.mode === 'match' || this.mode === 'free') && seeded(shooter.x, shooter.y, s.time, this.score?.them ?? 0) < OUR_SAVE) { yield* this.ourSave(shooter, gk); return; } // (a match: now and then our keeper stops it)
-    if (gk) { this.scripted.add(gk.id); s.stop(gk.id); yield* this.turnTo(shooter.id, -.7, y); this.keeperReact(gk, resolve(s.ball, y, 'placed', gk, { gx: 0 }), s.ball); }
+    if (gk) { // past our keeper: he dives and misses, or now and then he went early the wrong way (seeded)
+      this.scripted.add(gk.id); s.stop(gk.id); yield* this.turnTo(shooter.id, -.7, y);
+      const r = shotResult({ from: s.ball, y, foot: 'placed', k: gk, gx: 0, force: 'goal' }), wrong = seeded(shooter.x, shooter.y, 23) < .25;
+      this.keeperReact(gk, wrong ? { ...r, act: 'wrong', dir: -Math.sign(y - gk.y) || 1 } : r, s.ball);
+    }
     yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
     yield* this.end('goalAgainst', 1.3);
@@ -320,16 +324,18 @@ export const outcomes = {
   // own shots never use it). He holds it, or it comes off him and he gathers it; then he rolls it out to a friend, and play
   // goes on with our ball.
   *ourSave(shooter, gk) {
-    const s = this.sim, sh = { x: shooter.x, y: shooter.y }, low = seeded(sh.y, sh.x, 7) < .5, y = clamp(gk.y + (low ? .35 : -.35), gy0 + .4, gy1 - .4);
+    // (v64) Where their shot goes is seeded: a ball at him he blocks, one beside him he reaches, low or high a little
+    // farther he dives to; what he does follows from the picture (shot.js shotResult, made a save).
+    const s = this.sim, sh = { x: shooter.x, y: shooter.y }, u = seeded(sh.y, sh.x, 7), off = u < .3 ? .2 : u < .55 ? .7 : 1.25, way = seeded(sh.x, sh.y, 13) < .5 ? 1 : -1;
+    const y = clamp(gk.y + way * off, gy0 + .4, gy1 - .4), z = seeded(sh.x, sh.y, 17) < .4 ? 1.25 : LOW_Z;
     this.scripted.add(gk.id); s.stop(gk.id);
     yield* this.turnTo(shooter.id, -.7, y);
-    const r = resolve(s.ball, y, 'placed', gk, { gx: 0 }), spill = seeded(sh.x, sh.y, 11) < .5;
-    if (r.res !== 'save') { yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; yield* this.end('goalAgainst', 1.3); return; } // (never: he stands there)
-    this.keeperReact(gk, { ...r, parry: spill }, s.ball);
-    const at = this.inFront(gk, r.at); yield* this.strike(shooter.id, at.x, at.y, { speed: 17, arc: .3 });
+    const r = shotResult({ from: s.ball, y, z, foot: 'placed', k: gk, gx: 0, force: 'save' }), spill = seeded(sh.x, sh.y, 11) < .5;
+    this.keeperReact(gk, { ...r, held: !spill }, s.ball);
+    const at = this.inFront(gk, r.at); yield* this.strike(shooter.id, at.x, at.y, { speed: 17, arc: .1, z1: r.at.z });
     yield () => s.ball.state === 'loose';
     this.result = 'keeperSave'; this.emit('keeperSave');
-    if (spill) { const sp = this.spillOf(r, sh); s.ball.carrier = gk.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); yield () => s.ball.state === 'loose'; gk.gkm = null; const t0 = s.time; yield () => { s.go(gk.id, s.ball.x, s.ball.y, 3); return Math.hypot(gk.x - s.ball.x, gk.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
+    if (spill) { const sp = this.spillOf(r, sh); s.ball.carrier = gk.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); yield () => s.ball.state === 'loose'; yield () => !gk.gkm || s.time - gk.gkm.t0 > gk.gkm.dur + .9; gk.gkm = null; const t0 = s.time; yield () => { s.go(gk.id, s.ball.x, s.ball.y, 3); return Math.hypot(gk.x - s.ball.x, gk.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
     else { Object.assign(s.ball, { state: 'held', carrier: gk.id }); yield .3; }
     this.ai = false; s.stopAll(); yield* this.rollOut(gk); this.result = 'keeperSave';
   },
@@ -398,7 +404,7 @@ export const outcomes = {
   *shootGen(good) {
     const s = this.sim, h = s.a('hero'), gk = s.keeper('them'), aim = { x: L + .7, y: gk ? placedAim(s.ball, gk) : clamp(h.y, gy0 + .8, gy1 - .8) };
     this.scripted.add('hero'); this.ai = false; s.stopAll();
-    if (good) { if (gk) { yield* this.turnTo('hero', aim.x, aim.y); this.keeperReact(gk, resolve(s.ball, aim.y, 'placed', gk), s.ball); } yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield this.hold('goal', 1.4); return; }
+    if (good) { if (gk) { yield* this.turnTo('hero', aim.x, aim.y); this.keeperReact(gk, shotResult({ from: s.ball, y: aim.y, foot: 'placed', k: gk, force: 'goal' }), s.ball); } yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield this.hold('goal', 1.4); return; }
     const block = interceptor(s.ball, aim, s.team('them'));
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
@@ -408,26 +414,31 @@ export const outcomes = {
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);
   },
-  // ---------- his shot, as two choices (v62): a space in the goal and a foot ----------
-  // `opt` 'shoot:<space>:<foot>' (space L, M, R or * for the biggest; foot in, las or * for the one the rule says). It ends
-  // as shot.js says: in the net; saved (held, or spilled out: a rebound); over the bar (laces from close); wide; or, slow,
-  // cleared by a defender running back. A lesson's scene says the same (generate.js finishShots). Too far, or a
-  // defender in the way: blocked, as SHOOT always was.
+  // ---------- his shot, as two choices (v62; six targets since v64): a target in the goal and a foot ----------
+  // `opt` 'shoot:<target>:<foot>' (target TL, TM, TR, L, M, R or * for the best low one; foot in, las or * for the one the
+  // rule says). It ends as shot.js shotResult says: in the net; saved (held, or spilled out: a rebound); over the bar;
+  // wide; or, slow, cleared by a defender running back. In a lesson nothing is left to chance (the scene's table,
+  // generate.js finishShots, says the same); in a match the chances are seeded by the play, so asking twice gives the
+  // same answer. Too far, or a defender in the way: blocked, as SHOOT always was.
   shotOf(opt) {
-    const s = this.sim, sc = this.sc, h = s.a('hero'), [, sp, ft] = opt.split(':'), K = s.keeper('them');
-    const from = sc.shots ? { x: sc.heroTo[0] + .5, y: sc.heroTo[1] } : { x: s.ball.x, y: s.ball.y }; // (a lesson: from where the scene says)
-    const foot = ft === '*' || !ft ? rightFoot(from) : ft, y = !sp || sp === '*' ? bestSpaceY(from, K) : spaceY(sp);
-    const stray = sc.stray ?? .25 + .2 * seeded(h.x, h.y), defs = sc.shots ? sc.oppsTo.map(([x, y]) => ({ x, y })) : s.team('them');
-    return { ...resolve(from, y, foot, K, { stray, defs }), from, foot, K, aimY: y, spill: sc.spill ?? seeded(h.y, h.x, 3) < .5 };
+    const s = this.sim, sc = this.sc, h = s.a('hero'), [, sp, ft] = opt.split(':'), K = s.keeper('them'), lesson = !!sc.shots;
+    const from = lesson ? { x: sc.heroTo[0] + .5, y: sc.heroTo[1] } : { x: s.ball.x, y: s.ball.y }; // (a lesson: from where the scene says)
+    const foot = ft === '*' || !ft ? rightFoot(from) : ft, zid = !sp || sp === '*' ? (K ? bestZone(from, K) : null) : sp;
+    const aim = zid ? {} : { y: clamp(from.y, gy0 + .8, gy1 - .8) };
+    const defs = lesson ? sc.oppsTo.map(([x, y]) => ({ x, y })) : s.team('them'), mid = (gy0 + gy1) / 2;
+    const duel = !lesson && !!K && Math.hypot(L - from.x, mid - from.y) <= DUEL && s.team('them').every(o => closestOnLane(o, from, { x: L, y: mid }, 0).d > 1); // a close 1v1 with the keeper
+    const rand = lesson ? null : stream(seeded(h.x, h.y, this.decideAt ?? 0, 5)), spill = sc.spill ?? seeded(h.y, h.x, 3) < .5;
+    const r = shotResult({ from, zone: zid, ...aim, foot, k: K, rand, duel, stray: sc.stray ?? .35, defs, spill });
+    return { ...r, from, foot, K, zid, aimY: zid ? zone(zid).y : aim.y, spill: !r.held };
   },
-  // The two parts of a shot he picked (v62), each graded on its own: the space (the one that goes in with the right foot,
-  // as the lesson "Shoot to the space!" teaches) and the foot (the rule of "Inside or laces?": close, inside; the edge,
-  // laces). null for a part he did not pick. A lesson scene's own table says the same as the live rule.
+  // The two parts of a shot he picked, each graded on its own: the target ("Shoot to the space!", v64 grades: low and
+  // away from the keeper true, high and away or low beside him 'okay', at him or high beside him false) and the foot
+  // (the rule of "Inside or laces?": close, inside; the edge, laces). null for a part he did not pick.
   shotPartGrades(opt) {
     if (!opt?.startsWith('shoot:')) return null;
     const [, sp, ft] = opt.split(':'), r = this.shotOf(opt), right = rightFoot(r.from), sc = this.sc;
-    const spaceOk = sp === '*' ? null : sc.shots?.[`shoot:${sp}:${right}`] ? sc.shots[`shoot:${sp}:${right}`] === 'goal' : this.shotOf(`shoot:${sp}:${right}`).res === 'goal';
-    return { space: spaceOk, foot: ft === '*' ? null : ft === right };
+    const g = sp === '*' || !r.K ? null : zoneGrade(r.from, sp, r.K, { stray: sc.stray ?? .35, defs: sc.shots ? sc.oppsTo.map(([x, y]) => ({ x, y })) : [] });
+    return { space: g == null ? null : g === 'best' ? true : g === 'okay' ? 'okay' : false, foot: ft === '*' ? null : ft === right, zone: sp };
   },
   // Where a shot he saves comes into his hands: never behind him (it would go through his legs to get there), at least a
   // step in front of where his save takes him.
@@ -441,51 +452,64 @@ export const outcomes = {
     if (sc.shots?.[opt] === 'blocked') return 'Too far to shoot. Get closer first!';
     if (sc.pattern === 'keeper-out') return 'The keeper came out! Go around him!';
     if (sc.pattern === 'keeper-friend') return 'No space to shoot. Pass it across!';
-    if (g?.space === false) return 'The keeper was there. Shoot to the big space!';
+    if (g?.space === false) return r.rel === 'at' ? "That's right at him! Shoot low, to the big space!" : "That's near his hands. Shoot low, to the big space!";
     if (r.res === 'over') return 'Laces from close fly high. Close? Inside, for control!';
     if (r.res === 'save' || r.res === 'cleared') return 'Too slow from out here. Far? Laces, for power!';
     return this.cue();
   },
-  // The lesson a missed shot belongs to (a match's miss count and its one spoken name): the space, else the foot.
+  // The tip for a shot that was only okay (2 stars): the target was not the best one, or the foot was wrong.
+  shotTip(opt) {
+    const g = this.shotPartGrades(opt);
+    if (g?.space === 'okay') return zone(g.zone).top ? 'Right side! But high can go over. Keep it low.' : 'He can reach that one. Find the big space.';
+    return 'Good space! ' + (this.shotOf(opt).res === 'over' ? 'Close? Inside, for control.' : 'Far? Laces, for power!');
+  },
+  // The lesson a missed shot belongs to (a match's miss count and its one spoken name): the target, else the foot.
   missIdea(opt) { const g = this.shotPartGrades(opt); return !g ? null : g.space === false ? 'shoot-space' : g.foot === false ? 'inside-laces' : null; },
   // The decision log for a shot with picked parts: each part under its own lesson ("Shoot to the space!" timed from the
-  // decision opening to the space tap, "Inside or laces?" from then to the foot tap), and the whole decision under its
-  // own idea only when that is neither of them (the two shot lessons' own scenes are logged by their part).
+  // decision opening to the target tap, best / okay / miss as graded above; "Inside or laces?" from then to the foot
+  // tap), and the whole decision under its own idea only when that is neither of them (the two shot lessons' own scenes
+  // are logged by their part).
   shotLog(opt, whole) {
     const g = this.shotPartGrades(opt); if (!g || (g.space == null && g.foot == null)) return null;
     const out = [], end = this.sim.time, mid = this.shotT ?? this.decideAt;
-    if (g.space != null) out.push({ ...whole, id: 'shoot-space', grade: g.space ? 'best' : 'miss', sec: mid - this.decideAt });
+    if (g.space != null) out.push({ ...whole, id: 'shoot-space', grade: g.space === true ? 'best' : g.space === 'okay' ? 'okay' : 'miss', sec: mid - this.decideAt });
     if (g.foot != null) out.push({ ...whole, id: 'inside-laces', grade: g.foot ? 'best' : 'miss', sec: end - mid, looked: g.space != null ? null : whole.looked });
     if (!['shoot-space', 'inside-laces'].includes(whole.id)) out.push(whole);
     return out;
   },
+  // How high to send the ball (kick's z1, at the end of its flight) so it crosses the point `p` (on its way, `f` of the
+  // way along) at height `z`: the sim's ball rises along its flight as z1 * u (u: the share of the flight's time).
+  liftFor(z, f, arc) { const u = 1 - Math.pow(1 - clamp(f, .05, 1), 2 / 3); return Math.max(0, (z - arc * 4 * u * (1 - u)) / u); },
   *shotGen(opt) {
     const s = this.sim, sc = this.sc;
     if (sc.shots?.[opt] === 'blocked' || (!sc.shots && (this.grades ||= sc.grades || grade(sc)).shoot === 'bad')) { yield* this.shootGen(false); return; }
     const r = this.shotOf(opt), K = r.K, { from, to } = r;
     this.scripted.add('hero'); this.ai = false; s.stopAll();
+    if (K) { this.aimFrom = { x: s.a('hero').x, y: s.a('hero').y }; this.camMode = 'aim'; } // (the shot is seen as he aimed it: the keeper big; view.js aimView)
     const tx = L + .7, ty = to.y + (to.y - from.y) / Math.max(.5, L - from.x) * .7; // on through the line, into the net
     yield* this.turnTo('hero', tx, ty);
-    if (K && (r.res === 'save' || r.res === 'goal')) this.keeperReact(K, r, from);
-    if (r.res === 'goal') { yield* this.strike('hero', tx, ty, { speed: r.speed, arc: r.arc }); yield () => s.ball.state === 'loose'; yield* this.end('goal', 1.4); return; }
-    if (r.res === 'over') { yield* this.strike('hero', L + 3, to.y, { speed: 17, arc: 3.4 }); yield () => s.ball.state === 'loose'; yield* this.missedShot('over'); return; }
-    if (r.res === 'wide') { yield* this.strike('hero', L + 2.2, to.y + (to.y - from.y) / Math.max(.5, L - from.x) * 2.2, { speed: r.speed, arc: r.arc }); yield () => s.ball.state === 'loose'; yield* this.missedShot('wide'); return; }
+    if (K) this.keeperReact(K, r, from);
+    if (r.guess) yield GUESS_T - .2; // (his guess shows a moment before the kick: the kick comes a little later)
+    const high = r.top || to.z > .8, arc = high ? .12 : r.arc, lift = (x, y, z) => (high ? this.liftFor(z, Math.hypot(to.x - from.x, to.y - from.y) / (Math.hypot(x - from.x, y - from.y) || 1), arc) : 0);
+    if (r.res === 'goal') { yield* this.strike('hero', tx, ty, { speed: r.speed, arc, z1: lift(tx, ty, to.z) }); yield () => s.ball.state === 'loose'; yield* this.end('goal', 1.4); return; }
+    if (r.res === 'over') { const f = Math.hypot(L - from.x, to.y - from.y) / (Math.hypot(L + 3 - from.x, to.y - from.y) || 1); yield* this.strike('hero', L + 3, to.y, { speed: 17, arc: .3, z1: this.liftFor(PITCH.gh + .45, f, .3) }); yield () => s.ball.state === 'loose'; yield* this.missedShot('over'); return; } // (just over the bar, so the picture shows it)
+    if (r.res === 'wide') { const wx = L + 2.2, wy = to.y + (to.y - from.y) / Math.max(.5, L - from.x) * 2.2; yield* this.strike('hero', wx, wy, { speed: r.speed, arc, z1: lift(wx, wy, to.z) }); yield () => s.ball.state === 'loose'; yield* this.missedShot('wide'); return; }
     if (r.res === 'cleared') { // the defender running back meets it on its way in, and knocks it out to the side
       const d = s.team('them').sort((p, q) => Math.hypot(p.x - r.by.x, p.y - r.by.y) - Math.hypot(q.x - r.by.x, q.y - r.by.y))[0];
       this.scripted.add(d.id); s.go(d.id, r.at.x, r.at.y, Math.max(2, Math.hypot(d.x - r.at.x, d.y - r.at.y) / Math.max(.3, r.t + .1)));
       yield* this.strike('hero', tx, ty, { speed: r.speed, arc: r.arc });
       yield () => (s.ball.state === 'flying' && Math.hypot(s.ball.x - d.x, s.ball.y - d.y) < .6) || s.ball.state === 'loose';
-      s.give(d.id); s.stop(d.id); yield .15;
+      s.give(d.id); s.stop(d.id); yield .15; if (this.camMode === 'aim') this.camMode = 'follow';
       const out = d.y > W / 2 ? 1 : -1; s.windup(d.id, 'pass'); yield .2; s.kick(clamp(d.x - 6, 1, L - 1), clamp(d.y + out * 5, 1, W - 1), { speed: 12, arc: .4 });
       yield* this.end('cleared', 1.3); return;
     }
-    // Saved: the ball goes to his hands; he holds it, or it spills out in front of him.
-    const at = this.inFront(K, r.at); yield* this.strike('hero', at.x, at.y, { speed: r.speed, arc: r.arc * .6 });
+    // Saved: the ball goes to his hands (up high, for a high one); he holds it, or it spills out in front of him.
+    const at = this.inFront(K, r.at); yield* this.strike('hero', at.x, at.y, { speed: r.speed, arc: high ? .08 : r.arc * .6, z1: high ? r.at.z : 0 });
     yield () => s.ball.state === 'loose';
     if (!r.spill) { Object.assign(s.ball, { state: 'held', carrier: K.id }); yield .15; yield* this.savedShot(K); return; }
     const sp = this.spillOf(r, from); s.ball.carrier = K.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); // (off his hands)
     this.sfx?.('tap');
-    if (this.reboundOK) { this.rebound = { by: 'hero', hit: [r.at.x, r.at.y], loose: [sp.x, sp.y], block: K.id }; this.hud.caption('Saved!'); this.say('Saved!'); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
+    if (this.reboundOK) { this.camMode = 'follow'; this.rebound = { by: 'hero', hit: [r.at.x, r.at.y], loose: [sp.x, sp.y], block: K.id }; this.hud.caption('Saved!'); this.say('Saved!'); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
     yield () => s.ball.state === 'loose';
     yield* this.savedShot(K, sp);
   },
@@ -493,6 +517,7 @@ export const outcomes = {
   *missedShot(kind) {
     const s = this.sim, K = s.keeper('them');
     this.result = kind; this.ai = false; s.stopAll(); this.emit(kind); yield 1.2;
+    if (this.camMode === 'aim' && (this.mode === 'match' || this.mode === 'free')) this.camMode = 'follow'; // (play goes on: the match's own view again)
     if (K && (this.mode === 'match' || this.mode === 'free')) { // a goal kick: out of sight behind the goal, the ball is his (no ball flies back), then he rolls it out
       s.ball.hidden = true; yield .2; Object.assign(s.ball, { x: K.x + K.face[0] * .3, y: K.y + K.face[1] * .3, z: .85, state: 'held', carrier: K.id, move: null, reach: null }); yield .2; s.ball.hidden = false;
       yield* this.rollOut(K);
@@ -504,7 +529,9 @@ export const outcomes = {
     const s = this.sim;
     this.result = 'saved'; this.emit('saved');
     if (this.mode !== 'match' && this.mode !== 'free') { this.ai = false; s.stopAll(); yield 1.2; return; }
-    if (loose) { K.gkm = null; this.scripted.add(K.id); const t0 = s.time; yield () => { s.go(K.id, loose.x, loose.y, 3); return Math.hypot(K.x - s.ball.x, K.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
+    if (this.camMode === 'aim') this.camMode = 'follow'; // (play goes on: the match's own view again)
+    if (loose) { this.scripted.add(K.id); yield () => !K.gkm || K.gkm.k !== 'dive' || s.time - K.gkm.t0 > K.gkm.dur + 1; K.gkm = null; // (after a dive: up first, then after it)
+      const t0 = s.time; yield () => { s.go(K.id, loose.x, loose.y, 3); return Math.hypot(K.x - s.ball.x, K.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
     yield .3; yield* this.rollOut(K);
   },
   // Where a blocked shot from here would go off the blocker's leg, if it would be a fair race (he clearly first, the way
@@ -811,7 +838,9 @@ export const outcomes = {
     this.cancel(this.swing); // the play starts: nothing turns the view any more
     // A "safe" dribble or push forward (onto a friend) keeps the ball and stops there; it doesn't run on to score.
     this.keepOnly = good && (opt.startsWith('drib:') || opt.startsWith('push:')) && this.sc.kind !== 'receive' && this.rating(opt) === 'safe';
-    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    const aimed = opt.startsWith('shoot:') && !!this.sim.keeper('them') && (this.step === 'aim' || this.step === 'foot'); // (he aimed in the aim view: his shot is seen from there, view.js aimView)
+    if (aimed) this.aimFrom = { x: h.x, y: h.y };
+    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     await this.play(this.outcomeGen(opt, good));
   },
