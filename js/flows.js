@@ -10,13 +10,13 @@ import { fillResults } from './ui/results.js';
 import { renderPickers, lessonOpen, trainingNext } from './ui/home.js';
 import { shirtImg } from './ui/shirt.js';
 import { teamById, displayName } from './teams.js';
-import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds, runsAt } from './skills.js';
+import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds, runsAt, atLevel } from './skills.js';
 import { CUPS, cupById, newCup, roundsOf, goalsToWin } from './cups.js';
 import { generate } from './generate.js';
 import { preloadClips } from './sound.js';
 import { pieces } from './voice.js';
 import { shuffle } from './geom.js';
-import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
+import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
 
 // ---------- shared steps ----------
 // One flow runs at a time. If one breaks, he lands back on the home screen instead of a stuck field.
@@ -27,6 +27,7 @@ const flow = fn => async (...args) => {
   try { await fn(...args); } catch (e) { console.error(e); game.home(); show('#home'); } finally { running = false; }
 };
 const seed = () => Math.floor(Math.random() * 1e9);
+export const MATCH_GOALS = 5;
 // `n` new scenes drawn from the lessons in `ids`.
 const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floor(Math.random() * ids.length)], seed())).filter(Boolean);
 // The teams take the field: the park for practice, the stadium for matches.
@@ -127,7 +128,10 @@ const runLesson = flow(async () => {
   await card(st.unlocked ? { emoji: '🔓', title: 'New in matches!', sub: `${UNLOCKS[skillId]}. First to 2 goals wins.`, button: 'Kick off' }
     : !st.passedNow && level(P, skillId) === 0 ? { emoji: '🏟️', title: 'Mini match!', sub: `Get ${need} right next time to unlock this in matches. First to 2 goals wins.`, button: 'Kick off' }
     : { emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews])), won = score.us > score.them;
+  // (v64) The mini match plays only the situations his lesson rounds use at his level ("Our ball? Spread out!" keeps its
+  // harder ones for Level 2).
+  const fits = sc => atLevel(sc, skillId, lvl);
+  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]).filter(fits), 2, 'match', fits), won = score.us > score.them;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save();
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   fillResults({
@@ -148,17 +152,17 @@ const runLesson = flow(async () => {
 });
 
 // ---------- today's training ----------
-// Once every lesson is passed, PLAY is a short mixed session: the 3 lessons he needs most today (see trainingPlan),
-// 4 rounds in all (v64; 6 before), mixed so he has to work out which idea fits. It opens with a reminder of the 3 ideas,
-// and finishing it opens the Cup for the day. The idea he missed most in a match (progress.js focus) goes first, so it
-// gets two of the four rounds.
+// Once every lesson is passed, PLAY is a short mixed session: the 2 lessons he needs most today (see trainingPlan), 2
+// rounds each, 4 in all (v64; 3 lessons and 6 rounds before), mixed so he has to work out which idea fits. It opens with a
+// reminder of the ideas, and finishing it opens the Cup for the day. The idea he missed most in a match (progress.js
+// focus) is one of the two.
 // The tip without the lesson name, when the tip opens with it as its own sentence ("Get open! Move to…").
 const tipAfterName = k => {
   const rest = k.tip.startsWith(k.kid) ? k.tip.slice(k.kid.length) : null;
   return rest !== null && (/[.!?]$/.test(k.kid) || /^[.!?]/.test(rest)) ? rest.replace(/^[.!?\s]+/, '') : k.tip;
 };
 const runTraining = flow(async () => {
-  const day = today(), f = P.focus?.day < day ? P.focus.id : null, plan0 = trainingPlan(P, PATH, { day, builds: BUILDS }), plan = plan0.includes(f) ? [f, ...plan0.filter(id => id !== f)] : plan0, sks = plan.map(skillById);
+  const day = today(), f = P.focus?.day < day ? P.focus.id : null, plan0 = trainingPlan(P, PATH, { day, builds: BUILDS, ...(TRAINING_ROUNDS ? { lessons: TRAINING_IDEAS } : {}) }), plan = plan0.includes(f) ? [f, ...plan0.filter(id => id !== f)] : plan0, sks = plan.map(skillById);
   setStage(teamById(P.us), teamById(P.them), 'park');
   await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${tipAfterName(k)}</small></span>`).join('')}</span>`,
     lines: sks.map(k => k.kid), button: 'Play' });
@@ -181,12 +185,13 @@ const runTraining = flow(async () => {
 export const runSession = () => (trainingNext() ? runTraining() : runLesson());
 
 // ---------- match ----------
-// First to 3 goals, mixing every lesson he has passed (attack and defense).
+// First to 5 goals (v64; 3 before: with good choices that was over in 6 to 10 decisions), mixing every lesson he has
+// passed (attack and defense). MATCH_GOALS is the one place to change it.
 export const runFreePlay = flow(async () => {
   const ids = matchSkills(), us = teamById(P.us), them = teamById(P.them);
   setStage(us, them, 'crowd');
-  await card({ emoji: '⚽', title: 'Match time!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
-  const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
+  await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${MATCH_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  const score = await game.match(ids, fresh(24, ids), MATCH_GOALS, 'free'), won = score.us > score.them;
   if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
   save(); // (the decision log too)
   fillResults({

@@ -459,3 +459,13 @@ stand on either side of the ball, so the open player is not always the farthest 
 that is the lesson) and "You were already open: stay" (staying is where he stands, under him on screen). At 5v5: their
 keeper covers his near post when a friend's shot hits the far post ("Run to the goal too!"), deep defenders start on the
 pitch (most "two open" scenes used to be thrown away), and after a turn he runs on toward goal without a last steer back.
+
+**v64, third pass (review).** *Peek, then turn:* the pass back is a real choice: best when a second defender stands
+behind his other shoulder too ("peek-back", both turns blocked); wrong when their deep player has run at the passer and
+stands in the way of the pass back (about 3 scenes in 10); okay otherwise. *Don't crowd your friend:* a fifth place far up
+the field but behind their player coming at the ball (wrong), the open space can also be level or round behind his friend
+on the other side, and one okay place at every level. *Restarts:* the keeper holds the ball in his hands and their team is
+back at the halfway line (as at a goal kick); standing in the middle right in front of our own goal is wrong at goal kicks
+and at the keeper's ball ("If we lose it there, they score!"); a place up among their players still does not fit the view.
+*First sessions* show every situation the level allows; the *mini match* keeps to the lesson's level. *Training:* 2 ideas,
+2 rounds each, and a lesson's box moves only on two answers or more. *Matches:* first to 5 goals; every Cup round first to 3.

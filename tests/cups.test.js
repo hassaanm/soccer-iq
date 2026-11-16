@@ -26,7 +26,7 @@ test('he plays as his team, or the country of his star', () => {
 
 test('the final is first to 3', () => {
   const run = newCup(cupById('worldcup'), 'spain');
-  assert.equal(goalsToWin(run), 2); run.round = 2; assert.equal(goalsToWin(run), 3);
+  assert.equal(goalsToWin(run), 3); run.round = 2; assert.equal(goalsToWin(run), 3); // (v64: first to 3 in every round)
 });
 
 test('every team has a place and a unique id', () => {

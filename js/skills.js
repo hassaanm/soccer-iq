@@ -52,7 +52,7 @@ const ALL = [
     tip: 'Look to the goal first! Nothing forward? Keep the ball.', outside: 'Before he plays the ball, he points to the goal, then to a friend ahead.' },
   // (v64) Restarts: the ball back in from the side line (a pass-in or dribble-in), the kick-off, a goal kick, and with
   // keepers the keeper's ball. See research/curriculum-plan.md.
-  { id: 'spread-out', ch: 4, emoji: '↔️', kid: 'Our ball? Spread out!', side: 'attack', ready: true, added: true,
+  { id: 'spread-out', ch: 4, emoji: '↔️', kid: 'Our ball? Spread out!', short: 'Spread out!', capTip: 'Our ball? Spread out!', side: 'attack', ready: true, added: true, // (short: the lesson sheet's tile; capTip: the demo's caption)
     adult: 'Restarts (the ball in from the side line, kick-off, goal kick, the keeper\'s ball): move away from the ball into open space, to the side and a little ahead, so the taker has a free pass; taking it, pass to the friend who spread out, or dribble in when there is space',
     tip: "Our ball? Spread out! Find a space where nobody's in the way.", outside: 'Put the ball on a line (a rope or chalk), with a cone as a defender. He runs to a spot where the cone is not between you, then you pass. Swap: he takes it, and passes or dribbles in.' },
   { id: 'lead-pass', ch: 5, emoji: '🏃', kid: 'Pass in front!', side: 'attack', adult: 'Lead pass: to a running friend, pass into the space ahead of him, where he will be, not to his feet', ready: true, added: true,
@@ -127,12 +127,21 @@ export const demoScenario = skillId => demoFor(skillId);
 // starts familiar; after that, fresh scenes.
 // How many places to run to in a run-to round: 3 at Level 1, 4 from Level 2 (v60).
 export const runsAt = level => (level >= 2 ? 4 : 3);
+// Whether a scene belongs in his lesson's rounds (and its mini match) at this level: "Our ball? Spread out!" keeps its
+// harder situations for Level 2 (v64).
+export const atLevel = (sc, skillId, level) => sc.skill !== skillId || level >= 2 || !RESTART_LATER.has(sc.pattern);
 export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math.random } = {}) {
   const pats = patternsOf(skillId).filter(p => level >= 2 || !RESTART_LATER.has(p)); if (!pats.length) return []; // ("Our ball? Spread out!": its harder situations from Level 2)
   const [main, ...others] = pats, mix = first ? others : shuffle(others, rnd);
   const order = [];
   if (level >= 2 || !others.length) { let bag = []; while (order.length < n) { if (!bag.length) bag = first ? [...pats] : shuffle([...pats], rnd); const k = bag.findIndex(p => p !== order[order.length - 1]); order.push(bag.splice(k < 0 ? 0 : k, 1)[0]); } }
-  else for (let i = 0; order.length < n; i++) order.push(i % 2 === 0 ? main : mix[(i >> 1) % mix.length]);
+  else {
+    for (let i = 0; order.length < n; i++) order.push(i % 2 === 0 ? main : mix[(i >> 1) % mix.length]);
+    // (v64) Every situation comes up at least once: if there are too few rounds for the main one to come back every other
+    // round, the last returns of the main one give way to the situations not shown yet.
+    const missing = mix.filter(p => !order.includes(p));
+    for (let k = order.length - 1; k > 0 && missing.length; k--) if (order[k] === main && order.filter(p => p === main).length > 1) order[k] = missing.shift();
+  }
   const out = [];
   for (let i = 0; out.length < n && i < n * 4; i++) {
     const seed = first ? i + 1 : Math.floor(rnd() * 1e9), sc = generate(skillId, seed, { pattern: order[out.length], runs: runsAt(level) });

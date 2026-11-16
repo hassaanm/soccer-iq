@@ -140,7 +140,7 @@ export const playOpen = (p, day = today()) => !!p.settings.alwaysOpen || p.openD
 // Play first (v64): Match is open every day from the start, once his first lesson has ever been passed; training is
 // short (TRAINING_ROUNDS) and sits between matches. To go back to "Match after training", set MATCH_ANY_DAY to false
 // and TRAINING_ROUNDS to null (training then plays settings.rounds again).
-export const MATCH_ANY_DAY = true, TRAINING_ROUNDS = 4;
+export const MATCH_ANY_DAY = true, TRAINING_ROUNDS = 4, TRAINING_IDEAS = 2; // (4 rounds: 2 ideas, 2 rounds each)
 export const matchOpen = (p, day = today()) => playOpen(p, day) || (MATCH_ANY_DAY && Object.keys(p.skills || {}).some(id => passed(p, id)));
 // How sure he is of a lesson, 0–1, from his last rounds of it (a guess of .7 until there are 3).
 export const sureness = (p, id) => { const r = skillState(p, id).recent; return r.length < 3 ? .7 : r.reduce((a, b) => a + b, 0) / r.length; };
@@ -179,8 +179,9 @@ export function trained(p, id, results, { day = today(), builds = {} } = {}) {
   touchDay(s, day); practised(p, id, day);
   s.today++; s.firstTry += results.filter(Boolean).length; s.rounds += results.length;
   const before = level(p, id);
-  if (results.length && results.every(Boolean) && wasDue && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }
-  else if (!results.some(Boolean)) s.box = Math.max(0, s.box - 1);
+  // (v64) A box moves only on two answers or more: one answer (right or wrong) is too little to change his review gap.
+  if (results.length >= 2 && results.every(Boolean) && wasDue && s.upDay !== day) { s.box = Math.min(INTERVALS.length - 1, s.box + 1); s.upDay = day; }
+  else if (results.length >= 2 && !results.some(Boolean)) s.box = Math.max(0, s.box - 1);
   s.top = Math.max(s.top, s.box);
   remember(s, ...results);
   if (results.some(Boolean)) for (const b of builds[id] || []) if (p.skills[b]) touchDay(skillState(p, b), day);

@@ -169,7 +169,8 @@ export const outcomes = {
       // Taking a pass with a turn into him: the turn is seen first (the defender takes it as the touch ends), so the
       // picture shows the turn he picked, then what it cost.
       const turning = () => this.sc.kind === 'receive' && s.ball.carrier === 'hero' && s.ball.move;
-      yield () => (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5;
+      const rec = this.sc.kind === 'receive'; // (v64) turning into a defender: he steps in on him, not to where the turn was going
+      yield () => { if (rec) for (const o of opps) s.go(o.id, h.x, h.y, 5); return (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5; };
       yield* this.steal(opps.find(o => dist(o, h) < 1.2) || opps[0]);
     }
   },
@@ -347,11 +348,12 @@ export const outcomes = {
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
     const t0 = s.time, alive = this.sc.even && !this.sc.restart ? this.underPressure(c, o1) : null; // (a restart: the ball stays still on its line)
-    yield () => { s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); alive?.(); return dist(h, sp) < .4 || s.time - t0 > (this.sc.even ? 2.6 : 1.8); }; // (v60 rings can be up to 10 m away)
+    const trails = !(this.sc.pattern === 'crowd' && sp.why === 'behind'); // (v64: running up past their player, his defender lets him go: the one in front will cut it out)
+    yield () => { if (trails) s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); alive?.(); return dist(h, sp) < .4 || s.time - t0 > (this.sc.even ? 2.6 : 1.8); }; // (v60 rings can be up to 10 m away)
     s.stop('hero'); s.stop(o2id);
     if (sp.crowd && this.sc.restart && Math.min(...s.team('them').map(o => dist(o, c))) > 5) { // (v64) a restart with their team far off: nobody to pass to, so he kicks it long, to them
       const o = s.team('them').sort((p, q) => dist(p, c) - dist(q, c))[0]; this.scripted.add(o.id);
-      yield* this.strike(c.id, o.x - 1, o.y, { speed: 13, arc: .35 });
+      yield* this.passFrom(c, o.x - 1, o.y, { speed: 13, arc: .35 });
       yield () => s.ball.state === 'loose';
       yield* this.steal(o, 'lost'); return;
     }
@@ -365,7 +367,7 @@ export const outcomes = {
       // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
       if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { const k = .3 / (dist(c, h) || 1); yield* this.strike(c.id, h.x + (c.x - h.x) * k, h.y + (c.y - h.y) * k, { speed: 8, arc: .05 }); this.result = 'incoming'; return; } // to his feet on the side the pass comes from, so it comes straight at him
       s.open('hero', L - 3.5, W / 2); // he opens his body toward goal as the pass comes, and turns with his first touch
-      yield* this.strike(c.id, h.x, h.y, { speed: 11, arc: .15 });
+      yield* this.passFrom(c, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
       s.give('hero');
       if (this.rating('spot:' + spotId) === 'safe') { yield* this.closedDown(); return; } // only okay: he has it, but going nowhere
@@ -374,10 +376,28 @@ export const outcomes = {
     }
     // The pass goes, but the defender standing in its path cuts it out.
     const them = s.team('them'), cut = them.map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((a, b) => a.d - b.d)[0];
+    if (this.sc.restart && cut.d > 2.5) { // (v64) their team stands far off, so the pass gets to him; but there (in front of our goal, or on top of a friend) their nearest player runs in and takes it
+      yield* this.passFrom(c, h.x, h.y, { speed: 11, arc: .15 });
+      yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
+      s.give('hero'); faceTo(h, c.x, c.y);
+      const o = them.sort((p, q) => dist(p, h) - dist(q, h))[0], t1 = s.time;
+      yield () => { s.go(o.id, h.x, h.y, 5.2); return dist(o, h) < .9 || s.time - t1 > 4; };
+      yield* this.steal(o); return;
+    }
     s.go(cut.opp.id, cut.x, cut.y, 4);
-    yield* this.strike(c.id, cut.x, cut.y, { speed: 11, arc: .1 });
+    yield* this.passFrom(c, cut.x, cut.y, { speed: 11, arc: .1 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(cut.opp, this.sc.even ? 'cut' : 'stolen'); // (he never had it: "Cut out!")
+  },
+  // A pass from the friend on the ball, or (v64, the keeper's ball) our keeper rolling it out of his hands.
+  *passFrom(c, x, y, opts) {
+    const s = this.sim, b = s.ball;
+    if (!c.gk || b.carrier !== c.id) { yield* this.strike(c.id, x, y, opts); return; }
+    const l = Math.hypot(x - c.x, y - c.y) || 1; c.face = [(x - c.x) / l, (y - c.y) / l];
+    c.gkm = { k: 'roll', t0: s.time, low: true }; yield .45;
+    const t0 = s.time; yield () => (Math.hypot(b.x - (c.x + c.face[0] * .45), b.y - (c.y + c.face[1] * .45)) < .05 && b.z < .2) || s.time - t0 > 1; // (his hands bring it down to the grass)
+    Object.assign(b, { state: 'carried', carrier: c.id, z: 0 });
+    s.kick(x, y, { ...opts, arc: 0 }); this.kicked = true; c.gkm = null;
   },
   // While he runs to his spot (v60): his friend on the ball keeps it under pressure, shielding it with small touches from
   // side to side, and the defender in front of him jockeys, staying goal-side about 1.3 m off him. Nobody wins or loses
@@ -815,8 +835,9 @@ export const outcomes = {
       else if (opt === 'turn:B') yield* this.backPass(good);
       else if (opt.startsWith('turn:')) { // the ball arrives, and his first touch turns him that way: round his left (L) or right (R) shoulder, as the arrow he tapped goes
         const s = this.sim, h = s.a('hero'), to = dribbleEnd(h, this.sc.turns[opt[5]], L, W); this.scripted.add('hero'); s.stop('hero'); s.open('hero', to.x, to.y, opt[5] === 'L' ? 1 : -1);
+        if (this.sc.cut) { const c = s.a('o3'), k = good ? .25 : .55; this.scripted.add(c.id); s.go(c.id, h.x - (h.x - c.x) * k, h.y - (h.y - c.y) * k, 5); } // (v64) the one who pressed the passer follows the ball toward him
         const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
-        s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good, to); // (v64: on to where the turn was aimed, not a new point from where the first touch left him, which made him steer back the other way)
+        s.give('hero'); yield* this.dribbleGen(this.sc.turns[opt[5]], good, good ? to : null); // (v64: on to where the turn was aimed, not a new point from where the first touch left him, which made him steer back the other way)
       }
       else if (good && this.sc.then && opt === this.sc.best) yield* this.passOnly(MATE[opt]);
       else if (good && this.offBall && MATE[opt]) { this.offBall = false; yield* this.passOnly(MATE[opt]); this.result = 'support'; }

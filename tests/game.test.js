@@ -78,12 +78,15 @@ test('skipping the demo ends it right away', async () => {
 });
 
 test('a match flows on after kept-the-ball and still ends', async () => {
+  const real = Math.random; Math.random = seeded(11); // (v64: repeatable, as the other match tests are; unseeded it could now and then end before any play went on)
+  try {
   const { g } = makeGame();
   let live = 0, decisions = 0;
   const pick = gm => { decisions++; if (gm.sc.live) live++; const opts = gm.sc.kind === 'defense' ? gm.sc.spots.map(s => 'spot:' + s.id) : ['pass:0', 'pass:1', 'drib:fwd']; return gm.sc.best || opts[0]; };
   const s = await drive(g, g.match(['look-up', 'one-goes', 'pass-to-open'], [], 3, 'free'), pick, 900);
   assert.ok(s.us === 3 || s.them === 3 || decisions > 25, `match did not finish (${JSON.stringify(s)})`);
   assert.ok(live > 0, 'play never continued from a live position');
+  } finally { Math.random = real; }
 });
 
 // Matches shuffle with Math.random; a fixed sequence makes these runs repeatable.

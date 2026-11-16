@@ -3,23 +3,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generate, OKAY, BAD, RESTART_LATER } from '../js/generate.js';
-import { PATH, skillById, sessionRounds, runsAt, CHAPTERS } from '../js/skills.js';
+import { PATH, skillById, sessionRounds, runsAt, CHAPTERS, atLevel } from '../js/skills.js';
 import { sizeOf, W, L } from '../js/geom.js';
-import { defaultProgress, matchOpen, playOpen, finishSession, isOpen, TRAINING_ROUNDS, MATCH_ANY_DAY } from '../js/progress.js';
+import { defaultProgress, matchOpen, playOpen, finishSession, isOpen, TRAINING_ROUNDS, TRAINING_IDEAS, MATCH_ANY_DAY, trainingPlan, trained, level } from '../js/progress.js';
 import { optionsFor, playOption, judge, makeGame } from './harness.js';
 
 const gradeOf = (sc, opt) => { const { g } = makeGame(); g.mode = 'lesson'; g.load(sc); return g.rating(opt); };
 const kinds = (sc, opts) => opts.map(o => gradeOf(sc, o));
 
-test('turns: three choices at every level (left, right, or straight back to the passer, which keeps it: okay)', () => {
-  let n = 0, back = 0;
-  for (const pattern of ['peek-turn', 'peek-open']) for (let seed = 1; seed <= 12; seed++) {
-    const sc = generate('peek-and-turn', seed, { pattern }); assert.ok(sc); n++;
+test('turns: the pass back is a real choice: best when both turns are blocked, wrong when a defender is in its way, else okay', () => {
+  const seen = { best: 0, bad: 0, safe: 0 };
+  for (const pattern of ['peek-turn', 'peek-open', 'peek-back']) for (let seed = 1; seed <= 30; seed++) {
+    const sc = generate('peek-and-turn', seed, { pattern }); assert.ok(sc);
     if (!sc.back) { assert.ok(sc.mates[0][0] <= 3, `${sc.id}: no pass back, though the passer is not by our goal`); continue; } // (the passer right by our goal: no pass back)
-    back++; assert.deepEqual(optionsFor(sc), ['turn:L', 'turn:R', 'turn:B']);
-    assert.equal(gradeOf(sc, 'turn:B'), 'safe', `${sc.id}: the pass back`);
+    assert.deepEqual(optionsFor(sc), ['turn:L', 'turn:R', 'turn:B']);
+    const gr = gradeOf(sc, 'turn:B'); seen[gr]++;
+    if (pattern === 'peek-back') { assert.equal(gr, 'best'); assert.ok(['turn:L', 'turn:R'].every(o => gradeOf(sc, o) === 'bad'), `${sc.id}: a turn was open`); }
+    else assert.equal(gr, sc.cut ? 'bad' : 'safe', sc.id);
   }
-  assert.ok(back >= n * .8, `${back} of ${n}`);
+  assert.ok(seen.best && seen.bad >= 5 && seen.safe, JSON.stringify(seen));
 });
 
 test('defending: 3 places at Level 1, 4 from Level 2; the fourth (back to goal) is okay or bad from the picture', () => {
@@ -51,7 +53,8 @@ test("get open, don't crowd your friend: he is beside a friend who dribbles; bes
     assert.equal(gradeOf(sc, 'spot:ball'), 'bad'); assert.equal(sp('ball').why, 'inway'); assert.equal(BAD.inway, 'You got in his way!');
     assert.equal(gradeOf(sc, 'spot:stay'), 'bad'); assert.equal(sp('stay').why, 'close');
     const g = kinds(sc, sc.spots.map(s => 'spot:' + s.id));
-    assert.equal(sc.spots.length, level === 1 ? 4 : 5, 'rings and staying'); assert.ok(g.includes('safe'), 'one more okay place');
+    assert.equal(sc.spots.length, 5, 'rings and staying'); assert.ok(g.includes('safe'), 'one more okay place');
+    assert.equal(gradeOf(sc, 'spot:behind'), 'bad'); assert.equal(sp('behind').why, 'behind'); // (v64: far up the field, but behind their player)
     if (seed <= 2) for (const opt of optionsFor(sc)) assert.deepEqual(judge(await playOption(sc, opt)), [], `${sc.id} ${opt}`);
   }
 });
@@ -141,4 +144,32 @@ test('once learned, restarts come up in matches, and a match with them runs to t
     const score = await drive(g, g.match(ids, extra, 3, 'free'), { pick: gm => { if (gm.sc.restart) restarts++; if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null; return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); }, maxSec: 1500 });
     assert.ok(score.us >= 3 || score.them >= 3, JSON.stringify(score)); assert.ok(restarts > 0, 'no restart came up');
   } finally { Math.random = real; }
+});
+
+test('training: 4 rounds are 2 ideas, 2 rounds each; one answer never moves a lesson\'s box', () => {
+  const p = defaultProgress();
+  for (const s of PATH) finishSession(p, s.id, 6, 6, 10);
+  assert.equal(TRAINING_IDEAS, 2); assert.equal(TRAINING_ROUNDS / TRAINING_IDEAS, 2);
+  assert.equal(trainingPlan(p, PATH, { day: 40, lessons: TRAINING_IDEAS }).length, 2);
+  const box = id => p.skills[id].box, b0 = box('look-up');
+  trained(p, 'look-up', [true], { day: 40 }); assert.equal(box('look-up'), b0, 'one right answer');
+  trained(p, 'look-up', [false], { day: 41 }); assert.equal(box('look-up'), b0, 'one wrong answer');
+  trained(p, 'look-up', [true, true], { day: 60 }); assert.equal(box('look-up'), b0 + 1, 'two right answers while due');
+});
+
+test('first sessions show every situation the level allows ("crowd" in Get open!, "side-pass" in Spread out!)', () => {
+  for (const n of [5, 6]) {
+    assert.ok(sessionRounds('get-open', n, { first: true }).some(sc => sc.pattern === 'crowd'), `get-open ${n}`);
+    assert.ok(sessionRounds('spread-out', n, { first: true }).some(sc => sc.pattern === 'side-pass'), `spread-out ${n}`);
+  }
+});
+
+test('the mini match keeps to his level: no Level 2 restarts before Level 2', async () => {
+  const later = generate('spread-out', 3, { pattern: 'side-two' }), easy = generate('spread-out', 3, { pattern: 'side-in' });
+  assert.equal(atLevel(later, 'spread-out', 0), false); assert.equal(atLevel(later, 'spread-out', 1), false); assert.equal(atLevel(later, 'spread-out', 2), true);
+  assert.equal(atLevel(easy, 'spread-out', 0), true);
+  const { drive } = await import('./harness.js'); const { g } = makeGame(); const pats = new Set();
+  const fits = sc => atLevel(sc, 'spread-out', 0), extra = Array.from({ length: 12 }, (_, k) => generate('spread-out', 500 + k)).filter(fits);
+  await drive(g, g.match(['spread-out'], extra, 2, 'match', fits), { pick: gm => { if (!gm.sc.live) pats.add(gm.sc.pattern); return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:fwd'); }, maxSec: 900 });
+  assert.ok(![...pats].some(p => RESTART_LATER.has(p)), [...pats].join());
 });

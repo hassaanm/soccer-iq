@@ -106,10 +106,10 @@ export const live = {
     return false;
   },
 
-  async match(skillIds, extra = [], toWin = 2, mode = 'match') {
+  async match(skillIds, extra = [], toWin = 2, mode = 'match', keep = null) { // keep: which situations may come up (v64: the mini match, at his level)
     this.mode = mode;
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
-    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra]);
+    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
     // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.

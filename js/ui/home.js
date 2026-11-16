@@ -101,7 +101,7 @@ function renderLessons() {
     const open = lessonOpen(PATH.indexOf(l)), lv = level(P, l.id);
     const fresh = open && !P.skills[l.id]?.sessions && P.fresh?.includes(l.id); // a lesson added since his last visit (see progress.js catchUp)
     return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''} ${fresh ? 'new' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
-      <span class="e">${open ? lessonPic(l.id, l.emoji) : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
+      <span class="e">${open ? lessonPic(l.id, l.emoji) : '🔒'}</span><span class="k">${l.short || l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
   };
   const top = graduated(P, PATH) ? `<button class="tile train ${training ? 'on' : ''}" data-id=""><span class="e">💪</span><span class="k">Today's training</span><span class="st">a mix of what you need</span></button>` : '';
   $('#lessons').innerHTML = top + chapters(tile);

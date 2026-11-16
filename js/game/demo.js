@@ -85,7 +85,7 @@ export const demo = {
   async demo(skillId) {
     this.mode = 'demo';
     const sc = demoScenario(skillId); this.load(sc);
-    const hero = this.name('hero'), tip = skillById(skillId)?.tip || '';
+    const hero = this.name('hero'), tip = skillById(skillId)?.tip || '', capTip = skillById(skillId)?.capTip; // capTip: a shorter caption for a long tip, so it covers no gold place (v64)
     const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`);
     await this.pre(); await intro;
     this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.showing = true;
@@ -93,7 +93,7 @@ export const demo = {
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
     else { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; }
     await this.delay(.9);
-    await this.talk(tip, 1.8); // the lesson's one idea: let it sit before anything moves
+    await this.talk(tip, 1.8, capTip); // the lesson's one idea: let it sit before anything moves
     // He looks around first, so the choice doesn't come out of nowhere. For a pass he ends up facing the open
     // friend; otherwise he turns back to the space ahead (or to the ball on defense).
     const mateId = MATE[sc.best], h = this.sim.a('hero');

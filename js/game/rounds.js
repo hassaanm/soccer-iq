@@ -19,6 +19,7 @@ export const rounds = {
     if (sc.gk?.from) s.go('k2', ...sc.gk.them, Math.hypot(sc.gk.them[0] - sc.gk.from[0], sc.gk.them[1] - sc.gk.from[1]) / 1.15); // their keeper rushes out at him (v62)
     if (sc.kind === 'defense') s.go(sc.carrier, ...sc.oppsTo[0], 3);
     (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
+    if (sc.gk?.hold) { const k = s.a(sc.carrier); Object.assign(s.ball, { state: 'held', carrier: k.id, move: null, reach: null }); k.gkm = { k: 'hold', t0: s.time, low: false }; } // (v64: the keeper's ball, in his hands)
     if (sc.matesTo) sc.matesTo.forEach((p, i) => { const a = s.a('m' + (i + 1)), d = a && Math.hypot(p[0] - a.x, p[1] - a.y); if (d > .05) s.go(a.id, ...p, Math.max(1, d / 1.25)); }); // (v64: a friend dribbling up as he decides)
     await this.delay(1.3);
     s.stopAll();
