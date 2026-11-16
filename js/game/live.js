@@ -40,7 +40,7 @@ function liveDefense(s, guard = true) {
   const mates = friends(s), near = (p, k) => mates.some(m => Math.hypot(m[0] - p[0], m[1] - p[1]) < k);
   const ok = ([x, y]) => x > 1 && x < L - 1 && y > 1 && y < W - 1;
   const cand = [{ id: 'home', p: goalSide(P(c), 2.6), label: 'In front' },
-    ...(guard ? others.map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with One goes, one guards
+    ...(guard ? others.filter(o => others.filter(q => dist(q, h) < dist(o, h)).length < 2).map(o => ({ id: o.id, p: goalSide(P(o), 1.2), label: near(P(o), 2) ? 'Help guard' : 'Guard' })) : []), // "Guard" spots come with One goes, one guards (the two of theirs nearest him: four rings at any size)
     { id: 'chase', p: [c.x + 1.3, c.y], label: 'Behind him' }];
   const spots = [];
   for (const sp of cand) if (ok(sp.p) && dist({ x: sp.p[0], y: sp.p[1] }, h) > 1 && spots.every(t => Math.hypot(t.x - sp.p[0], t.y - sp.p[1]) > 2.2)) spots.push({ id: sp.id, x: sp.p[0], y: sp.p[1], label: sp.label });
