@@ -3,8 +3,6 @@
 import { dist, dribbleEnd, lerp } from '../geom.js';
 import { grade, pushEnd, LEAD, RUN_UP, SHOT, OKAY } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
-// The rule for the foot ("Inside or laces?"), in his coach's words: said when he picked the right space with the wrong foot.
-const FOOT_TIP = { in: 'Close? Inside, for control.', las: 'Far? Laces, for power!' };
 import { pickFoot } from './outcomes.js';
 
 export const rounds = {
@@ -122,7 +120,10 @@ export const rounds = {
     if (this.sc.best && opt === this.sc.best) return 'best';
     if (this.sc.kind === 'tackle' || this.sc.then) return 'bad'; // a give-and-go step 1 has one right answer: the pass
     if (opt.startsWith('turn:')) return grade(this.sc)['drib:' + this.sc.turns[opt[5]]] === 'good' ? 'ok' : 'bad';
-    if (opt.startsWith('shoot:') && !this.sc.shots?.[opt]) { const r = this.rating('shoot'); return r !== 'bad' && this.shotOf(opt).res === 'goal' ? r : 'bad'; } // (a match: as SHOOT is, if it goes in)
+    if (opt.startsWith('shoot:') && !this.sc.shots?.[opt]) { // (a match: as SHOOT is, then each part he picked: the target and the foot; v64: by the choice, not by how the chances fell)
+      const r = this.rating('shoot'), g = this.shotPartGrades(opt);
+      return r === 'bad' || g?.space === false || (g?.foot === false && g.space == null) ? 'bad' : g?.space === 'okay' || g?.foot === false ? 'safe' : r; // (the foot alone wrong: a miss, as before; with a good target: 2 stars)
+    }
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
     if (spotKind(this.sc)) return 'bad';
@@ -187,7 +188,7 @@ export const rounds = {
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
       const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
       const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY)
-      const tip = OKAY[why] || (opt.startsWith('shoot:') ? 'Good space! ' + FOOT_TIP[this.shotOf(opt).res === 'over' ? 'in' : 'las'] : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
+      const tip = OKAY[why] || (opt.startsWith('shoot:') ? this.shotTip(opt) : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
         : good && this.light && attempt === 1 ? { stars: 3, light: true, said: praise } // stars and the praise, then on
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : opt !== sc.best && MATE[opt] ? `${praise} ${this.named(`{m${opt[5]}} was open too!`)}` : `${praise} ${this.cue()}`, said: praise } // (a pass as good as the best one: the praise names the friend he picked) // show why it was right, so the idea sticks; say the praise

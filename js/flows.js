@@ -67,9 +67,9 @@ const ifOpen = t => (playOpen(P) ? t : null);
 const toMatch = () => ifOpen({ icon: '⚽', text: 'Match', go: runFreePlay });
 const toCup = () => ifOpen({ icon: '🏆', text: 'Cup', go: openCups });
 function toLessons() {
-  if (trainingNext()) return { icon: '💪', text: 'Training', go: runSession };
+  if (trainingNext()) return { icon: '💪', text: 'Training', label: 'TODAY', go: runSession };
   const sk = skillById(nextSkill(P, PATH));
-  return { icon: sk.emoji, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); } };
+  return { icon: sk.emoji, pic: sk.id, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); } };
 }
 // After a match or a cup round: the idea he missed most in it (game/live.js), named on the card as "Tomorrow: …" and
 // put into tomorrow's practice (progress.js focus). Only a lesson he has passed (training mixes only those).
@@ -135,8 +135,8 @@ const runLesson = flow(async () => {
     // Next: a match, a cup, or the lessons: this one again until it is passed, then the next one (once every lesson is
     // passed, today's training). Play this one again is the small corner button.
     match: toMatch(), cup: toCup(),
-    lesson: !passed(P, skillId) ? { icon: '↺', text: 'Try again', go: () => { P.pick = skillId; save(); runSession(); } }
-      : !graduated(P, PATH) && nextSk && lessonOpen(i + 1) ? { icon: nextSk.emoji, text: nextSk.kid, go: () => { P.pick = nextSk.id; save(); runSession(); } } : toLessons(),
+    lesson: !passed(P, skillId) ? { icon: '↺', text: 'Try again', label: 'THIS LESSON', go: () => { P.pick = skillId; save(); runSession(); } }
+      : !graduated(P, PATH) && nextSk && lessonOpen(i + 1) ? { icon: nextSk.emoji, pic: nextSk.id, text: nextSk.kid, go: () => { P.pick = nextSk.id; save(); runSession(); } } : toLessons(),
     again: passed(P, skillId) ? { text: '↺ Again', go: () => { P.pick = skillId; save(); runSession(); } } : null,
     paper: won ? 70 : 0,
   });

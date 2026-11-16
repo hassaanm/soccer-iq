@@ -8,6 +8,7 @@ import { PATH, CHAPTERS, skillById } from '../skills.js';
 import { CUPS } from '../cups.js';
 import { nextSkill, level, isOpen, graduated, playOpen } from '../progress.js';
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
+import { lessonPic } from './pics.js';
 
 // ---------- team size ----------
 // The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
@@ -16,12 +17,16 @@ import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
 const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
 const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
-// A keeper (5v5): in his goal, in a keeper's colour (neither team's), with white gloves out to the sides.
-const glove = (x, y) => `<path d="M${x - 3.2} ${y + 3.4}v-4.6a1.2 1.2 0 0 1 2.4 0v-1.6a1.1 1.1 0 0 1 2.2 0v1.2a1.1 1.1 0 0 1 2.2 0v2.2l1-1.2a1.1 1.1 0 0 1 1.7 1.4l-2.6 3.4z" fill="#fff" stroke="#24193a" stroke-width="1.1" stroke-linejoin="round"/>`;
-const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * 3}" cy="30" r="6.5" fill="#b6f22a" stroke="#24193a" stroke-width="2"/>${glove(x + s * 3 - .5, 19.5)}${glove(x + s * 3 - .5, 38)}`; // his shirt and two big white gloves
+// A keeper (5v5): in his goal, in a keeper's colour (neither team's), a little bigger than the others, with one big white
+// glove in the middle of his circle (v64: nothing outside it), so he reads as "the one who uses his hands" even on the
+// small chip. The glove: a palm, four fingers and a thumb, white over a dark outline (the same lines drawn wider first).
+const GLOVE = '<rect x="-4" y="-1.2" width="8" height="7" rx="2.4"/><path d="M-2.9 -.5V-4.8M-.95 -.5V-6.1M.95 -.5V-6.1M2.9 -.5V-4.8M-3.2 3.2L-5.9 .2"/>';
+const glove = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})" stroke-linecap="round" stroke-linejoin="round"><g fill="#24193a" stroke="#24193a" stroke-width="3.6">${GLOVE}</g><g fill="#fff" stroke="#fff" stroke-width="1.8">${GLOVE}</g></g>`;
+const KR = 7.2, KX = 8.6; // his circle's radius, and how far in from the end line its middle is
+const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * (KX - 3.5)}" cy="30" r="${KR}" fill="#b6f22a" stroke="#24193a" stroke-width="2"/>${glove(x + s * (KX - 3.5) + .15, 30.3, .56)}`;
 const pitchPic = id => {
   const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
-  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 12 + x * .85 : x, y]); // (with keepers: the diamond steps up in front of him)
+  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 14 + x * .8 : x, y]); // (with keepers: the diamond steps up in front of him)
   return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>`
     + (gk ? keeperPic(3.5, 1) + keeperPic(96.5, -1) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
 };
@@ -96,11 +101,11 @@ function renderLessons() {
     const open = lessonOpen(PATH.indexOf(l)), lv = level(P, l.id);
     const fresh = open && !P.skills[l.id]?.sessions && P.fresh?.includes(l.id); // a lesson added since his last visit (see progress.js catchUp)
     return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''} ${fresh ? 'new' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
-      <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
+      <span class="e">${open ? lessonPic(l.id, l.emoji) : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
   };
   const top = graduated(P, PATH) ? `<button class="tile train ${training ? 'on' : ''}" data-id=""><span class="e">💪</span><span class="k">Today's training</span><span class="st">a mix of what you need</span></button>` : '';
   $('#lessons').innerHTML = top + chapters(tile);
-  $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
+  $('#lessonBtn .le').innerHTML = lessonPic(cur, sk.emoji); $('#lessonBtn b').textContent = sk.kid;
   for (const c of $$('#lessons .tile')) c.onclick = () => { P.pick = c.dataset.id || null; save(); renderLessons(); $('#lessonSheet').classList.add('hidden'); };
   // Match and Cup open for the day once he has done today's lesson or training.
   for (const b of ['#freeBtn', '#cupBtn']) $(b).classList.toggle('locked', !playOpen(P));

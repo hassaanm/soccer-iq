@@ -1,6 +1,7 @@
 // The results card at the end of a lesson, training, match or cup round.
 import { $, reducedMotion } from './dom.js';
 import { sfx } from '../sound.js';
+import { lessonPic } from './pics.js';
 
 const el = $('#results'), part = k => el.querySelector(k);
 
@@ -21,13 +22,16 @@ function confetti(n) {
     + `animation-duration:${rnd(170, 330) / 100}s;animation-delay:${rnd(0, 80) / 100}s"></i>`).join('');
   el.prepend(box); setTimeout(() => box.remove(), 4500); // behind the card, so it never covers the tiles
 }
-// What comes next: three tiles of the same size and weight, always in the same places (⚽ Match blue, 🏆 Cup gold, the
-// lessons violet with a little book), a big picture with a short word under it. None is the "obvious" one. A tile that is null is not
-// open now and is left out. `again` is a small extra button in the corner (play this again, all cups); Home is in
-// the other corner.
-function tile(b, t) {
+// What comes next: three tiles of the same size and weight, always in the same places (v64, left to right: the lesson
+// violet, ⚽ Match blue, 🏆 Cup gold), a big picture with a short word under it. None is the "obvious" one. The lesson tile
+// says over its picture what it is (`label`: "NEXT LESSON" unless the tile says otherwise, as "THIS LESSON" for Try again
+// or "TODAY" for training). A tile that is null is not open now and is left out. `again` is a small extra button in the
+// corner (play this again, all cups); Home is in the other corner.
+function tile(b, t, label = null) {
   b.classList.toggle('hidden', !t); if (!t) return;
-  b.querySelector('i').textContent = t.icon; b.querySelector('b').textContent = t.text; b.onclick = t.go;
+  b.querySelector('i').innerHTML = lessonPic(t.pic, t.icon); b.querySelector('b').textContent = t.text; b.onclick = t.go; // (i: a lesson's own picture, or the emoji)
+  const lbl = b.querySelector('.lbl'); if (lbl) lbl.textContent = t.label ?? label ?? '';
+  b.setAttribute('aria-label', [t.label ?? label, t.text].filter(Boolean).join(': '));
   if (t.small) b.querySelector('b').prepend(Object.assign(document.createElement('small'), { textContent: t.small + ' ' })); // (a cup's own emoji)
 }
 
@@ -36,8 +40,9 @@ function tile(b, t) {
 //   sticker, trophy      a sticker he earned (shown in place of the emoji); `trophy` adds the gold burst
 //   rounds, note         one circle per round (true = right on the first try), and the count in words
 //   news, extra          level news (text), and a block of HTML under it (a backyard game, the cup path)
-//   match, cup, lesson   the three next steps: { icon, text, small, go }, or null when that one is not open (small:
-//                        a little picture before the word, as a cup's own emoji)
+//   lesson, match, cup   the three next steps: { icon, text, small, label, pic, go }, or null when that one is not open
+//                        (small: a little picture before the word, as a cup's own emoji; label: the lesson tile's
+//                        line over its picture; pic: a lesson's id, for its own picture, ui/pics.js)
 //   again                the small corner button: { text, go }, or none
 //   paper                how many pieces of confetti
 export function fillResults({ emoji = '', sticker, trophy, title, line = '', rounds = [], note = '', news = '', extra = '', match, cup, lesson, again, paper = 0 }) {
@@ -46,7 +51,7 @@ export function fillResults({ emoji = '', sticker, trophy, title, line = '', rou
   part('h2').textContent = title; part('p').textContent = line;
   part('.roundsrow').innerHTML = rounds.map((ok, i) => `<span class="${ok ? 'star' : 'done'}" style="--i:${i}"></span>`).join('');
   part('.roundsnote').textContent = note; part('.levelup').textContent = news; part('.outside').innerHTML = extra;
-  tile($('#goMatch'), match); tile($('#goCup'), cup); tile($('#goLesson'), lesson);
+  tile($('#goLesson'), lesson, 'NEXT LESSON'); tile($('#goMatch'), match); tile($('#goCup'), cup);
   const a = $('#againBtn'); a.classList.toggle('hidden', !again); if (again) { a.textContent = again.text; a.onclick = again.go; }
   confetti(paper);
 }

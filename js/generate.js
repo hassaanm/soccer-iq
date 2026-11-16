@@ -2,7 +2,7 @@
 // with the same geometry the game uses. Anything unclear (a pass lane that is half open, a push the defender
 // might or might not win) is thrown away and rebuilt, so every round has a clear right answer.
 import { PITCH, L, W, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, shuffle, DRIBBLE_DIRS, BACKWARD, TEAM, sizeOf } from './geom.js';
-import { GK, resolve, placedAim, spaces, rightFoot, bestSpaceY } from './shot.js';
+import { GK, resolve, placedAim, rightFoot, shotResult, ZONES, bestZone, zoneGrade } from './shot.js';
 
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
 const FREE = 2.2, MARKED = 1.3;        // receivers: nobody near / a defender right on him
@@ -935,11 +935,12 @@ function shotScene(r, pattern, runs) {
 // right foot), and the right answer. null if the scene does not teach what its pattern is for.
 function finishShots(sc) {
   const K = sc.gk?.them ? pt(sc.gk.them) : null, from = { x: sc.heroTo[0] + .5, y: sc.heroTo[1] }, defs = sc.oppsTo.map(pt), pat = sc.shotPlan;
-  const res = (y, f) => resolve(from, y, f, K, { stray: sc.stray, defs, DEF_RUN }).res;
-  const sp = K ? spaces(sc.shotN) : [], auto = () => bestSpaceY(from, K);
-  const shots = {}, right = rightFoot(from);
-  if (pat === 'aim-open' || pat === 'keeper-out' || pat === 'keeper-friend') { for (const s of sp) for (const f of ['in', 'las']) shots[`shoot:${s.id}:${f}`] = res(s.y, f); } // ("Shoot to the space!": he picks the space)
-  else for (const f of ['in', 'las']) shots['shoot:*:' + f] = res(auto(right), f);                                                                                         // ("Inside or laces?": the biggest space is picked for him)
+  let close = false; // (a shot that only just beats him, or only just does not: not a scene to teach with)
+  const res = (z, f) => { const r = shotResult({ from, ...(z ? { zone: z } : { y: clamp(from.y, PITCH.gy0 + .8, PITCH.gy1 - .8) }), foot: f, k: K, stray: sc.stray, defs, DEF_RUN, spill: sc.spill }); if (K && (r.res === 'goal' || r.res === 'save') && Math.abs(r.gap) < .1) close = true; return r.res; };
+  const shots = {}, right = rightFoot(from), auto = K ? bestZone(from, K) : null;
+  if (pat === 'aim-open' || pat === 'keeper-out' || pat === 'keeper-friend') { for (const z of ZONES) for (const f of ['in', 'las']) shots[`shoot:${z}:${f}`] = res(z, f); } // ("Shoot to the space!": he picks one of the six targets, v64)
+  else for (const f of ['in', 'las']) shots['shoot:*:' + f] = res(auto, f);                                                                         // ("Inside or laces?": the best low target is picked for him)
+  if (close) return null;
   const g = grade(sc), goods = Object.keys(g).filter(k => g[k] === 'good' && !k.startsWith('push:')), keep = goods.filter(o => o.startsWith('drib:') || o.startsWith('pass:'));
   let best, ok = [], safe = [], cue;
   if (pat === 'foot-close') {
@@ -949,10 +950,15 @@ function finishShots(sc) {
     if (right !== 'las' || shots['shoot:*:las'] !== 'goal' || !['save', 'cleared'].includes(shots['shoot:*:in']) || g.shoot !== 'good') return null;
     best = 'shoot:*:las'; safe = keep; cue = 'From out here, laces, for power!';
   } else if (pat === 'aim-open') {
-    const wins = sp.filter(s => shots[`shoot:${s.id}:in`] === 'goal');
-    if (wins.length !== 1 || sp.some(s => shots[`shoot:${s.id}:las`] !== 'over') || g.shoot !== 'good' || right !== 'in') return null;
-    if (sp.some(s => s !== wins[0] && shots[`shoot:${s.id}:in`] !== 'save')) return null;
-    best = `shoot:${wins[0].id}:in`; safe = [`shoot:${wins[0].id}:las`, ...keep]; cue = 'Keeper in goal? Shoot to the big space!';
+    // (v64) One low target goes in, the one away from him; every target at him or high beside him is saved; the high one
+    // on the open side, if it goes in, is only okay (2 stars: it can fly over); a low one beside him that beats him too.
+    // Laces from this close go over, whatever the target.
+    const grades = Object.fromEntries(ZONES.map(z => [z, zoneGrade(from, z, K, { stray: sc.stray, defs, DEF_RUN })]));
+    const wins = ZONES.filter(z => grades[z] === 'best');
+    if (wins.length !== 1 || ZONES.some(z => shots[`shoot:${z}:las`] !== 'over') || g.shoot !== 'good' || right !== 'in') return null;
+    if (ZONES.some(z => grades[z] === 'bad' ? shots[`shoot:${z}:in`] !== 'save' : shots[`shoot:${z}:in`] !== 'goal')) return null; // (a wrong target is saved; a good one goes in)
+    best = `shoot:${wins[0]}:in`; const okay = ZONES.filter(z => grades[z] === 'okay');
+    safe = [`shoot:${wins[0]}:las`, ...okay.flatMap(z => [`shoot:${z}:in`, `shoot:${z}:las`]), ...keep]; cue = 'Keeper in goal? Shoot low, to the big space!';
   } else if (pat === 'keeper-out') {
     if (Object.values(shots).some(v => v === 'goal')) return null;
     const gk = grade({ ...sc, opps: [...sc.opps, sc.gk.them], oppsTo: [...sc.oppsTo, sc.gk.them] }), cuts = ['drib:fl', 'drib:fr'].filter(o => gk[o] === 'good');
