@@ -7,7 +7,7 @@ import { MOVE_NAME } from '../js/flair.js';
 import { EXPLAIN } from '../js/game/skill.js';
 
 const A = 'Saka', B = 'Rice';
-const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B);
+const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B).replaceAll('{m2}', A); // ({m2}: the third friend, at 4v4)
 // The same cleanup say() does before speaking.
 export const clean = t => t.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '').trim();
 

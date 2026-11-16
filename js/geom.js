@@ -21,7 +21,8 @@ export function setSize(id) {
   Object.assign(PITCH, sizeOf().pitch); ({ L, W, gy0, gy1 } = PITCH);
 }
 export const SAVE_KEY = 'soccer-iq:v1'; // where progress.js keeps the save
-try { setSize(JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }
+try { setSize(globalThis.process?.env?.SOCCER_SIZE || JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }
+// (SOCCER_SIZE=4v4 npm test: the tests and tools in Node at another size.)
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };

@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateLookUp, generate, grade, mainPattern } from '../js/generate.js';
 import { PATH } from '../js/skills.js';
+import { sizeOf } from '../js/geom.js';
 import { optionsFor, playOption, judge } from './harness.js';
 
 test('the generator is repeatable and always produces a scenario', () => {
@@ -22,15 +23,16 @@ for (const sk of PATH) for (let seed = 1000; seed < 1006; seed++) {
   });
 }
 
-test('every lesson makes every pattern, each with 3 defenders, 2 teammates, a right answer and a cue', () => {
+test('every lesson makes every pattern, each with a defender per player (3 at 3v3), his friends, a right answer and a cue', () => {
+  const n = sizeOf().out;
   for (const sk of PATH) {
     const seen = new Set();
     for (let seed = 1; seed <= 120; seed++) {
       const sc = generate(sk.id, seed);
       assert.ok(sc, `${sk.id} ${seed}: nothing generated`);
       seen.add(sc.pattern);
-      assert.equal(sc.opps.length, 3, `${sc.id}: ${sc.opps.length} defenders`);
-      assert.equal(sc.mates.length, 2, `${sc.id}: ${sc.mates.length} teammates`);
+      assert.equal(sc.opps.length, n, `${sc.id}: ${sc.opps.length} defenders`);
+      assert.equal(sc.mates.length, n - 1, `${sc.id}: ${sc.mates.length} teammates`);
       assert.ok(sc.best && sc.cue, `${sc.id}: no right answer or cue`);
       assert.ok(optionsFor(sc).includes(sc.best), `${sc.id}: right answer ${sc.best} is not an option`);
     }

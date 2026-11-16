@@ -769,7 +769,7 @@ const sp2 = sc => (sc.spots || []).map(s => [s.x, s.y]);
 // Our extra player and his marker (theirs, goal-side of him toward x = L), with the marker's run-up start.
 const marked = (r, F) => { const A = goalSideOf(F, 1 + r() * .25); return { F, A }; };
 // Attacking scenes in which their whole team is behind him (or he is about to shoot): our extra pair is behind too.
-const BEHIND = new Set(['space-behind', 'counter', 'counter-shot', 'counter-pass', 'shot-open', 'shot-blocked', 'shot-far', 'space-far']);
+const BEHIND = new Set(['space-behind', 'counter', 'counter-shot', 'counter-pass', 'shot-open', 'shot-blocked', 'shot-far', 'space-far', 'space-friend', 'space-near']); // (and the space lessons: the grass ahead is his)
 function extraAttack(r, sc) {
   const H = sc.heroTo, pat = sc.pattern, back = BEHIND.has(pat) || r() < .5;
   const a = back ? Math.PI * (.62 + r() * .76) * pick(r, [1, -1]) : (r() - .5) * 2 * Math.PI, k = 6 + r() * 5;
