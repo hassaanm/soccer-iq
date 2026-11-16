@@ -154,7 +154,7 @@ export const live = {
   react(opt) {
     this.praise(opt); this.hintNext = null;
     const sc = this.sc, r = this.rating(opt); this.logChoice(opt, r); if (!sc.best) return; // a tough spot: there was no better choice
-    const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? 2 : 0;
+    const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? (this.shotMissed?.(opt) ? 1 : 2) : 0; // (a shot that does not go in: 1 star at most)
     if (stars) this.hud.pop?.(stars, () => this.world.project?.(h.x, h.y, 1.55));
     if (stars < 3) this.betterRing(opt);
     if (r !== 'bad') return;

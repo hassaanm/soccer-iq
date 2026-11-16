@@ -383,9 +383,10 @@ export class Sim {
       // is gathered up to his chest, and brought down again to roll it out.
       const c = this.a(b.carrier), m = c?.gkm;
       if (c) {
-        const roll = m?.k === 'roll', fwd = roll ? .45 : m?.k === 'reach' ? .42 : .3, tx = m?.k === 'dive' && m.hand ? m.hand.x : c.x + c.face[0] * fwd, ty = m?.k === 'dive' && m.hand ? m.hand.y : c.y + c.face[1] * fwd;
+        const down = m?.k === 'dive' && m.hand && this.time < m.t0 + m.dur + .45; // (after a dive: in his hands on the grass while he lies there, then up at his chest as he gets up)
+        const roll = m?.k === 'roll', fwd = roll ? .45 : m?.k === 'reach' ? .42 : .3, tx = down ? m.hand.x : c.x + c.face[0] * fwd, ty = down ? m.hand.y : c.y + c.face[1] * fwd;
         // (still down after a save, 'reach': at his hands, low; then up with him)
-        const tz = m?.k === 'dive' && m.hand ? (m.high ? Math.max(.2, (m.hz || 1.2) - 2.5 * Math.max(0, this.time - m.t0 - m.dur)) : .2) : roll ? BALL_LOW : m?.k === 'reach' ? .22 : .85, dx = tx - b.x, dy = ty - b.y, dz = tz - (b.z || 0), d = Math.hypot(dx, dy, dz), k = d > HAND * dt ? HAND * dt / d : 1;
+        const tz = down ? (m.high ? Math.max(.2, (m.hz || 1.2) - 6 * Math.max(0, this.time - m.t0 - m.dur)) : .2) : m?.k === 'dive' ? .6 : roll ? BALL_LOW : m?.k === 'reach' ? .22 : .85, dx = tx - b.x, dy = ty - b.y, dz = tz - (b.z || 0), d = Math.hypot(dx, dy, dz), k = d > HAND * dt ? HAND * dt / d : 1;
         b.x += dx * k; b.y += dy * k; b.z = (b.z || 0) + dz * k;
       }
     } else if (b.state === 'flying') {

@@ -66,11 +66,12 @@ function finish(said) {
 // training, or the next lesson; while the Cup is still locked today it glows a little (`hot`), so after a match the
 // short training is the natural next thing (play, practise, play).
 const ifOpen = t => (playOpen(P) ? t : null);
-const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : null);
-const toCup = () => ifOpen({ icon: '🏆', text: 'Cup', go: openCups });
+// (v64 round 2) Not open yet: the tile stays, dimmed with a lock, and a tap says how to open it (gated), as on the home screen.
+const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
+const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
 function toLessons() {
   const hot = !playOpen(P);
-  if (trainingNext()) return { icon: '💪', text: 'Training', label: 'TODAY', go: runSession, hot };
+  if (trainingNext()) return { icon: '💪', text: 'Training', label: P.openDay === today() ? 'AGAIN' : 'TODAY', go: runSession, hot }; // (v64 round 3: once today's is done, it does not say it is still to do)
   const sk = skillById(nextSkill(P, PATH));
   return { icon: sk.emoji, pic: sk.id, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); }, hot };
 }
@@ -241,14 +242,14 @@ const runCup = flow(async cupId => {
   save();
   if (won && final) {
     fillResults({ sticker: cup.emoji, trophy: true, title: 'Champions!', line, note, news: `You won the ${cup.name}!`,
-      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }), lesson: toLessons(), paper: 140 });
+      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }) || toCup(), lesson: toLessons(), paper: 140 });
     return finish('You won the cup!');
   }
   const round = names[run.round];
   fillResults({
     emoji: cup.emoji, title: won ? 'You won!' : 'So close!', line, note, news: won ? `On to the ${round.toLowerCase()}!` : `Play the ${round.toLowerCase()} again!`, extra: cupPath(run),
     // The cup tile plays this cup on (the next round, or this one again); every cup is the small corner button.
-    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }), lesson: toLessons(),
+    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }) || toCup(), lesson: toLessons(),
     again: { text: '🏆 All cups', go: openCups },
     paper: won ? 70 : 0,
   });

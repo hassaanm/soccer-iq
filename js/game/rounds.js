@@ -192,7 +192,7 @@ export const rounds = {
       const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
       const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY); some wrong runs say why (BAD)
       const tip = OKAY[why] || (opt.startsWith('shoot:') ? this.shotTip(opt) : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
-      this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
+      this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: this.shotMissed?.(opt) ? 1 : 2, text: tip, watch: true, say: true } // (v64: a shot that does not go in never shows more than 1 star)
         : good && this.light && attempt === 1 ? { stars: 3, light: true, said: praise } // stars and the praise, then on
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : opt !== sc.best && MATE[opt] ? `${praise} ${this.named(`{m${opt[5]}} was open too!`)}` : `${praise} ${this.cue()}`, said: praise } // (a pass as good as the best one: the praise names the friend he picked) // show why it was right, so the idea sticks; say the praise
         : BAD[why] ? { stars: 0, text: BAD[why], say: true }

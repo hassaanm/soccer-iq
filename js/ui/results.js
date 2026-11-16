@@ -25,13 +25,15 @@ function confetti(n) {
 // What comes next: three tiles of the same size and weight, always in the same places (v64, left to right: the lesson
 // violet, ⚽ Match blue, 🏆 Cup gold), a big picture with a short word under it. None is the "obvious" one. The lesson tile
 // says over its picture what it is (`label`: "NEXT LESSON" unless the tile says otherwise, as "THIS LESSON" for Try again
-// or "TODAY" for training). A tile that is null is not open now and is left out. `again` is a small extra button in the
+// or "TODAY" for training). A tile that is not open now (`locked`, v64 round 2) shows dimmed with a plain lock for its
+// picture, as on the home screen, and a tap says how to open it: so there are always three, in the same order. A null
+// tile is left out. `again` is a small extra button in the
 // corner (play this again, all cups); Home is in the other corner.
 function tile(b, t, label = null) {
   b.classList.toggle('hidden', !t); if (!t) return;
-  b.querySelector('i').innerHTML = lessonPic(t.pic, t.icon); b.querySelector('b').textContent = t.text; b.onclick = t.go; b.classList.toggle('hot', !!t.hot); // (i: a lesson's own picture, or the emoji; hot, v64: the next thing to do today)
+  b.querySelector('i').innerHTML = t.locked ? '🔒' : lessonPic(t.pic, t.icon); b.classList.toggle('locked', !!t.locked); b.querySelector('b').textContent = t.text; b.onclick = t.go; b.classList.toggle('hot', !!t.hot); // (i: a lesson's own picture, or the emoji; hot, v64: the next thing to do today)
   const lbl = b.querySelector('.lbl'); if (lbl) lbl.textContent = t.label ?? label ?? '';
-  b.setAttribute('aria-label', [t.label ?? label, t.text].filter(Boolean).join(': '));
+  b.setAttribute('aria-label', [t.label ?? label, t.text, t.locked && 'locked'].filter(Boolean).join(': '));
   if (t.small) b.querySelector('b').prepend(Object.assign(document.createElement('small'), { textContent: t.small + ' ' })); // (a cup's own emoji)
 }
 
@@ -41,7 +43,7 @@ function tile(b, t, label = null) {
 //   rounds, note         one circle per round (true = right on the first try), and the count in words
 //   news, extra          level news (text), and a block of HTML under it (a backyard game, the cup path)
 //   lesson, match, cup   the three next steps: { icon, text, small, label, pic, go }, or null when that one is not open
-//                        (small: a little picture before the word, as a cup's own emoji; label: the lesson tile's
+//                        (small: a little picture before the word, as a cup's own emoji; locked: dimmed, a lock; label: the lesson tile's
 //                        line over its picture; pic: a lesson's id, for its own picture, ui/pics.js)
 //   again                the small corner button: { text, go }, or none
 //   paper                how many pieces of confetti

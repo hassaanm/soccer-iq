@@ -16,8 +16,8 @@ import { makeEnv, buildBeams, sunSprite } from './pro/light.js';
 import { makeSky } from './pro/sky.js';
 import { turf, TURF } from './pro/grass.js';
 
-const { L, W, gy0, gy1, gh } = PITCH;
-const AIM_SIZE = .62; // the goal's targets, as a share of their ring's full size (v64: six of them fit the goal mouth) // (the pitch of the size saved when the page loaded: see geom.js setSize)
+const { L, W, gy0, gy1, gh } = PITCH; // (the pitch of the size saved when the page loaded: see geom.js setSize)
+const AIM_SIZE = .57; // the goal's targets, as a share of their ring's full size (v64: six of them fit the goal mouth)
 const CX = L / 2, CY = W / 2, BALL_R = .125; // the ball's radius: in proportion to the players, about as wide as a head
 const M = c => new THREE.MeshStandardMaterial({ color: c, roughness: .72 });
 // Everything that differs between the two times of day. `key` is the sun by day; by night it and three `fill`
@@ -395,10 +395,14 @@ export class World {
     // The spaces in the goal he can shoot at (v62): the same gold rings, standing up in the goal mouth, facing the pitch.
     this.aimPool = Array.from({ length: 6 }, () => { // (v64: six, two rows of three; drawn at AIM_SIZE, so neighbours never touch)
       const g = new THREE.Group();
-      const disc = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, toneMapped: false }));
-      const ring = new THREE.Mesh(new THREE.RingGeometry(.42, .58, 32), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
-      const dot = new THREE.Mesh(new THREE.CircleGeometry(.13, 16), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, side: THREE.DoubleSide }));
-      ring.position.z = dot.position.z = .01; g.add(disc, ring, dot); g.rotation.set(0, -Math.PI / 2, 0, 'XYZ'); g.visible = false; this.scene.add(g); return g;
+      // (v64 round 2) Each target stands out whatever is behind it (a yellow board, the net, the sky): a dark disc behind it
+      // and a dark edge round the gold ring, then the white dot.
+      const mat = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(.6, 32), mat(0x24193a, .5));
+      const edge = new THREE.Mesh(new THREE.RingGeometry(.56, .68, 32), mat(0x24193a));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.42, .58, 32), mat(0xffd23f));
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(.13, 16), mat(0xffffff));
+      edge.position.z = .005; ring.position.z = .01; dot.position.z = .015; [disc, edge, ring, dot].forEach((m, i) => { m.renderOrder = 3 + i; }); g.add(disc, edge, ring, dot); g.rotation.set(0, -Math.PI / 2, 0, 'XYZ'); g.visible = false; this.scene.add(g); return g; // (drawn in this order, back to front)
     });
     this.spotPool = Array.from({ length: 6 }, () => {
       const g = new THREE.Group();

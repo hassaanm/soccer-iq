@@ -38,12 +38,13 @@ export const CHANCE = {
 // A column counts as "beside him" when the ball's way passes within BESIDE m of his middle (his reach and a step); the
 // column nearest him is "at him"; the rest are "away".
 export const BESIDE = 1.3;
-// The keeper's guess (matches only): in a close 1v1 (DUEL m or closer, nobody else in the way) he goes early to one side
-// GUESS of the time, about GUESS_T s before the kick (a lean and a step a watching child can see); to the bigger space
-// GUESS_BIG of the time. A ball to the side he went he saves GUESS_SAVE of the time; one to the other side or the middle
-// goes in. (The research said 1 in 4, always to the bigger space: with that a well-chosen shot in a 1v1 scored only 3 in
-// 4. With these numbers it scores about 0.86 in a 1v1 and about 0.9 overall.)
-export const DUEL = 6, GUESS = .1, GUESS_BIG = .6, GUESS_SAVE = .75, GUESS_T = .3;
+// The keeper's guess (matches only): when he shoots from close (DUEL m or closer, nobody else in the way) the keeper
+// guesses GUESS of the time: a lean and a step to one side about GUESS_T s before the kick (a watching child can see it),
+// then the dive that way at the kick, whatever happens; to the bigger space GUESS_BIG of the time. A ball to the side he
+// went he saves GUESS_SAVE of the time; one to the other side or the middle goes in. (The research said 1 in 4 in a close
+// 1v1, to the bigger space: a well-chosen shot then scored only 3 in 4. Round 3 asked to see it about once a match or
+// two; with these numbers a well-chosen shot scores about 0.85 when he may guess and 0.88 overall.)
+export const DUEL = 8, GUESS = .2, GUESS_BIG = .5, GUESS_SAVE = .6, GUESS_T = .3;
 // A save he takes standing or with a step is held CATCH of the time; a dive, DIVE_CATCH; a hard shot (laces) at him
 // spills half the time (a rebound: "Follow your shot!").
 export const CATCH = .8, DIVE_CATCH = .4, HARD_CATCH = .5;
@@ -54,7 +55,7 @@ export const keeperOn = () => sizeOf().keeper;
 // Each column is IN m inside the post (the middle: the goal's middle); the low row is a ball along the grass (LOW_Z,
 // the height its target is drawn at), the top row TOP m under the bar.
 export const ZONES = ['TL', 'TM', 'TR', 'L', 'M', 'R'];
-const IN = .75, TOP = .48;
+const IN = .6, TOP = .4; // (v64 round 2: spread toward the corners and the bar and the grass, as far as the targets' size allows)
 export const LOW_Z = .3;
 export const zone = id => {
   const c = id.slice(-1), top = id.length > 1;
@@ -143,12 +144,12 @@ export function shotResult({ from, zone: zid = null, y: aimY = null, z: aimZ = L
   if (res === 'save') {
     // What he does: a ball at his body he blocks standing; one within his reach, a step and both hands; farther, down to
     // it along the grass (slowly: getting down is hard for him) or a dive up to a high one.
-    const act = Math.abs(dy) <= GK.catchR ? 'stay' : Math.abs(dy) <= GK.reach + .15 ? 'reach' : top ? 'high' : 'low';
+    const act = Math.abs(dy) <= GK.catchR ? 'stay' : top ? (Math.abs(dy) <= GK.reach + .15 ? 'reach' : 'high') : 'low'; // (a low ball beside him: down sideways to it, v64 round 3)
     const held = !rand ? !spill : rand() < (foot === 'las' && act === 'stay' ? HARD_CATCH : act === 'stay' || act === 'reach' ? CATCH : DIVE_CATCH);
     return { ...base, res, held, act, dir: guess || dir, at, t, gap };
   }
   // In: past his dive (or past his guess the other way).
-  const act = guess && (guess !== dir || Math.abs(dy) <= GK.catchR) ? 'wrong' : Math.abs(dy) <= GK.reach + .15 ? 'reach' : top ? 'high' : 'low';
+  const act = guess && (guess !== dir || Math.abs(dy) <= GK.catchR) ? 'wrong' : top ? (Math.abs(dy) <= GK.reach + .15 ? 'reach' : 'high') : Math.abs(dy) <= GK.catchR ? 'stay' : 'low';
   return { ...base, res: 'goal', act, dir: guess || dir, at, t: d / F.speed, tk: t, gap };
 }
 // The old way of asking (an aim y on the line, a low ball): the shots the game plays by itself, and the generator's
