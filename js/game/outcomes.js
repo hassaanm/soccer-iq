@@ -4,6 +4,7 @@ import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD } f
 import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce } from '../generate.js';
 import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
+import { resolve, placedAim } from '../shot.js';
 
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 // Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
@@ -54,12 +55,13 @@ export const outcomes = {
     if (blocked) { yield* this.end('kept', 1.1); return; }
     // Wind up facing the goal, then check the shot line once more at the moment of the kick.
     this.ai = false; s.stopAll();
-    const shot = { x: L + .7, y: clamp(a.y, gy0 + .8, gy1 - .8) };
+    const gk = s.keeper('them'), shot = { x: L + .7, y: gk ? placedAim(s.ball, gk) : clamp(a.y, gy0 + .8, gy1 - .8) }; // (a keeper: the bigger space)
     const foot = pickFoot(a, shot.x, shot.y, 'shot', opps);
     faceTo(a, shot.x, shot.y);
     for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
     s.windup(id, 'shot', foot); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
+    this.keeperReact(gk, gk && resolve(s.ball, shot.y, 'placed', gk), s.ball, 0);
     s.kick(shot.x, shot.y, { speed: 17, arc: .5 }); this.kicked = true;
     yield () => s.ball.state === 'loose';
     yield* this.end('goal', 1.4);
@@ -88,7 +90,7 @@ export const outcomes = {
   *strike(id, x, y, opts) {
     const s = this.sim, a = s.a(id), to = { x, y };
     yield* this.turnTo(id, x, y);
-    for (const p of s.agents.values()) if (p.id !== id && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
+    for (const p of s.agents.values()) if (p.id !== id && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
     const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, kind, [...s.agents.values()].filter(o => o.team !== a.team));
@@ -278,7 +280,9 @@ export const outcomes = {
   *concede(shooter) {
     const s = this.sim; this.spice(null);
     this.ai = false; s.stopAll();
-    yield* this.strike(shooter.id, -.7, clamp(shooter.y, gy0 + .8, gy1 - .8), { speed: 17, arc: .5 });
+    const gk = s.keeper('us'), y = gk ? placedAim(shooter, gk, 0) : clamp(shooter.y, gy0 + .8, gy1 - .8); // (our keeper: past him, in the bigger space)
+    if (gk) { this.scripted.add(gk.id); s.stop(gk.id); yield* this.turnTo(shooter.id, -.7, y); this.keeperReact(gk, resolve(s.ball, y, 'placed', gk, { gx: 0 }), s.ball); }
+    yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
     yield* this.end('goalAgainst', 1.3);
   },
@@ -339,9 +343,9 @@ export const outcomes = {
   },
   // He shoots: a clear shot goes in; a blocked one is stopped by the defender in the way.
   *shootGen(good) {
-    const s = this.sim, h = s.a('hero'), aim = { x: L + .7, y: clamp(h.y, gy0 + .8, gy1 - .8) };
+    const s = this.sim, h = s.a('hero'), gk = s.keeper('them'), aim = { x: L + .7, y: gk ? placedAim(s.ball, gk) : clamp(h.y, gy0 + .8, gy1 - .8) };
     this.scripted.add('hero'); this.ai = false; s.stopAll();
-    if (good) { yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
+    if (good) { if (gk) { yield* this.turnTo('hero', aim.x, aim.y); this.keeperReact(gk, resolve(s.ball, aim.y, 'placed', gk), s.ball); } yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
     const block = interceptor(s.ball, aim, s.team('them'));
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);

@@ -4,10 +4,12 @@
 // the goal from gy0 to gy1 across, gh high), and `offer`: whether the home screen offers it. Pitches from the federations
 // (v62 research): 3v3 30 x 20 m (DFB 25 x 20, US 23–32 x 14–23); 4v4 32 x 22 m (the US 4v4 maximum); 5v5 38 x 26 m with a
 // 5 m goal (FA 37 x 27, DFB 40 x 25). "Close enough to shoot" stays about 9 m at every size: it is about a child's leg.
+// `area`: the box in front of each goal (m deep, m wide): the keeper's area at 5v5, and at every size the landmark for
+// "close" (inside it, shoot with the inside of the foot) against "the edge" (laces; shot.js CLOSE).
 export const SIZES = {
-  '3v3': { out: 3, keeper: false, pitch: { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 }, offer: true },
-  '4v4': { out: 4, keeper: false, pitch: { L: 32, W: 22, gy0: 9, gy1: 13, gh: 1.6 }, offer: true },
-  '5v5': { out: 4, keeper: true, pitch: { L: 38, W: 26, gy0: 10.5, gy1: 15.5, gh: 1.8 }, offer: false },
+  '3v3': { out: 3, keeper: false, pitch: { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 }, area: { d: 8, w: 12 }, offer: true },
+  '4v4': { out: 4, keeper: false, pitch: { L: 32, W: 22, gy0: 9, gy1: 13, gh: 1.6 }, area: { d: 8, w: 13 }, offer: true },
+  '5v5': { out: 4, keeper: true, pitch: { L: 38, W: 26, gy0: 10.5, gy1: 15.5, gh: 1.8 }, area: { d: 8, w: 14 }, offer: true }, // area: the keeper's (m deep, m wide)
 };
 // The size being played and its pitch. PITCH is changed in place, and L, W, gy0, gy1 are live bindings: a module that
 // reads them when it runs (the generator, the game, the sim) always gets the current pitch. The 3D world builds its

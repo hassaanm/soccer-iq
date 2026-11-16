@@ -56,6 +56,10 @@ function reach(leg, x, y, z, pitch, turn, kn = turn) {
   leg.foot.quaternion.copy(leg.hip.quaternion).multiply(QK.setFromAxisAngle(HINGE, knee)).invert().multiply(Q);
 }
 
+// For pro/keeper.js: pose the body's tilt (hips `lift` m down, leaning `pitch`, rolled `roll` to his right), then a leg.
+export function tiltBody(lift, pitch, roll) { LIFT = lift; CP = Math.cos(pitch); SP = Math.sin(pitch); CR = Math.cos(roll); SR = Math.sin(roll); }
+export const legTo = reach;
+
 // Where one foot is at `q` (0 to 1) through a stride of `Ls` metres, of which it is on the grass for the part
 // `D`. Fills F: x metres ahead of the hips, z the ankle's height, p the foot's pitch.
 const F = { x: 0, z: 0, p: 0 };

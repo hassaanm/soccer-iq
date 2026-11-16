@@ -167,6 +167,16 @@ export const TEAMS = [
 ];
 
 export const teamById = id => TEAMS.find(t => t.id === id) || TEAMS[0];
+// A keeper's kit (v62): one bright colour that is neither team's, so a child sees at once who he is, with dark shorts and
+// big gloves. `other`: the team he plays against (the two keepers also differ from each other).
+const GK_COLORS = ['#b6f22a', '#ff8a1c', '#26d0ce', '#9b5cff', '#ffd400', '#ff4fa3'];
+const rgb = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+const far = (a, b) => { const [p, q] = [rgb(a), rgb(b)]; return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]); };
+export function keeperKit(team, other, not = null) {
+  const away = c => Math.min(...[...team.kit.colors, team.kit.shorts, ...other.kit.colors, other.kit.shorts].map(k => far(c, k)), not ? far(c, not) : 999);
+  const c = [...GK_COLORS].sort((p, q) => away(q) - away(p))[0];
+  return { pattern: 'solid', colors: [c], shorts: '#1b1b1f', socks: c, num: '#1b1b1f', trim: '#1b1b1f', glove: '#f6f6f4' };
+}
 
 // Where each team plays (for the cups): countries by continent, clubs by league.
 const ZONE = {

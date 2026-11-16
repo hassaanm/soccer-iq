@@ -165,13 +165,17 @@ export class Sim {
   // comes in time. A skill turn starts the moment the turn does, so the game asks for it ahead (turnAhead) while play
   // stands still, and sets a.turnTap to the move when the child taps; without it his turns are plain.
 
-  // Builds players for a scenario. Ids: hero, m1, m2 (our team), o1..o3 (them).
+  // Builds players for a scenario. Ids: hero, m1, m2 (m3) (our team), o1..o3 (o4) (them), and with keepers (5v5,
+  // sc.gk) k1 (ours, in the goal at x = 0) and k2 (theirs, at x = L). Keepers are not in team(): the outfield play and
+  // every rule about outfield players leave them out; game/keeper.js moves them and decides what they stop.
   setup(sc) {
     this.agents.clear();
-    const add = (id, team, [x, y]) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, dist: 0, d0: 0, tA: 0, tL: 1.4, tN: 0, kickAt: null, kickFoot: null, face: [team === 'us' ? 1 : -1, 0] });
+    const add = (id, team, [x, y], gk = false) => this.agents.set(id, { id, team, x, y, tx: x, ty: y, speed: 0, sp: 0, dist: 0, d0: 0, tA: 0, tL: 1.4, tN: 0, kickAt: null, kickFoot: null, face: [team === 'us' ? 1 : -1, 0], ...(gk ? { gk: true } : {}) });
     add('hero', 'us', sc.hero);
     sc.mates.forEach((p, i) => add('m' + (i + 1), 'us', p));
     sc.opps.forEach((p, i) => add('o' + (i + 1), 'them', p));
+    if (sc.gk?.us) add('k1', 'us', sc.gk.us, true);
+    if (sc.gk?.them) add('k2', 'them', sc.gk.them, true);
     const c = this.a(sc.carrier || 'hero'); // in defense lessons the other team starts with the ball
     this.ball = { x: c.x + c.face[0] * .5, y: c.y, z: 0, state: 'carried', carrier: c.id, h: ang(c.face[0], c.face[1]), move: null, got: -9 };
     this.co = null; this.wait = 0; this.until = null;
@@ -187,7 +191,8 @@ export class Sim {
   }
 
   a(id) { return this.agents.get(id); }
-  team(t) { const out = []; for (const a of this.agents.values()) if (a.team === t) out.push(a); return out; }
+  team(t) { const out = []; for (const a of this.agents.values()) if (a.team === t && !a.gk) out.push(a); return out; } // (outfield players only)
+  keeper(t) { for (const a of this.agents.values()) if (a.gk && a.team === t) return a; return null; }
   go(id, x, y, speed = 4) { const a = this.a(id); a.tx = x; a.ty = y; a.speed = speed; if (this.ball.reach && this.ball.carrier === id) this.ball.reach.stop = false; }
   stop(id) { const a = this.a(id); a.tx = a.x; a.ty = a.y; if (this.ball.reach && this.ball.carrier === id) this.ball.reach.stop = true; }
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } if (this.ball.reach) this.ball.reach.stop = true; }
@@ -371,6 +376,8 @@ export class Sim {
       // The ball rolls toward its spot at his feet instead of jumping there.
       const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = ease(dt, 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;
+    } else if (b.state === 'held') { // a keeper has it in his hands, in front of his chest (game/keeper.js)
+      const c = this.a(b.carrier); if (c) { b.x = c.x + c.face[0] * .3; b.y = c.y + c.face[1] * .3; b.z = c.gkm?.low ? .35 : .85; }
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);

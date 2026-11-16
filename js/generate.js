@@ -2,6 +2,7 @@
 // with the same geometry the game uses. Anything unclear (a pass lane that is half open, a push the defender
 // might or might not win) is thrown away and rebuilt, so every round has a clear right answer.
 import { PITCH, L, W, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, shuffle, DRIBBLE_DIRS, BACKWARD, TEAM, sizeOf } from './geom.js';
+import { GK, resolve, placedAim } from './shot.js';
 
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
 const FREE = 2.2, MARKED = 1.3;        // receivers: nobody near / a defender right on him
@@ -184,7 +185,7 @@ function attack(r, pattern, high = false) {
     if (pattern === 'counter') add([Math.min(L - 3, heroTo[0] + 14 + r() * 3), W / 2 + (r() - .5) * 6]);   // their last defender, far away
     else add([L - 3 - r() * 3, heroTo[1] > W / 2 ? 2.5 + r() * 2 : W - 2.5 - r() * 2]);                  // wide, out of the shot
   } else if (pattern === 'counter-pass') {                    // he just won it, but a defender is getting back in front of him
-    add([heroTo[0] - 4.2 - r() * .8, heroTo[1] + 1.2 + r() * .6]);   // the player he took it from (behind the camera)
+    add([heroTo[0] - 4.2 - big() * .2 - r() * .8, heroTo[1] + 1.2 + r() * .6]);   // the player he took it from (behind the camera; a step farther on the 5v5 pitch)
     add(at((r() - .5) * .3, 2.1 + r() * .5));                       // recovering, right in his way
     add([L - 3 - 2 * dL() - r() * 3, mates[0][1] > W / 2 ? 3 + r() * 3 : W - 3 - r() * 3]); // their last defender, on the other side (as far from him on a longer pitch)
   } else if (wall) {                                          // two shirts close him down; a friend is free right beside or ahead of him
@@ -652,7 +653,7 @@ function goalRun(r, pattern, runs = 3) {
     h = [c[0] - .6 - r() * 1.6, c[1] + s * (4.5 + r() * 1.2)];
     o1 = [c[0] - 1.6 - r(), c[1] - s * (1.4 + r() * .8)];               // beaten: chasing, behind him and to the side
     o2 = [L - 1.3 - r() * 1, W / 2 + s * (6 + r() * 1.5)];               // deep and wide, on the child's side
-    const gy = W / 2 + s * 2, ball = [c[0] + .5, c[1]];
+    const gy = s > 0 ? PITCH.gy1 : PITCH.gy0, ball = [c[0] + .5, c[1]]; // (the post on his side)
     shot = { by: 'm1', ...postBounce(ball, gy, r() * .05, 3.4 + r() * 1) };
     // The run in: most of the way from him to where it will come out (from there he goes on to the ball).
     const k = .58 + r() * .3, end = [shot.loose[0] - .4, shot.loose[1] + s * .3];
@@ -880,6 +881,35 @@ function extraFollow(r, sc) {
   if (!inPitch(Fs, 1) || !inPitch(As, 1)) return null;
   return { ...sc, mates: [...sc.mates, Fs], matesTo: [...sc.matesTo, F], opps: [...sc.opps, As], oppsTo: [...sc.oppsTo, A] };
 }
+// ---------- 5v5: the keepers ----------
+// Each goal has a keeper (sc.gk: ours at x = 0, theirs at x = L, as [x, y]; f and off: how far toward the ball's line
+// and off his line he goes once play goes on, see game/keeper.js). He stands a little off his line, part of the way
+// toward the ball's side, late. A scene keeps everything it had: he is never near a player or a ring, a shot that
+// scores still scores (placed in the bigger space, see shot.js), a shot that hits the post goes past his reach, and a
+// rebound stays the hero's.
+const ballOf = sc => sc.kind === 'defense' || sc.kind === 'tackle' ? sc.oppsTo[0] : sc.run === 'follow' ? sc.shot.loose : sc.kind === 'support' ? (sc.matesTo || sc.mates)[0] : sc.heroTo;
+function withKeepers(sc, r) {
+  const b = ballOf(sc), f = .15 + r() * .25, off = .5 + r() * .4;
+  const at = (gx, out, bb) => [gx + out * off, clamp(W / 2 + (bb[1] - W / 2) * f, PITCH.gy0 + .4, PITCH.gy1 - .4)];
+  const atk = sc.kind === 'defense' || sc.kind === 'tackle';
+  const them = at(L, -1, atk ? [0, W / 2 + (r() - .5) * 4] : b), us = at(0, 1, atk ? b : [0, W / 2 + (r() - .5) * 4]);
+  const people = [sc.heroTo, sc.hero, ...sc.mates, ...(sc.matesTo || []), ...sc.opps, ...sc.oppsTo, ...sp2(sc)];
+  if (![them, us].every(k => farFrom(k, people, 2.2))) return null;
+  const K = pt(them);
+  if (!sc.kind && grade(sc).shoot === 'good') { // his shot (one tap, placed) still goes in
+    const from = { x: sc.heroTo[0] + .5, y: sc.heroTo[1] };
+    if (resolve(from, placedAim(from, K), 'placed', K).gap < .3) return null;
+  }
+  if (sc.shot) { // a shot off the post or a leg: past his reach; the rebound and the finish stay the hero's
+    const { hit, loose } = sc.shot, from = pt(sc.shot.from || [(sc.matesTo || sc.mates)[0][0] + .5, (sc.matesTo || sc.mates)[0][1]]), H = pt(hit), Lp = pt(loose);
+    const c = closestOnLane(K, from, H, 0), t = Math.hypot(c.x - from.x, c.y - from.y) / 17;
+    if (c.d < GK.reach + Math.max(0, t - GK.react) * GK.speed + .4 || closestOnLane(K, H, Lp, 0).d < 1.6) return null;
+    const tK = dist(K, Lp) / GK.speed + .9, tH = dist(pt(sc.heroTo), Lp) / 5.2;
+    if (tK < tH + .8 || resolve(Lp, placedAim(Lp, K), 'placed', K).gap < .3) return null;
+  }
+  return { ...sc, gk: { us, them, f, off } };
+}
+
 // Which of his three friends stands where is random (as swapMates does for two), so the open one is any of them.
 const swapIx = (a, b) => o => o?.replace(new RegExp(`pass:([${a}${b}])`), (_, i) => 'pass:' + (+i === a ? b : a));
 function swapMates2(sc, a, b) {
@@ -962,7 +992,10 @@ export function generate(skill, seed, { even = false, pattern: want = null, runs
     const out = { ...(fixed || r() < .5 ? sc : swapMates(sc)), id: `gen-${pattern}-${seed}`, skill, pattern };
     if (!four) return out;
     const wide = widen(out, rng(seed * 7919 + i + 1), fixed);
-    if (wide) return { ...wide, size: TEAM.size };
+    if (!wide) continue;
+    if (!sizeOf().keeper) return { ...wide, size: TEAM.size };
+    const kept = withKeepers(wide, rng(seed * 104729 + i + 3));
+    if (kept) return { ...kept, size: TEAM.size };
   }
   return null;
 }

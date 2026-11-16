@@ -418,7 +418,7 @@ export function makeRig(p, kit, isHero) {
   const neck = add(torso, lathe([[.055, -.04], [.055, 0], [.053, .03], [.05, .06], [.049, .1]], 16), skin); neck.position.z = Z1; neck.scale.y = 1.06; // neck, a little wider than deep
   // A sleeve: its top is a dome round the shoulder joint, so it stays in place under the shirt however the arm
   // turns, and only the round of the shoulder shows past the shirt's side.
-  const sleeve = mat(kit.pattern === 'sleeves' ? kit.colors[1] : kit.colors[0], .86), cuff = mat(kit.trim, .86);
+  const sleeve = mat(kit.pattern === 'sleeves' ? kit.colors[1] : kit.colors[0], .86), cuff = mat(kit.trim, .86); let glv = null;
   const sleeveGeo = lathe([[.051, -.128], [.052, -.07], [.055, -.02], [.056, 0], [.053, .02], [.045, .037], [.03, .05], [0, .056]], 14);
   for (const s of [-1, 1]) {
     const piv = new THREE.Group(); piv.position.set(-.004, s * SHOULDER_Y, SHOULDER); torso.add(piv); arms.push(piv);
@@ -427,8 +427,9 @@ export function makeRig(p, kit, isHero) {
     add(piv, limb(.225, .049, .038, .006), skin);
     const elbow = new THREE.Group(); elbow.position.z = -.225; piv.add(elbow); elbows.push(elbow);
     add(elbow, limb(.215, .038, .029, .004), skin);
-    const hand = add(elbow, ball(.037, 12, 10), skin); hand.scale.set(1, .6, 1.3); hand.position.z = -.253;    // a flat hand, palm to the body
-    const thumb = add(elbow, ball(.015, 8, 6), skin); thumb.scale.z = 1.7; thumb.position.set(.03, -s * .006, -.236);
+    const glove = p.gk ? (glv ||= mat(kit.glove || '#f4f4f2', .7)) : skin; // a keeper's big gloves
+    const hand = add(elbow, ball(p.gk ? .05 : .037, 12, 10), glove); hand.scale.set(1, p.gk ? .7 : .6, 1.3); hand.position.z = p.gk ? -.258 : -.253;    // a flat hand, palm to the body
+    const thumb = add(elbow, ball(p.gk ? .02 : .015, 8, 6), glove); thumb.scale.z = 1.7; thumb.position.set(.03, -s * .006, -.236);
   }
   // The head, with his own face (`faceOf`): a little wider or longer, its jaw and chin his own.
   const F = faceOf(p), head = new THREE.Group(); head.rotation.order = 'ZYX'; head.position.z = HEAD; head.scale.set(F.w, .92 * F.w, 1.1 * F.h); torso.add(head);

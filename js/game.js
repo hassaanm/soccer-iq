@@ -14,6 +14,7 @@ import { demo } from './game/demo.js';
 import { input } from './game/input.js';
 import { view } from './game/view.js';
 import { skill } from './game/skill.js';
+import { keeper } from './game/keeper.js';
 
 const SPEECH_CAP = 15; // seconds: the longest talk() waits for the voice beyond the time the line takes to read
 
@@ -156,13 +157,14 @@ export class Game {
     if (fb.state === 'flying') {
       const to = { x: fb.tx, y: fb.ty };
       for (const p of this.sim.agents.values()) {
-        if (this.scripted.has(p.id) || closestOnLane(p, fb, to, 0).d >= 1) continue; // the receiver and the interceptor are scripted; everyone else gets out of the way
+        if (p.gk || this.scripted.has(p.id) || closestOnLane(p, fb, to, 0).d >= 1) continue; // (a keeper: game/keeper.js) // the receiver and the interceptor are scripted; everyone else gets out of the way
         if (p.id === 'hero' && this.sc?.kind === 'receive') continue; // the pass he will turn with is for him (also while he decides, and on a retry)
         this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, fb, to, fb.z < .9);
       }
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
     if (this.ai) this.teamAI();
+    if (this.keepersOn) this.keepers(dt); // (5v5: game/keeper.js)
     // A pass on its way waits while he peeks; a friend running stays frozen mid-run until the pass is played.
     const held = this.phase === 'feedback' || (this.sc?.kind === 'receive' && this.phase === 'decide') || (this.sc?.kind === 'lead' && this.mode !== 'home' && (this.phase === 'decide' || this.phase === 'idle'));
     if (!held) this.sim.step(dt);
@@ -197,7 +199,7 @@ export class Game {
 
 // The rest of Game lives in js/game/: each file holds the methods for one concern. They are copied onto the class
 // here, getters included. A name defined twice would silently replace the first one, so that is an error.
-for (const part of [rounds, outcomes, team, live, demo, input, view, skill]) {
+for (const part of [rounds, outcomes, team, live, demo, input, view, skill, keeper]) {
   for (const name of Object.keys(part)) if (name in Game.prototype) throw new Error(`Game.${name} is defined twice`);
   Object.defineProperties(Game.prototype, Object.getOwnPropertyDescriptors(part));
 }

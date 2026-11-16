@@ -7,6 +7,8 @@ import { Particles, TURF_BITS } from './fx.js';
 import { canvasTex, blobTex } from './tex.js';
 import { makeRig, RIM } from './pro/rig.js';
 import { animateRig } from './pro/motion.js';
+import { animateKeeper } from './pro/keeper.js';
+import { keeperKit } from './teams.js';
 import { makePost } from './pro/post.js';
 import { buildStadium, TOWERS, join } from './pro/stadium.js';
 import { buildPark, PARK } from './pro/park.js';
@@ -48,7 +50,7 @@ const stayTex = canvasTex(128, 156, g => {
   g.fillStyle = '#2b2140'; g.fill(); g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
   g.font = '62px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✋', 64, 66);
 });
-const IDS = ['hero', 'm1', 'm2', 'm3', 'o1', 'o2', 'o3', 'o4']; // the sim's player ids: up to four of ours, four of theirs (m3, o4: 4v4)
+const IDS = ['hero', 'm1', 'm2', 'm3', 'o1', 'o2', 'o3', 'o4', 'k1', 'k2']; // the sim's player ids: up to four of ours, four of theirs (m3, o4: 4v4), and the keepers (5v5)
 const SIDE_IDS = { us: IDS.slice(0, 4), them: IDS.slice(4) };
 
 // Frees what one player's body owns: its shapes, its materials, its bones' texture and the two painted textures
@@ -221,6 +223,8 @@ export class World {
       const arc = (x, y, r, a0, a1) => { g.beginPath(); g.arc(X(x), Y(y), r * ppm, a0, a1); g.stroke(); };
       g.strokeRect(X(0), Y(W), L * ppm, W * ppm); line(CX, 0, CX, W);
       for (const [x0, x1] of [[0, 3], [L, L - 3]]) { line(x0, gy0 - 2, x1, gy0 - 2); line(x0, gy1 + 2, x1, gy1 + 2); line(x1, gy0 - 2, x1, gy1 + 2); }
+      const A = sizeOf().area; // the box: the keeper's area at 5v5, and at every size the line for "close" (v62)
+      if (A) for (const [x0, x1] of [[0, A.d], [L, L - A.d]]) { line(x0, CY - A.w / 2, x1, CY - A.w / 2); line(x0, CY + A.w / 2, x1, CY + A.w / 2); line(x1, CY - A.w / 2, x1, CY + A.w / 2); }
       arc(CX, CY, 2.5, 0, Math.PI * 2);
       g.beginPath(); g.arc(X(CX), Y(CY), .2 * ppm, 0, Math.PI * 2); g.fill();
       const Q = Math.PI / 2; // corner arcs (canvas y runs down, so the angles are mirrored)
@@ -411,6 +415,16 @@ export class World {
         const g = makeRig(team.players[i], team.kit, id === 'hero'); this.scene.add(g); this.rigs.set(id, g);
       });
     }
+    if (sizeOf().keeper) { // the keepers (5v5): each team's fifth player, in a keeper's colours that are neither team's
+      const ku = keeperKit(us, them), kt = keeperKit(them, us, ku.colors[0]), key = JSON.stringify([ku, kt, us.players[4], them.players[4]]);
+      if (this.teamKeys.gk !== key) {
+        this.teamKeys.gk = key; changed = true;
+        for (const [id, p, kit] of [['k1', us.players[4], ku], ['k2', them.players[4], kt]]) {
+          const old = this.rigs.get(id); if (old) { this.scene.remove(old); disposeRig(old); }
+          const g = makeRig(p, kit, false); g.userData.gk = true; this.scene.add(g); this.rigs.set(id, g);
+        }
+      }
+    }
     if (!changed) return;
     this.home = { rigs: new Map(this.rigs), glows: new Map(this.glows) };
     this.dressCrowd(us, them);
@@ -499,7 +513,7 @@ export class World {
       g.visible = !!a; glow.visible = false; if (!a) continue;
       // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture. He
       // is still posed, so when he shows again his body goes on from where it would be, without a jump.
-      animateRig(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0, time);
+      (a.gk ? animateKeeper : animateRig)(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0, time);
       if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
       const s = ui.glow?.[id] || 0, mats = g.userData.mats;
       for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
