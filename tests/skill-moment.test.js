@@ -53,19 +53,22 @@ test('a tap or none: the play ends the same, with everyone in the same place; on
     assert.ok(!none.moved, 'no tap: no move');
     offers += none.offers.length; turns += none.offers.filter(o => o.kind === 'turn').length; runs += none.offers.filter(o => o.kind === 'run').length;
   }
-  assert.ok(turns > 3 && runs > 0, `offers came (turns ${turns}, runs ${runs})`);
+  assert.ok(turns + runs > 0 && runs > 0, `offers came (turns ${turns}, runs ${runs})`); // (v64: play goes on into the choice, so a turn from a standstill is rare now)
 });
 
 test('a tap after the window, or a second tap, does nothing', async () => {
-  const sc = allScenarios('take-him-on')[1];
+  // (v64: the first play with an offer, as which ones have one changes with how play goes on into the choice)
+  let sc = null, opt = null;
+  for (const s of allScenarios('take-him-on')) { for (const o of ['drib:fl', 'drib:fr', 'drib:fwd']) if ((await play(s, o, () => false)).offers.length) { sc = s; opt = o; break; } if (sc) break; }
+  assert.ok(sc, 'some play offers a skill move');
   // two taps at once: one move, one name
-  const twice = await play(sc, 'drib:fl', g => { if (g.clock - g.sk.t0 > .3) { g.skillTap(); return true; } return false; });
+  const twice = await play(sc, opt, g => { if (g.clock - g.sk.t0 > .3) { g.skillTap(); return true; } return false; });
   assert.ok(twice.moved);
   // taps just after it closed: nothing
   const { g, events: ev } = makeGame(() => false), watch = g.skillWatch;
   g.skillWatch = function (dt) { const was = this.sk?.phase; watch.call(this, dt); if (was === 'offer' && this.sk?.phase !== 'offer') { this.skillTap(); this.skillTap(); } };
   g.mode = 'lesson'; g.load(sc); await frames(g, g.pre()); for (let i = 0; i < 60; i++) g.tick(1 / 60, 0);
-  await frames(g, g.outcome('drib:fl', g.isGood('drib:fl')));
+  await frames(g, g.outcome(opt, g.isGood(opt)));
   assert.ok(ev.some(e => e[0] === 'skill' && e[1]), 'it was offered');
   assert.ok(!ev.some(e => e[0] === 'skillName'), 'a late tap makes no move');
   g.skillTap(); // and long after, with nothing on offer

@@ -1,10 +1,18 @@
 // One decision round: the run-up, the moment he chooses, and how good each choice is. Around it, the lesson
 // loop: play the choice, show why a wrong one failed, replay the better way, and let him try again.
-import { dist, dribbleEnd, lerp } from '../geom.js';
+import { dist, dribbleEnd, lerp, clamp } from '../geom.js';
 import { grade, pushEnd, LEAD, RUN_UP, SHOT, OKAY } from '../generate.js';
+import { RETRY } from '../window.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
 // The rule for the foot ("Inside or laces?"), in his coach's words: said when he picked the right space with the wrong foot.
 const FOOT_TIP = { in: 'Close? Inside, for control.', las: 'Far? Laces, for power!' };
+// (v64) How early a lead pass's choice opens (s before the scene's picture: a friend sprinting into space gives about half a
+// second of soccer, window.js), and how far through its roll a shot that came back out is when the choice opens (the
+// scene's picture is at SHOT.freeze; earlier, their players have not reacted yet).
+const LEAD_EARLY = .45, FOLLOW_OPEN = SHOT.freeze;
+// What he hears and sees when the defender gets there first (v64): kind words, never a buzzer; the first time in a
+// lesson, more about what to do.
+export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! Choose before he gets there.', again: 'Choose a bit quicker!' };
 import { pickFoot } from './outcomes.js';
 
 export const rounds = {
@@ -16,16 +24,16 @@ export const rounds = {
     if (sc.kind === 'receive') return this.passIn();
     if (sc.kind === 'lead') return this.runIn();
     if (sc.run === 'follow') return this.shotIn();
-    if (sc.run === 'goal') return this.goalIn();
-    s.go('hero', ...sc.heroTo, 3.6);
-    if (sc.gk?.from) s.go('k2', ...sc.gk.them, Math.hypot(sc.gk.them[0] - sc.gk.from[0], sc.gk.them[1] - sc.gk.from[1]) / 1.15); // their keeper rushes out at him (v62)
-    if (sc.kind === 'defense') s.go(sc.carrier, ...sc.oppsTo[0], 3);
-    (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
-    await this.delay(1.3);
-    s.stopAll();
+    if (sc.kind === 'tackle') { // the 1v1: he backs in, the attacker comes on (the STEAL moment is its own window)
+      s.go('hero', ...sc.heroTo, 3.6); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
+      await this.delay(1.3); s.stopAll(); return;
+    }
+    // (v64) Everyone else comes into the choice on his planned way, still moving as it opens (game/window.js).
+    await this.plannedRunUp();
+    if (sc.run === 'goal') { const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h); }
     // Getting open (v60): he looks out over where he could go (the rings and his friend on the ball), not only at the
     // ball, so the place nearest the camera is not always the same kind of place.
-    if (sc.even && !sc.run) { const h = s.a('hero'), c = s.a(sc.carrier), pts = [...sc.spots, c]; this.yaw = this.frameYaw(sc, h, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); this.faceYaw(h); }
+    else if (sc.even && !sc.run) { const h = s.a('hero'), c = s.a(sc.carrier), pts = [...sc.spots, c]; this.yaw = this.frameYaw(sc, h, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); this.faceYaw(h); }
   },
   // "Won it? Go!": their player dribbles straight at him, he steps in and pokes the ball off him, and their player
   // stumbles on past him (around him, on the camera's side) and ends up behind him.
@@ -40,27 +48,30 @@ export const rounds = {
     s.give('hero'); this.sfx('tap'); s.go('hero', hx, hy, 2); // the ball is at his feet now (it rolls the last bit)
     this.hud.caption('You won the ball! 💪'); this.say('You won the ball!');
     s.go('o1', hx + .3, hy + 1.5, 3); await this.until(() => dist(o1, { x: hx + .3, y: hy + 1.5 }) < .3 || s.time - t0 > 4);
-    s.go('o1', ...sc.oppsTo[0], 3.6); await this.delay(.8);
-    s.stopAll(); this.hud.caption('');
+    // (v64) He stumbles on to where the scene has him, braking as a child does (window.js ACC), and is just getting
+    // his balance back as the choice opens.
+    const o0 = { x: sc.oppsTo[0][0], y: sc.oppsTo[0][1] }, t2 = s.time;
+    await this.until(() => { const d = dist(o1, o0); s.go('o1', o0.x, o0.y, clamp(Math.sqrt(2 * 3 * d), .1, 3.8)); return d < .03 || s.time - t2 > 2.5; });
+    this.hud.caption('');
   },
-  // "Peek, then turn": he checks toward his friend, the friend passes, and the play freezes with the ball on its way.
+  // "Peek, then turn": he checks toward his friend, the friend passes, and he chooses his turn while the ball comes.
   async passIn() {
     const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo;
     s.go('hero', hx, hy, 2.5); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
     await this.delay(.5);
     const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
     faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2);
-    s.kick(hx - .45, hy, { speed: 6.5, arc: .05 }); await this.delay(.4);
-    s.stopAll();
+    s.kick(hx - .45, hy, { speed: 5, arc: .05 }); await this.delay(.1); // (v64) the choice opens as the pass is on its way, and stays open while it travels
   },
-  // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the play
-  // freezes mid-run, everyone exactly where the scenario put them, so the spots match the run.
+  // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the choice opens
+  // mid-run (LEAD_EARLY s before the scene's picture) and the run goes on while he chooses, the rings with the runner.
   async runIn() {
     const sc = this.sc, s = this.sim;
-    s.go('hero', ...sc.heroTo, 3.6); sc.oppsTo.forEach((p, i) => s.go('o' + (i + 1), ...p, 3)); this.leadRun();
-    await this.delay(LEAD.pre);
-    s.stopAll(); for (const [id, mv] of Object.entries(sc.moves)) Object.assign(s.a(id), { x: mv.at[0], y: mv.at[1] });
-    this.leadRun(); this.phase = 'idle'; // held still (see tick) until he plays the pass
+    sc.oppsTo.forEach((p, i) => s.go('o' + (i + 1), ...p, 3)); this.leadRun();
+    // (v64) The choice opens a moment before the scene's own picture, and the run goes on. He dribbles up and is still
+    // rolling it as it opens (slowing, to look up), not standing on the ball.
+    const h = s.a('hero'), [hx, hy] = sc.heroTo, T = LEAD.pre - LEAD_EARLY, t0 = s.time;
+    await this.until(() => { const left = T - (s.time - t0), d = Math.hypot(hx - h.x, hy - h.y); s.go('hero', hx + (hx - h.x) / (d || 1) * .4, hy + (hy - h.y) / (d || 1) * .4, clamp(d / Math.max(.1, left), .6, 3.6)); return left <= 0; });
   },
   // "Follow your shot!": the shooter (he, or a friend) dribbles up and shoots; it comes back out off the post or a
   // defender's leg, and a short call says which. The play freezes as the rebound slows down, loose in front of the
@@ -85,8 +96,8 @@ export const rounds = {
     await this.play(this.shotOut(sh, { x: end[0], y: end[1], speed: Math.max(1.2, Math.hypot(end[0] - by.x, end[1] - by.y) / (.2 + flyT + rollT)) }));
     const call = sh.block === 'k2' ? 'Saved!' : sh.block ? 'Blocked!' : 'Off the post!'; this.hud.caption(call); this.say(call);
     if (sh.cover) to(sh.cover, sc.oppsTo[+sh.cover[1] - 1], rollT);
-    const t1 = s.time; await this.until(() => b.state !== 'flying' || b.t >= SHOT.freeze || s.time - t1 > 2.5);
-    s.stopAll(); this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null;
+    const t1 = s.time; await this.until(() => b.state !== 'flying' || b.t >= FOLLOW_OPEN || s.time - t1 > 2.5);
+    this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null; // (v64: the ball rolls on while he chooses)
     this.yaw = this.frameYaw(sc, h, { x: sh.loose[0], y: sh.loose[1] }); this.faceYaw(h);
   },
   // "Run to the goal too!": his friend dribbles at goal, he jogs up off the ball, and the play freezes. The view looks
@@ -96,14 +107,13 @@ export const rounds = {
     const to = (id, p, min) => { const a = s.a(id); s.go(id, p[0], p[1], Math.max(min, Math.hypot(p[0] - a.x, p[1] - a.y) / (RUN_UP - .1))); };
     to('hero', sc.heroTo, 2.4); s.go('m1', ...sc.matesTo[0], 3.2); sc.matesTo.forEach((p, i) => i && to('m' + (i + 1), p, 1)); sc.oppsTo.forEach((p, i) => to('o' + (i + 1), p, 1));
     await this.delay(RUN_UP);
-    s.stopAll();
     const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h);
   },
   // The players running in a lead-pass round go on with their runs (also after a replay puts them back).
   leadRun() { for (const [id, mv] of Object.entries(this.sc.moves || {})) Object.assign(this.sim.a(id), { tx: mv.to[0], ty: mv.to[1], speed: mv.speed, sp: mv.speed }); },
 
   decide() {
-    this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.pendingDir = null;
+    this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null; this.decideAt = this.sim.time; this.decideReal = this.realTime || 0; this.pendingDir = null;
     if (this.sc.kind === 'receive') { // the ball waits in the air
       this.step = 'turn'; this.peeked = false; this.drag = null; this.facePasser();
     }
@@ -111,14 +121,16 @@ export const rounds = {
       this.step = 'tackle'; this.lookUp = true; this.scanned = true;
       const g = this; this.sim.run((function* () { if (!(yield* g.approach(false))) g.choose('tackle:none'); })());
     }
-    this.delay(1.2).then(() => { if (this.phase === 'decide') this.hud.caption(''); });
+    this.delay(.2).then(() => { if (this.phase === 'decide' && !this.win) this.hud.caption(''); });
+    this.openWindow(); // (v64) play goes on in slow motion while he chooses (game/window.js)
     // His choice ends what was said before it ("Your turn!"), however soon it comes.
-    return new Promise(res => { this._choose = opt => { if (this.mode !== 'demo') this.hud.caption(''); res(opt); }; });
+    return new Promise(res => { this._choose = opt => { this.closeWindow(); if (this.mode !== 'demo') this.hud.caption(''); res(opt); }; });
   },
   // How good a choice is: 'best' (the star answer), 'ok' (just as good), 'safe' (keeps the ball but there was
   // a better choice) or 'bad' (loses it). Dribbles are graded by the real space on the field, so any of the
   // eight directions into open grass works, and only directions a defender blocks lose the ball.
   rating(opt) {
+    if (opt === 'timeout') return 'bad'; // (v64) the defender got there first: no choice made
     if (this.sc.best && opt === this.sc.best) return 'best';
     if (this.sc.kind === 'tackle' || this.sc.then) return 'bad'; // a give-and-go step 1 has one right answer: the pass
     if (opt.startsWith('turn:')) return grade(this.sc)['drib:' + this.sc.turns[opt[5]]] === 'good' ? 'ok' : 'bad';
@@ -149,18 +161,19 @@ export const rounds = {
   // Give-and-go, step 2: the friend has the ball; the defender who was on him turns to press the friend.
   async toStep2() {
     const s = this.sim, base = this.sc, t = base.then;
-    this.sc = { ...t, skill: base.skill, id: base.id + '-2', pattern: base.pattern };
+    this.sc = { ...t, spots: t.spots.map(sp => ({ ...sp })), skill: base.skill, id: base.id + '-2', pattern: base.pattern }; // (its own rings: they move in the window)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
     s.stopAll(); s.go('o1', ...t.move.o1, 3.2); s.go('o2', ...t.move.o2, 2.6);
     this.yaw = this.frameYaw(this.sc, { x: base.heroTo[0], y: base.heroTo[1] }, s.a('m1'));
-    await this.delay(.8); s.stopAll();
+    await this.delay(.8); // (v64: and play goes on into his choice)
   },
 
   // Plays one scenario until he gets it. Wrong choices show why, replay the better way, then retry.
   // A give-and-go has two steps (the pass, then the run); each one is retried on its own.
   // `light`: a right answer on the first try gets a light result (Level 2 and up, flows.js).
-  async round(sc, { hint, light = false }) {
+  async round(sc, { hint, light = false, level = 1, first = false }) {
     this.mode = 'lesson'; this.light = light; this.shown = new Set(); // shown: wrong choices already replayed in this round
+    this.level1 = level <= 1; this.firstRound = first; // (v64: the window's length, window.js; a new idea's very first round has the longest)
     this.load(sc); await this.pre();
     let firstTry = true;
     for (;;) {
@@ -176,16 +189,22 @@ export const rounds = {
     const sc = this.sc, save = this.sim.save(), yawSave = this.yaw;
     // After a replay the round starts over facing the same way as before (toward the ball on a receive or on
     // defense), not up the field.
-    const restart = () => { this.sim.restore(save); this.reset(); this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
+    const plan = this.wplan; // (v64: the window's plan from the run-up; a restart puts the play back where it opens)
+    const restart = () => { this.sim.restore(save); this.reset(); this.spotsReset(); if (plan) plan.ready = true; this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
+    let firstTry = true;
     for (let attempt = 1; ; attempt++) {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
+      if (opt === 'timeout') { // (v64) the defender got there first: kind words, then the same round again with more time
+        if (attempt === 1) this.logChoice?.(opt, 'bad');
+        firstTry = false; await this.timedOut(restart); continue;
+      }
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
       if (attempt === 1) this.logChoice?.(opt, rating); // first tries only: a retry comes after he was shown the way
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
-      const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? 'You looked up!' : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
+      const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? (this.lookedEarly ? 'You looked early!' : 'You looked up!') : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
       const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY)
       const tip = OKAY[why] || (opt.startsWith('shoot:') ? 'Good space! ' + FOOT_TIP[this.shotOf(opt).res === 'over' ? 'in' : 'las'] : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
@@ -194,13 +213,13 @@ export const rounds = {
         : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : opt.startsWith('shoot:') ? this.shotWhy(opt) : 'Oops, lost it!' }; // (a shot: what happened, and why: outcomes.js shotWhy)
       this.card = null;
       await this.outcome(opt, good);
-      if (more && good && opt === sc.best) return { firstTry: attempt === 1, stars: 3 };
+      if (more && good && opt === sc.best) return { firstTry: attempt === 1 && firstTry, stars: 3 };
       const answer = await (this.card || this.hud.banner('', 'goal', this.rated));
       this.rated = null;
-      if (good && rating !== 'safe') return { firstTry: attempt === 1, stars: 3 };
+      if (good && rating !== 'safe') return { firstTry: attempt === 1 && firstTry, stars: 3 };
       if (rating === 'safe') {
         if (answer === 'watch') {
-          restart();
+          restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.openWindow();
           await this.talk('Here is the 3-star play!', .2); await this.showPlay(sc.best); await this.delay(.8); this.hud.caption('');
         }
         return { firstTry: false, stars: 2 };
@@ -209,7 +228,7 @@ export const rounds = {
       if (!this.shown.has(opt)) {
         this.shown.add(opt);
         await this.feedback(save, opt);
-        restart();
+        restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.openWindow(); // (v64: the better way, from play going on)
         await this.talk('Watch this way!', .2);
         await this.showPlay(sc.best);
         await this.delay(.8); // let the better play land before resetting
@@ -218,13 +237,33 @@ export const rounds = {
       this.hud.caption('Your turn!'); this.say('Your turn!');
     }
   },
+  // (v64) He did not choose before the defender got there. The play showed it (outcomes.js timeoutGen); the card says it
+  // kindly, with no stars taken. The first time in a lesson he sees it once more, at play speed, with the defender's
+  // reach coming to the ball, and hears what to do. Then the same round again, with a longer window (window.js RETRY).
+  async timedOut(restart) {
+    const first = !this.lessonTimeouts;
+    this.lessonTimeouts = (this.lessonTimeouts || 0) + 1; this.timeouts = (this.timeouts || 0) + 1;
+    const line = first ? TIMEOUT.first : TIMEOUT.again;
+    this.rated = { stars: 0, nostars: true, text: line, said: line, soft: true };
+    this.card = null;
+    await this.outcome('timeout', false);
+    await (this.card || this.hud.banner('', 'soft', this.rated)); this.rated = null;
+    if (first && this.level1) { // see the defender come once more, at play speed
+      restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null;
+      this.openWindow(); this.win.f = Math.min(1, this.win.G / 2.2); this.hud.caption('Watch him come! 👀');
+      await this.until(() => !this.win || this.win.u >= 1); this.closeWindow(); this.showing = false;
+      await this.delay(.4); this.hud.caption('');
+    }
+    restart();
+    this.hud.caption('Your turn!'); this.say('Your turn!');
+  },
   // Freeze at the decision moment: red line for his choice, green for the better one.
   async feedback(save, opt) {
     if (this.sc.kind === 'tackle') { // no lines for a 1v1: just the cue, then the replay shows the moment
       const y = this.yaw; this.sim.restore(save); this.reset(); this.yaw = y; this.camMode = 'player'; this.phase = 'feedback';
       await this.talk(this.cue(), 1.5); return;
     }
-    this.sim.restore(save); this.reset(); this.camMode = 'overview'; this.phase = 'feedback'; this.leadRun();
+    this.sim.restore(save); this.reset(); this.spotsReset(); this.camMode = 'overview'; this.phase = 'feedback'; this.leadRun();
     // Where he ran to (defending, getting open): the lines start at him, and he is marked; else (a pass, a dribble)
     // at the ball.
     const runs = this.sc.kind === 'defense' || this.sc.kind === 'support', h = this.sim.a('hero');

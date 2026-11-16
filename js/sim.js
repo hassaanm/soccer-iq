@@ -4,6 +4,7 @@ import { lerp, PITCH } from './geom.js';
 import { MOVE_W } from './flair.js';
 
 const SPACE = .75; // meters between two players' centers
+const EASE = 3.5;   // m/s² a child speeds up or slows down at (v64 research Q1; window.js ACC)
 const TURN = 9;            // radians per second a player can turn
 // Turn a player's facing toward (fx, fy) at a limited speed, so direction changes look like real turns.
 function turnToward(a, fx, fy, dt) {
@@ -183,10 +184,10 @@ export class Sim {
   }
 
   // Snapshot / restore so a play can be replayed from the decision moment.
-  save() { return { agents: [...this.agents.values()].map(a => ({ ...a, face: [...a.face] })), ball: { ...this.ball } }; }
+  save() { return { agents: [...this.agents.values()].map(a => ({ ...a, face: [...a.face], track: null })), ball: { ...this.ball } }; }
   restore(s) {
     this.agents.clear();
-    for (const a of s.agents) this.agents.set(a.id, { ...a, face: [...a.face], tx: a.x, ty: a.y, speed: 0, sp: 0, offer: null });
+    for (const a of s.agents) this.agents.set(a.id, { ...a, face: [...a.face], tx: a.x, ty: a.y, speed: 0, sp: 0, offer: null, track: null });
     this.ball = { ...s.ball, move: null, reach: s.ball.reach && { ...s.ball.reach } }; this.co = null; this.wait = 0; this.until = null;
     this.restores++; // the picture starts each player's motion afresh (see pro/motion.js)
   }
@@ -316,11 +317,30 @@ export class Sim {
       dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
   }
   run(gen) { this.co = gen; this.wait = 0; this.until = null; }
+  // A player on a planned way (v64: the run-up and the decision window, see window.js): a.track = { at(t) → { x, y, vx,
+  // vy }, t0, watch }. He is where the plan says at every step (so the play is the same at any frame rate and in the
+  // tests), faces his way, or the ball while he gives ground or goes with it (watch), and with the ball he keeps it
+  // rolling: a touch every TOUCH metres puts it on the way he goes. untrack() hands him back to targets (tx, ty), going
+  // on as he was until something else moves him.
+  follow(a, dt) {
+    const b = this.ball, q = a.track.at(this.time - a.track.t0), dx = q.x - a.x, dy = q.y - a.y, d = Math.hypot(dx, dy), v = Math.hypot(q.vx, q.vy);
+    const before = a.dist; a.x = q.x; a.y = q.y; a.dist += d; a.speed = v; a.sp = v; a.tx = q.x + q.vx * .5; a.ty = q.y + q.vy * .5;
+    if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
+    if (a.track.watch && b) { const bx = b.x - a.x, by = b.y - a.y, l = Math.hypot(bx, by); if (l > .3) turnToward(a, bx / l, by / l, dt); }
+    else if (v > .05 && !a.gk) turnToward(a, q.vx / v, q.vy / v, dt);
+    if (b.state === 'carried' && b.carrier === a.id && !b.move) {
+      if (b.reach) b.reach = null;
+      if (dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); a.tL = 1.4; if (v > .05) b.h = ang(q.vx, q.vy); this.on('touch'); }
+    }
+  }
+  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; a.tx = a.x + (a.tx - a.x) * 2; a.ty = a.y + (a.ty - a.y) * 2; }
+  untrackAll() { for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
 
   step(dt) {
     this.time += dt;
     const b = this.ball;
     for (const a of this.agents.values()) {
+      if (a.track) { this.follow(a, dt); continue; }
       const has = b.state === 'carried' && b.carrier === a.id, fetch = has && b.reach; // his ball, out of reach: he goes to it first
       if (a.skill && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || touchAt(a) - a.skill.n > 1.4)) a.skill = null; // a dribble skill ends a little after its touch, or when anything else starts
       if (a.offer && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || touchAt(a) - a.offer.n > OFFER_END || a.sp < 1.5 || !this.offerOK)) { a.offer = null; this.offerOK = false; } // an offer closes in time for the move to set up (or when he slows down or anything else starts); the game allows the next one
@@ -343,21 +363,28 @@ export class Sim {
       const sp = m ? a.speed * (u < last ? m.slow : m.slow + (1 - m.slow) * sm((u - last) / (1 - last))) : a.speed; // nearly still while a foot turns the ball
       if (d > 0.02 && a.speed > 0) {
         if (m) a.sp = lerp(a.sp, sp, ease(dt, 10)); // he brakes into the turn and runs out of it
-        const s = Math.min((m ? a.sp : sp) * dt, d);
+        let v = m ? a.sp : sp;
+        if (a.ease && !m) { // (v64) a player the team AI moves speeds up and slows down as a child does, and slows into where he is going
+          const want = Math.min(sp, Math.sqrt(2 * EASE * d)); a.va = (a.va ?? a.sp) + Math.max(-EASE * dt, Math.min(EASE * dt, want - (a.va ?? a.sp))); v = a.va;
+        } else a.va = null;
+        const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
         if (has && !m && !b.reach && dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { // each dribble touch puts the ball on the way he runs
           a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); this.on('touch'); b.h = ang(dx, dy); if (!a.skill) this.dribbleSkill(a); a.tL = touchLen(this, a);
         }
         if (!m) a.sp = lerp(a.sp, sp, ease(dt, 8));
-      } else a.sp = lerp(a.sp, 0, ease(dt, 8));
+      } else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; }
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.
     const list = this.list; list.length = 0; for (const a of this.agents.values()) list.push(a); // one list, filled again each step
     for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
       const p = list[i], q = list[j], dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy);
-      if (d < SPACE && d > 1e-6) { const push = (SPACE - d) / 2; p.x -= dx / d * push; p.y -= dy / d * push; q.x += dx / d * push; q.y += dy / d * push; }
+      if (d < SPACE && d > 1e-6) { // (a player on a planned way keeps to it: the other one gives way; two on planned ways are kept apart by the plan)
+        const kp = p.track ? 0 : q.track ? 1 : .5, kq = q.track ? 0 : p.track ? 1 : .5, push = SPACE - d;
+        p.x -= dx / d * push * kp; p.y -= dy / d * push * kp; q.x += dx / d * push * kq; q.y += dy / d * push * kq;
+      }
     }
     if (b.state === 'carried' && b.move) {
       // A turn: the ball goes where the foot sends it (see plan), from where it was as the move began.

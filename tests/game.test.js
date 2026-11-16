@@ -206,16 +206,18 @@ test('every lesson demo plays to the end and shows how the play ended', async ()
   }
 });
 
-test('peek, then turn: the pass waits in the air while he decides; turning away keeps it, into the defender loses it', async () => {
+test('peek, then turn: the pass keeps coming, in slow motion, while he decides; turning away keeps it, into the defender loses it', async () => {
   const sc = allScenarios('peek-and-turn').find(s => s.pattern === 'peek-turn');
   const { g, events } = makeGame();
   g.mode = 'lesson'; g.load(sc);
   let done = false; g.pre().then(() => { done = true; });
   for (let t = 0; t < 5 && !done; t += 1 / 30) { g.tick(1 / 30, t); await null; }
-  assert.equal(g.sim.ball.state, 'flying', 'the pass is on its way at the freeze');
-  const p = g.decide(); const at = { ...g.sim.ball };
+  assert.equal(g.sim.ball.state, 'flying', 'the pass is on its way as he chooses');
+  const p = g.decide(); const at = { ...g.sim.ball }, t0 = g.sim.time;
   for (let i = 0; i < 30; i++) g.tick(1 / 30, 9 + i / 30);
-  assert.ok(Math.hypot(g.sim.ball.x - at.x, g.sim.ball.y - at.y) < .01, 'the ball waits while he decides');
+  const moved = Math.hypot(g.sim.ball.x - at.x, g.sim.ball.y - at.y), game = g.sim.time - t0;
+  assert.ok(moved > .01 && g.sim.ball.state === 'flying', 'the ball keeps coming while he decides');
+  assert.ok(game < .4, `slow motion: a second of his time is ${game.toFixed(2)} s of play`);
   g.yaw += 2; for (let i = 0; i < 3; i++) g.tick(1 / 30, 10 + i / 30);
   assert.ok(g.peeked, 'looking over his shoulder counts as a peek');
   const wrong = sc.best === 'turn:L' ? 'turn:R' : 'turn:L';
@@ -229,7 +231,7 @@ test('peek, then turn: the pass waits in the air while he decides; turning away 
 test('matches grow with his skills: with every lesson passed, live runs, peeks and 1v1s all happen', async () => {
   const real = Math.random, kinds = {}, need = ['live-support', 'live-receive', 'live-tackle', 'live-defense'];
   try {
-    for (let seed = 1; seed <= 16 && !need.every(k => kinds[k]); seed++) {
+    for (let seed = 1; seed <= 40 && !need.every(k => kinds[k]); seed++) {
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame();
       await drive(g, g.match([...ALL], [], 4, 'free'), gm => {
@@ -358,14 +360,15 @@ test('peek and turn: the arrows go around his body, even if he looked away befor
   }
 });
 
-test('pass in front!: the play freezes mid-run; in front he takes it in stride, to his feet it lands behind him', async () => {
+test('pass in front!: the run goes on (in slow motion) while he chooses, the rings with the runner; in front he takes it in stride, to his feet it lands behind him', async () => {
   const { generate } = await import('../js/generate.js');
   for (let seed = 1; seed <= 8; seed++) for (const opt of ['spot:lead', 'spot:feet']) {
     const sc = generate('lead-pass', seed), { g, events } = makeGame();
     g.mode = 'lesson'; g.load(sc); await drive(g, g.pre(), () => null);
-    const p = g.decide(), m = g.sim.a('m1'), at = { x: m.x, y: m.y };
+    const p = g.decide(), m = g.sim.a('m1'); g.tick(1 / 30, 49.9); const at = { x: m.x, y: m.y }, lead = g.sc.spots.find(x => x.id === 'lead'), l0 = { x: lead.x, y: lead.y }; // (the rings take their places in the first step)
     for (let i = 0; i < 20; i++) g.tick(1 / 30, 50 + i / 30);
-    assert.ok(Math.hypot(m.x - at.x, m.y - at.y) < .01, `${sc.id}: the runner moved while he decides`);
+    const ran = (m.x - at.x) * sc.dir[0] + (m.y - at.y) * sc.dir[1], ring = (lead.x - l0.x) * sc.dir[0] + (lead.y - l0.y) * sc.dir[1];
+    assert.ok(ran > .02, `${sc.id}: the runner stopped while he decides`); assert.ok(ring > ran * .5, `${sc.id}: the ring in front of him did not go with him (${ring.toFixed(2)} m, he ran ${ran.toFixed(2)} m)`);
     assert.equal(g.rating('spot:lead'), 'best'); assert.equal(g.rating('spot:feet'), sc.pattern === 'lead-free' ? 'safe' : 'bad'); assert.equal(g.rating('spot:far'), 'bad');
     g.choose(opt); await p;
     // (Game time runs in small steps, several a frame, so the ball can land and be taken within one frame: where it
@@ -376,7 +379,7 @@ test('pass in front!: the play freezes mid-run; in front he takes it in stride, 
       if (b.state === 'flying') flew = true;
       else if (flew && behind === null && opt === 'spot:feet') behind = (b.tx - m.x) * dx + (b.ty - m.y) * dy;
     });
-    if (opt === 'spot:lead') assert.ok(took >= 5, `${sc.id}: he slowed down to take it (${took} m/s)`); // full run, then on to goal at 5.2
+    if (opt === 'spot:lead') assert.ok(took >= 3.9, `${sc.id}: he slowed down to take it (${took} m/s)`); // his full run (a child's sprint, v64), then on to goal
     else assert.ok(behind < -1.5, `${sc.id}: the ball was not behind him (${behind})`);
     const ends = events.filter(e => e[0] === 'banner').map(e => e[1]);
     assert.ok(opt === 'spot:lead' ? ends.some(e => e === 'GOAL!' || e === 'Kept the ball!') : ends.includes(sc.pattern === 'lead-free' ? 'Kept the ball!' : 'Stolen!'), `${sc.id} ${opt}: ${ends}`);
@@ -395,7 +398,7 @@ test("the child's player keeps his head down over the ball until LOOK UP, and th
 });
 
 // ---------- "Follow your shot!" and "Run to the goal too!" ----------
-test('follow your shot: the shot flies fast to the post or leg, comes back out slower and rests in front of goal; running in scores, watching loses it', async () => {
+test('follow your shot: the shot flies fast to the post or leg, comes back out slower and rolls to rest in front of goal while he chooses; running in scores, watching loses it', async () => {
   const { generate, SHOT } = await import('../js/generate.js');
   for (const pattern of ['follow-post', 'follow-block', 'follow-friend']) for (let seed = 1; seed <= 4; seed++) for (const opt of ['spot:in', 'spot:watch']) {
     const sc = generate('follow-shot', seed, { pattern }), { g, events } = makeGame();
@@ -405,8 +408,8 @@ test('follow your shot: the shot flies fast to the post or leg, comes back out s
     const track = () => { if (prev) { const d = Math.hypot(b.x - prev.x, b.y - prev.y); if (b.state !== 'flying' && prev.state !== 'flying') jump = Math.max(jump, d); if (hitAt == null) fastest = Math.max(fastest, d); else if (g.phase === 'pre') after = Math.max(after, d); } prev = { x: b.x, y: b.y, state: b.state }; if (hitAt == null && Math.hypot(b.x - hit.x, b.y - hit.y) < .05) hitAt = g.sim.time; };
     await drive(g, g.pre(), () => null, 10, track);
     assert.ok(hitAt != null, `${sc.id}: the ball never reached the post or leg`);
-    assert.ok(b.state === 'flying' && b.t >= SHOT.freeze - .05, `${sc.id}: the play should freeze as the rebound slows down`);
-    const p = g.decide(); for (let i = 0; i < 40 && b.state === 'flying'; i++) { g.tick(1 / 30, 50 + i / 30); track(); }
+    assert.ok(b.state === 'flying' && b.t >= SHOT.freeze - .05, `${sc.id}: the choice should open as the rebound slows down`);
+    const p = g.decide(); for (let i = 0; i < 400 && b.state === 'flying' && g._choose; i++) { g.tick(1 / 30, 50 + i / 30); track(); }
     assert.equal(b.state, 'loose', `${sc.id}: the rebound should come to rest while he decides`); assert.ok(Math.hypot(b.x - sc.shot.loose[0], b.y - sc.shot.loose[1]) < .05, `${sc.id}: the ball is not at rest where it came out to`);
     assert.ok(after < fastest * .5, `${sc.id}: the rebound (${after.toFixed(2)} m a frame) is not slower than the shot (${fastest.toFixed(2)})`);
     g.choose(opt); await p;
@@ -441,9 +444,10 @@ test('run to the goal and follow your shot: a wrong run shows the red and green 
   for (const [sk, wrong] of [['go-to-goal', 'spot:stay'], ['follow-shot', 'spot:watch']]) {
     const sc = generate(sk, 3, { pattern: sk === 'go-to-goal' ? 'go-goal' : 'follow-post' }), { g, events } = makeGame();
     let tries = 0, lines = null;
-    const r = await drive(g, g.round(sc, { hint: false }), gm => (tries++ ? gm.sc.best : wrong), 120, gm => { if (gm.phase === 'feedback' && gm.lines.length && !lines) lines = gm.lines.map(l => ({ ...l.a })); });
+    let h = null; // (v64: where he was when he chose: play goes on while he chooses, so not always the scene's own spot)
+    const r = await drive(g, g.round(sc, { hint: false }), gm => (tries++ ? gm.sc.best : wrong), 120, gm => { if (gm.phase === 'feedback' && gm.lines.length && !lines) { lines = gm.lines.map(l => ({ ...l.a })); const a = gm.sim.a('hero'); h = [a.x, a.y]; } });
     assert.equal(r.firstTry, false);
-    const h = sc.heroTo; assert.ok(lines && lines.every(a => Math.hypot(a.x - h[0], a.y - h[1]) < .6), `${sk}: the lines do not start at him`);
+    assert.ok(lines && lines.every(a => Math.hypot(a.x - h[0], a.y - h[1]) < .6), `${sk}: the lines do not start at him`);
     assert.ok(events.some(e => e[0] === 'caption' && e[1] === g.named(sc.cue)), `${sk}: the cue was not said`);
     assert.equal(events.filter(e => e[0] === 'banner' && e[1] === 'GOAL!').length, 2, `${sk}: the replay and the retry should both score`);
   }

@@ -3,6 +3,8 @@ import { lerp, clamp, dist, closestOnLane } from '../geom.js';
 import { L, W } from './shared.js';
 import { longLead, touchAt } from '../sim.js';
 
+const COMMIT = { ball: 2, t: .8, react: [.1, .4] }; // (see aiGo)
+
 export const team = {
   // Simple team shape while the ball is live: the nearest defender presses, the next covers
   // between the ball and goal, the last marks the most dangerous attacker. Attackers without
@@ -24,10 +26,10 @@ export const team = {
     // (Four a side: the third and fourth each mark one of the attackers, the more dangerous one first.)
     const dangers = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX));
     defenders.forEach((d, i) => {
-      if (i === 0) return s.go(d.id, ball.x + dir * 1.1, ball.y, 3.4); // stand goal-side, a step off the ball
-      if (i === 1) return s.go(d.id, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
+      if (i === 0) return this.aiGo(d, ball.x + dir * 1.1, ball.y, 3.4, true); // stand goal-side, a step off the ball (he follows the ball: no waiting to change his mind)
+      if (i === 1) return this.aiGo(d, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
       const danger = dangers[i - 2] || dangers[0] || ball;
-      s.go(d.id, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
+      this.aiGo(d, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
     });
     }
     // Support shape: spread out. The attacker nearer the goal gives a target ahead and wide; the other is an
@@ -56,7 +58,26 @@ export const team = {
       const cand = [{ x: fut.x + dir * 9, y: lerp(fut.y, W / 2, .7) }, { x: fut.x + dir * 2, y: wide(-side0) }, { x: fut.x - dir * 6, y: W / 2 }].map(p => clearOf({ x: clamp(p.x, 2, L - 3), y: clamp(p.y, 2, W - 2) }));
       while (spots.length < sup.length) spots.push(cand.sort((p, q) => room(q) - room(p))[0] && cand.splice(0, 1)[0] || spots[spots.length - 1]); // (no one has the ball, a keeper holding it: every attacker gets a place)
     }
-    sup.forEach((a, i) => s.go(a.id, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
+    sup.forEach((a, i) => this.aiGo(a, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
+    for (const a of s.list) if (!free(a)) a.ease = false; // (players the play's script moves go as it says)
+  },
+  // (v64, research Q1) Every player the team AI moves sticks with where he is going, as a child does: he changes his mind
+  // only when the ball has moved more than COMMIT.ball metres, when the other team gets it (then each reacts a moment
+  // apart, COMMIT.react seconds, so nobody moves on the same frame as everyone else), or after COMMIT.t seconds. And he
+  // speeds up and slows down as a child can (sim.js: a.ease). Without this rule a target that changes every frame makes
+  // him go toward, away and toward again.
+  // `track`: the one pressing the ball goes after it as it moves (his job is the ball), with no wait to change his mind.
+  aiGo(a, x, y, speed, track = false) {
+    const s = this.sim, b = s.ball, now = s.time, poss = b.carrier ? s.a(b.carrier)?.team || null : null, c = a.aic;
+    a.ease = true;
+    if (track && c && c.poss === poss && now >= c.ready) { s.go(a.id, x, y, speed); return; }
+    if (c && c.poss === poss) {
+      if (now < c.ready) return; // still reacting: he goes on as he was
+      if (now - c.t < COMMIT.t && Math.hypot(b.x - c.bx, b.y - c.by) < COMMIT.ball) { s.go(a.id, c.x, c.y, c.sp); return; }
+    }
+    const lag = c && c.poss !== poss ? COMMIT.react[0] + (COMMIT.react[1] - COMMIT.react[0]) * ((a.id.charCodeAt(1) * 7 + (a.team === 'us' ? 3 : 0)) % 10) / 9 : 0;
+    a.aic = { x, y, sp: speed, t: now + lag, bx: b.x, by: b.y, poss, ready: now + lag };
+    if (!lag) s.go(a.id, x, y, speed);
   },
 
   // Our team on defense does what the lessons teach: only one player (the closest) pressures the ball,
@@ -66,7 +87,7 @@ export const team = {
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
     // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
     const key = s.ball.carrier || 'loose';
-    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!free(d)) continue; const t = job === 'press' ? ball : s.a(job); const p = gs(t, job === 'press' ? 1 : 1.1); s.go(id, p.x, p.y, job === 'press' ? 3.6 : 3.8); } return; }
+    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!free(d)) continue; const t = job === 'press' ? ball : s.a(job); const p = gs(t, job === 'press' ? 1 : 1.1); this.aiGo(d, p.x, p.y, job === 'press' ? 3.6 : 3.8, job === 'press'); } return; }
     const jobs = {};
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
@@ -74,10 +95,10 @@ export const team = {
     for (const d of ours) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
     const freeOurs = ours.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
     for (const d of freeOurs) {
-      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); s.go(d.id, p.x, p.y, 3.6); continue; }
+      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
-      if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); s.go(d.id, p.x, p.y, 3.8); }
-      else { const p = gs(ball, 4); s.go(d.id, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
+      if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); this.aiGo(d, p.x, p.y, 3.8); }
+      else { const p = gs(ball, 4); this.aiGo(d, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
     }
     this.roles = { key, jobs };
   },

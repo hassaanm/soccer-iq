@@ -41,14 +41,16 @@ function matchSkills() { const has = skills(P, PATH); game.skills = has; return 
 // Hints (the glowing cue, LOOK pulsing) show in the first `early` rounds, and after two misses in a row.
 // Every choice he makes goes into the decision log in the save (progress.js logChoice; game/live.js says which kind).
 game.onChoice = rec => logChoice(P, rec);
+// (v64) How long he has to choose (window.js): by the idea's level, and the grown-ups' "Thinking time".
+game.levelOf = id => (id ? level(P, id) : null); game.thinkTime = () => P.settings.think || 'normal';
 // Rounds of lessons he has at Level 2 or more: a right answer on the first try gets the light result (no card).
 async function playRounds(rounds, early, onRound, log = 'lesson') {
-  game.choiceLog = log;
+  game.choiceLog = log; game.lessonTimeouts = 0;
   const results = [];
   let misses = 0;
   hud.dots(results, rounds.length);
   for (const [i, sc] of rounds.entries()) {
-    const r = await game.round(sc, { hint: i < early || misses >= 2, light: level(P, sc.skill) >= 2 }), right = r.firstTry && r.stars === 3;
+    const lv = level(P, sc.skill), r = await game.round(sc, { hint: i < early || misses >= 2, light: lv >= 2, level: lv, first: i === 0 && log === 'lesson' && !P.skills[sc.skill]?.sessions }), right = r.firstTry && r.stars === 3; // (first: a new idea's very first round has the longest window)
     results.push(right); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);
     onRound?.(sc, right);
   }

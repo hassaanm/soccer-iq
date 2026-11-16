@@ -10,7 +10,7 @@ export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds p
 
 export function defaultProgress() {
   return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1, log: { days: {}, weeks: {} },
-    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3' } }; // size: see geom.js SIZES
+    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK)
 }
 
 export function load(storage = globalThis.localStorage) {
@@ -199,23 +199,26 @@ export function finishSession(p, id, firstTry, rounds, day = today()) {
 // ---------- decision log (for the grown-ups page, ui/report.js) ----------
 // Every choice he makes, per day and per idea (lesson id): { r, s, u }
 //   r  { lesson, training, match }: [best, okay, missed] in each (a lesson or training round counts its first try only)
-//   s  how long he took, from the decision opening to his tap: counts in half-second bins, the last one 6 s and more
+//   s  how long he took, from the decision opening to his tap (real seconds): counts in half-second bins, the last one
+//      15 s and more (v64: windows run to about 15 s at the longest; logs from before v64 have 13 bins, the last 6 s and more)
 //   u  [looked first, choices where looking applies] (looking up, or peeking before a turn; not for a steal)
+//   t  times the defender got there before he chose (v64: kept apart from his choices, so it never counts as a miss here)
 // About 60–100 bytes per idea per day played. Days older than LOG_DAYS fold into weekly totals (weeks, keyed by the
 // first day of the week), so the log stays small however long he plays.
-export const LOG_DAYS = 90, BIN = .5, BINS = 13;
+export const LOG_DAYS = 90, BIN = .5, BINS = 31;
 const GRADE = { best: 0, okay: 1, miss: 2 };
-const entry = () => ({ r: {}, s: Array(BINS).fill(0), u: [0, 0] });
+const entry = () => ({ r: {}, s: Array(BINS).fill(0), u: [0, 0], t: 0 });
 function addEntry(to, e) {
   for (const [m, v] of Object.entries(e.r)) { const t = (to.r[m] ||= [0, 0, 0]); v.forEach((n, i) => { t[i] += n; }); }
-  e.s.forEach((n, i) => { to.s[i] += n; }); to.u[0] += e.u[0]; to.u[1] += e.u[1];
+  e.s.forEach((n, i) => { to.s[i] = (to.s[i] || 0) + n; }); to.u[0] += e.u[0]; to.u[1] += e.u[1]; to.t = (to.t || 0) + (e.t || 0);
   return to;
 }
-export function logChoice(p, { id, mode, grade, sec, looked }, day = today()) {
+export function logChoice(p, { id, mode, grade, sec, looked, timeout = false }, day = today()) {
   if (!id || !(grade in GRADE)) return;
   const log = (p.log ||= { days: {}, weeks: {} }), e = ((log.days[day] ||= {})[id] ||= entry());
+  if (timeout) { e.t = (e.t || 0) + 1; return; } // (out of time: counted on its own)
   (e.r[mode] ||= [0, 0, 0])[GRADE[grade]]++;
-  if (sec >= 0) e.s[Math.min(BINS - 1, Math.floor(sec / BIN))]++;
+  if (sec >= 0) { if (e.s.length < BINS) e.s.push(...Array(BINS - e.s.length).fill(0)); e.s[Math.min(BINS - 1, Math.floor(sec / BIN))]++; }
   if (looked != null) { e.u[1]++; if (looked) e.u[0]++; }
   for (const d of Object.keys(log.days)) {
     if (+d > day - LOG_DAYS) continue;
@@ -244,7 +247,7 @@ export function counts(e, mode) {
 // The median time to choose, in seconds (the middle of its half-second bin), or null.
 export function medianTime(e) {
   const n = e.s.reduce((a, b) => a + b, 0); if (!n) return null;
-  let k = 0; for (let i = 0; i < BINS; i++) { k += e.s[i]; if (k * 2 >= n) return (i + .5) * BIN; }
+  let k = 0; for (let i = 0; i < e.s.length; i++) { k += e.s[i]; if (k * 2 >= n) return (i + .5) * BIN; }
   return null;
 }
 // How strong an idea is now: the share of good choices (best 1, okay half), match choices counting twice and

@@ -54,17 +54,19 @@ export async function playOption(sc, opt) {
   let step2 = null;
   if (sc.then && opt.startsWith('then:')) { step2 = opt.slice(5); opt = sc.best; } else if (sc.then && opt === sc.best) step2 = sc.then.best;
   const s = g.sim, good = g.isGood(opt), mate = MATE[opt] && s.a(MATE[opt]);
-  const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y } };
+  const start = { ball: { ...s.ball }, mate: mate && { x: mate.x, y: mate.y }, rolling: s.ball.state === 'flying' };
+  // (v64: a ball still rolling as the choice opens, a rebound or a pass on its way, counts where it is going)
+  const ballNow = () => (s.ball.state === 'flying' && !s.ball.carrier && start.rolling ? { x: s.ball.tx, y: s.ball.ty } : s.ball);
   const nearestDef = s.team(sc.kind === 'defense' ? 'us' : 'them').sort((a, b) => dist(a, s.ball) - dist(b, s.ball))[0];
   // Times are game time (s.time), not frames: slow motion in a skill moment shows the same play over more frames.
-  const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, s.ball), frames: 0 }, t0 = s.time;
+  const m = { flight: 0, shotBlocked: false, minGap: Infinity, mateClosest: Infinity, defClosest: Infinity, defStart: dist(nearestDef, ballNow()), frames: 0 }, t0 = s.time;
   let tPrev = t0;
   const kick = s.kick.bind(s);
   let kicker = null, aimAt = null;
   s.kick = (x, y, o) => { // record whether a shot at goal had a defender on its line
     kicker = s.ball.carrier; aimAt = { x, y };
     if (x > PITCH.L - 1 && s.team('them').some(d => closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
-    if (x < 1 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true;
+    if (x < 1 && (o?.speed ?? 11) >= 15 && s.team('us').some(d => d.id !== s.ball.carrier && closestOnLane(d, s.ball, { x, y }, 0).d < .9)) m.shotBlocked = true; // (v64: a shot, not a pass back to a friend by our own goal)
     return kick(x, y, o);
   };
   let gStep2 = null;
@@ -78,9 +80,9 @@ export async function playOption(sc, opt) {
       const list = [...s.agents.values()];
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) m.minGap = Math.min(m.minGap, dist(list[i], list[j]));
       if (mate && s.ball.state === 'flying') { m.flight += gdt; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
-      if (s.time - t0 < 1) m.defClosest = Math.min(m.defClosest, dist(nearestDef, s.ball));
+      if (s.time - t0 < 1.5) m.defClosest = Math.min(m.defClosest, dist(nearestDef, ballNow())); // (v64: players speed up and turn as children do, so a defender who was going the other way needs a moment)
       // A low ball in flight must not pass through anyone except where it's going.
-      if (s.ball.state === 'flying' && s.ball.z < .9) for (const a of list) if (a.id !== kicker && dist(a, s.ball) < .4 && dist(a, aimAt) > 1) m.through = a.id;
+      if (s.ball.state === 'flying' && s.ball.z < .9 && s.ball.t * s.ball.dur > .08) for (const a of list) if (a.id !== kicker && dist(a, s.ball) < .4 && dist(a, aimAt || { x: s.ball.tx, y: s.ball.ty }) > 1) m.through = a.id; // (not in its first moment, still at the kicker's feet beside a defender on him)
     },
   });
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
@@ -114,6 +116,6 @@ export function judge(r) {
   if (r.good && lost) bad.push('good choice lost the ball');
   if (!r.good && !lost) bad.push('bad choice did not lose the ball');
   if (!r.good && r.mateStart != null && r.flight > .4 && !(r.mateClosest < r.mateStart - .3)) bad.push('receiver did not come toward the pass');
-  if (!r.defense && r.defClosest > r.defStart + .2) bad.push('nearest defender backed off the ball');
+  if (!r.defense && r.defClosest > r.defStart + .5) bad.push('nearest defender backed off the ball'); // (v64: one going the other way as the play starts needs a moment to turn, as a child does)
   return bad;
 }

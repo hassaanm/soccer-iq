@@ -35,22 +35,27 @@ export const view = {
   // Tried from a steep look down to a flatter one, the nearest view that fits wins. Kept until the view's size, the
   // round or his facing changes.
   spotView() {
-    const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length}`;
+    const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, win = this.win, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length} ${win ? Math.round(win.t0 * 1e3) : 0}`;
     if (this.spotFit?.key === key) return this.spotFit.spec;
     const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
+    // (v64) Play goes on while he chooses: the view takes in where he and the rings will be as the window ends too, so it
+    // never has to move to keep them in (one fit for the whole window).
+    const end = win ? this.spotsEnd() : null;
+    if (win) { const e = this.windowEnd('hero'); pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
     // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
     // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
     // and one near it smaller (World: ui.spotScale), so the nearest ring is not the biggest thing on screen. And his own
     // player is big enough to find (v60): that comes first. If it cannot all be had, the view gives up first the far
     // post (the near post and the goal mouth's middle stay), then a little on the ring sizes, then the goal.
     const even = !!(sc.run || sc.even), stay = this.stayOffered();
-    if (!even) for (const sp of sc.spots) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
-    else for (const sp of sc.spots) pts.push([sp.x, sp.y, 0]);
+    const rings = [...sc.spots, ...(end || [])];
+    if (!even) for (const sp of rings) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
+    else for (const sp of rings) pts.push([sp.x, sp.y, 0]);
     let scales = null;
     const goalAll = [], goalNear = [];
     if (even) {
       const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2);
-      for (const a of [c, ...near]) if (a && a.id !== 'hero') pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]);
+      for (const a of [c, ...near]) if (a && a.id !== 'hero') { pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]); if (win) { const e = this.windowEnd(a.id); pts.push([e.x, e.y, 0], [e.x, e.y, 1.5]); } }
       if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
         const ny = Math.abs(h.y - gy0) < Math.abs(h.y - gy1) ? gy0 : gy1;
@@ -276,7 +281,7 @@ export const view = {
         this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Drag to look around' : 'Tap 👀 to look up';
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
-    const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && s.time - this.decideAt > 5)) ? 'look' : null;
+    const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && (this.realTime || 0) - (this.decideReal || 0) > 5)) ? 'look' : null;
     hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: (this.canAct || this.showing) && this.canShoot, showing: !!this.showing });
     // The teaching hand follows its target (a spot on the field moves on screen as the camera moves). The HUD
     // hears about it only when the hand shows, hides, moves or taps.
@@ -300,6 +305,7 @@ export const view = {
     if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
     ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
+    ui.reach = this.reachUi?.() || null; // (v64: the threat's reach on the grass while he chooses)
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

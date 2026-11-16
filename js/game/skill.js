@@ -36,7 +36,7 @@ export const skill = {
   skillHold() {
     const s = this.sim, h = s.a('hero');
     if (this.sk?.kind === 'turn' && (this.sk.phase === 'offer' || (this.sk.phase === 'move' && this.clock < this.sk.go))) return true; // (after the tap, a moment more while the camera comes in)
-    if (this.phase !== 'outcome' || this.sk || !h || h.sp >= .6 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed() || !s.list.every(a => a.sp < 1.5)) return false;
+    if (this.phase !== 'outcome' || this.sk || !h || h.sp >= .6 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed() || !s.list.every(a => a.sp < 1.5)) return false; // (v64: play now goes on into his choice, so this standstill is rare: skill moves are offered on his runs)
     const k = s.turnAhead('hero'); if (k) this.skillOffer('turn', k);
     return !!k;
   },
@@ -48,7 +48,8 @@ export const skill = {
     else this.skT0 ??= s.time;
     s.offerOK = this.offerAllowed() || (this.sk?.phase === 'offer' && this.sk.kind === 'run' && !!h?.offer);
     const sk = this.sk, waits = sk?.kind === 'turn' && (sk.phase === 'offer' || (sk.phase === 'move' && this.clock < sk.go));
-    const want = !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW;
+    const want = this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1) : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW; // (v64: the decision window's slow motion)
+    if (this.win) this.win.real += dt; this.realTime = (this.realTime || 0) + dt;
     if (waits) { this.slow = 0; this.slowV = 0; }
     else { // eased (a critically damped spring, by real time), so the speed never steps
       const st = .12, w = 2 / st, e = w * dt, k = 1 / (1 + e + .48 * e * e + .235 * e * e * e), c = this.slow - want, q = (this.slowV + w * c) * dt;

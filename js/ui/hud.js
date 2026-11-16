@@ -49,8 +49,8 @@ export const hud = {
   // or "Next". A missed play has no big letters: its card carries the words as a header. Matches and demos aren't
   // rated: they show just the big letters.
   banner(text, kind, rated) {
-    const big = ui.banner, el = ui.rate, good = kind !== 'bad', splash = !!text && (good || !rated);
-    sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
+    const soft = kind === 'soft', big = ui.banner, el = ui.rate, good = kind !== 'bad' && !soft, splash = !!text && (good || !rated); // soft (v64): the defender got there first: kind words, no sound
+    if (!soft) sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
     clearTimeout(timers.rate); clearTimeout(timers.big);
     hudEl.classList.add('rating'); ui.skillName.classList.remove('show'); // the result's big letters take over from a move's name
     if (splash) {
@@ -63,7 +63,7 @@ export const hud = {
     const title = el.querySelector('.title'), lead = splash ? 850 : 0, tip = rated.text || '';
     title.textContent = text; title.className = 'title ' + kind;
     el.className = 's' + rated.stars + (splash ? ' under' : '');
-    el.querySelector('.stars').innerHTML = [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join('');
+    el.querySelector('.stars').innerHTML = rated.nostars ? '' : [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join(''); // (no stars taken for running out of time)
     el.querySelector('.txt').textContent = tip; el.querySelector('.btns').classList.toggle('hidden', !rated.watch);
     timers.big = setTimeout(() => {
       big.classList.toggle('up', splash); void el.offsetWidth; el.classList.add('show');
@@ -71,7 +71,7 @@ export const hud = {
     }, lead);
     return new Promise(res => {
       // With nothing to tap, the card stays long enough to read the tip, then moves on by itself.
-      if (!rated.watch) { timers.rate = setTimeout(() => res(done('next')), lead + (rated.stars === 3 ? 1600 + tip.length * 45 : 2200)); return; }
+      if (!rated.watch) { timers.rate = setTimeout(() => res(done('next')), lead + (rated.stars === 3 || rated.soft ? 1600 + tip.length * 45 : 2200)); return; }
       ui.rateWatch.onclick = () => res(done('watch')); ui.rateNext.onclick = () => res(done('next'));
     });
   },

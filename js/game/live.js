@@ -80,7 +80,7 @@ export const live = {
     const press = s.team('them').sort((a, b) => dist(a, h) - dist(b, h))[0], side = press.y > h.y ? 1 : -1;
     // (v62: a little quicker than before, to the same place, so the next choice opens sooner)
     s.go(press.id, Math.min(L - 1, h.x + 2.2), clamp(h.y + side * 1.8, 1, W - 1), 4.6);
-    await this.delay(.6); s.stopAll();
+    await this.delay(.6); // (v64: nobody stops; the choice opens with everyone on the move, game/window.js)
     this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed);
   },
 
@@ -94,7 +94,7 @@ export const live = {
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };
     this.yaw = Math.atan2(c.y - h.y, c.x - h.x); this.faceYaw(h);
     s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 3.3); s.go('hero', h.x - 1.2, h.y, 3.3); // (v62: quicker, same places)
-    await this.delay(.8); this.ai = false; s.stopAll();
+    await this.delay(.8); this.ai = false; // (v64: nobody stops; the choice opens with everyone on the move)
     const sc = choose ? liveDefense(s, guard) : null;
     if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
@@ -114,7 +114,7 @@ export const live = {
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
     let live = false, next = 0, streak = 0;
-    this.missed = {}; this.misses = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match';
+    this.missed = {}; this.misses = 0; this.timeoutsInMatch = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match'; this.firstRound = false; this.timeouts = 0;
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
@@ -154,6 +154,7 @@ export const live = {
   react(opt) {
     this.praise(opt); this.hintNext = null;
     const sc = this.sc, r = this.rating(opt); this.logChoice(opt, r); if (!sc.best) return; // a tough spot: there was no better choice
+    if (opt === 'timeout') { this.timeoutsInMatch = (this.timeoutsInMatch || 0) + 1; const id = this.idea(); if (id) this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses }; return; } // (v64) out of time: a miss for its idea, nothing said (play goes on)
     const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? 2 : 0;
     if (stars) this.hud.pop?.(stars, () => this.world.project?.(h.x, h.y, 1.55));
     if (stars < 3) this.betterRing(opt);
@@ -183,7 +184,7 @@ export const live = {
   logChoice(opt, r) {
     if (!this.onChoice || !this.choiceLog) return;
     const sc = this.sc, looked = sc.kind === 'tackle' ? null : sc.kind === 'receive' ? !!this.peeked : !!this.scanned;
-    const whole = { id: !sc.live && sc.skill ? sc.skill : this.idea(), mode: this.choiceLog, grade: r === 'best' || r === 'ok' ? 'best' : r === 'safe' ? 'okay' : 'miss', sec: this.sim.time - this.decideAt, looked };
+    const whole = { id: !sc.live && sc.skill ? sc.skill : this.idea(), mode: this.choiceLog, grade: r === 'best' || r === 'ok' ? 'best' : r === 'safe' ? 'okay' : 'miss', sec: (this.realTime || 0) - (this.decideReal || 0), looked, ...(opt === 'timeout' ? { timeout: true } : {}) }; // (sec: real seconds, as he lived them: the window runs slow)
     for (const rec of this.shotLog?.(opt, whole) || [whole]) this.onChoice(rec); // (a shot he picked a space or a foot for: each part under its own lesson, outcomes.js)
   },
   // The lesson a match decision practises (for the idea he missed most).
@@ -249,7 +250,7 @@ export const live = {
     this.sc = { kind: 'support', live: true, even: true, id: 'live-run', skill: this.sc?.skill, carrier: c.id, pressId: press.id, markId: mark.id, spots,
       best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], safe: extra.filter(e => OKAY[e.why]).map(e => 'spot:' + e.id), cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : goal && space && space[0] > c.x + 1.5 ? 'Run to the goal, so your friend can pass to you!' : 'Move to open space so your friend can pass to you!' };
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
-    s.stopAll(); this.yaw = this.frameYaw(this.sc, h, c); this.faceYaw(h);
+    this.yaw = this.frameYaw(this.sc, h, c); this.faceYaw(h);
     await this.delay(.35);
     return true;
   },
@@ -270,7 +271,7 @@ export const live = {
     Object.assign(sc, { best: 'turn:' + goods[0], ok: goods.slice(1).map(k => 'turn:' + k), cue: goods.length > 1 ? 'Nobody was behind you. Peek, then turn and go!' : 'A defender was behind you! Peek first, then turn away from him.' });
     this.sc = sc;
     this.beginStep({ lookUp: false, drag: null });
-    s.stopAll(); this.yaw = face; this.faceYaw(h);
+    this.yaw = face; this.faceYaw(h);
     return true;
   },
   // His shot was blocked and came back out (outcomes.js shootGen): where does he run? In to the loose ball, stay, or back.
@@ -286,7 +287,7 @@ export const live = {
       best: 'spot:in', ok: [], cue: 'He blocked it! Keep running in, and score!' };
     this.sc.oppsTo = this.sc.opps;
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
-    s.stopAll(); this.yaw = this.frameYaw(this.sc, h, s.ball); this.faceYaw(h);
+    this.yaw = this.frameYaw(this.sc, h, s.ball); this.faceYaw(h);
   },
   // He got in front of the attacker: now it's a 1v1, and he taps STEAL at the right moment.
   async toDuel() {

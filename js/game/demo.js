@@ -42,6 +42,7 @@ export const demo = {
   async showTaps(opt) {
     const sc = this.sc, h = this.sim.a('hero');
     this.showing = true; this.phase = 'decide'; this.pendingDir = null;
+    if (!this.win && !this.skipping) this.openWindow(); // (v64: play goes on, slowly, while the hand shows the taps)
     if (this.skipping || !h) return;
     if (sc.kind === 'tackle') { this.step = 'tackle'; this.lookUp = true; this.handAt = 'stealBtn'; await this.delay(.6); return; } // tapped when the ball rolls loose (tackleGen)
     if (sc.kind === 'receive') { this.step = 'turn'; this.facePasser(); await this.delay(.4); }
@@ -89,6 +90,7 @@ export const demo = {
     const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`);
     await this.pre(); await intro;
     this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.showing = true;
+    this.openWindow(); // (v64: the demo talks over play going on in slow motion, as his own choices do)
     await this.delay(.4);
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
     else { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; }

@@ -50,6 +50,16 @@ const stayTex = canvasTex(128, 156, g => {
   g.fillStyle = '#2b2140'; g.fill(); g.lineWidth = 8; g.strokeStyle = '#ffffff'; g.stroke();
   g.font = '62px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✋', 64, 66);
 });
+// The defender's reach on the grass (v64, game/window.js reachUi): a soft warm patch from his feet toward the ball, its
+// far end a little brighter, so "his reach is coming to the ball" reads from far away, with no clock. Drawn from the
+// left edge (his feet) to the right edge (as far as he reaches).
+const reachTex = canvasTex(256, 96, g => {
+  const W = 256, H = 96, r = H * .42;
+  const path = () => { g.beginPath(); g.moveTo(r * .6, H / 2 - r * .55); g.lineTo(W - r, H / 2 - r); g.arc(W - r, H / 2, r, -Math.PI / 2, Math.PI / 2); g.lineTo(r * .6, H / 2 + r * .55); g.arc(r * .6, H / 2, r * .55, Math.PI / 2, -Math.PI / 2); g.closePath(); };
+  const lin = g.createLinearGradient(0, 0, W, 0); lin.addColorStop(0, 'rgba(255,140,60,.15)'); lin.addColorStop(.75, 'rgba(255,130,50,.55)'); lin.addColorStop(1, 'rgba(255,170,90,.8)');
+  g.filter = 'blur(3px)'; path(); g.fillStyle = lin; g.fill();
+  g.filter = 'none'; g.lineWidth = 5; g.strokeStyle = 'rgba(255,236,200,.75)'; g.beginPath(); g.arc(W - r, H / 2, r - 3, -Math.PI / 2.4, Math.PI / 2.4); g.stroke();
+});
 const IDS = ['hero', 'm1', 'm2', 'm3', 'o1', 'o2', 'o3', 'o4', 'k1', 'k2']; // the sim's player ids: up to four of ours, four of theirs (m3, o4: 4v4), and the keepers (5v5)
 const SIDE_IDS = { us: IDS.slice(0, 4), them: IDS.slice(4) };
 
@@ -388,6 +398,8 @@ export class World {
     // A soft pulse under the ball when it is loose (hint for the 1v1 "Steal it!" lesson).
     this.ballGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.ballGlow.visible = false; this.scene.add(this.ballGlow);
+    this.reachMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).translate(.5, 0, 0), new THREE.MeshBasicMaterial({ map: reachTex, transparent: true, depthWrite: false, toneMapped: false }));
+    this.reachMesh.visible = false; this.reachMesh.renderOrder = -1; this.scene.add(this.reachMesh); // (under the rings and arrows)
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
     this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
     this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
@@ -571,6 +583,8 @@ export class World {
       if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, BALL_R + (b.z || 0)); // a hard shot leaves a trail
       bp.x = b.x; bp.y = b.y;
     } else this.ballPrev = { x: b.x, y: b.y };
+    const rc = ui.reach; this.reachMesh.visible = !!rc; // the threat's reach, from his feet to as far as it goes (a little behind him, so it starts under him)
+    if (rc) { const back = .3; this.reachMesh.position.set(rc.x - rc.dx * back, rc.y - rc.dy * back, .022); this.reachMesh.rotation.z = Math.atan2(rc.dy, rc.dx); this.reachMesh.scale.set(rc.len + back + .12, 1.05, 1); }
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
     this.ball.position.set(b.x, b.y, BALL_R + (b.z || 0)); this.ball.visible = this.ballBlob.visible = !b.hidden; // (hidden: out of play, see outcomes.js missedShot)
     // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.

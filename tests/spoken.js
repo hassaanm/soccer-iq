@@ -6,6 +6,7 @@ import { generate, OKAY } from '../js/generate.js';
 import { CUPS } from '../js/cups.js';
 import { MOVE_NAME } from '../js/flair.js';
 import { EXPLAIN } from '../js/game/skill.js';
+import { TIMEOUT } from '../js/game/rounds.js';
 
 const A = 'Saka', B = 'Rice';
 const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B).replaceAll('{m2}', A); // ({m2}: the third friend, at 4v4)
@@ -29,7 +30,8 @@ export function spokenLines() {
   const lines = [
     ...ALL_LESSONS.flatMap(s => [s.kid, s.tip]),
     'Saved!', 'So close!', 'Good space! Close? Inside, for control.', 'Good space! Far? Laces, for power!', // shots (v62)
-    'Your turn!', 'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
+    'Your turn!', TIMEOUT.first, TIMEOUT.again, // (v64: the defender got there first)
+    'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, `${A} is running!`, 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
     'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
@@ -37,7 +39,7 @@ export function spokenLines() {
     ...CUPS.map(c => c.name),
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'What do you want to play?', // the results card asks what next (flows.js ASK)
     'You won the match!', 'Good game!', 'Nice pass! You looked up!',
-    'You looked up!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
+    'You looked up!', 'You looked early!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
     ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN,
     ...Object.values(OKAY), // only-okay runs (v60) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];

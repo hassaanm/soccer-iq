@@ -18,8 +18,8 @@ function trend(now, before, near) {
 // Two weeks of play: days played, choices made, share of best choices.
 function period(from, to) {
   const days = Object.keys(P.log?.days || {}).filter(d => +d >= from && +d <= to).length;
-  const c = Object.values(logRange(P, from, to)).reduce((a, e) => { const k = counts(e); a.n += k.n; a.best += k.best; return a; }, { n: 0, best: 0 });
-  return { days, n: c.n, share: c.n ? c.best / c.n : null };
+  const c = Object.values(logRange(P, from, to)).reduce((a, e) => { const k = counts(e); a.n += k.n; a.best += k.best; a.t += e.t || 0; return a; }, { n: 0, best: 0, t: 0 });
+  return { days, n: c.n, share: c.n ? c.best / c.n : null, t: c.t };
 }
 const BAND = [[.75, 'strong', 'Strong'], [.5, 'mid', 'Getting there'], [0, 'weak', 'Needs work']];
 
@@ -33,7 +33,8 @@ export function renderReport(day = today()) {
   });
   const stat = (label, value, mark) => `<div class="stat"><b>${value}${mark}</b><span>${label}</span></div>`;
   const stats = `<div class="stats">${stat('days played', now.days, had ? trend(now.days, was.days, 0) : '')}${stat('choices made', now.n, had ? trend(now.n, was.n, was.n * .1) : '')}`
-    + `${stat('best choices', now.share == null ? '–' : pct(now.share), had && now.share != null && was.share != null ? trend(now.share, was.share, .03) : '')}</div>`
+    + `${stat('best choices', now.share == null ? '–' : pct(now.share), had && now.share != null && was.share != null ? trend(now.share, was.share, .03) : '')}`
+    + `${stat('out of time', now.t, had ? trend(now.t, was.t, 1) : '')}</div>`
     + `<p class="small">The last two weeks${had ? ', against the two weeks before' : ''}.</p>`;
   const earlyHtml = early ? `<p class="early">Too early to tell: ${now.n ? `only ${now.n} choices` : 'no choices'} in the last two weeks. The picture gets clearer after a few days of play.</p>` : '';
   // Up to three to work on: the weakest ideas with enough choices to judge that are not strong yet, weakest first.
@@ -42,13 +43,13 @@ export function renderReport(day = today()) {
       + `<div><span>Say</span>“${esc(s.tip)}”</div><div><span>Backyard</span>${esc(s.outside || '')}</div></div>`).join('')}</div>`
     : early || !ideas.some(x => x.band) ? '<p class="small">Nothing to pick yet: each idea needs about ten choices first.</p>'
     : '<p class="small">Nothing to work on right now: every idea he has played enough is strong. 🎉</p>';
-  const rows = ideas.map(({ s, st, band, time }) => `<div class="row"><span class="nm"><i>${s.emoji}</i>${esc(s.kid)}</span>`
+  const rows = ideas.map(({ s, e, st, band, time }) => `<div class="row"><span class="nm"><i>${s.emoji}</i>${esc(s.kid)}</span>`
     + `<span class="bar ${band ? band[1] : 'none'}"><i style="width:${band ? Math.max(6, Math.round(st.score * 100)) : 0}%"></i></span>`
-    + `<span class="lbl">${band ? band[2] : st.n ? 'Not enough yet' : 'Not played'}</span><span class="tm">${time == null ? '' : time.toFixed(1) + ' s'}</span></div>`).join('');
+    + `<span class="lbl">${band ? band[2] : st.n ? 'Not enough yet' : 'Not played'}</span><span class="tm">${time == null ? '' : time.toFixed(1) + ' s'}${e?.t ? ` · ⏱${e.t}` : ''}</span></div>`).join('');
   $('#reportBody').innerHTML = stats + earlyHtml
     + `<h3>Work on next</h3>${workHtml}`
     + `<p class="tip"><b>At his game:</b> one cue before (the “Say” words), quiet while he plays, one question after: “When did you look up?”</p>`
-    + `<h3>Every idea <small>last four weeks · matches count most · time to choose</small></h3><div class="ideas">${rows}</div>`;
+    + `<h3>Every idea <small>last four weeks · matches count most · time to choose · ⏱ times the defender got there first</small></h3><div class="ideas">${rows}</div>`;
 }
 export function openReport() { renderReport(); $('#report').classList.remove('hidden'); $('#reportBody').scrollTop = 0; }
 wireSheet('#report', '#reportClose');

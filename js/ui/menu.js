@@ -30,7 +30,7 @@ function openMenu() {
   $('#skillSel').innerHTML = `<option value="">Automatic (${auto})</option>`
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
   $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)} v ${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
-  $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds);
+  $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#thinkSel').value = P.settings.think || 'normal';
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#recordedChk').checked = P.settings.recorded !== false;
@@ -43,7 +43,7 @@ function openMenu() {
 }
 $('#menuClose').onclick = () => {
   const s = P.settings;
-  s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value;
+  s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value; s.think = $('#thinkSel').value; // think: how long he has to choose (v64, window.js THINK)
   s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value;
   pickVoice(); applySound(); save();
   renderPickers(); show('#home');

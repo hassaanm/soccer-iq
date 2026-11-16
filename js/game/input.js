@@ -13,13 +13,13 @@ export const input = {
   get canAct() { return this.phase === 'decide' && this.mode !== 'demo' && !this.showing; },
   get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo' && !this.showing; },
   // LOOK is a toggle: head up to see the field, head down to watch the ball.
-  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) this.scanned = true; },
+  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) { this.scanned = true; if (this.phase === 'pre') this.lookedEarly = true; } }, // (v64: a look before the choice opens gives him more of its time, as on a pitch)
   // Turning stays where he leaves it, so he can turn all the way around to find someone behind him.
   lookStart(x, width) { if (this.canLook && this.step !== 'dribble') { this.cancel(this.swing); this.drag = { x0: x, yaw0: this.yaw, w: width }; } },
   lookMove(x) {
     if (!this.drag) return;
     const dx = x - this.drag.x0;
-    if (Math.abs(dx) > 12) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
+    if (Math.abs(dx) > 12) { if (!this.lookUp) this.sfx('up'); this.lookUp = true; this.scanned = true; if (this.phase === 'pre') this.lookedEarly = true; this.yaw = wrap(this.drag.yaw0 - dx / this.drag.w * 3.2); }
   },
   // On a receive, a peek is a quick glance: when he lets go, his head turns back to the ball. This is called for
   // every finger that lifts anywhere (button taps too), so it only acts when a drag on the field was under way.
@@ -124,7 +124,7 @@ export const input = {
     }
     if (!best) return false;
     if (this.step === 'dribble' && this.pushAllowed) { this.pendingDir = best.opt.slice(5); return true; } // then: small touches or big push?
-    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.sim.time; if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
+    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.realTime || 0; if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
     this.choose(best.opt); return true;
   },
   targets() {

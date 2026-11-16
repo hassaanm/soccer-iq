@@ -562,7 +562,7 @@ function lead(r, pattern, high = false) {
   const side = pick(r, [1, -1]), H = { x: high ? 11 + dL() + r() * 3 : 6 + r() * 5, y: clamp(W / 2 - side * r() * 4, 3, W - 3) };
   const ang = -side * (r() * .75 - .3), d = { x: Math.cos(ang), y: Math.sin(ang) };   // straight up, a little out, or in toward the middle
   const inX = side * d.y, inY = -side * d.x;                                         // sideways toward the middle (his side)
-  const v = 4.8 + r() * .6, F = { x: H.x + .5 + r() * 2.5, y: H.y + side * (4.5 + r() * 3) };
+  const v = 4 + r() * .5, F = { x: H.x + .5 + r() * 2.5, y: H.y + side * (4.5 + r() * 3) }; // (v64: the runner at a child's sprint, 4–4.5 m/s; research Q1)
   const T = leadPoint(H, F, d, v), farK = 4.5 + r() * 1.5, far = { x: T.x + d.x * farK, y: T.y + d.y * farK };
   const along = (p, k) => [p.x + d.x * k, p.y + d.y * k];
   const room = k => inPitch(along(F, k), 1); let run = 0; while (run < 14 && room(run + .5)) run += .5; // how far he can run before the edge
@@ -574,7 +574,7 @@ function lead(r, pattern, high = false) {
   const moves = { m1: { at: [F.x, F.y], to: along(F, run), speed: v } };
   let o2, o2s;
   if (pattern === 'lead') { // a defender runs after him, a step or two behind and inside
-    const vc = 4.3 + r() * .3, back = 1.5 + r() * .7, k = .5 + r() * .5;
+    const vc = 3.6 + r() * .3, back = 1.5 + r() * .7, k = .5 + r() * .5; // (v64: a child's speeds; the runner 4–4.5 m/s)
     o2 = [F.x - d.x * back + inX * k, F.y - d.y * back + inY * k]; o2s = [o2[0] - d.x * vc * LEAD.pre, o2[1] - d.y * vc * LEAD.pre];
     moves.o2 = { at: o2, to: [o2[0] + d.x * (run - 1), o2[1] + d.y * (run - 1)], speed: vc };
   } else { o2 = [clamp(H.x + 8 + r() * 4, 3, L - 3), W / 2 - side * (3 + r() * 3)]; o2s = o2; } // nobody near him: their other defender is across the field

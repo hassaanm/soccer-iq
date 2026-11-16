@@ -15,6 +15,7 @@ import { input } from './game/input.js';
 import { view } from './game/view.js';
 import { skill } from './game/skill.js';
 import { keeper } from './game/keeper.js';
+import { moving } from './game/window.js';
 
 const SPEECH_CAP = 15; // seconds: the longest talk() waits for the voice beyond the time the line takes to read
 
@@ -44,7 +45,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false });
   }
 
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
@@ -68,8 +69,10 @@ export class Game {
 
   // ---------- scenario setup ----------
   load(sc) {
-    this.reset(); this.sc = sc; this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; this.hud.bannerOff?.(); // (a new play: the last one's result words go)
+    this.reset(); this.sc = sc = sc.spots ? { ...sc, spots: sc.spots.map(sp => ({ ...sp })) } : sc; // (v64: its own rings, which move in the window, so the scene itself is never changed)
+    this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; this.hud.bannerOff?.(); // (a new play: the last one's result words go)
     this.roster = { ...ROSTER }; this.world.resetRigs?.();
+    this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; // (v64: the rings' own places; the window's plan)
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
     if (sc.shots && sc.gk) { // (v62) a shot lesson's scene with a keeper: he faces the goal and anyone of his close to it (a friend free at the far post)
@@ -98,7 +101,9 @@ export class Game {
   // is true), then `done` resolves. cancel() ends a job early, without its last f(1).
   // (`woke`: a wait just ended, so the frame steps no further game time: what waited goes on from that very step,
   // however long the frames are. See game/skill.js skillFrame.)
-  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
+  // (v64) A job made while a decision window is open runs on real time (`real`): it is the picture and the words (a
+  // caption, the hand, the view swinging round, a demo's talk), which must not crawl with the slow motion of play.
+  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
   cancel(t) { if (t && !t.dead) { t.dead = true; t.res(); } }
   delay(sec) { return this.skipping ? Promise.resolve() : this.job(sec).done; }
   tween(sec, f) { if (this.skipping) { f(1); return Promise.resolve(); } return this.job(sec, f).done; }
@@ -130,9 +135,24 @@ export class Game {
     await this.delay(pause);
   }
 
+  // Timed jobs of one clock (real: the frame's own time; else game time). Finished and cancelled ones drop out as the
+  // list is packed down in place (no copy each frame); a job added while this runs waits at the end for the next frame.
+  runJobs(dt, real) {
+    const jobs = this.tweens, n = jobs.length; let keep = 0;
+    for (let i = 0; i < n; i++) {
+      const t = jobs[i]; if (t.dead) continue;
+      if (!!t.real !== real) { jobs[keep++] = t; continue; }
+      t.t += dt; const u = Math.min(1, t.t / t.dur); t.f?.(u);
+      if (t.dead) continue;
+      if (u >= 1 || t.until?.()) t.res(); else jobs[keep++] = t;
+    }
+    for (let i = n; i < jobs.length; i++) jobs[keep++] = jobs[i];
+    jobs.length = keep;
+  }
   // ---------- per frame ----------
   tick(dt, time) {
     this.clock = time;
+    this.runJobs(dt, true);
     // Game time: the real game steps it in small even steps, slower in a skill moment (see game/skill.js).
     if (this.skillTaps) this.skillFrame(dt); else this.gameTime(dt);
     if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null && Math.abs(wrap(this.yaw - this.yaw0)) > 1.4) this.peeked = true;
@@ -140,17 +160,7 @@ export class Game {
   }
   // The part of a frame that runs on game time: timed jobs, the team AI and the sim.
   gameTime(dt) {
-    // Timed jobs. Finished and cancelled ones drop out as the list is packed down in place (no copy each frame);
-    // a job added while this runs waits at the end for the next frame.
-    const jobs = this.tweens, n = jobs.length; let keep = 0;
-    for (let i = 0; i < n; i++) {
-      const t = jobs[i]; if (t.dead) continue;
-      t.t += dt; const u = Math.min(1, t.t / t.dur); t.f?.(u);
-      if (t.dead) continue;
-      if (u >= 1 || t.until?.()) t.res(); else jobs[keep++] = t;
-    }
-    for (let i = n; i < jobs.length; i++) jobs[keep++] = jobs[i];
-    jobs.length = keep;
+    this.runJobs(dt, false); // (timed jobs on game time)
     if (this.sc?.kind === 'tackle' && this.camMode === 'player' && this.sim.a('hero')) { // keep the attacker in view
       const h = this.sim.a('hero'), b = this.sim.ball, want = Math.atan2(b.y - h.y, b.x - h.x);
       this.yaw = wrap(this.yaw + wrap(want - this.yaw) * Math.min(1, dt * 4));
@@ -168,10 +178,11 @@ export class Game {
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
     if (this.ai) this.teamAI();
+    for (const a of this.sim.agents.values()) if (a.ease && (!this.ai || this.scripted.has(a.id))) a.ease = false; // (v64: the team AI's easing is only for the players it moves)
     if (this.keepersOn) this.keepers(dt); // (5v5: game/keeper.js)
-    // A pass on its way waits while he peeks; a friend running stays frozen mid-run until the pass is played.
-    const held = this.phase === 'feedback' || (this.sc?.kind === 'receive' && this.phase === 'decide') || (this.sc?.kind === 'lead' && this.mode !== 'home' && (this.phase === 'decide' || this.phase === 'idle'));
-    if (!held) this.sim.step(dt);
+    // The red and green lines of a missed choice are drawn over the moment he chose, held still (a coach pausing the
+    // video). Nothing else stops: while he decides, play goes on in slow motion (game/window.js).
+    if (this.phase !== 'feedback') { this.sim.step(dt); this.windowStep(); }
   }
   // The rest of a frame (on real time): where he looks, who he has seen, the camera and the HUD.
   frame(dt) {
@@ -203,7 +214,7 @@ export class Game {
 
 // The rest of Game lives in js/game/: each file holds the methods for one concern. They are copied onto the class
 // here, getters included. A name defined twice would silently replace the first one, so that is an error.
-for (const part of [rounds, outcomes, team, live, demo, input, view, skill, keeper]) {
+for (const part of [rounds, outcomes, team, live, demo, input, view, skill, keeper, moving]) {
   for (const name of Object.keys(part)) if (name in Game.prototype) throw new Error(`Game.${name} is defined twice`);
   Object.defineProperties(Game.prototype, Object.getOwnPropertyDescriptors(part));
 }
