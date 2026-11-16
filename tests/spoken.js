@@ -18,7 +18,9 @@ export function spokenLines() {
     for (let seed = 1; seed <= 400; seed++) { const sc = generate(sk.id, seed); for (const c of [sc?.cue, sc?.then?.cue]) if (c) cues.add(c); }
   }
   for (const c of ['{m0} was open!', '{m1} was open!', 'That was a tough spot!', 'Lots of space! Push it and go!', 'There was space to run into!',
-    'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!']) cues.add(c);
+    'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!',
+    // match decisions' cues, said after a miss (game/live.js react)
+    'Pass and go! Run past him into the space.', 'Run to the goal, so your friend can pass to you!', 'Move to open space so your friend can pass to you!', 'Wait in front of him. Steal it when it rolls away from his feet!']) cues.add(c);
   const lines = [
     ...PATH.flatMap(s => [s.kid, s.tip]),
     'Your turn!', 'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
@@ -27,7 +29,8 @@ export function spokenLines() {
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
     "Today's training!", 'Training done!', 'Train first!', 'Start a new cup?', 'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!',
     ...CUPS.map(c => c.name),
-    'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'You won the match!', 'Good game!', 'Nice pass! You looked up!',
+    'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'What do you want to play?', // the results card asks what next (flows.js ASK)
+    'You won the match!', 'Good game!', 'Nice pass! You looked up!',
     'You looked up!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
     ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN,
     ...Object.values(OKAY), // only-okay runs (v60) // the skill move he tapped for, and the demo's line about the button (game/skill.js)

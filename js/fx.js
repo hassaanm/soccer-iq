@@ -36,7 +36,7 @@ export class Particles {
     const i = this.next, p = this.list[i]; this.next = (i + 1) % MAX;
     if (!p.life) this.live++;
     Object.assign(p, BASE, o);
-    p.age = 0; p.rx = rnd(0, 6.3); p.ry = rnd(0, 6.3); p.rz = rnd(0, 6.3); p.landed = false;
+    p.age = 0; p.rx = o.rx ?? rnd(0, 6.3); p.ry = o.ry ?? rnd(0, 6.3); p.rz = o.rz ?? rnd(0, 6.3); p.landed = false;
     this.mesh.setColorAt(i, this.col.set(o.color || '#ffffff')); this.mesh.instanceColor.needsUpdate = true;
     if (this.round.array[i] !== +!!o.round) { this.round.array[i] = +!!o.round; this.round.needsUpdate = true; }
   }
@@ -69,6 +69,15 @@ export class Particles {
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2 + rnd(-.2, .2), r = rnd(2.2, 4.5);
       this.spawn({ x, y, z, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(1.5, 4.5), g: -6, drag: 2.4, size: rnd(.08, .15), life: rnd(.45, .8), spin: rnd(3, 8), face: true, round: true, color: pick(colors) });
+    }
+  }
+  // A soft glow on the grass where the better play was (a match, after a miss): a ring of small warm lights that rise
+  // a little and fade within a second. Nothing random, so a seeded game plays the same with or without it.
+  halo(x, y, n = 18) {
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2, r = .55 + (i % 3) * .08;
+      this.spawn({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, z: .08 + (i % 2) * .1, vx: Math.cos(a) * .15, vy: Math.sin(a) * .15, vz: .5 + (i % 4) * .12, g: 0, drag: .6,
+        size: .09 + (i % 3) * .02, life: .8 + (i % 5) * .06, spin: 2, face: true, round: true, color: GOLD[i % GOLD.length], rx: 0, ry: 0, rz: a });
     }
   }
   // One dot left behind a fast ball.
