@@ -186,7 +186,7 @@ export const outcomes = {
       Object.assign(k.gkm, { k: 'dive', low: true, side: Math.sign((s.ball.y - k.y) * -1) || 1 }); // down at his feet
       yield () => { if (Math.hypot(k.x - s.ball.x, k.y - s.ball.y) < 1.6) s.stop('hero'); return Math.hypot(k.x - s.ball.x, k.y - s.ball.y) < 1 || s.time - t0 > 1.6; };
       s.stop('hero'); Object.assign(s.ball, { state: 'held', carrier: k.id, move: null, reach: null }); yield .2;
-      yield* this.saved(k); return;
+      yield* this.savedShot(k); return;
     }
   },
   // Big push: knock the ball 7 m ahead and race for it. Whoever gets there first wins it.
@@ -400,8 +400,8 @@ export const outcomes = {
     yield* this.turnTo('hero', tx, ty);
     if (K && (r.res === 'save' || r.res === 'goal')) this.keeperReact(K, r, from);
     if (r.res === 'goal') { yield* this.strike('hero', tx, ty, { speed: r.speed, arc: r.arc }); yield () => s.ball.state === 'loose'; yield* this.end('goal', 1.4); return; }
-    if (r.res === 'over') { yield* this.strike('hero', L + 3, to.y, { speed: 17, arc: 3.4 }); yield () => s.ball.state === 'loose'; yield* this.missed('over'); return; }
-    if (r.res === 'wide') { yield* this.strike('hero', L + 2.2, to.y + (to.y - from.y) / Math.max(.5, L - from.x) * 2.2, { speed: r.speed, arc: r.arc }); yield () => s.ball.state === 'loose'; yield* this.missed('wide'); return; }
+    if (r.res === 'over') { yield* this.strike('hero', L + 3, to.y, { speed: 17, arc: 3.4 }); yield () => s.ball.state === 'loose'; yield* this.missedShot('over'); return; }
+    if (r.res === 'wide') { yield* this.strike('hero', L + 2.2, to.y + (to.y - from.y) / Math.max(.5, L - from.x) * 2.2, { speed: r.speed, arc: r.arc }); yield () => s.ball.state === 'loose'; yield* this.missedShot('wide'); return; }
     if (r.res === 'cleared') { // the defender running back meets it on its way in, and knocks it out to the side
       const d = s.team('them').sort((p, q) => Math.hypot(p.x - r.by.x, p.y - r.by.y) - Math.hypot(q.x - r.by.x, q.y - r.by.y))[0];
       this.scripted.add(d.id); s.go(d.id, r.at.x, r.at.y, Math.max(2, Math.hypot(d.x - r.at.x, d.y - r.at.y) / Math.max(.3, r.t + .1)));
@@ -414,22 +414,22 @@ export const outcomes = {
     // Saved: the ball goes to his hands; he holds it, or it spills out in front of him.
     yield* this.strike('hero', r.at.x, r.at.y, { speed: r.speed, arc: r.arc * .6 });
     yield () => s.ball.state === 'loose';
-    if (!r.spill) { Object.assign(s.ball, { state: 'held', carrier: K.id }); yield .15; yield* this.saved(K); return; }
+    if (!r.spill) { Object.assign(s.ball, { state: 'held', carrier: K.id }); yield .15; yield* this.savedShot(K); return; }
     const sp = this.spillOf(r, from); s.ball.carrier = K.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); // (off his hands)
     this.sfx?.('tap');
     if (this.reboundOK) { this.rebound = { by: 'hero', hit: [r.at.x, r.at.y], loose: [sp.x, sp.y], block: K.id }; this.hud.caption('Saved!'); this.say('Saved!'); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
     yield () => s.ball.state === 'loose';
-    yield* this.saved(K, sp);
+    yield* this.savedShot(K, sp);
   },
   // He missed (over the bar, wide): the banner; in a match their keeper then rolls it out (a goal kick).
-  *missed(kind) {
+  *missedShot(kind) {
     const s = this.sim, K = s.keeper('them');
     this.result = kind; this.ai = false; s.stopAll(); this.emit(kind); yield 1.2;
     if (K && (this.mode === 'match' || this.mode === 'free')) { Object.assign(s.ball, { x: K.x, y: K.y }); yield* this.rollOut(K); }
   },
   // Saved: in a lesson the play ends there; in a match the keeper gathers a spilled ball (when he gets there first) and
   // rolls it out to a friend.
-  *saved(K, loose = null) {
+  *savedShot(K, loose = null) {
     const s = this.sim;
     this.result = 'saved'; this.emit('saved');
     if (this.mode !== 'match' && this.mode !== 'free') { this.ai = false; s.stopAll(); yield 1.2; return; }
