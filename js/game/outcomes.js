@@ -6,7 +6,7 @@ import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
 import { placedAim, rightFoot, shotResult, zone, zoneGrade, bestZone, stream, DUEL, GUESS_T, LOW_Z } from '../shot.js';
 
-const GUESS_PLACED = .4; // (see guessWrong)
+const GUESS_PLACED = .1; // (see guessWrong)
 import { seeded, OUR_SAVE } from './keeper.js';
 
 const MATCH_HOLD = { kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
