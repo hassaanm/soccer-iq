@@ -195,11 +195,12 @@ test('saved games: a brand new player starts at the start, with nothing marked n
 test('saved games: halfway (passed up to "Two defenders? Pass!" in the old order)', () => {
   const now = reload(oldSave(V58, V58.indexOf('see-the-trap') + 1, false));
   // "Get open!" was next in the old order: it stays open, though "Pass to the open friend" now comes before it.
-  for (const id of ['get-open', 'pass-to-open', 'follow-shot']) assert.ok(isOpen(now, PATH, at(id)), id);
+  for (const id of ['get-open', 'pass-to-open', 'inside-laces']) assert.ok(isOpen(now, PATH, at(id)), id); // (v62: "Inside or laces?" now comes before "Follow your shot!")
+  assert.ok(!isOpen(now, PATH, at('follow-shot')), 'follow-shot waits for the lesson before it');
   for (const id of ['go-to-goal', 'one-goes', 'forward-first', 'lead-pass', 'give-and-go']) assert.ok(!isOpen(now, PATH, at(id)), id);
   assert.equal(nextSkill(now, PATH, 300), 'look-up', 'Level 1 lessons come first, as before');
   for (const id of V58.slice(0, V58.indexOf('see-the-trap') + 1)) finishSession(now, id, 6, 6, 300);
-  assert.equal(nextSkill(now, PATH, 400), 'follow-shot', 'then the new lesson, the first open one not played');
+  assert.equal(nextSkill(now, PATH, 400), 'inside-laces', 'then the new lesson, the first open one not played');
 });
 
 test('saved games: passed "Pass in front!" and "Pass and go!" but not the guard lessons', () => {
@@ -213,9 +214,9 @@ test('saved games: passed "Pass in front!" and "Pass and go!" but not the guard 
 test('saved games: passed everything; the new lessons come up next, then training again', () => {
   const p = defaultProgress(); V58.forEach((id, i) => { finishSession(p, id, 6, 6, 100 + i); finishSession(p, id, 6, 6, 200 + i); }); p.known = [...V58];
   const now = reload(p);
-  assert.ok(PATH.every((_, i) => isOpen(now, PATH, i)));
-  assert.ok(!graduated(now, PATH)); assert.equal(nextSkill(now, PATH, 300), 'follow-shot');
-  for (const id of ['follow-shot', 'go-to-goal']) finishSession(now, id, 6, 6, 300);
+  assert.ok(PATH.every((s, i) => isOpen(now, PATH, i) || s.id === 'follow-shot')); // (v62: "Follow your shot!" now waits for "Inside or laces?", the lesson before it)
+  assert.ok(!graduated(now, PATH)); assert.equal(nextSkill(now, PATH, 300), 'inside-laces');
+  for (const id of ['inside-laces', 'follow-shot', 'go-to-goal']) finishSession(now, id, 6, 6, 300);
   assert.ok(graduated(now, PATH)); assert.equal(reload(now).fresh.length, 0, 'played: no longer new');
 });
 

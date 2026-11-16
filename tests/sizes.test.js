@@ -11,8 +11,8 @@ const { PATH, allScenarios } = await import('../js/skills.js');
 const { generate, grade, patternsOf } = await import('../js/generate.js');
 const { optionsFor, playOption, judge, makeGame, drive } = await import('./harness.js');
 
-test('the size table: 3v3 and 4v4 offered, 5v5 kept for later as four outfield players and a keeper, each with its own pitch', () => {
-  assert.deepEqual(Object.keys(SIZES).filter(k => SIZES[k].offer), ['3v3', '4v4']);
+test('the size table: 3v3, 4v4 and 5v5 (four outfield players and a keeper) offered, each with its own pitch', () => {
+  assert.deepEqual(Object.keys(SIZES).filter(k => SIZES[k].offer), ['3v3', '4v4', '5v5']);
   assert.equal(SIZES['5v5'].out, 4); assert.equal(SIZES['5v5'].keeper, true);
   assert.deepEqual(SIZES['3v3'].pitch, { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 }); // as it always was
   for (const s of Object.values(SIZES)) assert.equal(s.pitch.gy1 - s.pitch.gy0 >= 4, true);
