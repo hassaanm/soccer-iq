@@ -83,11 +83,12 @@ check was dropped in the first pass and added back in the second (see below).
 | 9 | Peek, then turn! 🔄 | receiving | peek-turn, peek-turn, peek-open | "Peek over your shoulder. Then turn away from the defender!" |
 | 10 | Two defenders? Pass! 🚧 | attack | trap, trap, trap-one | "Two defenders coming? Pass to an open friend." |
 | 11 | Pass to the open friend 🎯 | attack | marked, marked, one-open, carry | "Pass to the friend with nobody right next to him." |
-| 12 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open | "Your friend has the ball? Find open space!" |
+| 12 | Get open! 🙋 | off the ball | shadow, shadow, spread, stay-open, crowd (v64) | "Your friend has the ball? Find open space!" |
 | 13 | Run to the goal too! 👬 (new) | off the ball | go-goal, go-goal, go-far, go-shot | "Your friend has the ball? Run to the goal, so he can pass to you!" |
 | **Chapter 4: Our team (7–9)** | | | | |
 | 14 | One goes, one guards 🛡️ (merged) | defense | one-goes, mark-free, one-goes, mark-free, you-go, gs-covered | "A friend is on the ball? Guard the open player. Nobody on it? You go!" |
 | 15 | Forward first ⬆️ | attack | forward, forward, two-open, carry, shot-open | "Look to the goal first! Nothing forward? Keep the ball." |
+| 15b | Our ball? Spread out! ↔️ (v64) | restarts: off the ball, or taking it | side-in, side-take, goal-kick, side-in, side-pass, kick-off, side-two, keeper-ball (5v5) | "Our ball? Spread out! Find a space where nobody's in the way." |
 | **Chapter 5: Clever passes (8–9)** | | | | |
 | 16 | Pass in front! 🏃 | attack | lead, lead, lead-free | "Your friend is running? Pass it in front of him!" |
 | 17 | Pass and go! 🔁 | attack, then off the ball | give-go (wall beside him), give-go-ahead (wall ahead) | "Pass it, then run past your defender to get it back!" |
@@ -397,3 +398,56 @@ right, and standing still did not look like an option.
 ## v62: six chapters
 
 "Shoot!" is the second chapter: "Shoot when close!", "Inside or laces?", "Shoot to the space!" (5v5 only) and "Follow your shot!". With "Inside or laces?" the first chapter had grown to six lessons (seven at 5v5) and no longer fit one row on a phone. The chapters after it (Win it back, Me and my friends, Our team, Clever passes) are now 3 to 6; the numbers in the sections above are from before this change.
+
+
+## v64: more choices, "Don't crowd your friend", restarts, and play first
+
+Research: `scratchpad/v64/research.md` (sections 1, 4 and 5), and the v62 audit against the purpose (gaps 2 and 3, and
+recommendation 8).
+
+**More choices where there were too few** (the option table and the guessability numbers are in the v64 report):
+- *Peek, then turn:* a third choice at every level. Besides the two turns he can tap the friend who passed it and
+  play it straight back first time. That keeps the ball, so it is okay (2 stars: "Even better: turn away"); it is not
+  offered when that friend stands right by our own goal.
+- *Defending (Get back in front!, One goes, one guards):* from Level 2 a fourth place, back toward our goal on the
+  ball's line. Graded from the picture: if the attackers then have no way through it is okay ("You got back to the
+  goal! Even better: stop him farther out."), otherwise bad. Level 1 keeps its three.
+- *Follow your shot:* from Level 2 a fourth place, on the way in but not straight at the ball: okay if he still gets
+  there first (just in time), bad if their player does. Most come out bad (the timing window is narrow).
+- Left at two: the foot for a shot (inside or laces) and small touches or a big push (each is a pair by nature);
+  who to pass to at 3v3 (he has two friends; dribbling and shooting are the other choices). Left at three: the lead
+  pass (behind him, in front, too far: a fourth ring would sit between two of these, under 2.4 m apart) and the run
+  after a give-and-go.
+
+**Don't crowd your friend** ("Get open!", pattern `crowd`): a friend dribbles up the field and he has come right up
+beside him, with his own defender a step or two behind. Rings: move away into open space where a pass reaches him
+(best), across the front of the dribble ("You got in his way!", bad), staying right beside him ("Too close! Give him
+room.", bad), and one more place that is only okay (behind, wide and far, a defender close). Level 2 adds one more.
+
+**Our ball? Spread out!** (Chapter "Our team", after "Forward first"). Rules shown (research section 4): the ball comes
+back in from the side line by a pass or a dribble (no throw-ins at these ages); their players stand off 3 m at 3v3
+and 4v4 and about 5 m at 5v5; at a goal kick they are back in their own half (the retreat line); a kick-off from the
+middle after a goal. Situations, graded from the picture:
+1. *side-in* (main): a friend has it on the side line; he is right beside him. Open space a little ahead (best), stay
+   beside him (bad, "Too close!"), behind their player who stands off (bad, "He was in the way of the pass!"), far up
+   the line (okay, "free, but far").
+2. *side-take* / *side-pass*: he takes it. Space along the line and friends marked: dribble in (best; a pass to a
+   marked friend is bad; a dribble out over the line is lost). Their player in the way up the line and a friend free:
+   the pass (best). The "blind big kick up the line" has no button in the game, so it is not offered.
+3. *goal-kick*: a friend takes it, their team back past halfway. Go wide (best), the middle in front of the taker (okay at
+   every size: the research marks it wrong at 5v5, but with their team in its own half nothing is lost in the game's
+   play), next to the ball (bad: nobody to pass to, so he kicks it long to them), far up the middle (okay). A place
+   up among their players was left out: it is too far for his player to stay big on screen.
+4. *keeper-ball* (5v5 only): our keeper has it. Wide on the side away from their near player (best), in front of the
+   keeper by their player (bad), wide on the side their player guards (bad), far up (okay).
+5. *side-two* (Level 2): a friend is already in the near space; find your own (best), the same space (bad), the ball
+   (bad, "Don't crowd your friend!").
+6. *kick-off* (Level 2): spread out wide (best), beside the taker (bad), up in front of their player (bad), far back (okay).
+Level 1 uses 1–3; Level 2 adds the others. In matches (once passed) its situations come up like any other lesson's.
+Backyard game: the ball on a line and a cone as a defender (research section 4).
+
+**Play first** (research section 5): Match is open every day once his first lesson is passed; training is 4 rounds
+(the idea he missed most in a match goes first, so it gets two); the Cup still opens with the day's training or a
+lesson. While the Cup is locked, PLAY and the results tile for training glow a little, and the locked Cup shows
+PLAY's picture by its lock, so the day tends to go match, training, match. To revert: `MATCH_ANY_DAY = false` and
+`TRAINING_ROUNDS = null` in `js/progress.js`.

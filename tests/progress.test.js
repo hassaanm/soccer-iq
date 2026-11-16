@@ -214,9 +214,9 @@ test('saved games: passed "Pass in front!" and "Pass and go!" but not the guard 
 test('saved games: passed everything; the new lessons come up next, then training again', () => {
   const p = defaultProgress(); V58.forEach((id, i) => { finishSession(p, id, 6, 6, 100 + i); finishSession(p, id, 6, 6, 200 + i); }); p.known = [...V58];
   const now = reload(p);
-  assert.ok(PATH.every((s, i) => isOpen(now, PATH, i) || s.id === 'follow-shot')); // (v62: "Follow your shot!" now waits for "Inside or laces?", the lesson before it)
+  assert.ok(PATH.every((s, i) => isOpen(now, PATH, i) || s.id === 'follow-shot' || s.keeper)); // (keeper sizes: "Shoot to the space!" waits for "Inside or laces?") // (v62: "Follow your shot!" now waits for "Inside or laces?", the lesson before it)
   assert.ok(!graduated(now, PATH)); assert.equal(nextSkill(now, PATH, 300), 'inside-laces');
-  for (const id of ['inside-laces', 'follow-shot', 'go-to-goal']) finishSession(now, id, 6, 6, 300);
+  for (const id of ['inside-laces', 'follow-shot', 'go-to-goal', 'spread-out', ...PATH.filter(s => s.keeper).map(s => s.id)]) finishSession(now, id, 6, 6, 300); // (v64: and "Our ball? Spread out!"; at keeper sizes, the keeper lessons)
   assert.ok(graduated(now, PATH)); assert.equal(reload(now).fresh.length, 0, 'played: no longer new');
 });
 

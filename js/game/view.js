@@ -49,7 +49,7 @@ export const view = {
     let scales = null;
     const goalAll = [], goalNear = [];
     if (even) {
-      const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2);
+      const c = s.a(sc.carrier), near = s.team('them').filter(p => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) < 10).sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2); // (v64: not their players far off, as at a goal kick)
       for (const a of [c, ...near]) if (a && a.id !== 'hero') pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]);
       if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
@@ -265,7 +265,7 @@ export const view = {
       if (this.phase === 'pre') prompt = this.lookUp || this.sc?.kind === 'tackle' || this.sc?.kind === 'receive' ? '' : 'Tap 👀 to look up';
       else if (this.phase === 'decide') prompt =
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
-        this.step === 'turn' ? (this.peeked ? 'Tap the arrow for your turn' : 'Ball coming! Drag to peek, then tap a turn arrow') :
+        this.step === 'turn' ? (this.peeked ? (this.sc?.back ? 'Tap an arrow, or your friend' : 'Tap the arrow for your turn') : 'Ball coming! Drag to peek, then tap a turn arrow') :
         this.step === 'spot' && this.sc?.kind === 'lead' ? (this.lookUp ? 'Tap where to pass' : 'Tap 👀 to look up') :
         this.step === 'spot' ? (this.lookUp ? (this.stayOffered() ? 'Tap where to run, or stay' : 'Tap where to run') : 'Watch the ball… tap 👀 to look up') :
         this.pendingDir ? 'Small touches or big push?' :
@@ -290,7 +290,7 @@ export const view = {
       hud.hand(id ?? (x == null ? null : [x, y]), this.handTap);
     }
     const ui = this.ui, deciding = this.phase === 'decide';
-    for (const m of MATES) ui.glow[m] = deciding && this.step === 'pass' && this.seen.has(m) ? .8 : 0;
+    for (const m of MATES) ui.glow[m] = deciding && ((this.step === 'pass' && this.seen.has(m)) || (this.step === 'turn' && this.sc?.back && m === (this.sc.carrier || 'm1'))) ? .8 : 0; // (v64: the passer, for the pass back)
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
     ui.aims = deciding && this.step === 'aim' ? (this.aimList?.sc === this.sc ? this.aimList.v : (this.aimList = { sc: this.sc, v: this.aimSpots() }).v) : NONE; // the spaces in the goal (v62)

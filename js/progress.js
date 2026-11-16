@@ -134,8 +134,14 @@ const practised = (p, id, day) => { if (p.focus?.id === id && day > p.focus.day)
 // ---------- daily training (once every lesson is passed) ----------
 // Every ready lesson passed: PLAY becomes "Today's training" (unless a lesson is picked).
 export const graduated = (p, path) => path.filter(s => s.ready).every(s => passed(p, s.id));
-// Match and Cup open for the day after a lesson or a training session (or always, if a grown-up says so).
+// The Cup opens for the day after a lesson or a training session (or always, if a grown-up says so). (Up to v63 this
+// opened Match too.)
 export const playOpen = (p, day = today()) => !!p.settings.alwaysOpen || p.openDay === day;
+// Play first (v64): Match is open every day from the start, once his first lesson has ever been passed; training is
+// short (TRAINING_ROUNDS) and sits between matches. To go back to "Match after training", set MATCH_ANY_DAY to false
+// and TRAINING_ROUNDS to null (training then plays settings.rounds again).
+export const MATCH_ANY_DAY = true, TRAINING_ROUNDS = 4;
+export const matchOpen = (p, day = today()) => playOpen(p, day) || (MATCH_ANY_DAY && Object.keys(p.skills || {}).some(id => passed(p, id)));
 // How sure he is of a lesson, 0–1, from his last rounds of it (a guess of .7 until there are 3).
 export const sureness = (p, id) => { const r = skillState(p, id).recent; return r.length < 3 ? .7 : r.reduce((a, b) => a + b, 0) / r.length; };
 

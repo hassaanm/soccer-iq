@@ -1,6 +1,6 @@
 // The learning path (see research/curriculum-plan.md) and the scenarios for each lesson.
 import { shuffle, PITCH, onSize, sizeOf } from './geom.js';
-import { generate, generates, demoFor, patternsOf } from './generate.js';
+import { generate, generates, demoFor, patternsOf, RESTART_LATER } from './generate.js';
 export { PITCH };
 
 // Six chapters, in the order US Youth Soccer, US Soccer and the FA teach them: me and the ball, shooting (its own chapter
@@ -50,6 +50,11 @@ const ALL = [
     tip: 'A friend is on the ball? Guard the open player. Nobody on it? You go!', outside: 'With a friend: only one of them may chase you. The other guards the cone you want to pass to.' },
   { id: 'forward-first', ch: 4, emoji: '⬆️', kid: 'Forward first', side: 'attack', adult: 'Play forward (shoot, dribble or pass); nothing forward: keep the ball', ready: true,
     tip: 'Look to the goal first! Nothing forward? Keep the ball.', outside: 'Before he plays the ball, he points to the goal, then to a friend ahead.' },
+  // (v64) Restarts: the ball back in from the side line (a pass-in or dribble-in), the kick-off, a goal kick, and with
+  // keepers the keeper's ball. See research/curriculum-plan.md.
+  { id: 'spread-out', ch: 4, emoji: '↔️', kid: 'Our ball? Spread out!', side: 'attack', ready: true, added: true,
+    adult: 'Restarts (the ball in from the side line, kick-off, goal kick, the keeper\'s ball): move away from the ball into open space, to the side and a little ahead, so the taker has a free pass; taking it, pass to the friend who spread out, or dribble in when there is space',
+    tip: "Our ball? Spread out! Find a space where nobody's in the way.", outside: 'Put the ball on a line (a rope or chalk), with a cone as a defender. He runs to a spot where the cone is not between you, then you pass. Swap: he takes it, and passes or dribbles in.' },
   { id: 'lead-pass', ch: 5, emoji: '🏃', kid: 'Pass in front!', side: 'attack', adult: 'Lead pass: to a running friend, pass into the space ahead of him, where he will be, not to his feet', ready: true, added: true,
     tip: 'Your friend is running? Pass it in front of him!', outside: 'Jog across the yard. He passes it in front of you, so you can keep running without stopping.' },
   { id: 'give-and-go', ch: 5, emoji: '🔁', kid: 'Pass and go!', side: 'attack', adult: 'Give-and-go: pass, then run past the defender for the return pass', ready: true,
@@ -83,6 +88,7 @@ export const UNLOCKS = {
   'give-and-go': 'Pass and go: run past him for the ball back',
   'one-goes': 'Guard the open player',
   'forward-first': 'Forward-first chances',
+  'spread-out': 'Our ball from the side, kick-offs and goal kicks',
 };
 
 // The earlier lessons each lesson includes. Daily training treats those as practiced whenever the later lesson
@@ -104,6 +110,7 @@ export const BUILDS = {
   'go-to-goal': ['look-up', 'get-open'],
   'one-goes': ['get-goal-side'],
   'forward-first': ['look-up', 'shoot-close', 'pass-to-open', 'dribble-to-space'],
+  'spread-out': ['get-open', 'pass-to-open'],
 };
 
 // A fixed sample of generated scenarios per lesson (tests, the audit, and the mini match's starting plays).
@@ -121,7 +128,7 @@ export const demoScenario = skillId => demoFor(skillId);
 // How many places to run to in a run-to round: 3 at Level 1, 4 from Level 2 (v60).
 export const runsAt = level => (level >= 2 ? 4 : 3);
 export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math.random } = {}) {
-  const pats = patternsOf(skillId); if (!pats.length) return [];
+  const pats = patternsOf(skillId).filter(p => level >= 2 || !RESTART_LATER.has(p)); if (!pats.length) return []; // ("Our ball? Spread out!": its harder situations from Level 2)
   const [main, ...others] = pats, mix = first ? others : shuffle(others, rnd);
   const order = [];
   if (level >= 2 || !others.length) { let bag = []; while (order.length < n) { if (!bag.length) bag = first ? [...pats] : shuffle([...pats], rnd); const k = bag.findIndex(p => p !== order[order.length - 1]); order.push(bag.splice(k < 0 ? 0 : k, 1)[0]); } }

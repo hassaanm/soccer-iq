@@ -9,7 +9,7 @@ const PASS3 = ['pass:0', 'pass:1', 'pass:2']; // (4v4: three friends to pass to)
 export function optionsFor(sc) {
   if (sc.kind === 'defense' || sc.kind === 'support' || sc.kind === 'lead') return sc.spots.map(s => 'spot:' + s.id);
   if (sc.kind === 'tackle') return ['tackle:good', 'tackle:early', 'tackle:tight', 'tackle:none'];
-  if (sc.kind === 'receive') return ['turn:L', 'turn:R'];
+  if (sc.kind === 'receive') return ['turn:L', 'turn:R', ...(sc.back ? ['turn:B'] : [])]; // (v64: or straight back to the passer)
   const push = sc.skill === 'dribble-to-space' || sc.skill === 'won-it-go' ? ['fwd', 'fl', 'fr', 'left', 'right'].map(d => 'push:' + d) : [];
   const shoot = !sc.shots && (sc.skill === 'shoot-close' || sc.heroTo[0] > (sizeOf().keeper ? PITCH.L - 13 : 17)); // the SHOOT button shows from 13 m out (a shot lesson's scene: each shot it offers, sc.shots)
   // Give-and-go: after the right pass, each run he could make (written then:spot:<id>).

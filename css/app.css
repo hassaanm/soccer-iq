@@ -312,6 +312,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* Match and Cup: locked until today's lesson or training is done. */
 .freebox .btn.locked{filter:saturate(.35) brightness(.95);opacity:.8}
 .freebox .btn.locked::after{content:"🔒";position:absolute;top:-9px;right:-7px;font-size:17px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+/* v64: a locked Cup shows what opens it (PLAY's picture), and PLAY (or the results tile for it) glows a little. */
+#cupBtn.locked[data-key]::after{content:attr(data-key) "🔒";background:#fff;border-radius:12px;padding:1px 5px;box-shadow:0 0 0 2px #2fcf6a;font-size:15px;top:-13px;right:-10px}
+#playBtn.hot,#results .go.hot{animation:hot 1.6s ease-in-out infinite}
+@keyframes hot{50%{box-shadow:0 0 0 5px rgba(255,216,77,.85),0 0 18px 4px rgba(255,216,77,.6)}}
+@media (prefers-reduced-motion:reduce){#playBtn.hot,#results .go.hot{animation:none;box-shadow:0 0 0 4px rgba(255,216,77,.85)}}
 #version{position:absolute;bottom:4px;right:calc(12px + var(--safe-r));font-size:10px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px rgba(36,25,58,.6)}
 /* Grown-ups gear: a ring fills while held; a tap shows how to open it. */
 #gear::after{content:"";position:absolute;inset:-5px;border-radius:19px;border:4px solid var(--gold);opacity:0;clip-path:inset(0 100% 0 0)}

@@ -27,7 +27,7 @@ function confetti(n) {
 // the other corner.
 function tile(b, t) {
   b.classList.toggle('hidden', !t); if (!t) return;
-  b.querySelector('i').textContent = t.icon; b.querySelector('b').textContent = t.text; b.onclick = t.go;
+  b.querySelector('i').textContent = t.icon; b.querySelector('b').textContent = t.text; b.onclick = t.go; b.classList.toggle('hot', !!t.hot); // (v64: the next thing to do today)
   if (t.small) b.querySelector('b').prepend(Object.assign(document.createElement('small'), { textContent: t.small + ' ' })); // (a cup's own emoji)
 }
 

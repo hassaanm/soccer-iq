@@ -289,7 +289,7 @@ test('peek, then turn: two curved turn arrows show from the start and stay put w
   g.decide(); g.tick(1 / 30, 6);
   const before = JSON.stringify(g.ui.turnArrows);
   assert.equal(g.ui.turnArrows.length, 2);
-  assert.deepEqual([...new Set(g.targets().map(t => t.opt))].sort(), ['turn:L', 'turn:R']);
+  assert.deepEqual([...new Set(g.targets().map(t => t.opt))].sort(), ['turn:B', 'turn:L', 'turn:R']); // (v64: or a tap on the passer: straight back)
   g.lookStart(400, 800); g.lookMove(400 - 600); g.tick(1 / 30, 6.1);
   assert.ok(g.peeked); assert.equal(JSON.stringify(g.ui.turnArrows), before, 'arrows moved while he peeked');
   // Each arrow sweeps through his own shoulder: left counterclockwise from facing the ball, right clockwise.

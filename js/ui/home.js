@@ -6,7 +6,7 @@ import { drawShirt } from './shirt.js';
 import { TEAMS, teamById, displayName } from '../teams.js';
 import { PATH, CHAPTERS, skillById } from '../skills.js';
 import { CUPS } from '../cups.js';
-import { nextSkill, level, isOpen, graduated, playOpen } from '../progress.js';
+import { nextSkill, level, isOpen, graduated, playOpen, matchOpen } from '../progress.js';
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 
 // ---------- team size ----------
@@ -102,8 +102,10 @@ function renderLessons() {
   $('#lessons').innerHTML = top + chapters(tile);
   $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
   for (const c of $$('#lessons .tile')) c.onclick = () => { P.pick = c.dataset.id || null; save(); renderLessons(); $('#lessonSheet').classList.add('hidden'); };
-  // Match and Cup open for the day once he has done today's lesson or training.
-  for (const b of ['#freeBtn', '#cupBtn']) $(b).classList.toggle('locked', !playOpen(P));
+  // Match is open once his first lesson is passed; the Cup for the day once he has done today's lesson or training
+  // (v64). A locked Cup shows what opens it (the picture on PLAY, by its lock), and PLAY glows a little.
+  $('#freeBtn').classList.toggle('locked', !matchOpen(P)); $('#cupBtn').classList.toggle('locked', !playOpen(P));
+  $('#cupBtn').dataset.key = sk.emoji; $('#playBtn').classList.toggle('hot', !playOpen(P) && matchOpen(P));
 }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 wireSheet('#lessonSheet', '#sheetClose');

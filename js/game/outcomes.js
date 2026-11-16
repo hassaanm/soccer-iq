@@ -340,9 +340,15 @@ export const outcomes = {
     const o1 = s.a(this.sc.pressId || 'o1'), o2 = s.a(this.sc.markId || 'o2'), o2id = o2.id;
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
-    const t0 = s.time, alive = this.sc.even && this.underPressure(c, o1);
+    const t0 = s.time, alive = this.sc.even && !this.sc.restart ? this.underPressure(c, o1) : null; // (a restart: the ball stays still on its line)
     yield () => { s.go(o2id, h.x + (c.x - h.x) * .12, h.y + (c.y - h.y) * .12, 2.6); alive?.(); return dist(h, sp) < .4 || s.time - t0 > (this.sc.even ? 2.6 : 1.8); }; // (v60 rings can be up to 10 m away)
     s.stop('hero'); s.stop(o2id);
+    if (sp.crowd && this.sc.restart && Math.min(...s.team('them').map(o => dist(o, c))) > 5) { // (v64) a restart with their team far off: nobody to pass to, so he kicks it long, to them
+      const o = s.team('them').sort((p, q) => dist(p, c) - dist(q, c))[0]; this.scripted.add(o.id);
+      yield* this.strike(c.id, o.x - 1, o.y, { speed: 13, arc: .35 });
+      yield () => s.ball.state === 'loose';
+      yield* this.steal(o, 'lost'); return;
+    }
     if (sp.crowd) { // two defenders on two players right together: they win it
       const t1 = s.time; yield () => { s.go(o1.id, c.x, c.y, 4); s.go(o2id, lerp(h.x, c.x, .5), lerp(h.y, c.y, .5), 3.5); return dist(o1, c) < .9 || s.time - t1 > 1.5; };
       yield* this.steal(o1); return;
@@ -703,6 +709,19 @@ export const outcomes = {
     const t1 = s.time; yield () => { s.go('o1', m.x, m.y, 3.6); if (spotId !== 'stay') follows(); return dist(o1, m) < .9 || s.time - t1 > 1.5; };
     yield* this.steal(o1);
   },
+  // "Peek, then turn" (v64): he does not turn, he passes it straight back to the friend who passed it (first time). Kept;
+  // or, with a defender in the way, cut out.
+  *backPass(good) {
+    const s = this.sim, h = s.a('hero'), m = s.a(this.sc.carrier || 'm1');
+    this.scripted.add(m.id); s.stop('hero'); s.stop(m.id);
+    const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
+    s.give('hero');
+    if (!good) { yield* this.passBad(m.id); return; }
+    yield* this.strike('hero', m.x, m.y, { speed: 9, arc: .05 });
+    yield () => s.ball.state === 'loose' || dist(m, s.ball) < .5;
+    s.give(m.id); faceTo(m, L, W / 2);
+    yield* this.end('kept', 1.1);
+  },
   // Give-and-go, step 1: the pass to the wall friend. He stays where he is; step 2 asks where to run.
   *passOnly(id) {
     const s = this.sim, t = s.a(id);
@@ -766,6 +785,7 @@ export const outcomes = {
   *outcomeGen(opt, good) {
     try {
       if (opt.startsWith('tackle:')) yield* this.tackleGen(opt);
+      else if (opt === 'turn:B') yield* this.backPass(good);
       else if (opt.startsWith('turn:')) { // the ball arrives, and his first touch turns him that way: round his left (L) or right (R) shoulder, as the arrow he tapped goes
         const s = this.sim, h = s.a('hero'), to = dribbleEnd(h, this.sc.turns[opt[5]], L, W); this.scripted.add('hero'); s.stop('hero'); s.open('hero', to.x, to.y, opt[5] === 'L' ? 1 : -1);
         const t0 = s.time; yield () => s.ball.state !== 'flying' || s.time - t0 > 1.5;
