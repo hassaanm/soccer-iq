@@ -4,7 +4,7 @@ import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
 
 export const hudEl = $('#hud');
-const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag', 'pop']
+const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'shootBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag', 'pop']
   .map(id => [id, $('#' + id)]));
 const timers = {};
 const flash = (el, cls, text, ms) => {
@@ -25,7 +25,7 @@ export const hud = {
     step = step || 'none'; lookUp = !!lookUp; locked = !!locked;
     if (changed('showing', !!showing)) cl.toggle('showing', !!showing);
     if (changed('phase', phase)) d.phase = phase;
-    if (changed('step', step)) { d.step = step; ui.passBtn.classList.toggle('active', step === 'pass'); ui.dribBtn.classList.toggle('active', step === 'dribble'); }
+    if (changed('step', step)) { d.step = step; ui.passBtn.classList.toggle('active', step === 'pass'); ui.dribBtn.classList.toggle('active', step === 'dribble'); ui.shootBtn.classList.toggle('active', step === 'aim'); } // (v64: SHOOT stays pressed while he picks a target; a tap un-picks, as PASS and DRIBBLE do)
     if (changed('mode', mode)) d.mode = mode;
     if (changed('kind', kind)) d.kind = kind;
     if (changed('touchPick', !!touchPick)) cl.toggle('touchpick', !!touchPick);
@@ -39,7 +39,7 @@ export const hud = {
       lb.firstChild.textContent = lookUp ? '⚽' : '👀'; lb.lastChild.textContent = lookUp ? 'HEAD DOWN' : 'LOOK UP';
     }
     // Head down = tunnel vision: blurry, darker edges. Clears as he looks up.
-    const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble';
+    const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble' && step !== 'aim' && step !== 'foot'; // (aiming a shot: he has his head up at the goal)
     const o = playerView ? Math.round((1 - look) * 95) / 100 : 0;
     if (changed('tunnel', o)) { ui.tunnel.style.opacity = o; ui.tunnel.classList.toggle('on', o > 0); }
   },

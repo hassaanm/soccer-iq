@@ -10,13 +10,13 @@ import { fillResults } from './ui/results.js';
 import { renderPickers, lessonOpen, trainingNext } from './ui/home.js';
 import { shirtImg } from './ui/shirt.js';
 import { teamById, displayName } from './teams.js';
-import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds, runsAt } from './skills.js';
+import { PATH, UNLOCKS, BUILDS, skillById, sessionRounds, runsAt, atLevel } from './skills.js';
 import { CUPS, cupById, newCup, roundsOf, goalsToWin } from './cups.js';
 import { generate } from './generate.js';
 import { preloadClips } from './sound.js';
 import { pieces } from './voice.js';
 import { shuffle } from './geom.js';
-import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
+import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
 
 // ---------- shared steps ----------
 // One flow runs at a time. If one breaks, he lands back on the home screen instead of a stuck field.
@@ -27,6 +27,7 @@ const flow = fn => async (...args) => {
   try { await fn(...args); } catch (e) { console.error(e); game.home(); show('#home'); } finally { running = false; }
 };
 const seed = () => Math.floor(Math.random() * 1e9);
+export const MATCH_GOALS = 5;
 // `n` new scenes drawn from the lessons in `ids`.
 const fresh = (n, ids) => Array.from({ length: n }, () => generate(ids[Math.floor(Math.random() * ids.length)], seed())).filter(Boolean);
 // The teams take the field: the park for practice, the stadium for matches.
@@ -63,15 +64,19 @@ function finish(said) {
   const headline = say(said); game.home(); show('#results'); renderPickers();
   headline?.then(() => setTimeout(() => { if (!$('#results').classList.contains('hidden')) say(ASK); }, 300));
 }
-// The three next steps on every results card (results.js). Match and Cup show only while they are open today (after
-// today's lesson or training they are). The lessons tile is what PLAY starts now: today's training, or the next lesson.
+// The three next steps on every results card (results.js). Match shows once his first lesson is passed (v64: every day);
+// Cup only while it is open today (after today's lesson or training). The lessons tile is what PLAY starts now: today's
+// training, or the next lesson; while the Cup is still locked today it glows a little (`hot`), so after a match the
+// short training is the natural next thing (play, practise, play).
 const ifOpen = t => (playOpen(P) ? t : null);
-const toMatch = () => ifOpen({ icon: '⚽', text: 'Match', go: runFreePlay });
-const toCup = () => ifOpen({ icon: '🏆', text: 'Cup', go: openCups });
+// (v64 round 2) Not open yet: the tile stays, dimmed with a lock, and a tap says how to open it (gated), as on the home screen.
+const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
+const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
 function toLessons() {
-  if (trainingNext()) return { icon: '💪', text: 'Training', go: runSession };
+  const hot = !playOpen(P);
+  if (trainingNext()) return { icon: '💪', text: 'Training', label: P.openDay === today() ? 'AGAIN' : 'TODAY', go: runSession, hot }; // (v64 round 3: once today's is done, it does not say it is still to do)
   const sk = skillById(nextSkill(P, PATH));
-  return { icon: sk.emoji, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); } };
+  return { icon: sk.emoji, pic: sk.id, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); }, hot };
 }
 // After a match or a cup round: the idea he missed most in it (game/live.js), named on the card as "Tomorrow: …" and
 // put into tomorrow's practice (progress.js focus). Only a lesson he has passed (training mixes only those).
@@ -94,6 +99,7 @@ const howTo = (sk, hero) => sk.id === 'steal-it' ? `You are ${hero}, defending. 
   : sk.id === 'give-and-go' ? `You are ${hero}. Pass, then tap where to run.`
   : sk.id === 'lead-pass' ? `You are ${hero}. A friend is running. Tap 👀 to look up, then tap where to pass.`
   : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
+  : sk.id === 'spread-out' ? `You are ${hero}. It is our ball! Tap 👀 to look up, then tap where to go. Your ball? Pass or dribble.`
   : sk.id === 'get-open' || sk.id === 'go-to-goal' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run, or stay.`
   : sk.id === 'inside-laces' ? `You are ${hero}. Tap 👀 to look up, then SHOOT, then the foot: inside or laces.`
   : sk.id === 'shoot-space' ? `You are ${hero}. Tap 👀 to look up, then SHOOT, then where in the goal, then the foot.`
@@ -125,7 +131,10 @@ const runLesson = flow(async () => {
   await card(st.unlocked ? { emoji: '🔓', title: 'New in matches!', sub: `${UNLOCKS[skillId]}. First to 2 goals wins.`, button: 'Kick off' }
     : !st.passedNow && level(P, skillId) === 0 ? { emoji: '🏟️', title: 'Mini match!', sub: `Get ${need} right next time to unlock this in matches. First to 2 goals wins.`, button: 'Kick off' }
     : { emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews])), won = score.us > score.them;
+  // (v64) The mini match plays only the situations his lesson rounds use at his level ("Our ball? Spread out!" keeps its
+  // harder ones for Level 2).
+  const fits = sc => atLevel(sc, skillId, lvl);
+  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]).filter(fits), 2, 'match', fits), won = score.us > score.them;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save();
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   fillResults({
@@ -137,8 +146,8 @@ const runLesson = flow(async () => {
     // Next: a match, a cup, or the lessons: this one again until it is passed, then the next one (once every lesson is
     // passed, today's training). Play this one again is the small corner button.
     match: toMatch(), cup: toCup(),
-    lesson: !passed(P, skillId) ? { icon: '↺', text: 'Try again', go: () => { P.pick = skillId; save(); runSession(); } }
-      : !graduated(P, PATH) && nextSk && lessonOpen(i + 1) ? { icon: nextSk.emoji, text: nextSk.kid, go: () => { P.pick = nextSk.id; save(); runSession(); } } : toLessons(),
+    lesson: !passed(P, skillId) ? { icon: '↺', text: 'Try again', label: 'THIS LESSON', go: () => { P.pick = skillId; save(); runSession(); } }
+      : !graduated(P, PATH) && nextSk && lessonOpen(i + 1) ? { icon: nextSk.emoji, pic: nextSk.id, text: nextSk.kid, go: () => { P.pick = nextSk.id; save(); runSession(); } } : toLessons(),
     again: passed(P, skillId) ? { text: '↺ Again', go: () => { P.pick = skillId; save(); runSession(); } } : null,
     paper: won ? 70 : 0,
   });
@@ -146,28 +155,29 @@ const runLesson = flow(async () => {
 });
 
 // ---------- today's training ----------
-// Once every lesson is passed, PLAY is a short mixed session: the 3 lessons he needs most today (see trainingPlan),
-// 2 rounds each, mixed so he has to work out which idea fits. It opens with a reminder of the 3 ideas, and
-// finishing it opens Match and Cup for the day.
+// Once every lesson is passed, PLAY is a short mixed session: the 2 lessons he needs most today (see trainingPlan), 2
+// rounds each, 4 in all (v64; 3 lessons and 6 rounds before), mixed so he has to work out which idea fits. It opens with a
+// reminder of the ideas, and finishing it opens the Cup for the day. The idea he missed most in a match (progress.js
+// focus) is one of the two.
 // The tip without the lesson name, when the tip opens with it as its own sentence ("Get open! Move to…").
 const tipAfterName = k => {
   const rest = k.tip.startsWith(k.kid) ? k.tip.slice(k.kid.length) : null;
   return rest !== null && (/[.!?]$/.test(k.kid) || /^[.!?]/.test(rest)) ? rest.replace(/^[.!?\s]+/, '') : k.tip;
 };
 const runTraining = flow(async () => {
-  const day = today(), plan = trainingPlan(P, PATH, { day, builds: BUILDS }), sks = plan.map(skillById);
+  const day = today(), f = P.focus?.day < day ? P.focus.id : null, plan0 = trainingPlan(P, PATH, { day, builds: BUILDS, ...(TRAINING_ROUNDS ? { lessons: TRAINING_IDEAS } : {}) }), plan = plan0.includes(f) ? [f, ...plan0.filter(id => id !== f)] : plan0, sks = plan.map(skillById);
   setStage(teamById(P.us), teamById(P.them), 'park');
   await card({ emoji: '💪', title: "Today's training!", html: `<span class="remind">${sks.map(k => `<span><i>${k.emoji}</i><b>${k.kid}</b><small>${tipAfterName(k)}</small></span>`).join('')}</span>`,
     lines: sks.map(k => k.kid), button: 'Play' });
   const scene = id => { for (let k = 0; k < 8; k++) { const sc = generate(id, seed(), { even: true, runs: runsAt(level(P, id)) }); if (sc) return sc; } return null; };
-  const rounds = Array.from({ length: P.settings.rounds }, (_, i) => scene(plan[i % plan.length])).filter(Boolean), per = {};
+  const rounds = Array.from({ length: TRAINING_ROUNDS || P.settings.rounds }, (_, i) => scene(plan[i % plan.length])).filter(Boolean), per = {};
   const results = await playRounds(rounds, 0, (sc, right) => (per[sc.skill] ||= []).push(right), 'training');
   const ups = plan.filter(id => per[id] && trained(P, id, per[id], { day, builds: BUILDS }).leveledUp);
   P.openDay = day; P.sessions++; P.pick = null; save();
   // The backyard game is for the idea he missed most today.
   const weak = skillById(plan.find(id => per[id]?.some(ok => !ok)) || plan[0]);
   fillResults({
-    emoji: '💪', title: 'Training done!', line: '⚽ Match and 🏆 Cup are open!', rounds: results, note: countRight(results),
+    emoji: '💪', title: 'Training done!', line: '🏆 Cup is open!', rounds: results, note: countRight(results),
     news: ups.map(id => `${'⭐'.repeat(level(P, id))} ${skillById(id).kid}`).join(' · '), extra: outside(weak),
     match: toMatch(), cup: toCup(), lesson: toLessons(),
     paper: 50,
@@ -178,12 +188,13 @@ const runTraining = flow(async () => {
 export const runSession = () => (trainingNext() ? runTraining() : runLesson());
 
 // ---------- match ----------
-// First to 3 goals, mixing every lesson he has passed (attack and defense).
+// First to 5 goals (v64; 3 before: with good choices that was over in 6 to 10 decisions), mixing every lesson he has
+// passed (attack and defense). MATCH_GOALS is the one place to change it.
 export const runFreePlay = flow(async () => {
   const ids = matchSkills(), us = teamById(P.us), them = teamById(P.them);
   setStage(us, them, 'crowd');
-  await card({ emoji: '⚽', title: 'Match time!', sub: `First to 3 goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
-  const score = await game.match(ids, fresh(24, ids), 3, 'free'), won = score.us > score.them;
+  await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${MATCH_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  const score = await game.match(ids, fresh(24, ids), MATCH_GOALS, 'free'), won = score.us > score.them;
   if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
   save(); // (the decision log too)
   fillResults({
@@ -238,23 +249,24 @@ const runCup = flow(async cupId => {
   save();
   if (won && final) {
     fillResults({ sticker: cup.emoji, trophy: true, title: 'Champions!', line, note, news: `You won the ${cup.name}!`,
-      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }), lesson: toLessons(), paper: 140 });
+      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }) || toCup(), lesson: toLessons(), paper: 140 });
     return finish('You won the cup!');
   }
   const round = names[run.round];
   fillResults({
     emoji: cup.emoji, title: won ? 'You won!' : 'So close!', line, note, news: won ? `On to the ${round.toLowerCase()}!` : `Play the ${round.toLowerCase()} again!`, extra: cupPath(run),
     // The cup tile plays this cup on (the next round, or this one again); every cup is the small corner button.
-    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }), lesson: toLessons(),
+    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }) || toCup(), lesson: toLessons(),
     again: { text: '🏆 All cups', go: openCups },
     paper: won ? 70 : 0,
   });
   finish(won ? 'You won! On to the next round!' : 'So close! Try again!');
 });
 
-// Match and Cup need today's lesson or training first (a grown-up can open them in the menu).
+// Match needs his first lesson passed; the Cup needs today's lesson or training (a grown-up can open both in the menu).
 export async function gated(run) {
-  if (playOpen(P)) return run();
-  const r = await card({ emoji: '🔒', title: 'Train first!', sub: `Do today's ${graduated(P, PATH) ? 'training' : 'lesson'} to open Match and Cup.`, button: '💪 Train', alt: 'Not now' });
+  const isMatch = run === runFreePlay;
+  if (isMatch ? matchOpen(P) : playOpen(P)) return run();
+  const r = await card({ emoji: '🔒', title: 'Train first!', sub: isMatch ? 'Pass your first lesson to open Match.' : `Do today's ${graduated(P, PATH) ? 'training' : 'lesson'} to open the Cup.`, button: '💪 Train', alt: 'Not now' });
   if (r === 'main') runSession();
 }

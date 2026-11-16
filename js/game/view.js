@@ -1,6 +1,7 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
-import { lerp, smooth, rot, clamp } from '../geom.js';
+import { lerp, smooth, rot, clamp, closestOnLane } from '../geom.js';
 import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
+import { spaces } from '../shot.js';
 
 // Where the eye is seen from the point it looks at: the way round, how high (radians) and how far.
 const orbit = (e, t) => { const x = e[0] - t[0], y = e[1] - t[1], z = e[2] - t[2], r = Math.hypot(x, y, z) || 1e-6; return [Math.atan2(y, x), Math.asin(clamp(z / r, -1, 1)), r]; };
@@ -20,6 +21,11 @@ const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8
 const HERO_MIN = .2;
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
+const BACK_SCALE = [2];
+// The aim view (v64, see aimView): how far behind him the camera is (m), the lens (px per metre at the goal, as a share of
+// the screen's height, is AIM_K / (his distance from the goal + AIM_B), never under AIM_MIN), and where the goal's middle
+// sits (share of the height from the top, and of the width).
+const AIM_B = 12, AIM_K = 3.9, AIM_MIN = .15, AIM_GOAL_Y = .455, AIM_GOAL_X = .46;
 
 export const view = {
   // The canvas size in CSS pixels. Asking the DOM for it can force a layout, so it is asked at most twice a second.
@@ -57,7 +63,7 @@ export const view = {
     let scales = null;
     const goalAll = [], goalNear = [];
     if (even) {
-      const c = s.a(sc.carrier), near = s.team('them').sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2);
+      const c = s.a(sc.carrier), near = s.team('them').filter(p => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) < 10).sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2); // (v64: not their players far off, as at a goal kick)
       for (const a of [c, ...near]) if (a && a.id !== 'hero') { pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]); if (win) { const e = this.windowEnd(a.id); if (far(e, a)) pts.push([e.x, e.y, 0], [e.x, e.y, 1.5]); } }
       if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
@@ -121,6 +127,39 @@ export const view = {
     return this.spotFit.spec;
   },
 
+  // The aim view (v64): he picks one of six targets, so the goal must be big (each target at least 44 px), and he must still
+  // be in the picture with the ball at his feet. The camera is AIM_B m behind him on the line from the goal through him,
+  // with a long lens, looking at the goal: the goal, the keeper and the targets fill the upper middle, he stands whole
+  // below them, from behind. (Round 3) The camera stays the same distance behind him wherever he is, so the farther he is
+  // from the goal, the smaller it looks (AIM_K: the lens; at 13 m a target is still about 46 px on a small phone). It is as
+  // high as lets his feet stay above the bottom edge, and to the side he is on just enough that his head comes up between
+  // two low targets.
+  aimView(h = this.sim.a('hero')) {
+    const v = this.viewSize(), H = v.h || 375, mid = (gy0 + gy1) / 2;
+    const dx = L - h.x, dy = mid - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    const back = Math.min(AIM_B, (h.x - 1) / Math.max(.2, ux)), r = l / back, pxm = H * Math.max(AIM_MIN, AIM_K / (l + back));
+    const gcY = Math.max(AIM_GOAL_Y * H, 104 + .9 * pxm); // (the top targets clear of the prompt)
+    // To the side (sd): his head comes up between two low targets, never on one. Of the two sides, the one where nobody
+    // stands between the camera and him (the defender he got past is often right behind him).
+    const off = (spaces()[3].y - mid) / 2 / r, hz = clamp(((H - 28 - gcY) / pxm - .9) / r, 1.6, 7); // (hz: his feet and the ball well over the bottom edge)
+    const eyeAt = (sd, up = 0) => [h.x - ux * back - uy * sd, clamp(h.y - uy * back + ux * sd, -4, W + 4), hz + up];
+    const clear = e => { let m = 9; for (const a of this.sim.agents.values()) { if (a === h || a.gk) continue; const c = closestOnLane(a, { x: e[0], y: e[1] }, h, 0); if (c.t < .98) m = Math.min(m, c.d); } return m; };
+    // (Round 4) How much of the targets (and the keeper, and him) the players hide from an eye: for each target and each outfield player (him too),
+    // whether the line from the eye to the target passes through the player (about .4 m to each side, 1.7 m tall with his hair) on its way.
+    // The keeper (where he stands is the point of the step) and his own player count double.
+    const K = this.sim.keeper('them'), looks = [...spaces().map(t => ({ x: L, y: t.y, z: t.top ? t.z : .4, w: 1 })), ...(K ? [{ x: K.x, y: K.y, z: 1, w: 2, not: K }] : []), { x: h.x, y: h.y, z: .9, w: 2, not: h }];
+    const covered = e => { let n = 0; for (const t of looks) for (const a of this.sim.agents.values()) { if (a.gk || a === t.not) continue;
+      const c = closestOnLane(a, { x: e[0], y: e[1] }, t, 0); if (c.t > .97) continue;
+      const z = e[2] + (t.z - e[2]) * c.t; if (c.d < .4 && z < 1.7) n += t.w * (1 - c.d / .5); } return n; };
+    const pref = Math.sign(h.y - mid) || 1, cands = [[pref * off, 0], [-pref * off, 0], [pref * off * 2.2, 0], [-pref * off * 2.2, 0]].map(([sd, up], i) => { const e = eyeAt(sd, up); return { e, i, cov: covered(e), cl: clear(e) }; });
+    // The least covered (his side or the other, a little or farther to the side); between near equals, his side, unless
+    // the other is much clearer of people in front of him.
+    cands.sort((p, q) => (Math.abs(p.cov - q.cov) > .15 ? p.cov - q.cov : p.i < 2 && q.i < 2 && Math.abs(p.cl - q.cl) > .3 ? q.cl - p.cl : p.i - q.i));
+    const eye = cands[0].e, dg = Math.hypot(L - eye[0], mid - eye[1], .9 - eye[2]);
+    // (the goal a little left of the middle, AIM_GOAL_X of the width)
+    const cx = L - eye[0], cy = mid - eye[1], cl = Math.hypot(cx, cy) || 1, sh = (.5 - AIM_GOAL_X) * (v.w || 667) / pxm;
+    return { eye, tgt: [L + cy / cl * sh, mid - cx / cl * sh, .9 - (H / 2 - gcY) / pxm], Ff: pxm * dg / H, Fw: 0 };
+  },
   camSpec(time) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
     if (this.camMode === 'orbit') { const a = time * .08; return { eye: [L / 2 + Math.cos(a) * 24, W / 2 + Math.sin(a) * 24, 10], tgt: [L / 2, W / 2, 0], Ff: .9, Fw: .4 }; }
@@ -130,6 +169,7 @@ export const view = {
       const p = this.aimAt, l = Math.hypot(p.x - h.x, p.y - h.y) || 1, ux = (p.x - h.x) / l, uy = (p.y - h.y) / l;
       return { eye: [clamp(h.x - ux * 5, .5, L - .5), clamp(h.y - uy * 5, .5, W - .5), 3.6], tgt: [lerp(h.x, p.x, .5), lerp(h.y, p.y, .5), .4], Ff: .85, Fw: .44 };
     }
+    if (this.camMode === 'aim' && this.aimFrom) return this.aimView(this.aimFrom); // (his shot, v64: the same view as he aimed, so the keeper's dive is big)
     if (this.camMode === 'overview') {
       const p = this.aimAt || h, mx = (h.x + p.x) / 2, my = (h.y + p.y) / 2;
       return { eye: [mx - 8, my, 9], tgt: [mx + 1.5, my, 0], Ff: .85, Fw: .42 };
@@ -155,12 +195,8 @@ export const view = {
     }
     // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView).
     if (this.step === 'spot' && this.phase === 'decide' && this.sc?.spots?.length) return this.spotView();
-    // Choosing where to shoot, and with which foot (v62): from behind him and a little to the side, looking at the goal,
-    // so he, the keeper and the gold spots in the goal are all in the picture, and he is big.
-    if ((this.step === 'aim' || this.step === 'foot') && this.phase === 'decide') {
-      const gc = { x: L, y: (gy0 + gy1) / 2 }, dx = gc.x - h.x, dy = gc.y - h.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, back = clamp(l * .4, 4.6, 6);
-      return { eye: [h.x - ux * back - uy * .7, h.y - uy * back + ux * .7, 2.7 + l * .06], tgt: [h.x + ux * l * .55, h.y + uy * l * .55, .45], Ff: .95, Fw: .5 };
-    }
+    // Choosing where to shoot, and with which foot: the aim view (v64, see aimView).
+    if (this.step === 'aim' && this.phase === 'decide') return this.aimView(); // (the foot, round 3: his own view, below, so he sees how far he is)
     // Choosing a dribble: raise the camera so all four arrows are on screen.
     if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
     // 1v1: a bit higher and farther back, aimed between him and the ball, so the ball and the attacker's feet
@@ -260,7 +296,7 @@ export const view = {
   // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
   // per round, so the scene only builds it once.
   runArrow() {
-    const sc = this.sc, m = this.sim.a('m1'), [dx, dy] = sc.dir;
+    const sc = this.sc, m = this.sim.a('m1'), [dx, dy] = sc.dir || sc.dribbling; // (v64: also a friend dribbling, "Don't crowd your friend")
     if (this.arrow?.sc !== sc) this.arrow = { sc, lines: [{ a: { x: m.x + dx * .6, y: m.y + dy * .6 }, b: { x: m.x + dx * 3.2, y: m.y + dy * 3.2 }, color: '#ffffff' }] };
     return this.arrow.lines;
   },
@@ -273,7 +309,7 @@ export const view = {
       if (this.phase === 'pre') prompt = this.lookUp || this.sc?.kind === 'tackle' || this.sc?.kind === 'receive' ? '' : 'Tap 👀 to look up';
       else if (this.phase === 'decide') prompt =
         this.step === 'tackle' ? 'Wait… steal it when it rolls away!' :
-        this.step === 'turn' ? (this.peeked ? 'Tap the arrow for your turn' : 'Ball coming! Drag to peek, then tap a turn arrow') :
+        this.step === 'turn' ? (this.peeked ? (this.sc?.back ? 'Tap an arrow, or your friend' : 'Tap the arrow for your turn') : 'Ball coming! Drag to peek, then tap a turn arrow') :
         this.step === 'spot' && this.sc?.kind === 'lead' ? (this.lookUp ? 'Tap where to pass' : 'Tap 👀 to look up') :
         this.step === 'spot' ? (this.lookUp ? (this.stayOffered() ? 'Tap where to run, or stay' : 'Tap where to run') : 'Watch the ball… tap 👀 to look up') :
         this.pendingDir ? 'Small touches or big push?' :
@@ -298,16 +334,18 @@ export const view = {
       hud.hand(id ?? (x == null ? null : [x, y]), this.handTap);
     }
     const ui = this.ui, deciding = this.phase === 'decide';
-    for (const m of MATES) ui.glow[m] = deciding && this.step === 'pass' && this.seen.has(m) ? .8 : 0;
+    for (const m of MATES) ui.glow[m] = deciding && ((this.step === 'pass' && this.seen.has(m)) || (this.step === 'turn' && this.sc?.back && m === (this.sc.carrier || 'm1'))) ? .8 : 0; // (v64: the passer, for the pass back)
     for (const d of DIRS) ui.arrows[d] = !deciding || this.step !== 'dribble' ? 0 : !this.pendingDir || this.pendingDir === d ? 1 : .3;
-    ui.spots = deciding && this.step === 'spot' ? this.sc.spots : NONE;
+    const back = deciding && this.step === 'turn' && this.sc?.back && this.sim.a(this.sc.carrier || 'm1'); // (v64: the passer is a choice too: his glow and a gold ring under him)
+    if (back) ui.glow[back.id] = 1;
+    ui.spots = deciding && this.step === 'spot' ? this.sc.spots : back ? (this.backRing?.sc === this.sc ? this.backRing.v : (this.backRing = { sc: this.sc, v: [{ id: 'back', x: back.x, y: back.y }] }).v) : NONE;
     ui.aims = deciding && this.step === 'aim' ? (this.aimList?.sc === this.sc ? this.aimList.v : (this.aimList = { sc: this.sc, v: this.aimSpots() }).v) : NONE; // the spaces in the goal (v62)
-    ui.spotScale = ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView)
+    ui.spotScale = back ? BACK_SCALE : ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView; the passer's ring bigger, as he is farther off)
     // Staying is one of the choices: a badge floats over his head (and his ring stays under his feet). Tapping either picks it.
     const h = this.sim.a('hero'), st = ui.spots !== NONE && this.stayOffered() && h;
     if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
-    ui.lines = deciding && this.sc?.kind === 'lead' ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
+    ui.lines = deciding && (this.sc?.kind === 'lead' || this.sc?.dribbling) ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
     ui.reach = this.reachUi?.() || null; // (v64: the threat's reach on the grass while he chooses)
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },

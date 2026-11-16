@@ -313,7 +313,7 @@ export class Sim {
       const dx = b.x - x, dy = b.y - y, l = Math.hypot(dx, dy); if (l > 1.5) { x += dx / l * .4; y += dy / l * .4; } break;
     }
     this.on(touch ? 'touch' : 'kick', speed);
-    Object.assign(b, { state: 'flying', carrier: null, move: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1,
+    Object.assign(b, { state: 'flying', carrier: null, move: null, fx: b.x, fy: b.y, tx: x, ty: y, t: 0, arc, z1, z0: b.z || 0, vz: 0, // (z0: it leaves from where it is, a keeper's hands too)
       dur: Math.max(0.25, Math.hypot(x - b.x, y - b.y) / speed) });
   }
   run(gen) { this.co = gen; this.wait = 0; this.until = null; }
@@ -410,17 +410,18 @@ export class Sim {
       // is gathered up to his chest, and brought down again to roll it out.
       const c = this.a(b.carrier), m = c?.gkm;
       if (c) {
-        const roll = m?.k === 'roll', fwd = roll ? .45 : m?.k === 'reach' ? .42 : .3, tx = m?.k === 'dive' && m.hand ? m.hand.x : c.x + c.face[0] * fwd, ty = m?.k === 'dive' && m.hand ? m.hand.y : c.y + c.face[1] * fwd;
+        const down = m?.k === 'dive' && m.hand && this.time < m.t0 + m.dur + .45; // (after a dive: in his hands on the grass while he lies there, then up at his chest as he gets up)
+        const roll = m?.k === 'roll', fwd = roll ? .45 : m?.k === 'reach' ? .42 : .3, tx = down ? m.hand.x : c.x + c.face[0] * fwd, ty = down ? m.hand.y : c.y + c.face[1] * fwd;
         // (still down after a save, 'reach': at his hands, low; then up with him)
-        const tz = m?.k === 'dive' && m.hand ? .2 : roll ? BALL_LOW : m?.k === 'reach' ? .22 : .85, dx = tx - b.x, dy = ty - b.y, dz = tz - (b.z || 0), d = Math.hypot(dx, dy, dz), k = d > HAND * dt ? HAND * dt / d : 1;
+        const tz = down ? (m.high ? Math.max(.2, (m.hz || 1.2) - 6 * Math.max(0, this.time - m.t0 - m.dur)) : .2) : m?.k === 'dive' ? .6 : roll ? BALL_LOW : m?.k === 'reach' ? .22 : .85, dx = tx - b.x, dy = ty - b.y, dz = tz - (b.z || 0), d = Math.hypot(dx, dy, dz), k = d > HAND * dt ? HAND * dt / d : 1;
         b.x += dx * k; b.y += dy * k; b.z = (b.z || 0) + dz * k;
       }
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);
-      b.x = lerp(b.fx, b.tx, e); b.y = lerp(b.fy, b.ty, e); b.z = b.arc * 4 * u * (1 - u) + b.z1 * u;
+      b.x = lerp(b.fx, b.tx, e); b.y = lerp(b.fy, b.ty, e); b.z = (b.z0 || 0) * (1 - u) + b.arc * 4 * u * (1 - u) + b.z1 * u;
       if (u >= 1) b.state = 'loose';
-    }
+    } else if (b.state === 'loose' && b.z > 0) { b.vz = (b.vz || 0) - 9.8 * dt; b.z = Math.max(0, b.z + b.vz * dt); } // (a shot that ends up high in the net drops to the grass)
     // Players standing still turn to watch the ball. One who will turn with a pass to him opens his body that way a little
     // (and stays open as it stops at his feet, until he takes it).
     for (const a of this.agents.values()) {

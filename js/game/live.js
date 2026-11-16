@@ -106,10 +106,10 @@ export const live = {
     return false;
   },
 
-  async match(skillIds, extra = [], toWin = 2, mode = 'match') {
+  async match(skillIds, extra = [], toWin = 2, mode = 'match', keep = null) { // keep: which situations may come up (v64: the mini match, at his level)
     this.mode = mode;
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
-    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra]);
+    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
     // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
@@ -155,7 +155,7 @@ export const live = {
     this.praise(opt); this.hintNext = null;
     const sc = this.sc, r = this.rating(opt); this.logChoice(opt, r); if (!sc.best) return; // a tough spot: there was no better choice
     if (opt === 'timeout') { this.timeoutsInMatch = (this.timeoutsInMatch || 0) + 1; const id = this.idea(); if (id) this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses }; return; } // (v64) out of time: a miss for its idea, nothing said (play goes on)
-    const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? 2 : 0;
+    const h = this.sim.a('hero'), stars = r === 'best' || r === 'ok' ? 3 : r === 'safe' ? (this.shotMissed?.(opt) ? 1 : 2) : 0; // (a shot that does not go in: 1 star at most)
     if (stars) this.hud.pop?.(stars, () => this.world.project?.(h.x, h.y, 1.55));
     if (stars < 3) this.betterRing(opt);
     if (r !== 'bad') return;

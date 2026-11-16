@@ -2,7 +2,7 @@
 // Names don't matter here: lines are cut at player names, and each name has its own clip.
 import { PATH, ALL_LESSONS, allScenarios } from '../js/skills.js';
 import { SIZES, TEAM, setSize } from '../js/geom.js';
-import { generate, OKAY } from '../js/generate.js';
+import { generate, OKAY, BAD } from '../js/generate.js';
 import { CUPS } from '../js/cups.js';
 import { MOVE_NAME } from '../js/flair.js';
 import { EXPLAIN } from '../js/game/skill.js';
@@ -30,6 +30,7 @@ export function spokenLines() {
   const lines = [
     ...ALL_LESSONS.flatMap(s => [s.kid, s.tip]),
     'Saved!', 'So close!', 'Good space! Close? Inside, for control.', 'Good space! Far? Laces, for power!', // shots (v62)
+    'Right side! But high can go over. Keep it low.', 'He can reach that one. Find the big space.', // only-okay targets (v64, outcomes.js shotTip)
     'Your turn!', TIMEOUT.first, TIMEOUT.again, // (v64: the defender got there first)
     'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, `${A} is running!`, 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
@@ -41,7 +42,7 @@ export function spokenLines() {
     'You won the match!', 'Good game!', 'Nice pass! You looked up!',
     'You looked up!', 'You looked early!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
     ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN,
-    ...Object.values(OKAY), // only-okay runs (v60) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
+    ...Object.values(OKAY), ...Object.values(BAD), // only-okay runs (v60), and why some wrong runs lost it (v64) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];
   for (const c of cues) {
     const cue = fill(c);

@@ -25,7 +25,7 @@ const stateOf = sc => {
 };
 test('every lesson scene gets a window in which every choice keeps its grade, at child speeds, with nobody turning back', () => {
   for (const sk of PATH) for (const sc of allScenarios(sk.id).slice(0, 3)) {
-    if (kindOf(sc) === 'tackle' || kindOf(sc) === 'receive' || kindOf(sc) === 'lead' || kindOf(sc) === 'follow') continue; // (these open from play going on: the motion audit plays them)
+    if (kindOf(sc) === 'tackle' || kindOf(sc) === 'receive' || kindOf(sc) === 'lead' || kindOf(sc) === 'follow' || sc.restart) continue; // (restarts: a dead ball, round 2's planner only) // (these open from play going on: the motion audit plays them)
     const p = planWindow(sc, stateOf(sc), { fixed: true });
     assert.deepEqual(p.dis, [], `${sc.id}: ${p.dis}`);
     assert.ok(p.G >= .9 && p.G <= 2, `${sc.id}: ${p.G} s of play`);

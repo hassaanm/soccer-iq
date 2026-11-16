@@ -558,6 +558,7 @@ export const RUN = {
   open: [2.2, .6, 1], openFar: [1.1, .5, .5],             // a friend running into the space he will stand in (near, or far from the ball)
   cover: [1.4, .4, .6], walk: [1, .5, .5],                // a cover defender shifting across; a far player walking with the play
   attack: [2.4, 1.6, .8], recover: [3.2, 2.2, 1],          // their dribbler driving at our goal; his recovery run (defending)
+  still: [0, 0, 0], standOff: [.8, .2, .3],
   shield: [.9, .4, .3], drive: [2.8, 2, .8], jog: [2.6, 1.6, .8], step: [1.2, .5, .4], keeper: [.4, 0, .25],
 };
 const U = ([x, y]) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
@@ -575,7 +576,10 @@ export function planArrival(sc, st, opts = {}) {
   const fixedPaths = opts.keep || {}; // (paths given by the scene itself: a lead pass's runners)
   // The player on the ball, and the hero
   const H = P(holder), line = kind === 'defense' ? U([4.5 - H[0], PITCH.W / 2 + (H[1] - PITCH.W / 2) * .6 - H[1]]) : sc.hero && sc.heroTo && holder === 'hero' ? U([sc.heroTo[0] - sc.hero[0] || 1, sc.heroTo[1] - sc.hero[1]]) : U([goal.x - H[0], goal.y - H[1]]);
-  paths[holder] = arr(H, kind === 'support' ? perp(line) : line, kind === 'defense' ? RUN.attack : kind === 'support' ? RUN.shield : kind === 'goal' ? RUN.drive : RUN.carry); role[holder] = 'ball';
+  // (a restart: a dead ball. The taker stands over it, life only in his body; their players stand off, adjusting a step;
+  // friends move to find space. Nobody runs in to tackle.)
+  const dead = !!sc.restart;
+  paths[holder] = arr(H, kind === 'support' ? perp(line) : line, dead ? RUN.still : kind === 'defense' ? RUN.attack : kind === 'support' ? RUN.shield : kind === 'goal' ? RUN.drive : RUN.carry); role[holder] = 'ball';
   if (holder !== 'hero') {
     const h = P('hero'), from = sc.hero && sc.heroTo ? U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]) : U([goal.x - h[0], goal.y - h[1]]);
     paths.hero = arr(h, kind === 'defense' ? (Math.hypot(...from) > .1 ? from : [-1, 0]) : kind === 'receive' ? U([P('m1')[0] - h[0], P('m1')[1] - h[1]]) : from, kind === 'defense' ? RUN.recover : kind === 'goal' ? RUN.jog : RUN.step); role.hero = 'hero';
@@ -604,7 +608,8 @@ export function planArrival(sc, st, opts = {}) {
     // scene's picture: the pass decides it, not who gets to the friend on the ball)
     if (d0 > PRESSING && kind !== 'receive' && kind !== 'goal') for (let k = 0; k < 3; k++) { const s0 = stanceFrom(p, Gpost); Gpost = runTime(Math.max(0, s0.d - STANCE), RUN.far); }
     const s0 = stanceFrom(p, Gpost), u = Gpost ? s0.u : U([H[0] - p[0], H[1] - p[1]]);
-    paths[th] = Gpost ? { ...arr(s0.A, u, RUN.far), T: Gpost } : arr(p, u, kind === 'goal' ? RUN.stepUp : RUN.threat); // (running to the goal: their defender steps up to the friend on the ball, all but stopped as it opens)
+    if (dead) Gpost = 0;
+    paths[th] = dead ? arr(p, u, RUN.standOff) : Gpost ? { ...arr(s0.A, u, RUN.far), T: Gpost } : arr(p, u, kind === 'goal' ? RUN.stepUp : RUN.threat); // (running to the goal: their defender steps up to the friend on the ball, all but stopped as it opens)
     // (from his place in the scene on to the ball: the path passes his place at 0 when it is on his line)
     if (Gpost) { const r = Math.hypot(s0.A[0] - p[0], s0.A[1] - p[1]); paths[th].T = runTime(r, RUN.far); Gpost = paths[th].T; }
     role[th] = 'threat'; watch.add(th);

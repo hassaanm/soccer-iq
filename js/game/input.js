@@ -4,6 +4,8 @@ import { lerp, clamp, smooth, dribbleEnd, DRIBBLE_DIRS } from '../geom.js';
 import { L, W, MATE, facesBall, wrap } from './shared.js';
 import { spaces } from '../shot.js';
 
+const AIM_LOW = .4; // (the low targets' middles: their rings stand just clear of the grass)
+
 const segDist = (x, y, a, b) => {
   const dx = b[0] - a[0], dy = b[1] - a[1], t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1), 0, 1);
   return Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t);
@@ -47,8 +49,8 @@ export const input = {
 
   // Shooting is offered when he is close enough to goal to have a real chance.
   get canShoot() { const h = this.sim.a('hero'); return this.phase === 'decide' && !facesBall(this.sc) && this.sc?.kind !== 'lead' && !!h && h.x > L - (this.sc?.skill === 'shoot-close' || this.sc?.shots ? 18 : 13); },
-  // The spaces in the goal he can pick (gold spots low in the goal mouth): as many as the scene has (a match: two).
-  aimSpots() { const n = this.sc?.shotN || 2; return spaces(n).map(s => ({ id: s.id, x: L - .1, y: s.y, z: .5 })); },
+  // The targets in the goal he can pick (v64: six gold spots in the goal mouth, two rows of three, at every level).
+  aimSpots() { return spaces().map(s => ({ id: s.id, x: L - .1, y: s.y, z: s.top ? s.z : AIM_LOW })); },
   // SHOOT (v62): one tap, until the lessons about the shot are passed. Then, with a keeper in goal ("Shoot to the
   // space!"), he picks a space in the goal (gold spots, step 'aim'), and ("Inside or laces?") the foot (two buttons where
   // Small touches / Big push sit, step 'foot'). Tapped again while picking, SHOOT un-picks, as PASS and DRIBBLE do.
@@ -58,6 +60,7 @@ export const input = {
     const p = this.shotParts(); this.pendingDir = null; this.shotSpace = null;
     if (!p.space && !p.foot) return this.choose('shoot');
     this.step = p.space ? 'aim' : 'foot'; this.shotT = null;
+    if (this.step === 'foot') this.faceGoal();
   },
   // Which parts of the shot he picks now: in the two shot lessons' own scenes, that lesson's part and the ones before
   // it; in matches, the parts whose lessons he has passed. The space only with a keeper in goal.
@@ -66,6 +69,9 @@ export const input = {
     const keys = own ? Object.keys(sc.shots) : [];
     return { foot: own ? keys.some(k => !k.endsWith(':*')) : this.has('inside-laces'), space: !!K && (own ? keys.some(k => !k.startsWith('shoot:*')) : this.has('shoot-space')) };
   },
+  // The foot (v64 round 3): his own view, head up, turned to the goal, so he sees how far away it is (close: inside;
+  // far: laces).
+  faceGoal() { const h = this.sim.a('hero'); this.lookUp = true; if (h) this.swingTo(Math.atan2(W / 2 - h.y, L - h.x)); },
   foot(f) { if (this.canAct && this.step === 'foot') this.choose(`shoot:${this.shotSpace || '*'}:${f}`); },
   // The two turns as curved arrows around his feet: each starts just to one side of facing the ball and sweeps
   // around through that shoulder to the way the turn takes him (sc.turns). The facing is fixed for the round
@@ -132,7 +138,7 @@ export const input = {
     }
     if (!best) return false;
     if (this.step === 'dribble' && this.pushAllowed) { this.pendingDir = best.opt.slice(5); return true; } // then: small touches or big push?
-    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.realTime || 0; if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
+    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.realTime || 0; if (this.shotParts().foot) { this.step = 'foot'; this.faceGoal(); } else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, real seconds, for the decision log)
     this.choose(best.opt); return true;
   },
   targets() {
@@ -142,7 +148,8 @@ export const input = {
     if (this.step === 'pass') return Object.entries(MATE).filter(([, id]) => this.seen.has(id)).map(([opt, id]) => ({ opt, ...this.sim.a(id), z: .8 }));
     if (this.step === 'dribble') return Object.keys(DRIBBLE_DIRS).map(d => { const e = dribbleEnd(h, d, L, W); return { opt: 'drib:' + d, x: lerp(h.x, e.x, .8), y: lerp(h.y, e.y, .8), z: 0 }; });
     if (this.step === 'aim') return this.aimSpots().map(a => ({ opt: 'aim:' + a.id, x: a.x, y: a.y, z: a.z }));
-    if (this.step === 'turn') return this.turnArcs().flatMap(t => [t.a0 + (t.a1 - t.a0) * .5, t.a1].map(a => ({ opt: 'turn:' + t.id, x: h.x + Math.cos(a) * 1.35, y: h.y + Math.sin(a) * 1.35, z: 0 })));
+    if (this.step === 'turn') return [...this.turnArcs().flatMap(t => [t.a0 + (t.a1 - t.a0) * .5, t.a1].map(a => ({ opt: 'turn:' + t.id, x: h.x + Math.cos(a) * 1.35, y: h.y + Math.sin(a) * 1.35, z: 0 }))),
+      ...(this.sc.back ? [{ opt: 'turn:B', ...this.sim.a(this.sc.carrier || 'm1'), z: .8 }] : [])]; // (v64) or a tap on the friend who passed: straight back to him
     return [];
   },
 };

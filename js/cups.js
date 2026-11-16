@@ -32,5 +32,5 @@ export function newCup(cup, us, rnd = Math.random) {
   const team = cupTeam(cup, us), others = shuffle(TEAMS.filter(t => cup.teams(t) && t.id !== team).map(t => t.id), rnd);
   return { id: cup.id, team, opps: others.slice(0, roundsOf(cup).length), round: 0 };
 }
-// Goals to win: 2 in the early rounds, 3 in the final.
-export const goalsToWin = run => (run.round === roundsOf(cupById(run.id)).length - 1 ? 3 : 2);
+// Goals to win: 3 in every round, the final too (v64: 2 before the final made a round over in about three choices).
+export const goalsToWin = () => 3;

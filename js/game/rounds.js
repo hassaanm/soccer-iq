@@ -1,10 +1,8 @@
 // One decision round: the run-up, the moment he chooses, and how good each choice is. Around it, the lesson
 // loop: play the choice, show why a wrong one failed, replay the better way, and let him try again.
 import { dist, dribbleEnd, lerp, clamp } from '../geom.js';
-import { grade, pushEnd, LEAD, SHOT, OKAY } from '../generate.js';
+import { grade, pushEnd, LEAD, SHOT, OKAY, BAD } from '../generate.js';
 import { L, W, MATE, spotKind, facesBall, faceTo } from './shared.js';
-// The rule for the foot ("Inside or laces?"), in his coach's words: said when he picked the right space with the wrong foot.
-const FOOT_TIP = { in: 'Close? Inside, for control.', las: 'Far? Laces, for power!' };
 // (v64) A pass to him (peek, then turn) travels at this speed (m/s); the choice opens as it is played. After a shot that
 // comes back out, the choice opens as it comes off the post or the leg, and runs while it rolls to rest.
 const PASS_IN = 5, FOLLOW_OPEN = 0;
@@ -29,6 +27,7 @@ export const rounds = {
       s.go('hero', ...sc.heroTo, 3.6); (sc.oppsTo || []).forEach((p, i) => p && s.go('o' + (i + 1), ...p, 3));
       await this.delay(1.3); s.stopAll(); return;
     }
+    if (sc.gk?.hold) { const k = s.a(sc.carrier); Object.assign(s.ball, { state: 'held', carrier: k.id, move: null, reach: null }); k.gkm = { k: 'hold', t0: s.time, low: false }; } // (v64: the keeper's ball, in his hands)
     // (v64) Everyone else comes into the choice on his planned way, still moving as it opens (game/window.js).
     await this.plannedRunUp();
     if (sc.run === 'goal') { const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h); }
@@ -199,8 +198,12 @@ export const rounds = {
     if (opt === 'timeout') return 'bad'; // (v64) the defender got there first: no choice made
     if (this.sc.best && opt === this.sc.best) return 'best';
     if (this.sc.kind === 'tackle' || this.sc.then) return 'bad'; // a give-and-go step 1 has one right answer: the pass
+    if (opt === 'turn:B') return (this.sc.safe || []).includes(opt) ? 'safe' : 'bad'; // (v64) the pass straight back
     if (opt.startsWith('turn:')) return grade(this.sc)['drib:' + this.sc.turns[opt[5]]] === 'good' ? 'ok' : 'bad';
-    if (opt.startsWith('shoot:') && !this.sc.shots?.[opt]) { const r = this.rating('shoot'); return r !== 'bad' && this.shotOf(opt).res === 'goal' ? r : 'bad'; } // (a match: as SHOOT is, if it goes in)
+    if (opt.startsWith('shoot:') && !this.sc.shots?.[opt]) { // (a match: as SHOOT is, then each part he picked: the target and the foot; v64: by the choice, not by how the chances fell)
+      const r = this.rating('shoot'), g = this.shotPartGrades(opt);
+      return r === 'bad' || g?.space === false || (g?.foot === false && g.space == null) ? 'bad' : g?.space === 'okay' || g?.foot === false ? 'safe' : r; // (the foot alone wrong: a miss, as before; with a good target: 2 stars)
+    }
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';
     if (spotKind(this.sc)) return 'bad';
@@ -215,6 +218,7 @@ export const rounds = {
     if (opt.startsWith('tackle:')) return { x: this.sim.ball.x, y: this.sim.ball.y };
     if (opt === 'shoot') return { x: L, y: W / 2 }; // the middle of the goal (it used to fall through to a dribble: NaN)
     if (opt.startsWith('shoot:')) return { x: L, y: this.shotOf(opt).aimY }; // where that shot was aimed
+    if (opt === 'turn:B') return { ...this.sim.a(this.sc.carrier || 'm1') };
     if (opt.startsWith('turn:')) return dribbleEnd({ x: this.sc.heroTo[0], y: this.sc.heroTo[1] }, this.sc.turns[opt[5]], L, W);
     if (opt.startsWith('spot:')) { const sp = this.sc.spots.find(x => x.id === opt.slice(5)); return { x: sp.x, y: sp.y }; }
     if (opt.startsWith('push:')) return pushEnd(h, opt.slice(5));
@@ -271,11 +275,12 @@ export const rounds = {
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
       const praise = sc.kind === 'tackle' ? 'Great steal!' : sc.kind === 'receive' && this.peeked ? 'You peeked!' : sc.kind === 'defense' ? 'Great defending!' : sc.kind === 'support' ? 'Great run!' : scanned ? (this.lookedEarly ? 'You looked early!' : 'You looked up!') : sc.kind === 'lead' ? 'Great pass!' : 'Great choice!';
-      const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY)
-      const tip = OKAY[why] || (opt.startsWith('shoot:') ? 'Good space! ' + FOOT_TIP[this.shotOf(opt).res === 'over' ? 'in' : 'las'] : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
-      this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
+      const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY); some wrong runs say why (BAD)
+      const tip = OKAY[why] || (opt.startsWith('shoot:') ? this.shotTip(opt) : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
+      this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: this.shotMissed?.(opt) ? 1 : 2, text: tip, watch: true, say: true } // (v64: a shot that does not go in never shows more than 1 star)
         : good && this.light && attempt === 1 ? { stars: 3, light: true, said: praise } // stars and the praise, then on
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : opt !== sc.best && MATE[opt] ? `${praise} ${this.named(`{m${opt[5]}} was open too!`)}` : `${praise} ${this.cue()}`, said: praise } // (a pass as good as the best one: the praise names the friend he picked) // show why it was right, so the idea sticks; say the praise
+        : BAD[why] ? { stars: 0, text: BAD[why], say: true }
         : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : opt.startsWith('shoot:') ? this.shotWhy(opt) : 'Oops, lost it!' }; // (a shot: what happened, and why: outcomes.js shotWhy)
       this.card = null;
       await this.outcome(opt, good);

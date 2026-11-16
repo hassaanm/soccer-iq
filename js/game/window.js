@@ -191,6 +191,13 @@ export const moving = {
     const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, R = show || this.windowReal(), G = plan.G;
     this.spotsReset();
     this.win = { plan, G, R, f: Math.max(PACE_MIN, Math.min(1, (G - .1) / Math.max(.5, R - .1))), t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
+    // (round 2) A pass coming to him from live play: he meets it where it is going, a small step behind where it stops,
+    // as it gets there (not on with the play, a metre off it).
+    const b = s.ball, h = s.a('hero');
+    if (plan.live && kindOf(sc) === 'receive' && b.state === 'flying' && h && plan.paths.hero) {
+      const T = Math.max(.2, (1 - b.t) * b.dur), dx = b.tx - b.fx, dy = b.ty - b.fy, l = Math.hypot(dx, dy) || 1, E = [b.tx + dx / l * .45, b.ty + dy / l * .45], q = pathAt(plan.paths.hero, 0);
+      if (Math.hypot(E[0] - h.x, E[1] - h.y) < 2.5) plan.paths.hero = { herm: true, S: [h.x, h.y], V0: [q.vx, q.vy], E, V1: [0, 0], T };
+    }
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] && !plan.live ? plan.at0[id] : { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)

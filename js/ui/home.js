@@ -6,8 +6,9 @@ import { drawShirt } from './shirt.js';
 import { TEAMS, teamById, displayName } from '../teams.js';
 import { PATH, CHAPTERS, skillById } from '../skills.js';
 import { CUPS } from '../cups.js';
-import { nextSkill, level, isOpen, graduated, playOpen } from '../progress.js';
+import { nextSkill, level, isOpen, graduated, playOpen, matchOpen } from '../progress.js';
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
+import { lessonPic } from './pics.js';
 
 // ---------- team size ----------
 // The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
@@ -16,19 +17,25 @@ import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 export const SIZE_IDS = Object.keys(SIZES).filter(k => SIZES[k].offer);
 const SHAPE = { 3: [[17, 30], [35, 15], [35, 45]], 4: [[10, 30], [24, 13], [24, 47], [38, 30]] }; // our half (x 0-50), attacking right
 const ink = c => (/^#f[0-9a-f]f[0-9a-f]f/i.test(c) ? '#24193a' : '#fff'); // a white kit gets a dark rim
-// A keeper (5v5): in his goal, in a keeper's colour (neither team's), with white gloves out to the sides.
-const glove = (x, y) => `<path d="M${x - 3.2} ${y + 3.4}v-4.6a1.2 1.2 0 0 1 2.4 0v-1.6a1.1 1.1 0 0 1 2.2 0v1.2a1.1 1.1 0 0 1 2.2 0v2.2l1-1.2a1.1 1.1 0 0 1 1.7 1.4l-2.6 3.4z" fill="#fff" stroke="#24193a" stroke-width="1.1" stroke-linejoin="round"/>`;
-const keeperPic = (x, s) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${x + s * 3}" cy="30" r="6.5" fill="#b6f22a" stroke="#24193a" stroke-width="2"/>${glove(x + s * 3 - .5, 19.5)}${glove(x + s * 3 - .5, 38)}`; // his shirt and two big white gloves
-const pitchPic = id => {
-  const n = sizeOf(id).out, gk = sizeOf(id).keeper, us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
-  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? 12 + x * .85 : x, y]); // (with keepers: the diamond steps up in front of him)
-  return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="9" fill="none" stroke="#fff" stroke-width="2.5"/>`
-    + (gk ? keeperPic(3.5, 1) + keeperPic(96.5, -1) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
+// A keeper (5v5): in his goal, marked by the same glove as the "5 v 5" label (v64 round 2: the owner liked that one) on a
+// dark disc ringed in the keepers' lime (round 3: the green glove stands out on it, about 6 : 1), big enough to read on the
+// small chip too. (Round 2 compared the glove alone, the glove on a lime disc and a drawn glove: report.)
+// (Round 4) On the small chip the keeper's disc is as big as the picture allows (bigger than the outfield dots), so the
+// glove reads at phone size; the outfield dots there are smaller. The front dots stay clear of each other and of the
+// centre circle.
+const KEEP = { card: { kx: 8.5, kr: 7.8, font: 12, dot: 4.8, x0: 23.5, k: .52, ring: 5.5 }, chip: { kx: 11, kr: 10.5, font: 17, dot: 4.2, x0: 27.6, k: .44, ring: 5 } }; // (ring: the centre circle with keepers)
+const keeperPic = (x, s, K) => `<rect x="${x - s * 2.5}" y="20" width="5" height="20" rx="1" fill="none" stroke="#fff" stroke-width="2"/>`
+  + `<circle cx="${x + s * (K.kx - 3.5)}" cy="30" r="${K.kr}" fill="#24193a" stroke="#b6f22a" stroke-width="2.4"/><text x="${x + s * (K.kx - 3.5)}" y="${30 + K.font * .06}" font-size="${K.font}" text-anchor="middle" dominant-baseline="central">🧤</text>`;
+const pitchPic = (id, where = 'card') => {
+  const n = sizeOf(id).out, gk = sizeOf(id).keeper, K = KEEP[where], us = teamById(P.us).kit.colors[0], them = teamById(P.them).kit.colors[0], dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="${gk ? K.dot : 6.5}" fill="${c}" stroke="${ink(c)}" stroke-width="2"/>`;
+  const shape = (SHAPE[n] || SHAPE[3]).map(([x, y]) => [gk ? K.x0 + (x - 10) * K.k : x, y]); // (with keepers: the diamond steps up in front of him, clear of him and of the centre circle)
+  return `<svg viewBox="0 0 100 60" aria-hidden="true"><rect x="1.5" y="1.5" width="97" height="57" rx="7" fill="#3f9a4a" stroke="#fff" stroke-width="3"/><path d="M50 2v56" stroke="#fff" stroke-width="2.5"/><circle cx="50" cy="30" r="${gk ? K.ring : 9}" fill="none" stroke="#fff" stroke-width="2.5"/>`
+    + (gk ? keeperPic(3.5, 1, K) + keeperPic(96.5, -1, K) : '') + shape.map(([x, y]) => dot(x, y, us) + dot(100 - x, y, them)).join('') + '</svg>';
 };
 const players = id => sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0); // a side, the keeper too
-const label = id => `<b>${players(id)} v ${players(id)}${sizeOf(id).keeper ? ' 🧤' : ''}</b>`; // (keepers: a glove)
+const label = id => `<b>${players(id)} v ${players(id)}${sizeOf(id).keeper ? '<i class="glv">🧤</i>' : ''}</b>`; // (keepers: a glove, hanging off to the side: the words stay centred as on the others)
 function renderSize() {
-  $('#sizeBtn').innerHTML = pitchPic(TEAM.size) + label(TEAM.size) + '<i class="caret" aria-hidden="true">▾</i>'; // (the caret: a tap opens the choices)
+  $('#sizeBtn').innerHTML = pitchPic(TEAM.size, 'chip') + label(TEAM.size) + '<i class="caret" aria-hidden="true">▾</i>'; // (the caret: a tap opens the choices)
   $('#sizePop .choices').innerHTML = SIZE_IDS.map(id => `<button class="btn btn-glass choice ${id === TEAM.size ? 'on' : ''}" data-id="${id}" aria-label="${players(id)} players on each team${sizeOf(id).keeper ? ', with keepers' : ''}">${pitchPic(id)}${label(id)}</button>`).join('');
   for (const b of $$('#sizePop .choice')) b.onclick = () => { $('#sizePop').classList.add('hidden'); chooseSize(b.dataset.id); };
 }
@@ -96,14 +103,16 @@ function renderLessons() {
     const open = lessonOpen(PATH.indexOf(l)), lv = level(P, l.id);
     const fresh = open && !P.skills[l.id]?.sessions && P.fresh?.includes(l.id); // a lesson added since his last visit (see progress.js catchUp)
     return `<button class="tile ${l.id === cur ? 'on' : ''} ${open ? '' : 'locked'} ${l.side === 'defense' ? 'def' : ''} ${fresh ? 'new' : ''}" data-id="${l.id}" ${open ? '' : 'disabled'}>
-      <span class="e">${open ? l.emoji : '🔒'}</span><span class="k">${l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
+      <span class="e">${open ? lessonPic(l.id, l.emoji) : '🔒'}</span><span class="k">${l.short || l.kid}</span><span class="st">${'★'.repeat(lv)}<i>${'★'.repeat(lv ? 3 - lv : 0)}</i></span></button>`;
   };
   const top = graduated(P, PATH) ? `<button class="tile train ${training ? 'on' : ''}" data-id=""><span class="e">💪</span><span class="k">Today's training</span><span class="st">a mix of what you need</span></button>` : '';
   $('#lessons').innerHTML = top + chapters(tile);
-  $('#lessonBtn .le').textContent = sk.emoji; $('#lessonBtn b').textContent = sk.kid;
+  $('#lessonBtn .le').innerHTML = lessonPic(cur, sk.emoji); $('#lessonBtn b').textContent = sk.kid;
   for (const c of $$('#lessons .tile')) c.onclick = () => { P.pick = c.dataset.id || null; save(); renderLessons(); $('#lessonSheet').classList.add('hidden'); };
-  // Match and Cup open for the day once he has done today's lesson or training.
-  for (const b of ['#freeBtn', '#cupBtn']) $(b).classList.toggle('locked', !playOpen(P));
+  // Match is open once his first lesson is passed; the Cup for the day once he has done today's lesson or training
+  // (v64). While the Cup is locked, PLAY glows a little (a tap on the Cup says how to open it).
+  $('#freeBtn').classList.toggle('locked', !matchOpen(P)); $('#cupBtn').classList.toggle('locked', !playOpen(P));
+  $('#playBtn').classList.toggle('hot', !playOpen(P) && matchOpen(P));
 }
 $('#lessonBtn').onclick = () => $('#lessonSheet').classList.remove('hidden');
 wireSheet('#lessonSheet', '#sheetClose');
