@@ -183,7 +183,8 @@ export const outcomes = {
     if (!good) { // he dives at the ball and gathers it
       const t0 = s.time; s.go('hero', end.x, end.y, 4.4); yield .25;
       this.keeperReact(k, { res: 'save', at: { x: s.ball.x, y: s.ball.y }, t: .35, arc: .05 }, { x: h.x, y: h.y }, 0);
-      yield () => Math.hypot(k.x - s.ball.x, k.y - s.ball.y) < 1 || s.time - t0 > 1.6;
+      Object.assign(k.gkm, { k: 'dive', low: true, side: Math.sign((s.ball.y - k.y) * -1) || 1 }); // down at his feet
+      yield () => { if (Math.hypot(k.x - s.ball.x, k.y - s.ball.y) < 1.6) s.stop('hero'); return Math.hypot(k.x - s.ball.x, k.y - s.ball.y) < 1 || s.time - t0 > 1.6; };
       s.stop('hero'); Object.assign(s.ball, { state: 'held', carrier: k.id, move: null, reach: null }); yield .2;
       yield* this.saved(k); return;
     }

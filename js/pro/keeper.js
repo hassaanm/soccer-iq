@@ -29,11 +29,11 @@ export function animateKeeper(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const hold = k === 'hold' ? 1 : (k === 'dive' || k === 'reach') && gk.save && kt > gk.dur ? sm((kt - gk.dur) / .15) : 0;
   const roll = k === 'roll' ? kt : -1, low = roll >= 0 ? bump(roll, 0, .2, .55, .85) : 0;
   const side = gk?.side || 1;
-  m.roll = damp(m.roll, -side * 1.38 * dv, 30, dt);                   // (a positive roll tips him to his right)
-  m.lift = damp(m.lift, .1 + .58 * dv + .25 * low + .05 * rc, 18, dt); // hips down: ready, lying, crouched to roll it
-  m.lean = damp(m.lean, .32 + .5 * low - .2 * dv + .1 * rc, 12, dt);
+  m.roll = damp(m.roll, side * 1.38 * dv, 30, dt);                    // (a positive roll tips him to his left)
+  m.lift = damp(m.lift, (.11 + .25 * low + .05 * rc) * (1 - dv), 18, dt); // hips down: ready (knees bent), crouched to roll it out (diving, the fall itself takes him down)
+  m.lean = damp(m.lean, .16 + .35 * low - .1 * dv + .08 * rc, 12, dt);  // leaning a little over his toes
   tiltBody(-m.lift, m.lean, m.roll);
-  g.position.set(a.x, a.y, -m.lift * (1 - dv) * 0 + (dv > .5 ? .02 : 0)); g.rotation.set(m.roll, m.lean, m.yaw);
+  g.position.set(a.x, a.y, -m.lift); g.rotation.set(m.roll, m.lean, m.yaw);
   u.blob.position.set(0, 0, .012); u.blob.rotation.set(-m.roll, -m.lean, 0); u.blob.scale.setScalar(1 - .4 * dv);
   // Feet: each stays where it is on the grass until he steps it toward its place in his stance (one at a time).
   for (let i = 0; i < 2; i++) {
@@ -59,8 +59,8 @@ export function animateKeeper(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     if (roll >= 0 && i === 0) { const sw = sm(roll / .45); ax = lerp(ax, -.1, low); ay = lerp(ay, lerp(.7, -1.1, sw), low); ae = lerp(ae, -.15, low); }
     u.arms[i].rotation.set(ax, ay, 0); u.elbows[i].rotation.y = ae;
   }
-  u.pelvis.rotation.set(0, m.lean * .4, 0);
-  u.torso.rotation.set(0, m.lean * .5 + .15 * hold, 0);
+  u.pelvis.rotation.set(0, .1 + .3 * low, 0);
+  u.torso.rotation.set(0, .12 + .2 * low + .1 * hold, 0);
   const lookB = clamp(wrap(toBall - m.yaw), -1.2, 1.2) * (1 - dv);
   u.head.rotation.set(0, clamp(-.2 * (m.lean - .3) + .25 * low, -.4, .5), lookB);
   if (mood > 0) for (let i = 0; i < 2; i++) { u.arms[i].rotation.y = lerp(u.arms[i].rotation.y, -2.8, mood * (1 - dv)); }

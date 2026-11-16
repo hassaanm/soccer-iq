@@ -343,7 +343,7 @@ export class Sim {
       if (d > 0.02 && a.speed > 0) {
         if (m) a.sp = lerp(a.sp, sp, ease(dt, 10)); // he brakes into the turn and runs out of it
         const s = Math.min((m ? a.sp : sp) * dt, d);
-        const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m) turnToward(a, dx / d, dy / d, dt); a.dist += s;
+        const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
         if (has && !m && !b.reach && dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { // each dribble touch puts the ball on the way he runs
           a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); this.on('touch'); b.h = ang(dx, dy); if (!a.skill) this.dribbleSkill(a); a.tL = touchLen(this, a);
@@ -377,7 +377,8 @@ export class Sim {
       const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = ease(dt, 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;
     } else if (b.state === 'held') { // a keeper has it in his hands, in front of his chest (game/keeper.js)
-      const c = this.a(b.carrier); if (c) { b.x = c.x + c.face[0] * .3; b.y = c.y + c.face[1] * .3; b.z = c.gkm?.low ? .35 : .85; }
+      const c = this.a(b.carrier), m = c?.gkm; // (down after a dive: in his hands, on the grass; rolling it out: down low)
+      if (c && m?.k === 'dive' && m.hand) { b.x = m.hand.x; b.y = m.hand.y; b.z = .2; } else if (c) { b.x = c.x + c.face[0] * .3; b.y = c.y + c.face[1] * .3; b.z = m?.k === 'roll' ? .3 : .85; }
     } else if (b.state === 'flying') {
       b.t += dt / b.dur;
       const u = Math.min(1, b.t), e = 1 - Math.pow(1 - u, 1.5);
@@ -387,7 +388,7 @@ export class Sim {
     // Players standing still turn to watch the ball. One who will turn with a pass to him opens his body that way a little
     // (and stays open as it stops at his feet, until he takes it).
     for (const a of this.agents.values()) {
-      if (a.sp < 0.3 && b.carrier !== a.id) {
+      if (a.sp < 0.3 && b.carrier !== a.id && !a.gk) { // (a keeper faces out of his goal: game/keeper.js)
         const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy);
         if (a.open != null && b.state !== 'carried') { const h = ang(dx, dy), f = h + turnSide(this, a, h, a.open) * Math.min(.75, Math.abs(wrapA(a.open - h))); turnToward(a, Math.cos(f), Math.sin(f), dt * .5); }
         else if (l > 0.3) turnToward(a, dx / l, dy / l, dt);

@@ -142,7 +142,7 @@ export const view = {
       // A calm chase camera: it trails a smoothed point near the ball and only turns around
       // (slowly) when the other team has the ball, so kicks and passes never make it jump.
       const f = this.follow;
-      const c = s.a(b.carrier); if (c) f.yawT = c.team === 'them' ? Math.PI : 0;
+      const c = s.a(b.carrier); if (c && !c.gk) f.yawT = c.team === 'them' ? Math.PI : 0; // (a keeper with the ball: the view stays as it was)
       return { eye: [f.x - Math.cos(f.yaw) * 7, f.y - Math.sin(f.yaw) * 7, 4.2], tgt: [f.x + Math.cos(f.yaw) * 4, f.y + Math.sin(f.yaw) * 4, .3], Ff: .9, Fw: .46 };
     }
     // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView).
