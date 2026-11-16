@@ -52,3 +52,43 @@ test('the idea missed most in a match comes back in the next day\'s training, un
   trained(p, 'steal-it', [true, true], { day: 201, builds: BUILDS });
   assert.equal(p.focus, null);
 });
+
+test('every kind of match decision names the right idea, and its name is a recorded line', async () => {
+  const { spokenLines } = await import('./spoken.js');
+  const lines = new Set(spokenLines()), { g } = makeGame();
+  const cases = [
+    [{ live: true, kind: 'attack', best: 'shoot' }, 'shoot-close'], [{ live: true, kind: 'attack', best: 'pass:1' }, 'pass-to-open'],
+    [{ live: true, kind: 'attack', best: 'push:fl' }, 'dribble-to-space'], [{ live: true, kind: 'attack', best: 'drib:fwd' }, 'dribble-to-space'],
+    [{ live: true, kind: 'tackle', best: 'tackle:good' }, 'steal-it'], [{ live: true, kind: 'receive', best: 'turn:L' }, 'peek-and-turn'],
+    [{ live: true, kind: 'defense', best: 'spot:home' }, 'get-goal-side'], [{ live: true, kind: 'defense', best: 'spot:chase' }, 'get-goal-side'],
+    [{ live: true, kind: 'defense', best: 'spot:o2' }, 'one-goes'],
+    [{ live: true, kind: 'support', id: 'live-run', best: 'spot:space', cue: 'Move to open space so your friend can pass to you!' }, 'get-open'],
+    [{ live: true, kind: 'support', id: 'live-run', best: 'spot:space', cue: 'Pass and go! Run past him into the space.' }, 'give-and-go'],
+    [{ live: true, kind: 'support', id: 'live-run', best: 'spot:space', cue: 'Run to the goal, so your friend can pass to you!' }, 'go-to-goal'],
+    [{ live: true, kind: 'support', run: 'follow', best: 'spot:in' }, 'follow-shot'],
+    [{ kind: 'support', run: 'goal', skill: 'go-to-goal', best: 'spot:go' }, 'go-to-goal'], [{ kind: 'lead', skill: 'lead-pass', best: 'spot:ahead' }, 'lead-pass'],
+    [{ kind: 'attack', skill: 'see-the-trap', best: 'pass:0', then: {} }, 'give-and-go'], [{ kind: 'attack', skill: 'see-the-trap', best: 'pass:0' }, 'see-the-trap'],
+  ];
+  for (const [sc, want] of cases) {
+    g.sc = sc; assert.equal(g.idea(), want, JSON.stringify(sc));
+    const name = g.cueFor(want); assert.ok(name && lines.has(name.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '').trim()), `${want}: "${name}" has no clip`);
+  }
+});
+
+test('lesson rounds: a right first try at Level 2+ gets the light result; the same miss is replayed only once', async () => {
+  const { allScenarios } = await import('../js/skills.js');
+  const sc = allScenarios('look-up')[0]; // (gen-shot-open-101: passes and some dribbles lose it)
+  { const { g, events } = makeGame(); g.say = () => null;
+    const r = await drive(g, g.round(sc, { hint: false, light: true }), { maxSec: 60, pick: gm => gm.sc.best });
+    const banners = events.filter(e => e[0] === 'banner');
+    assert.ok(banners.length >= 1 && banners.every(b => b[3] == null), 'no result card');
+    assert.ok(events.some(e => e[0] === 'pop' && e[1] === 3)); }
+  { const { g, events } = makeGame(); const said = []; g.say = t => { said.push(t); return null; };
+    let n = 0, wrong = null;
+    await drive(g, g.round(sc, { hint: false, light: true }), { maxSec: 240, pick: gm => {
+      wrong ||= ['pass:0', 'pass:1', 'drib:back', 'drib:fwd', 'drib:left', 'drib:right'].find(o => gm.rating(o) === 'bad');
+      return n++ < 2 ? wrong : gm.sc.best; } });
+    assert.ok(wrong, 'a wrong choice to make');
+    assert.equal(said.filter(t => t === 'Watch this way!').length, 1);
+    assert.ok(!events.some(e => e[0] === 'pop'), 'no light result after a miss'); }
+});

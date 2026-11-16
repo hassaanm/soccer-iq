@@ -441,17 +441,21 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 
 /* ---------- results ---------- */
 /* The summary (sticker, headline, score, dots, news), the tip for the grown-up, then what comes next: three tiles of
-   the same size and weight in one row (Match blue, Cup gold, the lessons green), a big picture with a short word
+   the same size and weight in one row (Match blue, Cup gold, the lessons violet with a book), a big picture with a short word
    under it. Home and the small extra button sit in the top corners. */
-#results .panel{position:relative;width:min(640px,92vw);padding-top:14px}
+#results .panel{position:relative;z-index:1;width:min(640px,92vw);padding-top:14px}
 #results .head{display:flex;flex-direction:column;align-items:center}
 #results .next{display:flex;gap:12px;justify-content:center;margin-top:14px}
 #results .go{flex:1 1 0;min-width:0;max-width:180px;min-height:104px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
   padding:8px 8px 10px;border-radius:22px;animation:riseIn .4s .25s var(--bounce) backwards}
 #results .go i{font-style:normal;font-size:44px;line-height:1;text-shadow:none}
 #results .go b{font-size:18px;line-height:1.08;overflow-wrap:anywhere}
-#resultsHome{position:absolute;top:10px;left:12px;width:44px;height:44px;border-radius:14px;z-index:1}
-#againBtn{position:absolute;top:10px;right:12px;min-height:44px;z-index:1}
+#results .go b small{font-size:.8em}
+/* The lessons tile: violet, not the green of PLAY, with the lesson sheet's book in its corner. */
+.btn-lesson{--top:#a98bf5;--bot:#7c5ce0;--edge:#5638b0}
+#results .go .mark{position:absolute;top:6px;left:8px;font-size:17px;line-height:1;text-shadow:none}
+#resultsHome{position:absolute;top:10px;left:12px;width:48px;height:48px;border-radius:15px;z-index:1}
+#againBtn{position:absolute;top:10px;right:12px;min-height:48px;z-index:1}
 /* One circle per round, like the dots during the lesson: gold = right on the first try. They fill in one by one. */
 .roundsrow{display:flex;gap:8px;justify-content:center;margin:6px 0 2px}
 .roundsrow span{width:20px;height:20px;border-radius:50%;background:#d9d0c4;animation:popIn .35s var(--bounce) backwards;animation-delay:calc(.3s + var(--i,0) * 90ms)}
@@ -477,8 +481,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   background:repeating-conic-gradient(rgba(255,216,77,.5) 0 9deg,rgba(255,216,77,0) 9deg 24deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 68%);mask:radial-gradient(circle,#000 20%,transparent 68%);animation:spin 9s linear infinite}
 @keyframes slap{0%{transform:scale(2.2) rotate(14deg);opacity:0}60%{opacity:1}100%{transform:scale(1) rotate(-8deg)}}
 @keyframes shine{to{transform:translateX(120%)}}
-/* Paper confetti falls over the results card after a win. */
-#confetti{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:40}
+/* Paper confetti falls around the results card after a win, behind it, so the tiles stay clear. */
+#confetti{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0}
 #confetti i{position:absolute;top:-20px;width:9px;height:14px;border-radius:2px;animation:fall linear both}
 @keyframes fall{to{transform:translate(var(--dx),112vh) rotate(var(--rot))}}
 
@@ -498,6 +502,44 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #progressList{margin:4px 0 12px;font-size:14px;font-weight:500}
 #progressList div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
 #progressList span:last-child{color:var(--ink-soft);white-space:nowrap}
+
+/* ---------- "How is he doing?" (grown-ups) ---------- */
+/* One page that scrolls as a whole: two weeks at a glance, the three ideas to work on, then every idea with a bar. */
+#report{z-index:20;background:rgba(36,25,58,.32);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+#report .sheet{display:flex;flex-direction:column;overflow:hidden}
+#report .sheet :is(#reportClose){display:block;position:absolute;top:8px;right:12px;padding:11px 18px;min-height:44px;margin:0;z-index:1}
+#reportBody{overflow-y:auto;min-height:0;padding:0 4px 8px;font-size:14px;font-weight:500;line-height:1.35}
+#reportBody h3{margin:12px 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+#reportBody h3 small{text-transform:none;letter-spacing:0;font-weight:500}
+#reportBody .small{margin:2px 0;font-size:12px;color:var(--ink-soft)}
+#reportBody .early{margin:6px 0;padding:6px 10px;border-radius:12px;background:#fff4d6;color:#6b4b00;font-size:13px}
+#reportBody .stats{display:flex;gap:8px}
+#reportBody .stat{flex:1;background:#fff;border-radius:14px;padding:6px 10px;box-shadow:0 0 0 2px var(--line);display:flex;flex-direction:column}
+#reportBody .stat b{font-size:22px;line-height:1.1}
+#reportBody .stat span{font-size:12px;color:var(--ink-soft)}
+#reportBody .stat i{font-style:normal;font-size:14px;margin-left:6px;vertical-align:3px}
+#reportBody i.up{color:var(--green-d)} #reportBody i.down{color:#d23c3c} #reportBody i.same{color:var(--ink-soft)}
+#reportBody .work{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+#reportBody .card{background:#fff;border-radius:14px;padding:7px 10px;box-shadow:0 0 0 2px var(--line);font-size:13px}
+#reportBody .card .t{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+#reportBody .card .t i{font-style:normal;font-size:20px}
+#reportBody .card .t b{font-size:15px;flex:1}
+#reportBody .card div span{display:inline-block;margin-right:5px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft)}
+#reportBody em{font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:#fff;white-space:nowrap}
+#reportBody .tip{margin:8px 0 0;padding:6px 10px;background:#eaf7ef;border-radius:12px;font-size:13px}
+#reportBody .ideas{columns:340px 2;column-gap:18px} /* in path order, down the first column, then the second */
+#reportBody .row{display:grid;grid-template-columns:minmax(0,1fr) 64px 84px 34px;align-items:center;gap:7px;min-height:26px;border-bottom:1px solid var(--line);break-inside:avoid}
+#reportBody .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;font-size:13px}
+#reportBody .nm i{font-style:normal;margin-right:5px}
+#reportBody .bar{height:10px;border-radius:5px;background:rgba(36,25,58,.08);overflow:hidden}
+#reportBody .bar i{display:block;height:100%;border-radius:5px}
+#reportBody .lbl{font-size:12px;color:var(--ink-soft);white-space:nowrap}
+#reportBody .tm{font-size:12px;color:var(--ink-soft);text-align:right;white-space:nowrap}
+#reportBody :is(.bar.strong i,em.strong){background:var(--green-d)}
+#reportBody :is(.bar.mid i,em.mid){background:var(--gold-d)}
+#reportBody :is(.bar.weak i,em.weak){background:#e0663a}
+#reportBtn{margin:6px 0 4px}
+@media (max-height:520px){ #report .sheet h2{line-height:44px} #reportBody .stat b{font-size:19px} }
 
 /* ---------- sound button and popover ---------- */
 /* Top right: on home left of the gear; in game in the corner, with Skip beside it in demos. */

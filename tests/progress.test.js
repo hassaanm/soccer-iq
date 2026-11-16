@@ -233,3 +233,28 @@ test('saved games: "Guard the open player" folds into "One goes, one guards" (th
   const r = defaultProgress(); r.known = [...V58]; finishSession(r, 'mark-the-free-one', 1, 6, 100);  // played, not passed
   assert.equal(level(reload(r), 'one-goes'), 0); assert.ok(isOpen(reload(r), PATH, at('one-goes')), 'it was played: it stays open');
 });
+
+import { logChoice, logRange, logTotals, counts, medianTime, strength, LOG_DAYS } from '../js/progress.js';
+test('decision log: counts by idea and kind of play, times, looking first; old days fold into weeks', () => {
+  const p = defaultProgress();
+  logChoice(p, { id: 'look-up', mode: 'lesson', grade: 'best', sec: 1.2, looked: true }, 500);
+  logChoice(p, { id: 'look-up', mode: 'match', grade: 'miss', sec: 3.1, looked: false }, 500);
+  logChoice(p, { id: 'look-up', mode: 'match', grade: 'okay', sec: 2.0, looked: true }, 500);
+  logChoice(p, { id: 'steal-it', mode: 'training', grade: 'best', sec: .4, looked: null }, 501);
+  const e = p.log.days[500]['look-up'];
+  assert.deepEqual(e.r, { lesson: [1, 0, 0], match: [0, 1, 1] });
+  assert.deepEqual(e.u, [2, 3]); assert.equal(medianTime(e), 2.25);
+  assert.deepEqual(p.log.days[501]['steal-it'].u, [0, 0]);
+  assert.deepEqual(counts(e), { best: 1, okay: 1, miss: 1, n: 3 });
+  const st = strength(e); assert.equal(st.n, 3); assert.ok(Math.abs(st.score - (1 + 1) / 5) < 1e-9); // matches count twice
+  logChoice(p, { id: 'look-up', mode: 'lesson', grade: 'best', sec: 1 }, 500 + LOG_DAYS + 3);
+  assert.equal(p.log.days[500], undefined); assert.equal(p.log.days[501], undefined);
+  const wk = Object.keys(p.log.weeks).map(Number); assert.equal(wk.length, 1); assert.ok(wk[0] <= 500 && wk[0] > 493);
+  assert.deepEqual(logTotals(p)['look-up'], { best: 2, okay: 1, miss: 1, n: 4 });
+  assert.deepEqual(Object.keys(logRange(p, 500 + LOG_DAYS, 1e9)), ['look-up']);
+  assert.ok(JSON.stringify(p.log).length < 600);
+});
+test('an old save loads with an empty decision log', () => {
+  const st = mem(); st.setItem('soccer-iq:v1', JSON.stringify({ v: 1, us: 'spain', skills: {}, settings: {} }));
+  assert.deepEqual(load(st).log, { days: {}, weeks: {} });
+});

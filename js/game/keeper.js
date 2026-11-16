@@ -79,5 +79,7 @@ export const keeper = {
   // Where a save that spills ends up (shot.js spill), fixed by where it happened (so a replay is the same).
   spillOf(r, from) { const h = Math.abs(Math.round(r.at.x * 7 + r.at.y * 13 + from.x * 3)) % 7; return spill(r.at, from, 2 + h / 3, (h % 2 ? 1 : -1) * .35); },
 };
+// In a match, how often our keeper stops their shot at our goal (outcomes.js ourSave; seeded by where it is struck).
+export const OUR_SAVE = .33;
 // A number from 0 to 1 that is the same for the same place (a match's seeded rules).
 export const seeded = (...v) => { let h = 2166136261; for (const x of v) h = Math.imul(h ^ Math.round(x * 100), 16777619); return ((h ^ (h >>> 13)) >>> 0) / 4294967296; };

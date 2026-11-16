@@ -57,7 +57,7 @@ export const input = {
     if (this.step === 'aim' || this.step === 'foot') { this.step = null; return; }
     const p = this.shotParts(); this.pendingDir = null; this.shotSpace = null;
     if (!p.space && !p.foot) return this.choose('shoot');
-    this.step = p.space ? 'aim' : 'foot';
+    this.step = p.space ? 'aim' : 'foot'; this.shotT = null;
   },
   // Which parts of the shot he picks now: in the two shot lessons' own scenes, that lesson's part and the ones before
   // it; in matches, the parts whose lessons he has passed. The space only with a keeper in goal.
@@ -124,7 +124,7 @@ export const input = {
     }
     if (!best) return false;
     if (this.step === 'dribble' && this.pushAllowed) { this.pendingDir = best.opt.slice(5); return true; } // then: small touches or big push?
-    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot?
+    if (this.step === 'aim') { this.shotSpace = best.opt.slice(4); this.shotT = this.sim.time; if (this.shotParts().foot) this.step = 'foot'; else this.choose(`shoot:${this.shotSpace}:*`); return true; } // then: which foot? (shotT: when he picked the space, for the decision log)
     this.choose(best.opt); return true;
   },
   targets() {

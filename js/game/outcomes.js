@@ -5,8 +5,9 @@ import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce, grade } fro
 import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
 import { resolve, placedAim, bestSpaceY, rightFoot, spaceY } from '../shot.js';
-import { seeded } from './keeper.js';
+import { seeded, OUR_SAVE } from './keeper.js';
 
+const MATCH_HOLD = { kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 // Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
 // Fixed per scenario, so the replay of the right answer looks the same.
@@ -32,8 +33,12 @@ export function pickFoot(a, x, y, kind, opps = []) {
 }
 
 export const outcomes = {
-  // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds.
-  *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield wait; },
+  // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds
+  // (shorter in a match: see hold).
+  *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield this.hold(result, wait); },
+  // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
+  // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
+  hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
@@ -305,10 +310,28 @@ export const outcomes = {
     const s = this.sim; this.spice(null);
     this.ai = false; s.stopAll();
     const gk = s.keeper('us'), y = gk ? placedAim(shooter, gk, 0) : clamp(shooter.y, gy0 + .8, gy1 - .8); // (our keeper: past him, in the bigger space)
+    if (gk && (this.mode === 'match' || this.mode === 'free') && seeded(shooter.x, shooter.y, s.time, this.score?.them ?? 0) < OUR_SAVE) { yield* this.ourSave(shooter, gk); return; } // (a match: now and then our keeper stops it)
     if (gk) { this.scripted.add(gk.id); s.stop(gk.id); yield* this.turnTo(shooter.id, -.7, y); this.keeperReact(gk, resolve(s.ball, y, 'placed', gk, { gx: 0 }), s.ball); }
     yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 });
     yield () => s.ball.state === 'loose';
     yield* this.end('goalAgainst', 1.3);
+  },
+  // A match (v62): their shot is at our keeper, and he stops it (a seeded rule, OUR_SAVE of their shots: lessons and our
+  // own shots never use it). He holds it, or it comes off him and he gathers it; then he rolls it out to a friend, and play
+  // goes on with our ball.
+  *ourSave(shooter, gk) {
+    const s = this.sim, sh = { x: shooter.x, y: shooter.y }, low = seeded(sh.y, sh.x, 7) < .5, y = clamp(gk.y + (low ? .35 : -.35), gy0 + .4, gy1 - .4);
+    this.scripted.add(gk.id); s.stop(gk.id);
+    yield* this.turnTo(shooter.id, -.7, y);
+    const r = resolve(s.ball, y, 'placed', gk, { gx: 0 }), spill = seeded(sh.x, sh.y, 11) < .5;
+    if (r.res !== 'save') { yield* this.strike(shooter.id, -.7, y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; yield* this.end('goalAgainst', 1.3); return; } // (never: he stands there)
+    this.keeperReact(gk, { ...r, parry: spill }, s.ball);
+    yield* this.strike(shooter.id, r.at.x, r.at.y, { speed: 17, arc: .3 });
+    yield () => s.ball.state === 'loose';
+    this.result = 'keeperSave'; this.emit('keeperSave');
+    if (spill) { const sp = this.spillOf(r, sh); s.ball.carrier = gk.id; s.kick(sp.x, sp.y, { speed: 4.5, arc: .25 }); yield () => s.ball.state === 'loose'; gk.gkm = null; const t0 = s.time; yield () => { s.go(gk.id, s.ball.x, s.ball.y, 3); return Math.hypot(gk.x - s.ball.x, gk.y - s.ball.y) < .6 || s.time - t0 > 2; }; }
+    else { Object.assign(s.ball, { state: 'held', carrier: gk.id }); yield .3; }
+    this.ai = false; s.stopAll(); yield* this.rollOut(gk); this.result = 'keeperSave';
   },
   // Getting open: he runs to his spot while his defender follows a step behind. Open space: his friend passes
   // and he plays on. Behind a defender: the pass gets cut out. Next to the ball: both defenders close in and win it.
@@ -369,7 +392,7 @@ export const outcomes = {
   *shootGen(good) {
     const s = this.sim, h = s.a('hero'), gk = s.keeper('them'), aim = { x: L + .7, y: gk ? placedAim(s.ball, gk) : clamp(h.y, gy0 + .8, gy1 - .8) };
     this.scripted.add('hero'); this.ai = false; s.stopAll();
-    if (good) { if (gk) { yield* this.turnTo('hero', aim.x, aim.y); this.keeperReact(gk, resolve(s.ball, aim.y, 'placed', gk), s.ball); } yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield 1.4; return; }
+    if (good) { if (gk) { yield* this.turnTo('hero', aim.x, aim.y); this.keeperReact(gk, resolve(s.ball, aim.y, 'placed', gk), s.ball); } yield* this.strike('hero', aim.x, aim.y, { speed: 17, arc: .5 }); yield () => s.ball.state === 'loose'; this.result = 'goal'; this.emit('goal'); yield this.hold('goal', 1.4); return; }
     const block = interceptor(s.ball, aim, s.team('them'));
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
@@ -390,6 +413,28 @@ export const outcomes = {
     const foot = ft === '*' || !ft ? rightFoot(from) : ft, y = !sp || sp === '*' ? bestSpaceY(from, K) : spaceY(sp);
     const stray = sc.stray ?? .25 + .2 * seeded(h.x, h.y), defs = sc.shots ? sc.oppsTo.map(([x, y]) => ({ x, y })) : s.team('them');
     return { ...resolve(from, y, foot, K, { stray, defs }), from, foot, K, aimY: y, spill: sc.spill ?? seeded(h.y, h.x, 3) < .5 };
+  },
+  // The two parts of a shot he picked (v62), each graded on its own: the space (the one that goes in with the right foot,
+  // as the lesson "Shoot to the space!" teaches) and the foot (the rule of "Inside or laces?": close, inside; the edge,
+  // laces). null for a part he did not pick. A lesson scene's own table says the same as the live rule.
+  shotPartGrades(opt) {
+    if (!opt?.startsWith('shoot:')) return null;
+    const [, sp, ft] = opt.split(':'), r = this.shotOf(opt), right = rightFoot(r.from), sc = this.sc;
+    const spaceOk = sp === '*' ? null : sc.shots?.[`shoot:${sp}:${right}`] ? sc.shots[`shoot:${sp}:${right}`] === 'goal' : this.shotOf(`shoot:${sp}:${right}`).res === 'goal';
+    return { space: spaceOk, foot: ft === '*' ? null : ft === right };
+  },
+  // The lesson a missed shot belongs to (a match's miss count and its one spoken name): the space, else the foot.
+  missIdea(opt) { const g = this.shotPartGrades(opt); return !g ? null : g.space === false ? 'shoot-space' : g.foot === false ? 'inside-laces' : null; },
+  // The decision log for a shot with picked parts: each part under its own lesson ("Shoot to the space!" timed from the
+  // decision opening to the space tap, "Inside or laces?" from then to the foot tap), and the whole decision under its
+  // own idea only when that is neither of them (the two shot lessons' own scenes are logged by their part).
+  shotLog(opt, whole) {
+    const g = this.shotPartGrades(opt); if (!g || (g.space == null && g.foot == null)) return null;
+    const out = [], end = this.sim.time, mid = this.shotT ?? this.decideAt;
+    if (g.space != null) out.push({ ...whole, id: 'shoot-space', grade: g.space ? 'best' : 'miss', sec: mid - this.decideAt });
+    if (g.foot != null) out.push({ ...whole, id: 'inside-laces', grade: g.foot ? 'best' : 'miss', sec: end - mid, looked: g.space != null ? null : whole.looked });
+    if (!['shoot-space', 'inside-laces'].includes(whole.id)) out.push(whole);
+    return out;
   },
   *shotGen(opt) {
     const s = this.sim, sc = this.sc;
@@ -733,11 +778,15 @@ export const outcomes = {
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
   // the same card, at the same moment.
   emit(ev) {
-    const [title, kind] = { saved: ['Saved!', 'bad'], over: ['Over the bar!', 'bad'], wide: ['Wide!', 'bad'], cleared: ['Cleared!', 'bad'], goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'] }[ev];
+    const [title, kind] = { keeperSave: ['Great save!', 'goal'], saved: ['Saved!', 'bad'], over: ['Over the bar!', 'bad'], wide: ['Wide!', 'bad'], cleared: ['Cleared!', 'bad'], goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'] }[ev];
     if (ev === 'goal') this.sfx('net');
-    this.fx(ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
+    this.fx(ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
+    // A light result (a lesson round right on the first try, Level 2 and up: rounds.js attempt): the big words, stars
+    // over his player and the praise said, then on to the next round with no card.
+    if (rated?.light) { this.card = this.hud.banner(title, kind); this.hud.pop?.(3); this.say(rated.said); return; }
     this.card = this.hud.banner(title, kind, rated);
     if (rated?.say) this.say(rated.text); else if (rated?.said) this.say(rated.said);
+    this.resultCue?.(); // a match: the idea's name after a miss (live.js)
   },
 };

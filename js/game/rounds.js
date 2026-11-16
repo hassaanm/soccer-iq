@@ -158,8 +158,9 @@ export const rounds = {
 
   // Plays one scenario until he gets it. Wrong choices show why, replay the better way, then retry.
   // A give-and-go has two steps (the pass, then the run); each one is retried on its own.
-  async round(sc, { hint }) {
-    this.mode = 'lesson';
+  // `light`: a right answer on the first try gets a light result (Level 2 and up, flows.js).
+  async round(sc, { hint, light = false }) {
+    this.mode = 'lesson'; this.light = light; this.shown = new Set(); // shown: wrong choices already replayed in this round
     this.load(sc); await this.pre();
     let firstTry = true;
     for (;;) {
@@ -180,6 +181,7 @@ export const rounds = {
       this.hint = hint || attempt > 1;
       const opt = await this.decide();
       const rating = this.rating(opt), good = rating !== 'bad', scanned = this.scanned;
+      if (attempt === 1) this.logChoice?.(opt, rating); // first tries only: a retry comes after he was shown the way
       // Every decision gets 0–3 stars. 3 = the best choice, 2 = safe but there was a better one, 0 = lost it.
       // The stars and tip are decided now and shown together with the result, the moment the play ends.
       // The praise names what he did, and looking up is praised in every lesson (it is the habit under all of them).
@@ -187,6 +189,7 @@ export const rounds = {
       const why = opt.startsWith('spot:') && sc.spots?.find(x => 'spot:' + x.id === opt)?.why; // an only-okay run says what was not quite right (generate.js OKAY)
       const tip = OKAY[why] || (opt.startsWith('shoot:') ? 'Good space! ' + FOOT_TIP[this.shotOf(opt).res === 'over' ? 'in' : 'las'] : 'You kept it! Even better: ' + this.cue().replace(/^./, ch => ch.toLowerCase())); // (a shot: the right space with the wrong foot)
       this.rated = more && good && opt === sc.best ? null : rating === 'safe' ? { stars: 2, text: tip, watch: true, say: true }
+        : good && this.light && attempt === 1 ? { stars: 3, light: true, said: praise } // stars and the praise, then on
         : good ? { stars: 3, text: sc.praise ? this.named(sc.praise) : `${praise} ${this.cue()}`, said: praise } // show why it was right, so the idea sticks; say the praise
         : { stars: 0, text: sc.kind === 'defense' || sc.kind === 'tackle' ? 'He got through!' : sc.run === 'follow' || sc.shot ? 'The ball was loose. Run in for it!' : sc.kind === 'support' ? 'He could not pass to you!' : opt.startsWith('shoot:') && sc.shots?.[opt] !== 'blocked' ? 'So close!' : 'Oops, lost it!' };
       this.card = null;
@@ -202,11 +205,15 @@ export const rounds = {
         }
         return { firstTry: false, stars: 2 };
       }
-      await this.feedback(save, opt);
-      restart();
-      await this.talk('Watch this way!', .2);
-      await this.showPlay(sc.best);
-      await this.delay(.8); // let the better play land before resetting
+      // The same wrong choice twice in one round: no second replay, straight back to try again.
+      if (!this.shown.has(opt)) {
+        this.shown.add(opt);
+        await this.feedback(save, opt);
+        restart();
+        await this.talk('Watch this way!', .2);
+        await this.showPlay(sc.best);
+        await this.delay(.8); // let the better play land before resetting
+      }
       restart();
       this.hud.caption('Your turn!'); this.say('Your turn!');
     }

@@ -9,7 +9,7 @@ const MASTER_BOX = 3;
 export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds passes a session
 
 export function defaultProgress() {
-  return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1,
+  return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1, log: { days: {}, weeks: {} },
     settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3' } }; // size: see geom.js SIZES
 }
 
@@ -17,7 +17,7 @@ export function load(storage = globalThis.localStorage) {
   const d = defaultProgress();
   try {
     const p = JSON.parse(storage.getItem(KEY));
-    if (p && p.v === 1) return { ...d, ...p, settings: { ...d.settings, ...p.settings } };
+    if (p && p.v === 1) return { ...d, ...p, settings: { ...d.settings, ...p.settings }, log: { days: {}, weeks: {}, ...p.log } };
   } catch { /* private mode or bad data: start fresh */ }
   return d;
 }
@@ -194,4 +194,63 @@ export function finishSession(p, id, firstTry, rounds, day = today()) {
   s.top = Math.max(s.top, s.box);
   const now = level(p, id);
   return { ...s, unlocked: before === 0 && now >= 1, leveledUp: before > 0 && now > before, level: now, passedNow: rate >= PASS - 1e-9 };
+}
+
+// ---------- decision log (for the grown-ups page, ui/report.js) ----------
+// Every choice he makes, per day and per idea (lesson id): { r, s, u }
+//   r  { lesson, training, match }: [best, okay, missed] in each (a lesson or training round counts its first try only)
+//   s  how long he took, from the decision opening to his tap: counts in half-second bins, the last one 6 s and more
+//   u  [looked first, choices where looking applies] (looking up, or peeking before a turn; not for a steal)
+// About 60–100 bytes per idea per day played. Days older than LOG_DAYS fold into weekly totals (weeks, keyed by the
+// first day of the week), so the log stays small however long he plays.
+export const LOG_DAYS = 90, BIN = .5, BINS = 13;
+const GRADE = { best: 0, okay: 1, miss: 2 };
+const entry = () => ({ r: {}, s: Array(BINS).fill(0), u: [0, 0] });
+function addEntry(to, e) {
+  for (const [m, v] of Object.entries(e.r)) { const t = (to.r[m] ||= [0, 0, 0]); v.forEach((n, i) => { t[i] += n; }); }
+  e.s.forEach((n, i) => { to.s[i] += n; }); to.u[0] += e.u[0]; to.u[1] += e.u[1];
+  return to;
+}
+export function logChoice(p, { id, mode, grade, sec, looked }, day = today()) {
+  if (!id || !(grade in GRADE)) return;
+  const log = (p.log ||= { days: {}, weeks: {} }), e = ((log.days[day] ||= {})[id] ||= entry());
+  (e.r[mode] ||= [0, 0, 0])[GRADE[grade]]++;
+  if (sec >= 0) e.s[Math.min(BINS - 1, Math.floor(sec / BIN))]++;
+  if (looked != null) { e.u[1]++; if (looked) e.u[0]++; }
+  for (const d of Object.keys(log.days)) {
+    if (+d > day - LOG_DAYS) continue;
+    const wk = +d - ((+d % 7) + 7) % 7, w = (log.weeks[wk] ||= {});
+    for (const [id2, e2] of Object.entries(log.days[d])) addEntry((w[id2] ||= entry()), e2);
+    delete log.days[d];
+  }
+}
+// Each idea's log over the days from..to (whole weeks count when their first day is in range), added up.
+export function logRange(p, from = -Infinity, to = Infinity) {
+  const out = {}, log = p.log || { days: {}, weeks: {} };
+  for (const src of [log.days, log.weeks]) for (const [d, ids] of Object.entries(src)) {
+    if (+d < from || +d > to) continue;
+    for (const [id, e] of Object.entries(ids)) addEntry((out[id] ||= entry()), e);
+  }
+  return out;
+}
+// Each idea's best, okay and missed choices over the whole log.
+export const logTotals = p => Object.fromEntries(Object.entries(logRange(p)).map(([id, e]) => [id, counts(e)]));
+// An entry's counts: { best, okay, miss, n } over every kind of play, or one (`mode`).
+export function counts(e, mode) {
+  const c = { best: 0, okay: 0, miss: 0 };
+  for (const [m, v] of Object.entries(e.r)) if (!mode || m === mode) { c.best += v[0]; c.okay += v[1]; c.miss += v[2]; }
+  return { ...c, n: c.best + c.okay + c.miss };
+}
+// The median time to choose, in seconds (the middle of its half-second bin), or null.
+export function medianTime(e) {
+  const n = e.s.reduce((a, b) => a + b, 0); if (!n) return null;
+  let k = 0; for (let i = 0; i < BINS; i++) { k += e.s[i]; if (k * 2 >= n) return (i + .5) * BIN; }
+  return null;
+}
+// How strong an idea is now: the share of good choices (best 1, okay half), match choices counting twice and
+// training one and a half (he chooses most freely in a match). n: how many choices it rests on.
+export function strength(e) {
+  const W = { lesson: 1, training: 1.5, match: 2 }; let got = 0, all = 0, n = 0;
+  for (const [m, v] of Object.entries(e.r)) { const w = W[m] || 1; got += w * (v[0] + v[1] / 2); all += w * (v[0] + v[1] + v[2]); n += v[0] + v[1] + v[2]; }
+  return { score: all ? got / all : null, n };
 }

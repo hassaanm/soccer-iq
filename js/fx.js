@@ -29,6 +29,12 @@ export class Particles {
     this.m = new THREE.Matrix4(); this.pos = new THREE.Vector3(); this.q = new THREE.Quaternion(); this.q2 = new THREE.Quaternion();
     this.e = new THREE.Euler(); this.s = new THREE.Vector3(); this.zAxis = new THREE.Vector3(0, 0, 1);
     scene.add(mesh);
+    this.marker = new THREE.Group(); this.markAge = 0; this.marker.visible = false;
+    for (const [geo, op] of [[new THREE.RingGeometry(.55, .75, 40), .95], [new THREE.CircleGeometry(.55, 40), .28]]) {
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: '#5fe08a', transparent: true, opacity: op, depthWrite: false, toneMapped: false }));
+      m.userData.op = op; this.marker.add(m);
+    }
+    scene.add(this.marker);
   }
 
   // One piece. g: gravity, drag: air drag per second, spin: tumble speed, face: always turned to the camera.
@@ -36,7 +42,7 @@ export class Particles {
     const i = this.next, p = this.list[i]; this.next = (i + 1) % MAX;
     if (!p.life) this.live++;
     Object.assign(p, BASE, o);
-    p.age = 0; p.rx = o.rx ?? rnd(0, 6.3); p.ry = o.ry ?? rnd(0, 6.3); p.rz = o.rz ?? rnd(0, 6.3); p.landed = false;
+    p.age = 0; p.rx = rnd(0, 6.3); p.ry = rnd(0, 6.3); p.rz = rnd(0, 6.3); p.landed = false;
     this.mesh.setColorAt(i, this.col.set(o.color || '#ffffff')); this.mesh.instanceColor.needsUpdate = true;
     if (this.round.array[i] !== +!!o.round) { this.round.array[i] = +!!o.round; this.round.needsUpdate = true; }
   }
@@ -71,21 +77,20 @@ export class Particles {
       this.spawn({ x, y, z, vx: Math.cos(a) * r, vy: Math.sin(a) * r, vz: rnd(1.5, 4.5), g: -6, drag: 2.4, size: rnd(.08, .15), life: rnd(.45, .8), spin: rnd(3, 8), face: true, round: true, color: pick(colors) });
     }
   }
-  // A soft glow on the grass where the better play was (a match, after a miss): a ring of small warm lights that rise
-  // a little and fade within a second. Nothing random, so a seeded game plays the same with or without it.
-  halo(x, y, n = 18) {
-    for (let i = 0; i < n; i++) {
-      const a = i / n * Math.PI * 2, r = .55 + (i % 3) * .08;
-      this.spawn({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r, z: .08 + (i % 2) * .1, vx: Math.cos(a) * .15, vy: Math.sin(a) * .15, vz: .5 + (i % 4) * .12, g: 0, drag: .6,
-        size: .09 + (i % 3) * .02, life: .8 + (i % 5) * .06, spin: 2, face: true, round: true, color: GOLD[i % GOLD.length], rx: 0, ry: 0, rz: a });
-    }
-  }
+  // The better place to run, after he picked another (a match: game/live.js betterRing): a ring the size of the gold
+  // ones, in soft green with a faint fill, held for a moment where the best ring was, then faded (see update).
+  mark(x, y, scale = 1) { const m = this.marker; m.position.set(x, y, .04); m.scale.setScalar(scale); m.visible = true; this.markAge = 0; }
   // One dot left behind a fast ball.
   trail(x, y, z) {
     this.spawn({ x: x + rnd(-.05, .05), y: y + rnd(-.05, .05), z, g: 0, size: rnd(.08, .14), life: rnd(.2, .34), spin: 2, face: true, round: true, color: pick(TRAIL) });
   }
 
   update(dt, camera) {
+    if (this.marker.visible) { // the green ring: held .6 s, then gone in .5 s
+      const a = (this.markAge += dt), k = a < .6 ? 1 : Math.max(0, 1 - (a - .6) / .5);
+      for (const m of this.marker.children) m.material.opacity = m.userData.op * k;
+      if (!k) this.marker.visible = false;
+    }
     if (!this.live) return;
     const { mesh, m, pos, q, q2, e, s, list } = this;
     for (let i = 0; i < MAX; i++) {
