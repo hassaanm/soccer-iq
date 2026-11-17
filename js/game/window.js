@@ -116,15 +116,15 @@ export const moving = {
     plan.sc = sc;
     if (plan.arrival) {
       if (plan.look != null) this.yaw = plan.look; // (the view turns to where the threat comes from: window.js planArrival)
-      let T = RUNUP; const far = id => { const q = arrAt(plan.paths[id], plan.a - T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
+      let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
-        const base = plan.a - T, q = arrAt(p, base), v = Math.hypot(q.vx, q.vy);
+        const base = plan.a - T, q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy); void base;
         Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
         if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
-        else if (plan.watch.has(id) || a.gk) { const h = plan.paths[sc.carrier || 'hero'] || plan.paths.hero, hq = h && arrAt(h, base); if (hq) { const dx = hq.x - a.x, dy = hq.y - a.y, l = Math.hypot(dx, dy) || 1; a.face = [dx / l, dy / l]; } }
-        a.track = { at: tt => arrAt(p, base + tt), t0: s.time, watch: plan.watch.has(id) };
+        else if (plan.watch.has(id) || a.gk) { const h = plan.paths[sc.carrier || 'hero'] || plan.paths.hero, hq = h && pathAt(h, -T); if (hq) { const dx = hq.x - a.x, dy = hq.y - a.y, l = Math.hypot(dx, dy) || 1; a.face = [dx / l, dy / l]; } }
+        a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: plan.watch.has(id) };
       }
       const c = s.a(s.ball.carrier);
       if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }

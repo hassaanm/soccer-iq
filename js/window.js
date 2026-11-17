@@ -42,6 +42,7 @@ export const easeTime = (v0, v1, t1 = 0) => Math.max(.35, Math.hypot(v1[0] - v0[
 export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   if (p.arr) return arrAt(p, t + (p.base || 0), out);
   if (p.go) return goAt(p, t, out);
+  if (p.rel) return relAt(p, t, out);
   if (p.herm) return hermAt(p, t, out);
   const t1 = p.t1 || 0, tau = p.tau || 0, dvx = p.v1[0] - p.v0[0], dvy = p.v1[1] - p.v0[1];
   let k = 0, s = 0; // k: how far the change is (velocity), s: the distance it has added, per unit of change
@@ -63,6 +64,13 @@ export function arrAt(p, tr, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   else { r = dB + p.vRun * (tau - tb); v = p.vRun; }                                // running in
   out.x = p.P[0] - p.u[0] * r; out.y = p.P[1] - p.u[1] * r; out.vx = p.u[0] * v; out.vy = p.u[1] * v;
   return out;
+}
+// (round 3) A marker going with his man: where his man is (his own path), plus an offset that goes over the lead-in
+// from a step goal-side of him (o0) to where the picture has the marker (o1), smoothly.
+export function relAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
+  const q = pathAt(p.man, t), k = Math.min(1, Math.max(0, t / p.T)), s = k * k * (3 - 2 * k), ds = t > 0 && t < p.T ? 6 * k * (1 - k) / p.T : 0;
+  out.x = q.x + p.o0[0] + (p.o1[0] - p.o0[0]) * s; out.y = q.y + p.o0[1] + (p.o1[1] - p.o0[1]) * s;
+  out.vx = q.vx + (p.o1[0] - p.o0[0]) * ds; out.vy = q.vy + (p.o1[1] - p.o0[1]) * ds; return out;
 }
 // From standing at S, after t0 s, toward E: speeding up and slowing down at a (m/s²), no faster than vMax, stopping at E
 // (a shooter's follow-through after the wind-up).
@@ -717,6 +725,20 @@ export function planArrival(sc, st, opts = {}) {
       if (look4 && !seen(q0(), hq())) for (let k = 1; k <= 14 && look == null; k++) for (const sgn of [1, -1]) if (seen(q0(), hq(), view + sgn * k * .1)) { look = view + sgn * k * .1; break; }
     }
   }
+  // (round 3) A marker has been tracking his man: as the window opens he is a step from him on the goal side, and goes
+  // with him to his place in the picture, straight, at an even pace.
+  const theirGoal = { x: ballTeam === 'us' ? PITCH.L : 0, y: PITCH.W / 2 };
+  for (const id of out) {
+    const man = role[id]?.startsWith('marker:') && role[id].slice(7); if (!man || !paths[man]?.arr || !paths[id]?.arr) continue;
+    const m0 = arrAt(paths[man], -Gpre), gu = U([theirGoal.x - m0.x, theirGoal.y - m0.y]), S = [m0.x + gu[0] * 1.2, m0.y + gu[1] * 1.2], E = P(id), r = d2(S, E);
+    if (r < .3) { paths[id] = arr(E, gu, [.6, .6, 0]); continue; }
+    if (opts.Gpre) { const v = clamp(r / Gpre, .6, 4); paths[id] = arr(E, [E[0] - S[0], E[1] - S[1]], [v, v, 0]); continue; } // (an intro that plans its own lead-in: a straight run)
+    // (the offset changes by no more than a child's pull allows over the lead-in: 6·Δ/T² ≤ 2.5 m/s²)
+    const M = P(man), o1 = [E[0] - M[0], E[1] - M[1]], dv = [S[0] - m0.x - o1[0], S[1] - m0.y - o1[1]], dl = Math.hypot(...dv), cap = 2.5 * Gpre * Gpre / 6, k = dl > cap ? cap / dl : 1;
+    let o0 = [o1[0] + dv[0] * k, o1[1] + dv[1] * k];
+    { const ex = o1[0] - o0[0], ey = o1[1] - o0[1], L2 = ex * ex + ey * ey || 1e-9, tt = clamp(-(o0[0] * ex + o0[1] * ey) / L2, 0, 1); if (Math.hypot(o0[0] + ex * tt, o0[1] + ey * tt) < .8) o0 = [...o1]; } // (never through his man: else he keeps his place by him)
+    paths[id] = { rel: true, man: paths[man], o0, o1, T: Gpre };
+  }
   settle(Gpre); // (again, after the threat's run may have turned)
   // (round 3) Somebody comes for the ball: as the window opens, the presser is the nearest to it of their players the
   // picture leaves free (not marking a man). One nearer comes in from a little farther on his own line (a quicker run,
@@ -724,7 +746,7 @@ export function planArrival(sc, st, opts = {}) {
   if (th && paths[th]?.arr && !dead && kind !== 'defense') {
     const Hs = () => { const q = arrAt(paths[holder], -Gpre); return [q.x, q.y]; }, at0 = id => { const q = arrAt(paths[id], -Gpre); return [q.x, q.y]; }, dd = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
     const free = out.filter(id => id !== th && at[id].team === defTeam && paths[id]?.arr && !fixedPaths[id] && !role[id]?.startsWith('marker:'));
-    for (let n = 0; n < 10; n++) {
+    for (let n = 0; n < 16; n++) {
       const h = Hs(), dp = dd(at0(th), h), near = free.filter(id => dd(at0(id), h) < dp + .3); if (!near.length) break;
       for (const id of near) { const p = paths[id], tb = U([h[0] - at[id].x, h[1] - at[id].y]);
         if (p.u[0] * tb[0] + p.u[1] * tb[1] < .2) p.u = U([p.u[0] * .3 + tb[0], p.u[1] * .3 + tb[1]]);
@@ -753,10 +775,11 @@ export function planLive(st, end, G, threat = null) {
 }
 // Whether two players' ways come closer than .6 m in the window (scene-time from..to).
 export function clash(paths, ids, from, to) {
-  const q1 = {}, q2 = {};
+  const q1 = {}, q2 = {}, at = (p, t, q) => { if (p.arr) return arrAt(p, t, q); if (!p.rel || !p.man.arr) return null; // (scene time; a marker's way from his man's)
+    const m = arrAt(p.man, t, q), k = Math.min(1, Math.max(0, (t + p.T) / p.T)), sm = k * k * (3 - 2 * k); q.x = m.x + p.o0[0] + (p.o1[0] - p.o0[0]) * sm; q.y = m.y + p.o0[1] + (p.o1[1] - p.o0[1]) * sm; return q; };
   for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-    const a = paths[ids[i]], b = paths[ids[j]]; if (!a?.arr || !b?.arr) continue;
-    for (let t = from; t <= to + 1e-6; t += .05) { const p = arrAt(a, t, q1), q = arrAt(b, t, q2); if (Math.hypot(p.x - q.x, p.y - q.y) < .6) return [ids[i], ids[j]]; }
+    const a = paths[ids[i]], b = paths[ids[j]]; if (!a || !b || !(a.arr || a.rel) || !(b.arr || b.rel)) continue;
+    for (let t = from; t <= to + 1e-6; t += .05) { const p = at(a, t, q1), q = at(b, t, q2); if (p && q && Math.hypot(p.x - q.x, p.y - q.y) < .6) return [ids[i], ids[j]]; }
   }
   return null;
 }
