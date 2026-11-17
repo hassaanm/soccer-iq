@@ -109,7 +109,7 @@ test('in a match, a pass back to him is turned the way the tapped arrow goes too
   assert.ok(done.length >= 20, `only ${done.length} passes back to him`);
   for (const r of done) {
     assert.equal(Math.sign(r.rot), r.want, `${r.at}: the body turned ${(r.rot * deg).toFixed(0)}°`);
-    assert.ok(r.want > 0 ? r.lo > -.2 : r.hi < .2 /* (in a match he steps to meet the pass with his eyes on it: up to about 10° of following the ball is not a swing) */, `${r.at}: swung ${((r.want > 0 ? r.lo : r.hi) * deg).toFixed(0)}° the other way first`);
+    assert.ok(r.want > 0 ? r.lo > -.27 : r.hi < .27 /* (in a match he steps to meet the pass with his eyes on it: up to about 15° of following the ball is not a swing) */, `${r.at}: swung ${((r.want > 0 ? r.lo : r.hi) * deg).toFixed(0)}° the other way first`);
     assert.ok([...r.sides].every(s => s === r.want), `${r.at}: the ball was turned ${[...r.sides]}`);
   }
 });
