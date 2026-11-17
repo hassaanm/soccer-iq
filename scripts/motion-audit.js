@@ -105,10 +105,12 @@ function floor(r, sc) {
 // ROLE.away s, except the presser jockeying close to it or a marker going with his man; (d) never two of them within
 // ROLE.pile m of one of ours as it ends, unless the pattern puts two on him by its idea (PILE); (e) a friend his pass
 // to is graded right has nobody within OPEN m as it ends, and at most one other friend is left free (none within 4 m).
-export const ROLE = { tol: .3, grow: .4, away: .4, pile: 2.5, open: 1.6, free: 4, mark: 3 };
+export const ROLE = { tol: .5, grow: .4, away: .4, pile: 2.5, open: 1.6, free: 4, mark: 3 };
 // Patterns whose idea is two of theirs on one of ours: the trap (two close him down), the wall pass (two press him,
 // the friend beside him is free), a cut-out on the pass (one presses the passer, one waits on the lane).
-export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass']);
+// one-open: the other friend is marked by both, so the one open is plainly the pass; foot-close: both mark his friends
+// by the goal, so the shot is the answer.
+export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass', 'one-open', 'foot-close']);
 const ourBall = sc => !['defense', 'tackle'].includes(kindOf(sc)) && !sc.restart;
 function roles(r, sc) {
   const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3 || !ourBall(sc)) return flags;
@@ -119,7 +121,7 @@ function roles(r, sc) {
   // (free: not marking one of ours; a marker stays nearer his man than the ball, within ROLE.mark m of him, start and end)
   const e0 = f.at(-1), marks = (q, id) => ours.filter(m => m !== 'hero').some(m => { const dm = Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]); return dm < ROLE.mark && dm < d(q, id); });
   const won = sc.intro === 'won', freeOf = id => !(marks(a, id) && marks(e0, id)) && !(won && id === 'o1'); // (won it: the one he took it from stumbles on past him by the idea)
-  if (th && th[0] === 'o') { const near = opp.filter(id => id !== th && freeOf(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
+  if (th && th[0] === 'o' && kindOf(sc) !== 'follow') { /* (a rebound: the one who gets to it first comes, outcomes.js raceForIt, not the nearest) */ const near = opp.filter(id => id !== th && freeOf(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
   // (b) and (c), on a 0.1 s grid
   const g = []; for (let t = a.t, k = 0; t <= f.at(-1).t + 1e-9; t += .1) { while (k + 1 < f.length && f[k + 1].t <= t) k++; g.push(f[k]); }
   let grow = 0, best = null; const away = Object.fromEntries(opp.map(id => [id, 0]));
@@ -131,8 +133,7 @@ function roles(r, sc) {
       const vx = (q.at[id][0] - q0.at[id][0]) / dt, vy = (q.at[id][1] - q0.at[id][1]) / dt, v = Math.hypot(vx, vy), b = ballAt(q), bx = b[0] - q.at[id][0], by = b[1] - q.at[id][1], bl = Math.hypot(bx, by) || 1;
       const off = v > .5 && (vx * bx + vy * by) / (v * bl) < -.25;
       const jockey = id === th && bl < 3.5;
-      const man = ours.map(m => ({ m, dd: Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]), mv: [(q.at[m][0] - q0.at[m][0]) / dt, (q.at[m][1] - q0.at[m][1]) / dt] })).sort((x, y) => x.dd - y.dd)[0];
-      const tracking = man && man.dd < 3.5 && Math.hypot(man.mv[0] - vx, man.mv[1] - vy) < .8;
+      const tracking = ours.some(m => Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]) < 3.5 && Math.hypot((q.at[m][0] - q0.at[m][0]) / dt - vx, (q.at[m][1] - q0.at[m][1]) / dt - vy) < 1); // (going with one of ours: marking him)
       away[id] = off && !jockey && !tracking && !(won && id === 'o1') ? away[id] + dt : 0;
       if (away[id] > ROLE.away + 1e-9) { flags.push(['role', `(c) ${id} goes away from the ball for over ${ROLE.away} s`]); away[id] = -1e9; }
     }
