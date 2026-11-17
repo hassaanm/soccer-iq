@@ -349,7 +349,12 @@ export const outcomes = {
       this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.4);
       const t0 = s.time;
       yield () => defenders().some(d => ((d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2.4) || (!d.gk && !this.leaving(d) && dist(d, c) < 1.8)) || s.time - t0 > 2.5;
-      s.stop(c.id); this.spice(null); this.stepIn(c); yield .3;
+      s.stop(c.id); this.spice(null);
+      // (round 7) He chose to guard, and the ball has come to him: now he is the one on it, and the friend who went to the
+      // ball takes the player he was guarding (they swap jobs: one goes, one guards, still).
+      if (this.teamJob && this.teamJob.hero !== 'press' && dist(h, c) < 2.2) { const man = this.teamJob.hero; this.teamJob.hero = 'press';
+        for (const id in this.teamJob) if (id !== 'hero' && this.teamJob[id]?.job === 'press') { if (man && s.a(man)) this.teamJob[id] = { job: man, to: [s.a(man).x, s.a(man).y] }; else delete this.teamJob[id]; } this.roles = null; }
+      this.stepIn(c); yield .3;
       // (round 6) One of ours within a step and a half of him steps in for it as he gets rid of it: nobody stands at his shoulder.
       this.stepIn(c);
       yield .1;

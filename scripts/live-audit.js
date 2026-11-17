@@ -3,7 +3,7 @@
 //   hover   no defender is within 1.5 m of the ball carrier for more than 0.5 s without a tackle attempt (sim.js a.tk)
 //           and without being beaten (a.beat: off balance after the attempt). In a choice's window the one who is
 //           already there jockeys, by design (window.js): windows are not counted.
-//   yoyo    no defender's distance to the ball goes down, then up by more than 1 m, then down again within 3 s, unless
+//   yoyo    no defender's distance to the ball goes down, then up by more than 1 m, then down again (by 0.8 m or more) within 3 s, unless
 //           he made a tackle attempt in between (beaten, he is left behind and chases) or the ball changed sides or
 //           was passed or shot, or it was the ball that moved away (he himself went less than 0.6 m back from it).
 //   short   no live choice opens with less time than the floor (window.js windowFloor)
@@ -83,7 +83,7 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
             if (D[k] > lo + 1 && j > i && D[i] - lo > .5 && lo < 3) { // (within three metres of it: the ones on the ball, not markers going with their players) // up by more than 1 m after a low
               if (q.at[id][3] > rec[j].t - 1.2 || q.at[id][4] > rec[j].t - 1.5) break; // (he went in for it and was beaten)
               { const A = rec[j].at[id], B = q.at[id], bx = rec[j].b[0], by = rec[j].b[1], l = Math.hypot(A[0] - bx, A[1] - by) || 1; if (((B[0] - A[0]) * (A[0] - bx) + (B[1] - A[1]) * (A[1] - by)) / l < .6) break; } // (the ball went away from him: he did not back off)
-              for (let m = k + 1; m < rec.length && rec[m].t - r.t <= 3; m++) { const p = rec[m]; if (p.cs !== r.cs || p.c !== r.c || p.st === 'flying' || p.win) break; if (D[m] < D[k] - .5) { found = true; stat.yoyo++; flags.push(['yoyo', `${size} match ${seed} after choice ${r.n}: ${id} to the ball ${D[i].toFixed(1)} → ${lo.toFixed(1)} → ${D[k].toFixed(1)} → ${D[m].toFixed(1)} m in ${(p.t - r.t).toFixed(1)} s (t=${r.t.toFixed(1)})`]); i = m; break; } }
+              for (let m = k + 1; m < rec.length && rec[m].t - r.t <= 3; m++) { const p = rec[m]; if (p.cs !== r.cs || p.c !== r.c || p.st === 'flying' || p.win) break; if (D[m] < D[k] - .8) { found = true; stat.yoyo++; flags.push(['yoyo', `${size} match ${seed} after choice ${r.n}: ${id} to the ball ${D[i].toFixed(1)} → ${lo.toFixed(1)} → ${D[k].toFixed(1)} → ${D[m].toFixed(1)} m in ${(p.t - r.t).toFixed(1)} s (t=${r.t.toFixed(1)})`]); i = m; break; } }
               break; } }
           i = found ? i + 1 : i + 6; } }
     }
