@@ -139,9 +139,10 @@ export const rounds = {
       .sort((p, q) => Math.hypot(p.p[0] - lo[0], p.p[1] - lo[1]) / 4.8 + late(p.id) - Math.hypot(q.p[0] - lo[0], q.p[1] - lo[1]) / 4.8 - late(q.id))[0];
     this.followRuns = []; this.bounced = null; this.followRacer = racer?.id || null;
     // (the covering defender too: he comes across from the side as it is struck)
-    for (const o of [racer, sc.oppsTo[+(sh.cover || 'o0')[1] - 1] && { id: sh.cover, p: sc.oppsTo[+sh.cover[1] - 1] }]) {
+    // (round 3: he too, when a friend shoots, jogs in toward where it may come out, and is where the scene has him as it does)
+    for (const o of [racer, sc.oppsTo[+(sh.cover || 'o0')[1] - 1] && { id: sh.cover, p: sc.oppsTo[+sh.cover[1] - 1] }, sh.by !== 'hero' && { id: 'hero', p: sc.heroTo, me: true }]) {
       if (!o || o.id === sh.block || this.followRuns.some(f => f.id === o.id) || !s.a(o.id)) continue;
-      const P = o.p, u = [lo[0] - P[0], lo[1] - P[1]], l = Math.hypot(...u) || 1, run = { arr: true, P: [...P], u: [u[0] / l, u[1] / l], vRun: o === racer ? 3.4 : 2.2, vEnd: o === racer ? 1 : .6, dB: 1.6, T: 0, base: 0 };
+      const P = o.p, u = [lo[0] - P[0], lo[1] - P[1]], l = Math.hypot(...u) || 1, run = { arr: true, P: [...P], u: [u[0] / l, u[1] / l], vRun: o === racer ? 3.4 : o.me ? 2.2 : 2.2, vEnd: o === racer ? 1 : o.me ? 1 : .6, dB: o.me ? 1 : 1.6, T: 0, base: 0 };
       const off = () => { const q = arrAt(run, -total); return q.x < .8 || q.x > L - .8 || q.y < .8 || q.y > W - .8; }, u0 = [...run.u];
       // (off the pitch: he comes in on a line turned about his place, up to 90°, the least that keeps him on it)
       if (off()) for (let k = 1, ok = false; k <= 9 && !ok; k++) for (const sg of [1, -1]) { const a = sg * k * .17; run.u = [u0[0] * Math.cos(a) - u0[1] * Math.sin(a), u0[0] * Math.sin(a) + u0[1] * Math.cos(a)]; if (!off()) { ok = true; break; } if (k === 9 && sg === -1) run.u = u0; }

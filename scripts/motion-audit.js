@@ -139,7 +139,7 @@ function roles(r, sc) {
   }
   // (d) and (e), as it ends
   const e = f.at(-1);
-  if (!PILE.has(sc.pattern)) for (const m of ours) { const on = opp.filter(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]) < ROLE.pile); if (on.length > 1) flags.push(['role', `(d) ${on.join('+')} both on ${m}`]); }
+  if (!PILE.has(sc.pattern)) for (const m of ours.filter(m => m !== e.carrier && m !== sc.carrier))  { /* (two on the friend with the ball is pressure on the ball, not a pile-up) */ const on = opp.filter(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]) < ROLE.pile); if (on.length > 1) flags.push(['role', `(d) ${on.join('+')} both on ${m}`]); }
   const grades = sc.grades || {}, openIds = Object.keys(grades).filter(o => o.startsWith('pass:') && ['best', 'good', 'ok'].includes(grades[o]) || o === sc.best && o.startsWith('pass:')).map(o => 'm' + (+o.slice(5) + 1));
   for (const m of new Set(openIds)) if (e.at[m]) { const dd = Math.min(...opp.map(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]))); if (dd < ROLE.open) flags.push(['role', `(e) ${m}, graded open, has one of theirs ${dd.toFixed(1)} m from him`]); }
   // (left free: a friend up the field from the ball (nearer their goal), nobody within ROLE.free m; one behind the ball
@@ -155,7 +155,7 @@ export const HERO = { carry: 1.5, walk: .8, slow: .5 };
 function heroMoves(r, sc) {
   const flags = [], f = r.rec.filter(x => x.win && x.wi === 1); if (f.length < 3 || sc.restart || kindOf(sc) === 'tackle') return flags;
   const a = f[0], e = f.at(-1), trav = Math.hypot(e.at.hero[0] - a.at.hero[0], e.at.hero[1] - a.at.hero[1]);
-  if (a.carrier === 'hero' && trav < HERO.carry) flags.push(['hero', `carries it only ${trav.toFixed(1)} m in the window`]);
+  if (a.carrier === 'hero' && kindOf(sc) !== 'follow' && trav < HERO.carry) flags.push(['hero', `carries it only ${trav.toFixed(1)} m in the window`]);
   let slow = 0;
   for (let i = 1; i < f.length; i++) { const dt = f[i].t - f[i - 1].t; if (!(dt > 0)) continue; const v = Math.hypot(f[i].at.hero[0] - f[i - 1].at.hero[0], f[i].at.hero[1] - f[i - 1].at.hero[1]) / dt;
     slow = v < HERO.walk ? slow + dt : 0; if (slow > HERO.slow + 1e-9 && !(kindOf(sc) === 'receive' && f.at(-1).t - f[i].t < .4)) { flags.push(['hero', `under walking pace for over ${HERO.slow} s`]); break; } }

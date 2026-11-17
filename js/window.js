@@ -559,7 +559,7 @@ export const RUN = {
   cover: [1.4, .4, .6], walk: [1, .5, .5],                // a cover defender shifting across; a far player walking with the play
   attack: [2.4, 1.6, .8], recover: [3.2, 2.2, 1],          // their dribbler driving at our goal; his recovery run (defending)
   still: [0, 0, 0], standOff: [.8, .2, .3],
-  shield: [.9, .4, .3], drive: [2.8, 2, .8], jog: [2.6, 1.6, .8], step: [1.2, .5, .4], keeper: [.4, 0, .25],
+  shield: [.9, .4, .3], drive: [2.8, 2, .8], jog: [2.6, 1.6, .8], step: [1.4, .9, .4], keeper: [.4, 0, .25],
 };
 const U = ([x, y]) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
 const arr = (P, u, [vRun, vEnd, dB], T = 0) => ({ arr: true, P: [...P], u: U(u), vRun, vEnd, dB, T, base: 0 });
@@ -615,6 +615,13 @@ export function planArrival(sc, st, opts = {}) {
     if (Gpost) { const r = Math.hypot(s0.A[0] - p[0], s0.A[1] - p[1]); paths[th].T = runTime(r, RUN.far); Gpost = paths[th].T; }
     role[th] = 'threat'; watch.add(th);
   } else if (th) role[th] = 'threat';
+  // (round 3) A defender the ball has gone past (behind it on its way, close): he chases it, a little quicker than it
+  // goes, so he closes on it from behind; never walking off away from it.
+  if (!dead && kind !== 'defense') for (const id of out) {
+    if (id === th || paths[id] || fixedPaths[id] || at[id].team !== defTeam) continue;
+    const p = P(id), rel = (p[0] - H[0]) * line[0] + (p[1] - H[1]) * line[1];
+    if (rel < -.5 && d2(p, H) < 5) { const hp = paths[holder]; paths[id] = arr(p, line, [Math.min(4, (hp?.vRun || 1.8) + .7), Math.min(3, (hp?.vEnd || 1.1) + .5), .6]); role[id] = 'chaser'; }
+  }
   // Markers: of the defending team, the nearest to one of the attackers (within 2.6 m, and nearer him than any of his own team).
   for (const id of out) {
     if (paths[id] || fixedPaths[id] || at[id].team !== defTeam) continue;
