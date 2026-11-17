@@ -754,7 +754,9 @@ export function planArrival(sc, st, opts = {}) {
     const Hs = () => { const q = arrAt(paths[holder], -Gpre); return [q.x, q.y]; }, at0 = id => { const q = arrAt(paths[id], -Gpre); return [q.x, q.y]; }, dd = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
     const free = out.filter(id => id !== th && at[id].team === defTeam && paths[id]?.arr && !fixedPaths[id] && !role[id]?.startsWith('marker:'));
     for (let n = 0; n < 16; n++) {
-      const h = Hs(), dp = dd(at0(th), h), near = free.filter(id => dd(at0(id), h) < dp + .3); if (!near.length) break;
+      // (one nearer already coming in at the ball, a second presser as in a trap, is somebody coming: he may stay nearer)
+      const coming = id => { const p = paths[id], q = at0(id), e = arrAt(p, 0); return dd(q, Hs()) - dd([e.x, e.y], [at[holder].x, at[holder].y]) > 1; };
+      const h = Hs(), dp = dd(at0(th), h), near = free.filter(id => dd(at0(id), h) < dp + .3 && !coming(id)); if (!near.length) break;
       for (const id of near) { const p = paths[id], tb = U([h[0] - at[id].x, h[1] - at[id].y]);
         if (p.u[0] * tb[0] + p.u[1] * tb[1] < .2) p.u = U([p.u[0] * .3 + tb[0], p.u[1] * .3 + tb[1]]);
         if (p.vRun < 3.2) { p.vRun = Math.min(3.2, Math.max(p.vRun, .6) * 1.3); } }
