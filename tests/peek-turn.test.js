@@ -85,9 +85,9 @@ test('in a match, a pass back to him is turned the way the tapped arrow goes too
   const ALL = ['look-up', 'dribble-to-space', 'take-him-on', 'shoot-close', 'get-goal-side', 'steal-it', 'won-it-go', 'peek-and-turn', 'see-the-trap', 'get-open', 'pass-to-open', 'lead-pass', 'give-and-go', 'one-goes', 'forward-first', 'follow-shot', 'go-to-goal'];
   const real = Math.random, done = [];
   try {
-    for (let seed = 1; seed <= 30; seed++) {
+    for (let seed = 1; seed <= 45; seed++) {
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
-      const { g } = makeGame(); g.skills = new Set(ALL); let cur = null, k = 0;
+      const { g } = makeGame(); g.skills = new Set(ALL); let cur = null, k = 0; // (v66: 45 matches: a match has a few decisions fewer than it had)
       await drive(g, g.match(ALL, [], 4, 'free'), { maxSec: 4000, pick: gm => {
         if (gm.sc.kind === 'receive') { // the arrows in turn; his body and the ball are followed until the turn he takes it with is over
           const opt = k++ % 2 ? 'turn:L' : 'turn:R', h = gm.sim.a('hero');

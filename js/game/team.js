@@ -80,25 +80,30 @@ export const team = {
   defend(def, ball, attackers, free) {
     const s = this.sim, mine = s.team(def), goal = { x: def === 'us' ? 0 : L, y: W / 2 };
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
+    const cover = () => ({ x: lerp(ball.x, goal.x, .4), y: lerp(ball.y, W / 2, .5) });
     // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
     const key = def + ':' + (s.ball.carrier || 'loose');
     // (v66) Unless the one pressing has been beaten (the ball is past him, on its way to his goal): then the jobs are
     // picked afresh, so the nearest one left steps across to it and he picks up the player left free: nobody is left to
     // walk in on goal, and still only one goes to the ball.
-    if (this.roles?.key === key && s.time - this.roles.t > .8) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid); if (pr && free(pr) && dist(ball, goal) < dist(pr, goal) - 1.2 && dist(pr, ball) > 1.8) this.roles = null; }
-    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue; const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job); const p = t ? gs(t, job === 'press' ? 1 : 1.1) : gs(ball, 4); this.aiGo(d, p.x, p.y, job === 'press' ? 3.6 : job === 'cover' ? 3.4 : 3.8, job === 'press'); } return; }
-    const jobs = {};
+    let beaten = false;
+    if (this.roles?.key === key && s.time - this.roles.t > .35) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid); if (pr && free(pr) && dist(ball, goal) < dist(pr, goal) - .4 && dist(pr, ball) > 1.2) { this.roles = null; beaten = true; } }
+    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue; const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job); const p = t ? gs(t, job === 'press' ? (this.roles.across ? 1.6 : 1) : 1.1) : cover(); this.aiGo(d, p.x, p.y, job === 'press' ? (this.roles.across ? 4.6 : 3.6) : job === 'cover' ? 3.4 : 3.8, job === 'press'); } return; }
+    const jobs = {}; let covering = false;
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
     let pressing = mine.some(d => !free(d) && dist(d, ball) < 2.5);
     for (const d of mine) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
-    const freeMine = mine.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
+    // (the ball is past the one who pressed: the nearest of those still between it and their goal goes to it)
+    const side = d => (beaten && dist(d, goal) > dist(ball, goal) ? 100 : 0), freeMine = mine.filter(free).sort((p, q) => dist(p, ball) + side(p) - dist(q, ball) - side(q));
     for (const d of freeMine) {
       if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
-      if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); this.aiGo(d, p.x, p.y, 3.8); }
-      else { jobs[d.id] = 'cover'; const p = gs(ball, 4); this.aiGo(d, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
+      // (an attacker behind the ball is no danger yet: rather than stand by him, one defender covers the way to goal)
+      const harmless = mark && dist(mark, goal) > dist(ball, goal) + 1;
+      if (mark && !(harmless && !covering)) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); this.aiGo(d, p.x, p.y, 3.8); }
+      else { covering = true; jobs[d.id] = 'cover'; const p = cover(); this.aiGo(d, p.x, p.y, 3.6); } // nobody (dangerous) left to guard: cover between the ball and the goal
     }
-    this.roles = { key, jobs, t: s.time };
+    this.roles = { key, jobs, t: s.time, across: beaten }; // (across: the one stepping across to a ball that is past the first presser sprints to get in front of it)
   },
 };

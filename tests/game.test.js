@@ -467,13 +467,13 @@ test('matches with every lesson passed: friends attack and he picks his run, and
   const { generate } = await import('../js/generate.js');
   const real = Math.random, seen = { goal: 0, follow: 0, rebound: 0 };
   try {
-    for (let seed = 1; seed <= 120 && !(seen.goal && seen.follow && seen.rebound); seed++) { // (a blocked shot that can come back out is rare, about one match in twenty: as many matches as it takes, up to 120)
+    for (let seed = 1; seed <= 200 && !(seen.goal && seen.follow && seen.rebound); seed++) { // (a blocked shot that can come back out is rare, about one match in twenty: as many matches as it takes, up to 200)
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame(), extra = [1, 2, 3].flatMap(k => [generate('go-to-goal', 800 + seed * 10 + k), generate('follow-shot', 800 + seed * 10 + k)]);
       await drive(g, g.match([...ALL], extra, 4, 'free'), gm => {
         if (gm.sc.run === 'goal') seen.goal++; if (gm.sc.run === 'follow') seen[gm.sc.live ? 'rebound' : 'follow']++;
         if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
-        if (gm.canShoot && !gm.sc.spots && Math.random() < .5) return 'shoot'; // shots from anywhere: some are blocked
+        if (gm.canShoot && !gm.sc.spots && Math.random() < .85) return 'shoot'; // shots from anywhere: some are blocked (v66: most chances taken, as matches have fewer of them from close in)
         return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back');
       }, 3000);
     }
