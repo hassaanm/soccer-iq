@@ -40,10 +40,36 @@ export function pickFoot(a, x, y, kind, opps = []) {
 export const outcomes = {
   // How a play ends: note the result, stop everyone where they stand, show the banner and hold on it for `wait` seconds
   // (shorter in a match: see hold).
-  *end(result, wait) { this.result = result; this.ai = false; this.sim.stopAll(); this.emit(result); yield this.hold(result, wait); },
+  // (round 6) Nobody ends a play standing at the shoulder of the player on the ball: one of the other team within a
+  // step and a half of him goes in for it first, and misses (this.challenge): the play ends with him beaten, going past.
+  *end(result, wait) {
+    const s = this.sim, c = s.ball.carrier && s.ball.state !== 'flying' ? s.a(s.ball.carrier) : null, o = c && !c.gk && (this.mode === 'match' || this.mode === 'free') ? this.onHim(c) : null;
+    if (o && result !== 'goal' && result !== 'goalAgainst') { yield* this.challenge(o, c); s.stop(c.id); }
+    // (One who went in a moment ago and is still at his shoulder is carried on past him, off balance, and turns: he does not stand there.)
+    if (c && !c.gk) for (const f of s.team(c.team === 'us' ? 'them' : 'us')) { const d = dist(f, c); if (f.gk || d > 1.8 || !(f.tk > s.time - 2)) continue;
+      const ux = (c.x - f.x) / (d || 1), uy = (c.y - f.y) / (d || 1), sd = Math.sign(ux * (f.ty - f.y) - uy * (f.tx - f.x)) || 1;
+      f.beat = s.time + 1.3; s.go(f.id, clamp(f.x + ux * (d + .9) - uy * sd * 1.3, .5, L - .5), clamp(f.y + uy * (d + .9) + ux * sd * 1.3, .5, W - .5), 2.6); }
+    this.result = result; this.ai = false; for (const a of s.agents.values()) if (!(a.beat > s.time)) s.stop(a.id); this.emit(result); yield this.hold(result, wait); },
   // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
   // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
   hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
+  // (round 6) A tackle the player on the ball survives. In live play nobody stands or jogs beside the ball: one of the
+  // other team within a step and a half of it goes in for it, now. Here he misses: he lunges at where the ball is, the
+  // player on it takes it a step aside, and the lunge carries him past (off balance for a second: a.beat, until then
+  // nothing steers him). After that he turns and chases (team.js defend). a.tk: when he went in.
+  *challenge(o, a) {
+    const s = this.sim, b = s.ball, dx = b.x - o.x, dy = b.y - o.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    o.tk = s.time; o.beat = s.time + 1; o.mom = null; this.scripted.add(o.id);
+    s.go(o.id, clamp(b.x + ux * 1.4, .5, L - .5), clamp(b.y + uy * 1.4, .5, W - .5), 5.2);
+    // (on the way he is going, and a step to the side away from the one coming in: his body between him and the ball)
+    const v = a.lv && Math.hypot(a.lv[0], a.lv[1]) > .5 ? a.lv : a.face, vl = Math.hypot(v[0], v[1]) || 1, fx = v[0] / vl, fy = v[1] / vl, sd = -Math.sign(fx * (o.y - a.y) - fy * (o.x - a.x)) || 1, nx = -fy * sd, ny = fx * sd;
+    // (running, he just goes on: the lunge comes in behind him; nearly still, he takes that step)
+    if (!(a.sp > 1.5)) { this.scripted.add(a.id); s.go(a.id, clamp(a.x + nx * .8 + fx * .6, 1, L - 1), clamp(a.y + ny * .8 + fy * .6, 1, W - 1), 3.2); }
+    yield .45;
+    this.scripted.delete(o.id);
+  },
+  // The nearest of theirs within a step and a half of him who has not just been beaten.
+  onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
@@ -54,23 +80,24 @@ export const outcomes = {
     this.scripted.add(id); s.go(id, tx, ty, FINISH_RUN);
     const t0 = s.time;
     let blocked = false, near = null;
-    this.challenge = true; // (round 5: a defender within reach of the ball goes for it, team.js defend)
+    this.inFinish = true; // (round 5: a defender within reach of the ball goes for it, team.js defend)
     for (;;) {
       yield 1 / 30;
       // (round 5) One of theirs within reach of him, from any side: a challenge. He cannot run on through it: he puts
       // his body between and keeps the ball (the result a right choice gives), and the next choice comes under pressure.
-      if (opps.some(o => dist(o, a) < 1.15)) { near ??= s.time; if (s.time - near > .12) { blocked = true; break; } } else near = null;
+      // (round 6: within a step and a half he goes in for it at once, and misses: this.challenge)
+      { const o = this.onHim(a); if (o) { yield* this.challenge(o, a); blocked = true; break; } }
       // The one he just beat (the presser his dribble took him past, the one he raced to a big push) recovers: after the
       // moment it takes him to turn he chases, for a second and a half, and challenges if he catches him.
       const ch = this.chaser, co = ch && s.a(ch.id);
       if (co) { if (s.time - ch.t > 1.9) { this.scripted.delete(ch.id); this.chaser = null; } else if (s.time - ch.t > (ch.turn || 0)) { this.scripted.add(ch.id); s.go(ch.id, a.x, a.y, 4.8); } }
       const aim = { x: L, y: clamp(a.y, gy0 + .8, gy1 - .8) };
-      if (dist(a, aim) < 8 && shotClear(s.ball, aim, opps)) { if (opps.some(o => !o.gk && dist(o, a) < 1.7)) blocked = true; break; } // close (5–10 yards) with a clear look: shoot; (round 5) unless one of theirs is a step away: he would be on him before his foot came through, so he keeps it
+      if (dist(a, aim) < 8 && shotClear(s.ball, aim, opps)) { if (opps.some(o => !o.gk && dist(o, a) < 1.7)) { const o = this.onHim(a, 1.9); if (o) yield* this.challenge(o, a); blocked = true; } break; } // close (5–10 yards) with a clear look: shoot; (round 5) unless one of theirs is a step away: he would be on him before his foot came through, so he keeps it
       const fx = tx - a.x, fy = ty - a.y, fl = Math.hypot(fx, fy) || 1;
-      if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { blocked = true; break; } // defender in front
+      if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { const o = this.onHim(a, 1.9); if (o) yield* this.challenge(o, a); blocked = true; break; } // defender in front (round 6: he goes in for it)
       if (Math.hypot(fx, fy) < .3 || s.time - t0 > 4) { blocked = !shotClear(s.ball, aim, opps); break; }
     }
-    s.stop(id); this.spice(null); this.challenge = false; if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; }
+    s.stop(id); this.spice(null); this.inFinish = false; if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; }
     if (blocked) { yield* this.end('kept', 1.1); return; }
     // Wind up facing the goal, then check the shot line once more at the moment of the kick.
     this.ai = false; s.stopAll();
@@ -141,7 +168,8 @@ export const outcomes = {
     const s = this.sim; this.spice(null);
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
-    s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
+    { const c0 = s.ball.carrier && s.a(s.ball.carrier); if (c0 && c0.team !== opp.team) c0.beat = s.time + 1.2; } // (round 6: the one it is taken from is beaten: off balance for a moment)
+    opp.tk = s.time; s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
     this.scripted.add(opp.id);
     const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;
     // (round 5) Running the other way as he wins it (he came in from behind, or was carried past): he takes it on a
@@ -191,14 +219,17 @@ export const outcomes = {
     this.scripted.add('hero'); this.spice(good && (cut?.good ? 'take-on' : 'dribble'), ['hero'], cut?.good || near ? 1 : .95, !!(cut?.good || near)); s.go('hero', end.x, end.y, 4.4);
     const t0 = s.time;
     // A take-on: the defender bites, stepping in toward where the ball was, and he cuts past him on the open side.
-    if (cut?.good) { const f = cut.foe; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
+    if (cut?.good) { const f = cut.foe; f.tk = s.time; f.beat = s.time + .9; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
+    // (round 6) One of theirs on him as he sets off the right way (a late tap): he goes in for where the ball was, and is beaten.
+    else if (good) for (const f of s.team('them')) if (!f.gk && dist(f, h) < 1.5 && !(f.beat > s.time)) { f.tk = s.time; f.beat = s.time + .9; this.scripted.add(f.id); s.go(f.id, lerp(f.x, s.ball.x, .8), lerp(f.y, s.ball.y, .8), 3.6); this.bit = f.id; }
     if (good) {
       const th = this.lastThreat && s.a(this.lastThreat); if (th && th.team === 'them' && !th.gk && dist(th, h) < 4.5 && !cut?.good) this.chaser = { id: th.id, t: s.time, turn: .5 }; // (round 5: the one who was coming turns (half a second) and chases)
       // (round 5) One of theirs who stays within reach of him as he goes (he was on him as he set off, and is not left
       // behind) challenges: nobody jogs alongside. He puts his body between and keeps it: the right choice's result.
       let on = null, met = false;
-      yield () => { if (s.team('them').some(o => dist(o, h) < 1.15)) { on ??= s.time; if (s.time - on > .4 && s.time - t0 > .5) met = true; } else on = null; return met || dist(h, end) < (aim ? 1.2 : .3) || s.time - t0 > 2.5; }; // (after a turn: on toward goal once he is nearly there, not a last steer onto the exact point)
-      if (met) { s.stop('hero'); if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; } yield* this.end('kept', 1.1); return; }
+      // (round 6: within a step and a half, once he is under way, that one goes in for it at once, and misses)
+      yield () => { if (s.time - t0 > .35 && this.onHim(h)) met = true; return met || dist(h, end) < (aim ? 1.2 : .3) || s.time - t0 > 2.5; }; // (after a turn: on toward goal once he is nearly there, not a last steer onto the exact point)
+      if (met) { const o = this.onHim(h); if (o) yield* this.challenge(o, h); s.stop('hero'); if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; } yield* this.end('kept', 1.1); return; }
       if (BACKWARD.has(dir) || this.keepOnly) { s.stop('hero'); yield* this.end('kept', 1.1); return; }
       yield* this.finish('hero');
     } else {
@@ -283,8 +314,11 @@ export const outcomes = {
       this.spice('held', [c.id], .8); // running at him he may try a skill (it gets him nowhere: he is in the way)
       this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.4);
       const t0 = s.time;
-      yield () => defenders().some(d => (d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2) || s.time - t0 > 2.5;
-      s.stop(c.id); this.spice(null); yield .4;
+      yield () => defenders().some(d => ((d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2.4) || (!d.gk && dist(d, c) < 1.8)) || s.time - t0 > 2.5;
+      s.stop(c.id); this.spice(null); yield .3;
+      // (round 6) One of ours within a step and a half of him steps in for it as he gets rid of it: nobody stands at his shoulder.
+      for (const d of defenders()) if (!d.gk && dist(d, c) < 1.6) { const l = dist(d, s.ball) || 1; d.tk = s.time; d.beat = s.time + .8; if (l > .9) { this.scripted.add(d.id); s.go(d.id, s.ball.x + (d.x - s.ball.x) / l * .8, s.ball.y + (d.y - s.ball.y) / l * .8, 3.4); } }
+      yield .1;
       const mates = s.team('them').filter(o => o.id !== c.id), us = s.team('us');
       const lane = o => Math.min(...us.map(d => closestOnLane(d, s.ball, o, .05).d));
       const to = mates.filter(o => lane(o) > 1).sort((a, b) => lane(b) - lane(a))[0];
@@ -318,10 +352,11 @@ export const outcomes = {
         this.scripted.add(tackler.id);
         const t0 = s.time;
         yield () => { s.go(tackler.id, c.x + gx * .7, c.y + gy * .7, 4.6); return dist(tackler, c) < 1 || s.time - t0 > 3; };
-        s.stop(c.id); this.spice(null); c.face = [gx, gy];
+        this.spice(null); c.face = [gx, gy];
         tackler.face = [-gx, -gy]; s.give(tackler.id);                                     // he pokes it away, facing upfield
         s.go(tackler.id, tackler.x - gx * 2.5, tackler.y - gy * 2.5, 3.6);
-        yield .4;
+        c.beat = s.time + 1.7; s.go(c.id, clamp(c.x + gx * 1.4, 1, L - 1), clamp(c.y + gy * 1.4 + (c.y >= tackler.y ? .6 : -.6), 1, W - 1), 2.4); // (round 6: the one who lost it stumbles on the way he was going, beaten)
+        yield .6;
       }
       yield* this.end('won', 1.3); return;
     }
@@ -725,7 +760,9 @@ export const outcomes = {
         // He pokes it away from the attacker, then turns with it, facing up the field.
         s.stop(c.id); const t0 = s.time;
         yield () => { s.go('hero', s.ball.x, s.ball.y, 5); return dist(h, s.ball) < .5 || s.time - t0 > .8; };
-        s.give('hero'); h.face = [1, 0]; s.go('hero', h.x + 2.5, lerp(h.y, W / 2, .2), 3.4); s.go(c.id, c.x + .6, c.y, 1.5);
+        s.give('hero'); h.face = [1, 0]; s.go('hero', h.x + 2.5, lerp(h.y, W / 2, .2), 3.4);
+        // (round 6) The one he took it from is beaten: he stumbles on the way he was running, off balance, as his player goes the other way with it.
+        c.beat = s.time + 1.7; s.go(c.id, Math.max(1, c.x - 1.5), clamp(c.y + (c.y >= h.y ? .5 : -.5), 1, W - 1), 2.4);
         this.result = 'won'; this.emit('won'); yield 1.3; s.stopAll(); return;
       }
     } else if (opt !== 'tackle:none') {
@@ -993,6 +1030,12 @@ export const outcomes = {
     if (aimed) this.aimFrom = { x: h.x, y: h.y };
     Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
+    // (round 6) One of theirs within a step and a half of him as he plays the right thing goes in for it, now, and is
+    // too late: he steps in at the ball (to a short step off it) as it is played, and is left off balance. (A dribble
+    // does its own: dribbleGen. A wrong choice: the play's script has him take it.)
+    if (good && opt !== 'timeout' && !opt.startsWith('drib:') && !opt.startsWith('turn:') && this.sim.ball.carrier === 'hero') { const s = this.sim, b = s.ball;
+      for (const f of s.team('them')) { const d = dist(f, b); if (f.gk || dist(f, h) >= 1.5 || f.beat > s.time) continue; f.tk = s.time; f.beat = s.time + .9;
+        if (d > .9) { this.scripted.add(f.id); s.go(f.id, b.x + (f.x - b.x) / d * .8, b.y + (f.y - b.y) / d * .8, 3.4); } } }
     await this.play(this.outcomeGen(opt, good));
   },
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in

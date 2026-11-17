@@ -3,6 +3,7 @@ import { lerp, clamp, dist, closestOnLane } from '../geom.js';
 import { L, W } from './shared.js';
 import { longLead, touchAt } from '../sim.js';
 
+const PRESS_OFF = 1.9; // (round 6) the one on the ball holds him up from two steps off, goal-side: nearer than a step and a half he must go in for it
 const COMMIT = { ball: 2, t: .8, react: [.1, .4] }; // (see aiGo)
 
 export const team = {
@@ -90,6 +91,13 @@ export const team = {
     // (v66) Unless the one pressing has been beaten (the ball is past him, on its way to his goal): then the jobs are
     // picked afresh, so the nearest one left steps across to it and he picks up the player left free: nobody is left to
     // walk in on goal, and still only one goes to the ball.
+    // (round 6) One who went in for the ball and missed is off balance (a.beat): nothing steers him until he has his
+    // feet again. And nobody stands or jogs within a step and a half of the player on the ball: one who finds himself
+    // there, with no play's script deciding it (this.challenge: outcomes.js finish does), goes in for it, and is beaten.
+    const car = s.ball.carrier && s.a(s.ball.carrier), off = d => d.beat > s.time, free0 = free; free = d => free0(d) && !off(d);
+    if (car && car.team !== def && !this.inFinish && !this.win) for (const d of mine) if (free(d) && !d.gk && dist(d, car) < 1.5) {
+      const dx = s.ball.x - d.x, dy = s.ball.y - d.y, l = Math.hypot(dx, dy) || 1; d.tk = s.time; d.beat = s.time + .9; d.mom = null; d.aic = null;
+      s.go(d.id, clamp(s.ball.x + dx / l * 1.3, .5, L - .5), clamp(s.ball.y + dy / l * 1.3, .5, W - .5), 5); this.beatenId = d.id; if (this.roles) { this.roles = null; } this.wasBeaten = d.id; }
     let beaten = false;
     if (this.roles?.key === key && s.time - this.roles.t > .35) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid); if (pr && free(pr) && dist(ball, goal) < dist(pr, goal) - .4 && dist(pr, ball) > 1.2) { this.roles = null; beaten = true; this.beatenId = pid; } }
     // (round 5) The one who was beaten does not give up: he turns and chases the ball for a moment (to challenge again
@@ -102,9 +110,9 @@ export const team = {
       // goes to meet it on its way to goal; and with the ball within reach while its carrier runs at goal (this.challenge:
       // outcomes.js finish), he goes for the ball itself: a defender within reach always challenges, he never jogs alongside.
       const reach = false;
-      const p = reach ? ball : t ? gs(t, job === 'press' ? (R.across ? Math.min(2.4, dist(d, ball) * .6) : 1) : R.across ? 2 : 1.1) : cover();
+      const p = reach ? ball : t ? gs(t, job === 'press' ? (R.across ? Math.min(2.4, dist(d, ball) * .6) : PRESS_OFF) : R.across ? 2 : 1.1) : cover();
       this.aiGo(d, p.x, p.y, reach ? 4.4 : job === 'press' ? (R.across ? 4.6 : 3.6) : job === 'cover' ? 3.6 : 3.8, job === 'press'); } return; }
-    const jobs = {}; let covering = false; const was = beaten && this.beatenId;
+    const jobs = {}; let covering = false; const was = (beaten && this.beatenId) || (this.wasBeaten && s.a(this.wasBeaten) && free(s.a(this.wasBeaten)) ? this.wasBeaten : null); if (was === this.wasBeaten) { this.wasBeaten = null; beaten = true; }
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
     let pressing = mine.some(d => !free(d) && dist(d, ball) < 2.5);
@@ -113,7 +121,7 @@ export const team = {
     const side = d => (beaten && dist(d, goal) > dist(ball, goal) ? 100 : 0), freeMine = mine.filter(free).sort((p, q) => dist(p, ball) + side(p) - dist(q, ball) - side(q));
     for (const d of freeMine) {
       if (was && d.id === was) { jobs[d.id] = 'chase'; this.aiGo(d, ball.x, ball.y, 4.5, true); continue; }
-      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
+      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, PRESS_OFF); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
       // (an attacker behind the ball is no danger yet: rather than stand by him, one defender covers the way to goal)
       const harmless = mark && dist(mark, goal) > dist(ball, goal) - 2.5;

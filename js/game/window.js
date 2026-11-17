@@ -79,11 +79,20 @@ export const moving = {
         const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
         if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9); } }
     const D = [dir[0] * v, dir[1] * v];
+    // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
+    // these moments (to two and a half metres off it, no nearer: from there the window brings him in), never standing.
+    const cm = [...s.agents.values()].filter(a => !a.gk && a.team !== c.team).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
+    const cd = cm ? Math.hypot(cm.x - c.x, cm.y - c.y) : 0, cs = cm ? Math.max(0, Math.min(2.4, (cd - 2.5 + (burst ? .6 : 0)) / T)) : 0;
     for (const a of s.agents.values()) {
       if (a.gk) continue;
-      const q = st.at[a.id], own = a === c && burst, v0 = own ? [dir[0] * burst, dir[1] * burst] : [q.vx, q.vy], dv = Math.hypot(D[0] - v0[0], D[1] - v0[1]), path = { x: a.x, y: a.y, v0, v1: D, t1: own ? .25 : 0, tau: own ? T - .25 : Math.max(.3, Math.min(T, dv * 1.5 / 3.5 + .1)) };
-      a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team };
+      const D1 = a === cm && cs > .2 ? [D[0] + (c.x - a.x) / cd * cs, D[1] + (c.y - a.y) / cd * cs] : D;
+      const q = st.at[a.id], own = a === c && burst, v0 = own ? [dir[0] * burst, dir[1] * burst] : [q.vx, q.vy], dv = Math.hypot(D1[0] - v0[0], D1[1] - v0[1]), path = { x: a.x, y: a.y, v0, v1: D1, t1: own ? .25 : 0, tau: own ? T - .25 : Math.max(.3, Math.min(T, dv * 1.5 / 3.5 + .1)) };
+      a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team }; a.setPath = path;
     }
+    // (round 6) Nobody of the other team ends these moments at the shoulder of the player on the ball: one whose way
+    // would bring him nearer than two steps holds off (his way bends off the ball as he slows).
+    { const ce = pathAt(c.setPath, T); for (const a of s.agents.values()) { if (a.gk || a.team === c.team || !a.setPath) continue; const e = pathAt(a.setPath, T), d = Math.hypot(e.x - ce.x, e.y - ce.y);
+      if (d < 2.2) { const k = (2.2 - d) / (T * .6), l = d || 1; a.setPath.v1 = [a.setPath.v1[0] + (e.x - ce.x) / l * k, a.setPath.v1[1] + (e.y - ce.y) / l * k]; } } }
     await this.delay(T);
   },
   // ---------- the run-up ----------
