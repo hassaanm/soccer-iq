@@ -76,7 +76,7 @@ export const outcomes = {
   stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; for (const d of s.team(c.team === 'us' ? 'them' : 'us')) { if (d.gk || dist(d, c) >= r || d.beat > s.time || this.leaving(d)) continue; const l = dist(d, b) || 1; d.tk = s.time; d.beat = s.time + .9;
     if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
   // A friend whose job in this defending play is one of their other players (team.js defend, this.teamJob): he is on his way off the ball.
-  leaving(d) { return d.team === 'us' && d.id !== 'hero' && !!this.teamJob?.[d.id] && this.teamJob[d.id].job !== 'press'; },
+  leaving(d) { return d.team === 'us' && d.id !== 'hero' && !!this.teamJob?.[d.id] && this.teamJob[d.id].job !== 'press' && this.teamJob[d.id].job !== this.sim.ball.carrier; }, // (round 7: unless the player he guards is the one who has it now: then the ball is his job)
   // The nearest of theirs within a step and a half of him who has not just been beaten.
   onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && !this.leaving(o) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
@@ -185,6 +185,7 @@ export const outcomes = {
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
     { const c0 = s.ball.carrier && s.a(s.ball.carrier); if (c0 && c0.team !== opp.team) c0.beat = s.time + .6; } // (round 6: the one it is taken from is beaten: off balance for a moment)
+    for (const a of s.team(opp.team === 'us' ? 'them' : 'us')) if (!a.gk && dist(a, opp) < 1.7 && !(a.beat > s.time + .8)) a.beat = s.time + .9; // (round 7: whoever of the other team is at his shoulder as he takes it has lost the duel: off balance for a moment)
     opp.tk = s.time; s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
     this.scripted.add(opp.id);
     const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;

@@ -3,7 +3,7 @@
 // part, and the threat already running in from farther out); then play drops into slow motion and goes on until he
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
-import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace } from '../window.js';
+import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, JOCK } from '../window.js';
 import { L, W, facesBall } from './shared.js';
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -183,7 +183,7 @@ export const moving = {
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
-    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, R = Math.max(G, Math.min(show || this.windowReal(), (G - .1) / PACE + .1));
+    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, (G - .1) / PACE + .1));
     this.spotsReset();
     // (round 6) One who jockeys goes in over the last half second: the world speeds up with him (skill.js skillPace), and
     // the pace before that is the one that makes the whole window last R.

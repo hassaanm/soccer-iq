@@ -56,7 +56,7 @@ export const skill = {
     // (a turn on offer, or tapped and the camera still coming in: the held stretch of play, HOLD_G s, is spread over that time)
     const sk = this.sk, waits = false, held = !!h?.holdTurn && sk?.kind === 'turn' && (sk.phase === 'offer' || sk.phase === 'move');
     const holdPace = held ? (sk.phase === 'offer' ? HOLD_G / (this.mode === 'demo' ? WAIT_DEMO : WAIT) : Math.min(.6, Math.max(.12, (HOLD_G - (s.time - this.skHoldT)) / Math.max(.08, sk.go - this.clock)))) : 0;
-    const wj = this.win?.jock && this.phase === 'decide' ? Math.max(0, 1 - (this.win.R - this.win.real) / JOCK.real) : 0; // (round 6: the last half second of a window whose defender jockeys: he goes in, and the world speeds up with him)
+    const wj = this.win?.jock && this.phase === 'decide' ? Math.max(0, 1 - (this.win.R - .15 - this.win.real) / JOCK.real) : 0; // (a moment early: the speed eases up, and the window is over as the ring empties, not after) // (round 6: the last half second of a window whose defender jockeys: he goes in, and the world speeds up with him)
     const want = held ? holdPace : wj > 0 ? this.win.f + (JOCK.F1 - this.win.f) * wj * wj : this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1) : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW; // (v64: the decision window's slow motion)
     if (this.win) this.win.real += dt; this.realTime = (this.realTime || 0) + dt;
     if (waits) { this.slow = 0; this.slowV = 0; }

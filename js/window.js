@@ -56,7 +56,8 @@ export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
 //   steps to each side (m, s); p.rS: how far off he starts (he eases to rJ); p.E: where the lunge ends, from the ball.
 const jockPos = (p, t, o) => {
   const h = pathAt(p.hp, t, o), bx = h.x + p.bo[0], by = h.y + p.bo[1], tt = Math.max(0, t);
-  const a = p.a0 + (p.amp / p.rJ) * Math.sin(2 * Math.PI * t / p.per), r = p.rJ + (p.rS - p.rJ) * Math.exp(-tt / .35);
+  // (round 7: the picture tightens steadily: from rJ he edges in to rT by the time he goes, stepping across to shut the way out)
+  const rj = p.rJ + (p.rT - p.rJ) * Math.min(1, tt / Math.max(.01, p.tL)), a = p.a0 + (p.amp / p.rJ) * Math.sin(2 * Math.PI * t / p.per), r = rj + (p.rS - p.rJ) * Math.exp(-tt / .35);
   let x = bx + Math.cos(a) * r, y = by + Math.sin(a) * r;
   if (t > p.tL) { const q = Math.min(1, (t - p.tL) / Math.max(.01, p.G - p.tL)), w = Math.pow(q, 1.5); x += (bx + p.E[0] - x) * w; y += (by + p.E[1] - y) * w; }
   o.x = x; o.y = y; return o;
@@ -65,7 +66,7 @@ export function jockAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   const a = jockPos(p, t - .01, {}), b = jockPos(p, t + .01, {}), c = jockPos(p, t, {});
   out.x = c.x; out.y = c.y; out.vx = (b.x - a.x) / .02; out.vy = (b.y - a.y) / .02; return out;
 }
-export const JOCK = { L: 1.5, r: [1.15, 1.4], amp: .32, per: 1.4, real: .5, F1: .9 }; // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
+export const JOCK = { L: 1.5, r: [1.2, 1.6], rT: 1.2, amp: .36, per: 1.5, real: .5, F1: .9, R: 5 }; // rT: how near he has edged in when he goes; R: such a window is no longer than this (real s): its honest length, not time filled // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
 // The game time of a jockey window's last JOCK.real s (the world speeds up from its pace f to F1 as he goes in), and
 // the pace f that makes a window of G s of play last R real seconds with it.
 export const jockPace = (G, R) => Math.max(PACE, (G - JOCK.real * JOCK.F1 / 3) / (R - JOCK.real / 3));
@@ -645,11 +646,13 @@ function planHold0(sc, st, opts, kind) {
       if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = score(build(sp, best.k, live ? 0 : best.tP * want / G, want)); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }
       const hp = b.paths[holder], h0 = pathAt(hp, 0), hG = pathAt(hp, Gj), B0 = ballOf(sc, kind, holder, h0), BG = ballOf(sc, kind, holder, hG), bo = [B0.x - h0.x, B0.y - h0.y];
       const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + Math.cos(bearA + got.sh) * Math.max(rP, JOCK.r[0]), B0.y + Math.sin(bearA + got.sh) * Math.max(rP, JOCK.r[0])];
-      const rS = dd(S, [B0.x, B0.y]), a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x), rJ = clamp(rS, JOCK.r[0], JOCK.r[1]);
+      const rS = dd(S, [B0.x, B0.y]), rJ = clamp(rS, JOCK.r[0], JOCK.r[1]); let a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x);
+      // (round 7: never hidden behind his player: seen from behind him, one dead ahead stands a step to the side, the side he is on already)
+      { const view = opts.yaw ?? Math.atan2(line[1], line[0]), rel = Math.atan2(Math.sin(a0 - view), Math.cos(a0 - view)); if (!live && !cur && Math.abs(rel) < .42) a0 = view + (rel >= 0 ? .42 : -.42); }
       // (where the lunge ends: CONTACT from the ball, on his side of it, not on top of the player on it)
       const fa = Math.atan2(line[1], line[0]), da = Math.atan2(Math.sin(a0 - fa), Math.cos(a0 - fa)), ea = fa + clamp(da, -1.4, 1.4), bc = [hG.x + line[0] * .45 - BG.x, hG.y + line[1] * .45 - BG.y];
-      const f = jockPace(Gj, Math.min(R, (Gj - .1) / PACE + .1));
-      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
+      const f = jockPace(Gj, Math.min(R, JOCK.R, (Gj - .1) / PACE + .1));
+      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, rT: Math.min(rJ, JOCK.rT), amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
       r0 = rS; jock = true;
     }
   }
@@ -673,7 +676,7 @@ function planHold0(sc, st, opts, kind) {
   // picture has him (the tests and the audits choose there when they want the picture whole).
   let tPic = clamp(best.tP, 0, G);
   if (run?.run && !toP) { tPic = G; for (let i = 0; i <= 40; i++) { const t = G * i / 40, q = pathAt(run, t, {}), Bt = ballOf(sc, kind, holder, pathAt(best.paths[holder], t, {})); if (Math.hypot(q.x - Bt.x, q.y - Bt.y) <= rP + .05) { tPic = t; break; } } }
-  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax), tP: best.tP, Gpre: tPic, Gpost: G - tPic, a: 0, D: best.D, paths: best.paths, holder,
+  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax, jock ? JOCK.R : 99), tP: best.tP, Gpre: tPic, Gpost: G - tPic, a: 0, D: best.D, paths: best.paths, holder,
     threat: th ? { id: th } : kind === 'defense' ? { id: holder, to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : null, second,
     comers: [th, second].filter(Boolean).map(id => ({ id, x: at[id].x, y: at[id].y })), virt: th ? { x: at[th].x, y: at[th].y } : null, bear: bearA, rP, r0, shift, watch, role, look, wide,
     at0: Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }])), dis: best.bad ? best.first || ['?'] : [], disN: best.bad, k: best.k, sp: best.sp,

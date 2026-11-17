@@ -58,6 +58,7 @@ export const EXEMPT = [
   ['seen', sc => sc.intro === 'won', 'won it: they are all behind him by the idea; the one who comes sets off from where the picture has him, 8 m or more back, and runs into view'],
   ['comes', sc => sc.intro === 'won', 'won it: the player he just took it from is stumbling past behind him, and is not the one who comes'],
 ];
+const JOCK_CUT = ['cut', () => false, 'a defender already on him, with no room to run in (he jockeys and goes in as the ring empties): the window is 5 s, its honest length, under the 6 s floor of a first round or Level 1'];
 const exempt = (check, sc, row) => EXEMPT.find(e => e[0] === check && e[1](sc, row));
 
 // What kind of end a play had (its banners), for comparing with the frozen play.
@@ -134,7 +135,8 @@ function shape(r, sc, st) {
     const R1 = e.real - a.real, lun = f.filter(x => e.real - x.real <= .5), jo = f.filter(x => e.real - x.real > .6), sp = q => { let L = 0; for (let i = 1; i < q.length; i++) L += Math.hypot(q[i].at[th][0] - q[i - 1].at[th][0], q[i].at[th][1] - q[i - 1].at[th][1]); return L / Math.max(.05, q.at(-1).real - q[0].real); };
     if (w.cls === 'jockey') {
       const rs = jo.map(x => d(x, th)), bear = jo.map(x => Math.atan2(x.at[th][1] - ballAt(sc, x)[1], x.at[th][0] - ballAt(sc, x)[0])), b0 = bear[0], sw = bear.map((b, i) => Math.atan2(Math.sin(b - b0), Math.cos(b - b0)) * rs[i]);
-      if (Math.max(...rs) > 1.9 || Math.min(...rs) < 1) flags.push(['creep', `${th} jockeys between ${Math.min(...rs).toFixed(2)} and ${Math.max(...rs).toFixed(2)} m from the ball (1 to 1.9 m)`]);
+      if (Math.max(...rs) > 1.9 || Math.min(...rs) < .85) flags.push(['creep', `${th} jockeys between ${Math.min(...rs).toFixed(2)} and ${Math.max(...rs).toFixed(2)} m from the ball (0.85 to 1.9 m)`]);
+      if (rs[0] - rs.at(-1) < .15) flags.push(['creep', `${th} does not edge in while he jockeys (${rs[0].toFixed(2)} to ${rs.at(-1).toFixed(2)} m)`]);
       if (Math.max(...sw) - Math.min(...sw) < .5) flags.push(['creep', `${th} jockeys with steps of only ${(Math.max(...sw) - Math.min(...sw)).toFixed(2)} m from side to side`]);
       if (lun.length > 2 && jo.length > 2 && sp(lun) < 2 * sp(jo)) flags.push(['creep', `${th}'s lunge is ${sp(lun).toFixed(2)} m/s on the screen, his jockeying ${sp(jo).toFixed(2)} m/s`]);
     } else if (d(a, th) - d(e, th) < 1.5 && R1 > 2) flags.push(['creep', `${th} comes only ${(d(a, th) - d(e, th)).toFixed(1)} m in ${R1.toFixed(1)} s (from ${d(a, th).toFixed(1)} m; class ${w.cls}): no run and no jockey`]);
@@ -332,7 +334,8 @@ for (const size of sizes) {
       for (const [name, act] of stepsOf(sc)) for (const [vw, vh] of [[844, 390], [667, 375]]) { VW = vw; VH = vh; const r3 = await play(sc, null, 1, act); for (const x of views(r3, sc, st, name)) fl.push(x); } VW = 844; VH = 390;
       const w = r.wins[0];
       row.plays.push({ opt: 'timeout', u: 1, end: endOf(r.banners), flags: fl, gap: r.gap, dEnd: r.dEnd });
-      if (w && w.R < Math.min(w.ask, w.min) - .15) fl.push(['cut', `the window is cut to ${w.R.toFixed(1)} s, under its floor of ${Math.min(w.ask, w.min).toFixed(1)} s (${w.cls})`]);
+      if (w && w.cls === 'jockey' && w.R < Math.min(w.ask, w.min) - .15) { if (w.R < 4.4) fl.push(['cut', `a jockey window of ${w.R.toFixed(1)} s`]); else used.set(JOCK_CUT, (used.get(JOCK_CUT) || 0) + 1); } // (round 7: one already on him: the window is its honest length, 5 s, not time filled)
+      else if (w && w.R < Math.min(w.ask, w.min) - .15) fl.push(['cut', `the window is cut to ${w.R.toFixed(1)} s, under its floor of ${Math.min(w.ask, w.min).toFixed(1)} s (${w.cls})`]);
       if (w && w.R < w.ask - .05) st.cuts.push(`${size} ${sc.id}: ${w.R.toFixed(1)} s of ${w.ask.toFixed(1)} s (${w.cls})`);
       if (w) { row.win = { G: +w.G.toFixed(2), R: +w.R.toFixed(1), f: +w.f.toFixed(3), threat: w.threat, second: w.second, k: w.k, sp: w.sp, cls: w.cls, r0: w.r0, rP: w.rP, dis: w.dis }; st.f.push(w.f); st.G.push(w.G); (st.cls[`${row.kind} ${w.cls}`] ||= []).push(sc.id); if (w.dis?.length) fl.push(['plan', `the shape does not hold all through: ${w.dis.join(',')}`]); }
       for (const p of row.plays) for (const [k2, m] of p.flags) { counts[`${size} ${k2}`] = (counts[`${size} ${k2}`] || 0) + 1; mis.push(`${size} ${sc.id} ${p.opt}@${p.u}: ${k2}: ${m}`); }

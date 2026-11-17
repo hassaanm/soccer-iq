@@ -15,16 +15,17 @@
 //   twoball after a defending play, never two of ours on the ball (within 2 m of their player on it, with the ball as
 //           their job: his own player, and a friend who is pressing, chasing or has no job) while another of theirs
 //           within 12 m of it has nobody of ours within 3 m
-// Usage: node scripts/live-audit.js [size] [matches] [--v]   (exit 1 on any flag)
+// Usage: node scripts/live-audit.js [size] [matches] [wrong share] [--v]   (exit 1 on any flag)
 import { PATH } from '../js/skills.js';
 import { SIZES, setSize } from '../js/geom.js';
-import { makeGame, drive } from '../tests/harness.js';
+import { makeGame, drive, optionsFor } from '../tests/harness.js';
 
-export async function liveAudit(size, N = 4, verbose = false) {
+export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of choices where the bot taps a bad option (more defending choices and lost balls)
   setSize(size); const flags = [], real = Math.random, stat = { plays: 0, windows: 0, minWin: 9, hover: 0, yoyo: 0 };
   try {
     for (let seed = 1; seed <= N; seed++) {
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      let y = seed * 31337, lastW = null, pickW = null; const rnd = () => (y = (y * 48271) % 2147483647) / 2147483647;
       const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id)); const s = g.sim, rec = []; let last = null, nDec = 0, lastWin = null, defPlay = null, w0 = null, two = null, prevT = 0, move = null, lastCar = null, hp = null, hpNow = null, scId = null;
       const side = id => (id == null ? null : s.a(id)?.team || null);
       await drive(g, g.match(PATH.map(k => k.id), [], 5, 'free'), { maxSec: 9000,
@@ -39,11 +40,13 @@ export async function liveAudit(size, N = 4, verbose = false) {
               if ((who === 'him' && !goes) || (who === 'a friend' && goes)) flags.push(['defbest', `${size} match ${seed} choice ${nDec}: ${who} is nearest the ball (his player ${w0.dh.toFixed(1)} m, a friend ${w0.dm.toFixed(1)} m), and the best answer is ${b} (rings ${gm.sc.spots.map(p => p.id).join(',')})`]);
               two = { t0: s.time, run: 0, max: 0, n: nDec };
             } }
-          return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); },
+          if (wrong && gm._choose !== lastW) { lastW = gm._choose; pickW = null; if (rnd() < wrong) { const bad = optionsFor(gm.sc).filter(o => !o.startsWith('then:') && gm.rating(o) === 'bad'); if (bad.length) pickW = bad[Math.floor(rnd() * bad.length)]; } }
+          return pickW || gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); },
         onFrame: gm => { const w = gm.win; const dtF = s.time - prevT; prevT = s.time;
           if (w && gm.sc?.live && gm.sc.kind === 'defense' && w0?.w !== w) { const c1 = s.a(gm.sc.carrier) || (s.ball.carrier && s.a(s.ball.carrier)), h1 = s.a('hero'); if (c1 && h1) w0 = { w, dh: Math.hypot(h1.x - c1.x, h1.y - c1.y), dm: Math.min(99, ...s.team('us').filter(a => a.id !== 'hero' && !a.gk).map(a => Math.hypot(a.x - c1.x, a.y - c1.y))) }; }
           // twoball (round 7, as the verifier measures it): in the 4 s after a defending choice, two of ours within 2 m of
           // their player on the ball while another of theirs within 12 m of it has nobody of ours within 3 m, for more than 0.5 s on end
+          if (two && process.env.TW && +process.env.TW.split(',')[0] === seed && +process.env.TW.split(',')[1] === two.n) { const cc = s.ball.carrier && s.a(s.ball.carrier); if (cc && (two.k = (two.k || 0) + 1) % 4 === 0) console.log('TW', s.time.toFixed(2), gm.phase, gm.result || '', 'car', cc.id, s.team('us').filter(a => !a.gk).map(a => `${a.id} ${Math.hypot(a.x - cc.x, a.y - cc.y).toFixed(1)}m job ${a.id === 'hero' ? gm.teamJob?.hero : gm.roles?.jobs?.[a.id] || gm.teamJob?.[a.id]?.job || '-'}${a.beat > s.time ? ' beat' : ''}${gm.scripted.has(a.id) ? ' scr' : ''}`).join(' | '), 'free', s.team('them').filter(o => o !== cc && !o.gk && Math.min(...s.team('us').filter(a => !a.gk).map(a => Math.hypot(a.x - o.x, a.y - o.y))) > 3).map(o => o.id).join(',')); }
           if (two) { if (s.time - two.t0 > 4) { if (two.max > .5) flags.push(['twoball', `${size} match ${seed} after choice ${two.n}: two of ours on the ball with one of theirs free for ${two.max.toFixed(1)} s`]); two = null; }
             else { const cc = s.ball.state === 'carried' && s.a(s.ball.carrier); if (cc && cc.team !== 'us') { const ours = s.team('us').filter(a => !a.gk), on = ours.filter(a => Math.hypot(a.x - cc.x, a.y - cc.y) < 2).length, fr = s.team('them').some(o => o !== cc && !o.gk && Math.hypot(o.x - s.ball.x, o.y - s.ball.y) < 12 && Math.min(...ours.map(a => Math.hypot(a.x - o.x, a.y - o.y))) > 3);
               if (on >= 2 && fr) { two.run += dtF; two.max = Math.max(two.max, two.run); } else two.run = 0; } else two.run = 0; } }
@@ -52,7 +55,7 @@ export async function liveAudit(size, N = 4, verbose = false) {
           // (a new situation set up, after a goal or four plays: a lesson's scene, with its own pass to him: is a new move)
           if (gm.sc && !gm.sc.live && gm.sc.id !== scId) { scId = gm.sc.id; move = null; lastCar = null; } if (gm.sc?.live) scId = null;
           { const car = s.ball.state === 'carried' ? s.ball.carrier : null; if (car && car !== lastCar) { const a = s.a(car);
-            if (a?.team !== 'us') move = null; else { move ||= { seq: [], ret: {} }; const hh = s.a('hero'); move.seq.push(car === 'hero' && hp && Math.hypot(hh.x - hp[0], hh.y - hp[1]) > 1.5 ? 'hero(took over)' : car === 'hero' ? 'hero' : car); if (move.seq.at(-1) !== car) move.seq[move.seq.length - 1] = car, move.note = (move.note || '') + ` [${move.seq.length}: took over, ${gm.sc?.kind || 'attack'} ${gm.result || ''}]`; else if (car === 'hero' && move.seq.length > 1) move.note = (move.note || '') + ` [${move.seq.length}: passed to him, ${gm.sc?.id || ''} ${gm.result || ''}]`; const q = move.seq; if (q.length >= 3 && q.at(-1) === 'hero' && q.at(-3) === 'hero') { const f = q.at(-2); move.ret[f] = (move.ret[f] || 0) + 1; stat.returns = (stat.returns || 0) + 1; if (move.ret[f] === 2) flags.push(['twice', `${size} match ${seed}: ${q.join('>')}${move.note || ''}`]); } } lastCar = car; } }
+            if (a?.team !== 'us') move = null; else { move ||= { seq: [], ret: {} }; const hh = s.a('hero'); move.seq.push(car === 'hero' && hp && Math.hypot(hh.x - hp[0], hh.y - hp[1]) > 1.5 ? 'hero(took over)' : car === 'hero' ? 'hero' : car); if (move.seq.at(-1) !== car) move.seq[move.seq.length - 1] = car, move.note = (move.note || '') + ` [${move.seq.length}: took over, ${gm.sc?.kind || 'attack'} ${gm.result || ''}]`; else if (car === 'hero' && move.seq.length > 1) move.note = (move.note || '') + ` [${move.seq.length}: passed to him, ${gm.sc?.id || ''} ${gm.result || ''}]`; const q = move.seq; if (q.length >= 3 && q.at(-1) === 'hero' && q.at(-3) === 'hero' && !/took over[^\]]*\]$/.test(move.note || '')) { const f = q.at(-2); move.ret[f] = (move.ret[f] || 0) + 1; stat.returns = (stat.returns || 0) + 1; if (move.ret[f] === 2) flags.push(['twice', `${size} match ${seed}: ${q.join('>')}${move.note || ''}`]); } } lastCar = car; } }
           if (w && w !== lastWin) { lastWin = w; stat.windows++; if (gm.sc.live) { stat.minWin = Math.min(stat.minWin, w.R); const fl = gm.windowMin(); if (w.R < fl - .05) flags.push(['short', `${size} match ${seed} choice ${nDec + 1} (${gm.sc.kind || 'attack'}): ${w.R.toFixed(2)} s, the floor is ${fl.toFixed(1)} s (G ${w.G.toFixed(2)}, ${w.plan.cls || ""}${w.plan.live ? " live" : ""}${w.plan.fromLive ? " from-live" : ""}, threat ${w.threat?.id || "none"}, run ${w.plan.r0?.toFixed(1)}→${w.plan.rP?.toFixed(1)})`]); } }
           const c = s.ball.carrier, cs = side(c);
           rec.push({ t: s.time, win: !!w, c, cs, st: s.ball.state, b: [s.ball.x, s.ball.y], at: Object.fromEntries([...s.agents.values()].filter(a => !a.gk).map(a => [a.id, [a.x, a.y, a.team, a.tk ?? -9, a.beat ?? -9]])), n: nDec, k: gm.sc?.kind, ph: gm.phase, scr: [...gm.scripted], res: gm.result }); } });
@@ -92,7 +95,7 @@ export async function liveAudit(size, N = 4, verbose = false) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2).filter(a => !a.startsWith('--')), sizes = args[0] ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer); let bad = 0;
-  for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(args[1] || 4)); bad += flags.length;
+  for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(args[1] || 4), +(args[2] || 0)); bad += flags.length;
     console.log(`${size} live play: ${stat.plays} choices, ${stat.windows} windows (shortest live ${stat.minWin.toFixed(2)} s); ${Object.entries(stat.counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
     const by = {}; for (const [k, m] of flags) (by[k] ||= []).push(m); for (const [k, v] of Object.entries(by)) { console.log(`  ${k}: ${v.length}`); for (const m of v.slice(0, process.argv.includes('--v') ? 99 : 6)) console.log('    ' + m); } }
   process.exitCode = bad ? 1 : 0;
