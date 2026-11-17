@@ -140,11 +140,11 @@ function bootOut(J, dx, dy, bz, fl) {
 //             fake side (the body drops that way); then the outside of the other foot takes the ball away.
 //   scissors: two stepovers, one with each foot (the first away from the fake, the second to it), then the outside of
 //             the first foot takes the ball away.
-//   feint:    the body feint: the foot on the fake side steps out wide without going over the ball, the shoulder
-//             drops that way, then the outside of the other foot takes it away.
+//   feint:    the body feint: the foot on the fake side steps out wide without going over the ball and plants, his
+//             hips and the shoulder go that way (a quarter of a metre: round 7), then the outside of the other foot takes it away.
 // A path is keys [c, x, y, z]: x metres ahead of the ball (B) or of his hips (H), y to the fake side of the ball's line.
 const B = 0, H = 1, OVER = [[.16, B, -.34, -.04, .2], [.3, B, -.04, -.02, .37], [.4, B, .13, .17, .27], [.5, B, .03, .32, .11]]; // in behind, over the front, down outside
-const WIDE = [[.2, B, -.42, .2, .11], [.34, B, -.25, .4, .07]];                                                               // a step out wide, short of the ball
+const WIDE = [[.2, B, -.42, .3, .11], [.36, B, -.25, .6, .05]]; // (round 7: a real step out to the fake side: he plants it there)                                                               // a step out wide, short of the ball
 const cr = (a, b, c, d, t) => .5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
 const PT = [0, 0, 0];
 // Where a foot is at `c` on a path of keys [c, x, y, z] (already in his hip frame), through the keys on a smooth curve.
@@ -187,7 +187,7 @@ function dribbleSkillFeet(k, c, ball, bl, fk, TL = 1.4) {
 // How much his weight goes to the fake side (0 to 1, signed for the scissors' first fake) at c through a dribble skill.
 const bump = (c, a, b, d) => sm((c - a) / (b - a)) * (1 - sm((c - b) / (d - b)));
 // Then his weight goes the other way, after the ball (minus): the fake, then the go, so the move reads from far away.
-const dropOf = (k, c) => k === 'scissors' ? bump(c, .4, .62, .9) - .8 * bump(c, .05, .3, .45) - .5 * bump(c, .85, 1.02, 1.3) : k === 'feint' ? 1.3 * bump(c, .1, .42, .78) - .6 * bump(c, .62, .9, 1.25) : bump(c, .15, .45, .78) - .6 * bump(c, .62, .9, 1.25);
+const dropOf = (k, c) => k === 'scissors' ? bump(c, .4, .62, .9) - .8 * bump(c, .05, .3, .45) - .5 * bump(c, .85, 1.02, 1.3) : k === 'feint' ? 1.6 * bump(c, .08, .42, .8) - .6 * bump(c, .62, .9, 1.25) : bump(c, .15, .45, .78) - .6 * bump(c, .62, .9, 1.25);
 const DRIB_SKILL = { stepover: 1, scissors: 1, feint: 1 };
 
 // `time` is the clock of the picture, which keeps running when the game stops its own clock (`sim.time`).
@@ -375,13 +375,13 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   }
   m.fb = damp(m.fb, fW, 12, rdt); m.fby = damp(m.fby, fW * (fLeg ? 1 : -1), 12, rdt); // his body's share of a busy foot, eased (its weight can start part way)
   const ox = .18 * K[9] * kw * sm(kt / .2) + .05 * rw * rx; // striking, he steps his hips in over the ball (and his feet stay where they are)
-  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .11 * fs * fe + .28 * rw * ry; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it)
+  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .27 * fs * fe + .28 * rw * ry; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it)
   const hop = mood > 0 ? Math.abs(Math.sin(moodT * 7.5 + u.seed)) : 0, air = .3 * hop * mood;
   const q1 = m.ph, c1 = Math.cos(TAU * (q1 + .04)); // +1 as the left foot lands in front
   // The hips: lower when ready or sprinting, bobbing with each step (down as a running foot takes his weight).
   LIFT = -lerp(.012 + .075 * rd + .012 * bounce - .004 * breath, .02 + .04 * run + .08 * low, w) - w * lerp(-.012, .028, sm(run * 2)) * Math.cos(2 * TAU * (q1 - D / 2))
     - .03 * K[9] * kw - .04 * m.fb - .03 * (fe + rw) + air - (mood > 0 ? .05 * (1 - hop) * mood : 0);
-  const PITCH = sat(m.acc * .02, .16) + .05 * run, roll = -m.bank * .6 + fs * .2 * fe + .24 * rw * ry;
+  const PITCH = sat(m.acc * .02, .16) + .05 * run, roll = -m.bank * .6 + fs * .32 * fe + .24 * rw * ry;
   CP = Math.cos(PITCH); SP = Math.sin(PITCH); CR = Math.cos(roll); SR = Math.sin(roll);
   g.position.set(a.x + cyaw * ox - syaw * oy, a.y + syaw * ox + cyaw * oy, LIFT); g.rotation.set(roll, PITCH, u.yaw);
   u.blob.position.set(-ox, -oy, .012 - LIFT); u.blob.rotation.set(-roll, -PITCH, 0); u.blob.scale.setScalar(1 - air);
