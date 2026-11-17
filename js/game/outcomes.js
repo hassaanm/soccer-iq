@@ -196,7 +196,7 @@ export const outcomes = {
     const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;
     // (round 5) Running the other way as he wins it (he came in from behind, or was carried past): he takes it on a
     // curve, half a second round, not straight back on himself.
-    if (ls > 2 && ls < 6 && (lv[0] * (to.x - opp.x) + lv[1] * (to.y - opp.y)) < 0) {
+    if (ls > 2 && ls < 6 && (lv[0] * (to.x - opp.x) + lv[1] * (to.y - opp.y)) / (ls * (Math.hypot(to.x - opp.x, to.y - opp.y) || 1)) < .3) { // (round 7: more than about 70° off his way)
       // (round 6: in three bends, each under 70°, so no step of it is a snap)
       const ux = lv[0] / ls, uy = lv[1] / ls, sd = Math.sign(ux * (to.y - opp.y) - uy * (to.x - opp.x)) || 1, A = Math.acos(clamp((ux * (to.x - opp.x) + uy * (to.y - opp.y)) / (Math.hypot(to.x - opp.x, to.y - opp.y) || 1), -1, 1));
       for (const f of [.34, .67]) { const c = Math.cos(A * f * sd), sn = Math.sin(A * f * sd); s.go(opp.id, clamp(opp.x + (ux * c - uy * sn) * 1.4, 1, L - 1), clamp(opp.y + (ux * sn + uy * c) * 1.4, 1, W - 1), Math.max(2.4, ls * .7)); yield .3; }

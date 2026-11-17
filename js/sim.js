@@ -416,6 +416,9 @@ export class Sim {
           if (!a.ease && !back && !a.momBack) a.mom = null;
           else { a.momBack = !a.ease; if (!this.momentum(a, dx / d * v, dy / d * v, dt, d, !a.ease)) continue; }
         } // (still coming round from the way he was going)
+        // (round 7) One the play's script sends sets off as a body can, not at full speed from the first step: 20 m/s² (a quarter of a second to a sprint).
+        if (!a.ease && !has && !a.gk) { if (a.rd && a.rv > 1 && (a.rd[0] * dx + a.rd[1] * dy) / d < -.3) a.rv = 0; (a.rd ||= [0, 0])[0] = dx / d; a.rd[1] = dy / d; // (sent back the other way: he sets off anew)
+          v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v; } else a.rv = v;
         const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
@@ -424,7 +427,7 @@ export class Sim {
         }
         if (!m) a.sp = lerp(a.sp, sp, ease(dt, 8));
       } else if (a.mom && !has) { if (Math.hypot(a.mom[0], a.mom[1]) < .15) a.mom = null; else if (!this.momentum(a, 0, 0, dt)) { a.tx = a.x; a.ty = a.y; } } // (told to stop: he slows to a stop over a step or two)
-      else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; if (has) a.mom = null; }
+      else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; a.rv = 0; if (has) a.mom = null; }
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.
