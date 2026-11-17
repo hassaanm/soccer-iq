@@ -23,7 +23,7 @@ async function turnPlay(sc, opt) {
   let prev = Math.atan2(h.face[1], h.face[0]), had = false, lost = false, n = 0;
   await drive(g, g.outcome(opt, good), { onFrame: () => {
     if (s.ball.carrier === 'hero') had = true; else if (had) lost = true;
-    if (lost || n++ > 75) return; // the turn and the run out of it, while it is still his ball
+    if (lost || n++ > 75 || events.some(e => e[0] === 'banner')) return; // the turn and the run out of it, while it is still his ball and the play is on (round 5: a defender who catches him ends it, and he then turns to shield the ball)
     const f = Math.atan2(h.face[1], h.face[0]); r.rot += wrap(f - prev); prev = f; r.lo = Math.min(r.lo, r.rot); r.hi = Math.max(r.hi, r.rot);
     if (s.ball.carrier === 'hero' && s.ball.move) r.sides.add(Math.sign(s.ball.move.d));
     if ((r.turned = Math.abs(r.rot) > 1.6 ? (r.turned || 0) + 1 : 0) < 15) r.side = leftOf(f0, h.x - x0, h.y - y0); // (the side he leaves on: as he comes out of the turn, not where his run on to goal takes him later)
