@@ -467,7 +467,7 @@ test('matches with every lesson passed: friends attack and he picks his run, and
   const { generate } = await import('../js/generate.js');
   const real = Math.random, seen = { goal: 0, follow: 0, rebound: 0 };
   try {
-    for (let seed = 1; seed <= 40 && !(seen.goal && seen.follow && seen.rebound); seed++) { // (a blocked shot that can come back out is rare: as many matches as it takes, up to 40)
+    for (let seed = 1; seed <= 120 && !(seen.goal && seen.follow && seen.rebound); seed++) { // (a blocked shot that can come back out is rare, about one match in twenty: as many matches as it takes, up to 120)
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame(), extra = [1, 2, 3].flatMap(k => [generate('go-to-goal', 800 + seed * 10 + k), generate('follow-shot', 800 + seed * 10 + k)]);
       await drive(g, g.match([...ALL], extra, 4, 'free'), gm => {

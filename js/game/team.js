@@ -49,6 +49,9 @@ export const team = {
       const cand = [{ x: fut.x + dir * 9, y: lerp(fut.y, W / 2, .7) }, { x: fut.x + dir * 2, y: wide(-side0) }, { x: fut.x - dir * 6, y: W / 2 }].map(p => clearOf({ x: clamp(p.x, 2, L - 3), y: clamp(p.y, 2, W - 2) }));
       while (spots.length < sup.length) spots.push(cand.sort((p, q) => room(q) - room(p))[0] && cand.splice(0, 1)[0] || spots[spots.length - 1]); // (no one has the ball, a keeper holding it: every attacker gets a place)
     }
+    // (v66) Never two friends sent to one place (the clamps at the lines, or the carrier's way, can push two places
+    // together): the later one goes a few steps off it, back and toward the middle.
+    for (let i = 1; i < spots.length; i++) for (let n = 0; n < 3 && spots.slice(0, i).some(q => dist(q, spots[i]) < 2); n++) spots[i] = { x: clamp(spots[i].x - dir * 2.5, 2, L - 2), y: clamp(spots[i].y + (spots[i].y > W / 2 ? -3 : 3), 2, W - 2) };
     sup.forEach((a, i) => this.aiGo(a, spots[i].x, spots[i].y, i ? 3.4 : 3.8));
     for (const a of s.list) if (!free(a)) a.ease = false; // (players the play's script moves go as it says)
   },

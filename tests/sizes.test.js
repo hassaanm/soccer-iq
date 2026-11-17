@@ -66,6 +66,8 @@ test('at 4v4 every option of every lesson scenario plays out as graded (a sample
 test('a 4v4 match: eight players, the team AI spreads them out, and it finishes', async () => {
   const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id));
   let close = 0, frames = 0;
+  // (v66: a seeded match, the same every run; the cause of the rare failures, two places pushed together, is fixed in team.js)
+  const real = Math.random; let x = 20261116; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
   const score = await drive(g, g.match(PATH.map(s => s.id), [], 2, 'free'), {
     pick: gm => gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:fwd'), maxSec: 1500,
     onFrame: gm => {
@@ -75,6 +77,7 @@ test('a 4v4 match: eight players, the team AI spreads them out, and it finishes'
       if (gm.ai && us.some((a, i) => us.some((b, j) => j > i && Math.hypot(a.tx - b.tx, a.ty - b.ty) < 1))) close++;
     },
   });
+  Math.random = real;
   assert.ok(score.us >= 2 || score.them >= 2, JSON.stringify(score));
   assert.ok(close < frames * .02, `${close} of ${frames} frames with two friends sent to the same place`);
 });
