@@ -70,6 +70,10 @@ export const team = {
       if (now - c.t < COMMIT.t && Math.hypot(b.x - c.bx, b.y - c.by) < COMMIT.ball) { s.go(a.id, c.x, c.y, c.sp); return; }
     }
     const lag = c && c.poss !== poss ? COMMIT.react[0] + (COMMIT.react[1] - COMMIT.react[0]) * ((a.id.charCodeAt(1) * 7 + (a.team === 'us' ? 3 : 0)) % 10) / 9 : 0;
+    // (round 5) A new place a step or two behind a player on the move: he is there already. He slows to a stop going on
+    // (half a step), instead of turning round for it.
+    if (!track && !lag) { const lv = a.mom && a.momT > now ? a.mom : a.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0, dx = x - a.x, dy = y - a.y, d = Math.hypot(dx, dy);
+      if (ls > .8 && d > .05 && d < 1.5 && (lv[0] * dx + lv[1] * dy) / (ls * d) < -.17) { const k = Math.min(.5, ls * .3); x = a.x + lv[0] / ls * k; y = a.y + lv[1] / ls * k; } }
     a.aic = { x, y, sp: speed, t: now + lag, bx: b.x, by: b.y, poss, ready: now + lag };
     if (!lag) s.go(a.id, x, y, speed);
   },
