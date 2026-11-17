@@ -82,7 +82,7 @@ export const outcomes = {
   // A player near the path of a kick stops; one right in it steps out of the way, to the side he is already on.
   giveWay(p, from, to, low = true) {
     const c = closestOnLane(p, from, to, 0);
-    if (c.d < 1.1) p.mom = null; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
+    if (c.d < 1.1) p.mom = null; p.momOff = this.sim.time + 1.5; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
     let nx = l > .05 ? dx / l : -(to.y - from.y), ny = l > .05 ? dy / l : to.x - from.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
@@ -94,7 +94,7 @@ export const outcomes = {
   *turnTo(id, x, y) {
     const s = this.sim, a = s.a(id), t = s.ball.carrier === id ? s.turn(id, x, y, 1.05) : 0;
     if (!t) return;
-    const held = [...s.agents.values()].filter(p => p.id !== id && !this.scripted.has(p.id) && dist(p, a) < 4);
+    const held = [...s.agents.values()].filter(p => p.id !== id && !this.scripted.has(p.id) && dist(p, a) < 4 && !(p.lv && Math.hypot(p.lv[0], p.lv[1]) > 2 && dist(p, a) > 1.5)); // (v66: one coming at a run from a few steps off is not frozen in his stride: the kick's own check clears its line)
     for (const p of held) { this.scripted.add(p.id); s.stop(p.id); }
     yield t;
     for (const p of held) this.scripted.delete(p.id); // free again: the kick's own check moves anyone in its path
@@ -149,7 +149,7 @@ export const outcomes = {
     }
     // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
     this.scripted.add(id); s.go(id, lerp(m.x, s.ball.x, .3), lerp(m.y, s.ball.y, .3), 4.2);
-    this.scripted.add(ic.opp.id); ic.opp.mom = null; s.go(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once)
+    this.scripted.add(ic.opp.id); ic.opp.mom = null; ic.opp.momOff = this.sim.time + 1.5; s.go(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once)
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
     const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
@@ -210,7 +210,7 @@ export const outcomes = {
     // A bad push straight at a defender is his ball: he stops it where it reaches him.
     const inLane = !good && firstInLane(opps, s.ball, end, .05, 1);
     if (inLane) {
-      const o = inLane.opp; this.scripted.add(o.id); o.mom = null; s.go(o.id, inLane.x, inLane.y, 4);
+      const o = inLane.opp; this.scripted.add(o.id); o.mom = null; o.momOff = this.sim.time + 1.5; s.go(o.id, inLane.x, inLane.y, 4);
       yield* this.strike('hero', inLane.x, inLane.y, { speed: 8.5, arc: .1 });
       yield () => s.ball.state === 'loose';
       const t0 = s.time; yield () => dist(o, s.ball) < .7 || s.time - t0 > .8;
@@ -435,7 +435,7 @@ export const outcomes = {
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
     if (sh) { this.rebound = sh; yield* this.shotOut(sh); this.hud.caption('Blocked!'); this.say('Blocked!'); this.scripted.add(block.opp.id); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
-    this.scripted.add(block.opp.id); block.opp.mom = null; s.go(block.opp.id, block.x, block.y, 5); // (he steps into its line at once)
+    this.scripted.add(block.opp.id); block.opp.mom = null; block.opp.momOff = this.sim.time + 1.5; s.go(block.opp.id, block.x, block.y, 5); // (he steps into its line at once)
     yield* this.strike('hero', block.x, block.y, { speed: 15, arc: .2 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);
@@ -624,7 +624,7 @@ export const outcomes = {
   *pokeAway(o, c) {
     const s = this.sim, b = s.ball, t0 = s.time;
     this.scripted.add(o.id); this.scripted.add(c.id); this.spice(null);
-    const mv = o.mom ? [...o.mom] : [(o.tx - o.x), (o.ty - o.y)]; o.mom = null; // (he is on the ball: straight in)
+    const mv = o.mom ? [...o.mom] : [(o.tx - o.x), (o.ty - o.y)]; o.mom = null; o.momOff = this.sim.time + 1.5; // (he is on the ball: straight in)
     let v = Math.max(1, Math.min(o.speed || 1, SPEED.sprint[1])), last = s.time;
     s.go(c.id, c.x + (c.tx - c.x) * .5, c.y + (c.ty - c.y) * .5, Math.min(1.2, c.speed || .5)); // he slows, shielding it
     yield () => { const dt = s.time - last; last = s.time; v = Math.min(SPEED.sprint[1], v + ACC * dt); s.go(o.id, b.x, b.y, v); return dist(o, b) < .62 || s.time - t0 > 2.5; };

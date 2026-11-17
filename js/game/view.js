@@ -172,7 +172,7 @@ export const view = {
     const others = []; for (const a of this.sim.agents.values()) { if (a.gk) continue; others.push(a); if (this.win && a.id !== 'hero') { const q = this.windowEnd(a.id); if (Math.hypot(q.x - a.x, q.y - a.y) > .8) others.push({ id: a.id, x: (a.x + q.x) / 2, y: (a.y + q.y) / 2, gk: false }, { id: a.id, x: q.x, y: q.y, gk: false }); } }
     const covered = e => { let n = 0; for (const t of looks) for (const a of others) { if (a === t.not || (t.not === h && a.id === 'hero')) continue;
       const c = closestOnLane(a, { x: e[0], y: e[1] }, t, 0); if (c.t > .97) continue;
-      const z = e[2] + (t.z - e[2]) * c.t; if (c.d < .4 && z < 1.7) n += t.w * (1 - c.d / .5); } return n; };
+      const z = e[2] + (t.z - e[2]) * c.t; if (c.d < .4 && z < 1.7) n += t.w * (1 - c.d / .5) * (a.id === 'hero' && a === h ? 3 : 1); } return n; }; // (his own head on a target counts most: it is there for the whole window)
     const pref = Math.sign(h.y - mid) || 1, cands = [[pref * off, 0], [-pref * off, 0], [pref * off * 2.2, 0], [-pref * off * 2.2, 0]].map(([sd, up], i) => { const e = eyeAt(sd, up); return { e, i, cov: covered(e), cl: clear(e) }; });
     // The least covered (his side or the other, a little or farther to the side); between near equals, his side, unless
     // the other is much clearer of people in front of him.

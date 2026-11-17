@@ -478,7 +478,6 @@ function planHold0(sc, st, opts, kind) {
   const speeds = dead || shotOn ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
   search: for (const sp of speeds) for (const k of shotOn ? [.5, .25, 0] : [1, .5, 0]) for (const frac of fracs) {
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
-    if (opts.debug) console.log('try', sp, k, frac, 'bad', b.bad, 'offp', b.offp, 'ok', b.ok.map(x => +x).join(''), JSON.stringify(b.first));
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
     if (!b.bad && !b.offp) break search;
   }
@@ -541,7 +540,6 @@ function planHold0(sc, st, opts, kind) {
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
       }
-      if (opts.debug) console.log('pick G', G.toFixed(2), 'fixed', fixed, 'rs', rs.map(r => r.toFixed(1)).join(','), '->', got ? `clean r ${got.r.toFixed(2)} sh ${got.sh}` : fall ? `fall r ${fall.r.toFixed(2)} sh ${fall.sh} viol ${fall.viol} clash ${fall.clash}` : 'none');
       return got || fall;
     };
     // The window is as long as his run takes (a shorter run than hoped for, or a chase after a ball going away from him:

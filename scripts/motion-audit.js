@@ -181,7 +181,7 @@ function after(r, sc) {
     //            he has it within the next second
     //   lost     the ball changed sides in that time (a steal, a pass cut out): both teams turn with it
     //   played   the ball was played away past him and he turns to go the way it went
-    //   line     he stood on the line of the pass or shot being struck (it leaves within the next 1.2 s and passes within
+    //   line     he stood on the line of the pass or shot being struck (it leaves within the next 2.5 s and passes within
     //            1.3 m of where he was) and steps off it
     //   man      a defender whose own man turned (his own player running to the ring he tapped) goes with him
     const opt = w.opt || r.o || '', ownRun = /^(spot|then|turn):/.test(opt) || /^drib:(back|bl|br|left|right)/.test(opt) || /^push:/.test(opt);
@@ -195,7 +195,7 @@ function after(r, sc) {
       const toBall = [b1.ball, later.at(-1)?.ball || b1.ball, far?.ball || b1.ball].some(bp => { const dx = bp[0] - e.at[id][0], dy = bp[1] - e.at[id][1], l = Math.hypot(dx, dy) || 1; return (v1[0] * dx + v1[1] * dy) / (s1 * l) > .4; }); // (at the ball, or at where it is in the next second or two)
       const fly = post.find(x => x.bstate === 'flying'), bd = fly && [b1.ball[0] - e.ball[0], b1.ball[1] - e.ball[1]], played = !!bd && Math.hypot(...bd) > 1.5 && (v1[0] * bd[0] + v1[1] * bd[1]) / (s1 * Math.hypot(...bd)) > .2;
       const hv = [(b1.at.hero[0] - e.at.hero[0]) / T1, (b1.at.hero[1] - e.at.hero[1]) / T1], hs = Math.hypot(...hv), hd = [b1.at.hero[0] - e.at[id][0], b1.at.hero[1] - e.at[id][1]], man = id[0] === 'o' && ownRun && hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5);
-      const fl = later.filter(x => x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();
+      const fl = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 2.5 && x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();
       const rule = id === 'hero' && ownRun ? 'own' : toBall || later.some(x => x.carrier === id) ? 'ball' : lost ? 'lost' : played ? 'played' : onLine ? 'line' : man ? 'man' : null;
       if (rule) { TURN_RULE[rule] = (TURN_RULE[rule] || 0) + 1; continue; }
       flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0v.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
