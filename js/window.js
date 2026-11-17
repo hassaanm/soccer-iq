@@ -434,7 +434,7 @@ function planHold0(sc, st, opts, kind) {
   // short run-in (V_RUN.tight), and for the window's floor (opts.Rfloor) a walk (V_RUN.slow): still a defender closing in.
   const Gfloor = PACE * (Math.min(R, opts.Rfloor || 0) - .1) + .1 + .01;
   const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, Math.min(Gfloor, L / V_RUN.slow), L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
-  let G = opts.G || (th ? Gfor(lenOf(rMax)) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G;
+  let G = opts.G || (th ? Gfor(lenOf(rMax)) : dead ? clamp(Gpace, 2.4, 2.8) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G; // (a dead ball: a longer stretch of play, so the runs to find space are seen)
   // ---- everyone else: the drift, and his own small part ----
   const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
     const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
@@ -453,7 +453,9 @@ function planHold0(sc, st, opts, kind) {
   for (const id of out) if (mark[id] && !comer(id) && own[mark[id]] && !keep[id]) own[id] = [...own[mark[id]]]; // a marker mirrors his man
   const keeperV = id => { if (sc.shots || at[id].rush || sc.gk?.hold || sc.gk?.out || sc.shot) return [0, 0]; const dy = B[1] - at[id].y; return [0, Math.abs(dy) > .3 ? Math.sign(dy) * .22 : 0]; };
   function build(sp, k, tP, G) {
-    const D = mul(line, sp), paths = {}, wmag = Math.min(.6, STEP_OWN / G) * k;
+    // (round 5) A dead ball: nobody tackles, but everyone is alive: friends make runs across to find space (up to 2 m, at a
+    // jog), their markers go with them, the others shuffle.
+    const D = mul(line, sp), paths = {}, wmag = (dead ? Math.min(.85, 1.75 / G) : Math.min(.6, STEP_OWN / G)) * k;
     for (const id of ids) {
       if (comer(id)) continue;
       const a = at[id]; let v;

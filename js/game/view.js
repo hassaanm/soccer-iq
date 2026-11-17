@@ -67,8 +67,11 @@ export const view = {
     const base = [[h.x, h.y, 1.9], [h.x, h.y, 0], [ball.x, ball.y, 0]]; for (const sp of sp0) ring(base, sp);
     for (let a = 0; a < 6; a++) base.push([h.x + Math.cos(a * Math.PI / 3) * .9, h.y + Math.sin(a * Math.PI / 3) * .9, 0]); // (his timer ring whole, and his head)
     if (!hold && !P0) { const hn = s.a('hero'); if (far(hn, h)) base.push([hn.x, hn.y, .9]); }
+    // (round 5) A restart: the taker is always in the picture (the ball is what he watches), and a friend with him.
+    if (sc.restart && sc.carrier && sc.carrier !== 'hero' && s.a(sc.carrier)) { const a = o(sc.carrier); base.push([a.x, a.y, 0], [a.x, a.y, 1.5]); }
     const heroAt = [h, he]; if (P0) { const hn = s.a('hero'), q = { x: hn.x, y: hn.y }; heroAt.push(q); base.push([q.x, q.y, .9], [q.x, q.y, 0]); }
     const mid = [...base], extra = [];
+    if (sc.restart) { const fr = s.team('us').filter(a => a.id !== 'hero' && a.id !== sc.carrier).map(a => o(a.id)).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0]; if (fr) mid.push([fr.x, fr.y, 0], [fr.x, fr.y, 1.5]); }
     if (far(he, h)) mid.push([he.x, he.y, .9], [he.x, he.y, 0]);
     for (const sp of sp1) ring(mid, sp);
     if (sc.run === 'follow' && sc.shot) mid.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (it opens as he shoots: where it hits, and where it comes out to)

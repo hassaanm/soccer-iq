@@ -25,7 +25,8 @@
 //   closes   (share 90%) with the ball at his feet, the threat closes at least 2.5 m in the window
 //   speed    nobody moves faster than a child sprints (window.js SPEED) or speeds up or slows down faster than ACC
 //   turn     nobody's way turns by more than 120° in the window
-//   still    nobody outfield stands still through the window; the player on the ball is never still (a dead ball apart)
+//   still    nobody outfield stands still through the window; the player on the ball is never still; at a dead ball the
+//            taker may be still, and at least two others move 1.5 m or more
 //   gap      two players closer than 0.5 m
 //   late     the time-out happens when the ring is empty (u = 1)
 // An exemption names a pattern and a reason (EXEMPT, below), and every use of one is counted in the output.
@@ -182,7 +183,8 @@ function after(r, sc) {
     //   played   the ball was played away past him and he turns to go the way it went
     //   line     he stood on the line of the pass or shot being struck (it leaves within the next 2.5 s and passes within
     //            1.3 m of where he was) and steps off it
-    //   man      a defender whose own man turned (his own player running to the ring he tapped) goes with him
+    //   man      a defender whose own man turned (the player he marks; or his own player running to the ring he tapped)
+    //            goes with him
     const opt = w.opt || r.o || '', ownRun = /^(spot|then|turn):/.test(opt) || /^drib:(back|bl|br|left|right)/.test(opt) || /^push:/.test(opt);
     const side = c => (c == null ? null : c === 'hero' || c[0] === 'm' || c === 'k1' ? 'us' : 'them'), s0 = side(e.carrier), later = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 1.2), far = r.rec.findLast(x => x.wi === wi && x.t > e.t && x.t <= e.t + 2);
     const lost = post.some(x => x.carrier && s0 && side(x.carrier) !== s0);
@@ -193,8 +195,9 @@ function after(r, sc) {
       if (ang <= LIM.afterTurn) continue;
       const toBall = [b1.ball, later.at(-1)?.ball || b1.ball, far?.ball || b1.ball].some(bp => { const dx = bp[0] - e.at[id][0], dy = bp[1] - e.at[id][1], l = Math.hypot(dx, dy) || 1; return (v1[0] * dx + v1[1] * dy) / (s1 * l) > .4; }); // (at the ball, or at where it is in the next second or two)
       const fly = post.find(x => x.bstate === 'flying'), bd = fly && [b1.ball[0] - e.ball[0], b1.ball[1] - e.ball[1]], played = !!bd && Math.hypot(...bd) > 1.5 && (v1[0] * bd[0] + v1[1] * bd[1]) / (s1 * Math.hypot(...bd)) > .2;
-      const hv = [(b1.at.hero[0] - e.at.hero[0]) / T1, (b1.at.hero[1] - e.at.hero[1]) / T1], hs = Math.hypot(...hv), hd = [b1.at.hero[0] - e.at[id][0], b1.at.hero[1] - e.at[id][1]], man = id[0] === 'o' && ownRun && hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5);
-      const fl = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 2.5 && x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();
+      // (his man: the one of ours the plan has him marking; or his own player, when he runs to the ring he tapped)
+      const mk = (w.role?.[id] || '').startsWith('marker:') ? w.role[id].slice(7) : ownRun ? 'hero' : null, man = id[0] === 'o' && !!mk && !!e.at[mk] && (() => { const hv = [(b1.at[mk][0] - e.at[mk][0]) / T1, (b1.at[mk][1] - e.at[mk][1]) / T1], hs = Math.hypot(...hv), hd = [b1.at[mk][0] - e.at[id][0], b1.at[mk][1] - e.at[id][1]];
+        return hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5); })();
       const rule = id === 'hero' && ownRun ? 'own' : toBall || later.some(x => x.carrier === id) ? 'ball' : lost ? 'lost' : played ? 'played' : onLine ? 'line' : man ? 'man' : null;
       if (rule) { TURN_RULE[rule] = (TURN_RULE[rule] || 0) + 1; continue; }
       flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0v.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
@@ -222,6 +225,8 @@ function motionIn(r, sc, inWin) {
     }
     if (!gk(id) && max < LIM.still && g.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) { const ex = exempt('still', sc); if (ex) r.used?.(ex); else flags.push(['still', `${id} still through the window`]); } // (a restart's taker stands over the dead ball)
   }
+  // (round 5) a dead ball: the taker may be still, but the play is alive: at least two others move 1.5 m or more
+  if (sc.restart && g.length > 4) { const far = ids.filter(id => !gk(id) && id !== (sc.carrier || 'hero')).filter(id => { let d = 0; for (let i = 1; i < g.length; i++) d += Math.hypot(g[i].at[id][0] - g[i - 1].at[id][0], g[i].at[id][1] - g[i - 1].at[id][1]); return d >= 1.5; }).length, whole = inWin.at(-1).u > .9; if (whole && far < 2) flags.push(['still', `a dead ball with only ${far} player(s) moving 1.5 m or more`]); }
   // the player on the ball keeps it moving
   const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart && !gk(c0) && !exempt('still', sc)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
   for (const f of inWin) { const at = Object.entries(f.at); for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) { const d = Math.hypot(at[i][1][0] - at[j][1][0], at[i][1][1] - at[j][1][1]); if (d < LIM.gap) { flags.push(['gap', `${at[i][0]}–${at[j][0]} ${d.toFixed(2)} m`]); return flags; } } }
@@ -300,7 +305,7 @@ for (const [size, st] of Object.entries(stats)) {
 }
 const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null && p.gap < 9).map(p => p.gap)).sort((a, b) => a - b), dEnds = all.flatMap(r => r.plays.filter(p => p.dEnd != null).map(p => p.dEnd)).sort((a, b) => a - b);
 if (gaps.length) console.log(`\nthe threat as the ring empties: ${dEnds[0].toFixed(2)}–${dEnds.at(-1).toFixed(2)} m from the ball (median ${dEnds[dEnds.length >> 1].toFixed(2)}); he touches it ${gaps[0].toFixed(2)}–${gaps.at(-1).toFixed(2)} s later (median ${gaps[gaps.length >> 1].toFixed(2)}, real)`);
-console.log(`turns after the window closed that pass by rule (own: his own player doing what was tapped; ball: the one who goes for the ball now; lost: the ball changed sides; played: the ball was played past him and he goes the way it went; line: he steps off the line of a pass or shot being struck; man: a defender going with his own player's run): ${JSON.stringify(TURN_RULE)}`);
+console.log(`turns after the window closed that pass by rule (own: his own player doing what was tapped; ball: the one who goes for the ball now; lost: the ball changed sides; played: the ball was played past him and he goes the way it went; line: he steps off the line of a pass or shot being struck; man: a defender going with the player he marks): ${JSON.stringify(TURN_RULE)}`);
 if (used.size) { console.log('exemptions used:'); for (const [e, n] of used) console.log(`  ${e[0]}: ${n} window(s): ${e[2]}`); }
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);

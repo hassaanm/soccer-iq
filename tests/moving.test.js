@@ -48,7 +48,7 @@ test('every lesson scene: the shape holds all through the window, nobody strays 
       assert.deepEqual(a.dis, [], `${sc.id} at ${t.toFixed(2)} s: ${a.dis}`);
       if (!p.tviol) assert.deepEqual(a.threat, [], `${sc.id} at ${t.toFixed(2)} s: the threat spoils ${a.threat}`);
       // nobody more than 1.5 m from his place in the picture, moved on with the play (the scene's own runners apart)
-      for (const id of ids) { if (comers.has(id) || opts.keep?.[id] || !p.paths[id]) continue; const q = pos(id), d = Math.hypot(q.x - st.at[id].x - p.D[0] * (t - tP), q.y - st.at[id].y - p.D[1] * (t - tP)); assert.ok(d <= 1.5, `${sc.id} ${id}: ${d.toFixed(2)} m off his place at ${t.toFixed(2)} s`); }
+      for (const id of ids) { if (comers.has(id) || opts.keep?.[id] || !p.paths[id]) continue; const q = pos(id), d = Math.hypot(q.x - st.at[id].x - p.D[0] * (t - tP), q.y - st.at[id].y - p.D[1] * (t - tP)); assert.ok(d <= (sc.restart ? 1.8 : 1.5), `${sc.id} ${id}: ${d.toFixed(2)} m off his place at ${t.toFixed(2)} s`); } // (a dead ball: a run across to find space, a little longer)
     }
     for (const [id, path] of Object.entries(p.paths)) for (const t of [0, p.G / 2, p.G]) { const q = pathAt(path, t), v = Math.hypot(q.vx, q.vy); assert.ok(v <= SPEED.sprint[1] + .05, `${sc.id} ${id}: ${v.toFixed(1)} m/s`); }
     const th = p.threat?.id;
