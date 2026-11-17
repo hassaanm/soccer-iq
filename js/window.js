@@ -561,8 +561,8 @@ export const SHORT_LEAD = { 'go-shot': [1.2] };
 //   still too far back to win the rebound race. 1.2 s holds it.
 // Child speeds for each role's run (m/s; research Q1): vRun, vEnd (as he gets there), dB (the metres he slows over).
 export const RUN = {
-  threat: [3.4, 1, 1.6], far: [4.2, 1, 1.6], stepUp: [3.2, .3, 1.8], // closing down; a recovery run from far off; stepping up to the ball
-  carry: [1.8, 1.1, .6],                                  // the player on the ball, carrying it on, slowing to look up
+  threat: [3.4, 1, 1.6], far: [4.2, 1, 1.6], stepUp: [3.2, .3, 1.8], chase: [4, 2.6, .8], // closing down; a recovery run from far off; stepping up to the ball
+  carry: [2.2, 1.5, .6],                                  // the player on the ball, carrying it on, slowing to look up
   open: [2.2, .6, 1], openFar: [1.1, .5, .5],             // a friend running into the space he will stand in (near, or far from the ball)
   cover: [1.4, .4, .6], walk: [1, .5, .5],                // a cover defender shifting across; a far player walking with the play
   attack: [2.4, 1.6, .8], recover: [3.2, 2.2, 1],          // their dribbler driving at our goal; his recovery run (defending)
@@ -618,7 +618,7 @@ export function planArrival(sc, st, opts = {}) {
     if (d0 > PRESSING && kind !== 'receive' && kind !== 'goal') for (let k = 0; k < 3; k++) { const s0 = stanceFrom(p, Gpost); Gpost = runTime(Math.max(0, s0.d - STANCE), RUN.far); }
     const s0 = stanceFrom(p, Gpost), u = Gpost ? s0.u : U([H[0] - p[0], H[1] - p[1]]);
     if (dead) Gpost = 0;
-    paths[th] = dead ? arr(p, u, RUN.standOff) : Gpost ? { ...arr(s0.A, u, RUN.far), T: Gpost } : arr(p, u, kind === 'goal' ? RUN.stepUp : RUN.threat); // (running to the goal: their defender steps up to the friend on the ball, all but stopped as it opens)
+    paths[th] = dead ? arr(p, u, RUN.standOff) : Gpost ? { ...arr(s0.A, u, RUN.far), T: Gpost } : arr(p, u, kind === 'goal' ? ((p[0] - H[0]) * line[0] + (p[1] - H[1]) * line[1] < 0 ? RUN.chase : RUN.stepUp) : RUN.threat); // (running to the goal: one chasing the friend with the ball from behind runs him down) // (running to the goal: their defender steps up to the friend on the ball, all but stopped as it opens)
     // (from his place in the scene on to the ball: the path passes his place at 0 when it is on his line)
     if (Gpost) { const r = Math.hypot(s0.A[0] - p[0], s0.A[1] - p[1]); paths[th].T = runTime(r, RUN.far); Gpost = paths[th].T; }
     role[th] = 'threat'; watch.add(th);
@@ -658,7 +658,7 @@ export function planArrival(sc, st, opts = {}) {
   // The lead-in: the longest of G_PRE whose start has the threat (and the player on the ball) on the pitch, with nobody
   // walking through anybody.
   const inside = (q, m = .6) => q.x > m && q.x < PITCH.L - m && q.y > m && q.y < PITCH.W - m;
-  const GP = opts.Gpre || SHORT_LEAD[sc.pattern] || (kind === 'defense' ? [2, ...G_PRE] : G_PRE); // (defending: their dribbler comes on from a little further, so his run shows in the wider view)
+  const GP = opts.Gpre || SHORT_LEAD[sc.pattern] || (kind === 'defense' ? [2.5, 2, ...G_PRE] : G_PRE); // (defending: their dribbler comes on from a little further, so his run shows in the wider view)
   // Anyone else who would start off the pitch runs less far (a slower run, from inside it). Two whose ways would cross
   // closer than bodies allow: one of them (not the threat, nor the player on the ball) comes in on a slightly different
   // line, turned about his place in the picture, the least that clears it (or else he only walks in). True if all clear.
@@ -757,7 +757,11 @@ export function planArrival(sc, st, opts = {}) {
   }
   for (const p of Object.values(paths)) if (p.arr) p.base = -Gpre;
   const at0 = Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }]));
-  return { arrival: true, G: Gpre + Gpost, a: -Gpre, Gpre, Gpost, cls, look, paths, threat: th ? { id: th, ...(kind === 'defense' ? { to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : {}) } : null, watch, at0, dis: [], k: 0, role };
+  // (round 3) A threat coming from behind him, by the scene's idea: the view as it opens is a little higher and farther
+  // back, so he is seen coming (view.js camSpec).
+  let wide = false;
+  if (th && paths[th] && paths.hero && kind !== 'receive') { const hq = pathAt(paths.hero, 0), tq = pathAt(paths[th], 0); wide = Math.abs(Math.atan2(Math.sin(Math.atan2(tq.y - hq.y, tq.x - hq.x) - view), Math.cos(Math.atan2(tq.y - hq.y, tq.x - hq.x) - view))) > 1.9; }
+  return { arrival: true, G: Gpre + Gpost, a: -Gpre, Gpre, Gpost, cls, look, wide, paths, threat: th ? { id: th, ...(kind === 'defense' ? { to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : {}) } : null, watch, at0, dis: [], k: 0, role };
 }
 // From play already going (a rebound, a match): everyone goes from where he is, as he moves, to where the decision's
 // picture has him at its end (`end`), in G seconds; the threat gets there moving in, the rest settling.

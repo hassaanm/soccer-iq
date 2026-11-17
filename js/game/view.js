@@ -49,7 +49,7 @@ export const view = {
     // (Only what moves a metre or more: the rest is in the picture already, and every extra point costs his size.)
     const far = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) >= 1, end = win ? (this.spotsEnd() || []).filter((e, i) => far(e, sc.spots[i])) : null;
     if (win) { const e = this.windowEnd('hero'); if (far(e, h)) pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
-    { const t = win?.threat && s.a(win.threat.id); if (t && sc.kind !== 'receive') pts.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // (round 2: the threat in the picture as he comes)
+    { const t = win?.threat && s.a(win.threat.id); if (t && sc.kind !== 'receive' && sc.kind !== 'defense') pts.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // (round 2: the threat in the picture as he comes)
     if (win && sc.run === 'follow' && sc.shot) pts.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (round 2: it opens as he shoots: where it hits, and where it comes out to)
     // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
     // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
@@ -212,7 +212,9 @@ export const view = {
     // Choosing a turn as the pass comes (head down): a little higher and farther back, so both curved arrows round
     // his feet, the ball and the passer are all on screen. Head up is the same as everywhere.
     const C = this.step === 'turn' && this.phase === 'decide' ? TURN_CAM : HEAD_DOWN;
-    const [bx, by] = rot(-lerp(C[0], 5.2, k), lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
+    // (round 3) A threat coming from behind him: while he chooses, the view is higher and farther back, so he is seen coming.
+    const wide = this.phase === 'decide' && this.win?.plan?.wide ? 1 : 0;
+    const [bx, by] = rot(-lerp(C[0], 5.2, k) - 3.5 * wide, lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.
     // Dribbling, the ball surges out and back at every touch: head down looks at a steady point just ahead of his
@@ -220,7 +222,7 @@ export const view = {
     let dx = b.x, dy = b.y;
     if (b.state === 'carried' && b.carrier === 'hero' && !b.move) { const [ax, ay] = rot(.45, 0, this.yaw); dx = h.x + ax; dy = h.y + ay; }
     if (facesBall(this.sc)) { const [ax, ay] = rot(C[3], 0, this.yaw); dx = lerp(h.x + ax, b.x, C[4]); dy = lerp(h.y + ay, b.y, C[4]); }
-    return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k)], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
+    return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k) + 2.2 * wide], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
   },
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;
