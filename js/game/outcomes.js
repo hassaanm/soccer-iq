@@ -259,7 +259,8 @@ export const outcomes = {
       // picture shows the turn he picked, then what it cost.
       const turning = () => this.sc.kind === 'receive' && s.ball.carrier === 'hero' && s.ball.move;
       const rec = this.sc.kind === 'receive'; // (v64) turning into a defender: he steps in on him, not to where the turn was going
-      yield () => { for (const o of opps) if (rec || meets.has(o.id)) s.go(o.id, h.x, h.y, 5); return (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5; };
+      // (round 6: one who would be at the dribble's end before him goes at him from there on: he does not run on to the spot, stop dead and come back)
+      yield () => { for (const o of opps) if (rec || meets.has(o.id) || dist(o, end) < dist(h, end) + .6) s.go(o.id, h.x, h.y, 5); return (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5; };
       yield* this.steal(opps.find(o => dist(o, h) < 1.2) || opps[0]);
     }
   },

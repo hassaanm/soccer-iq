@@ -8,6 +8,8 @@
     "audit:gen": "node scripts/gen-audit.js",
     "voice": "node scripts/voice-build.js",
     "icon": "sh scripts/icon-render.sh",
-    "audit:motion": "node scripts/motion-audit.js"
+    "audit:motion": "node scripts/motion-audit.js",
+    "audit:live": "node scripts/live-audit.js",
+    "audit:snap": "node scripts/snap-audit.js"
   }
 }
