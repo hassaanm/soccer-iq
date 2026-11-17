@@ -171,12 +171,15 @@ export const outcomes = {
       yield* this.finish('hero');
     } else {
       const opps = s.team('them').sort((a, b) => dist(a, end) - dist(b, end)).slice(0, 2);
-      for (const o of opps) { this.scripted.add(o.id); s.go(o.id, end.x, end.y, 5); }
+      // (v66) One already running in whom the dribble comes toward (its end is behind where he is heading) keeps coming and
+      // meets it: he goes at the dribbler, he does not hop back to where the dribble would have ended.
+      const meets = new Set(opps.filter(o => o.lv && Math.hypot(o.lv[0], o.lv[1]) > 2 && o.lv[0] * (end.x - o.x) + o.lv[1] * (end.y - o.y) < 0).map(o => o.id));
+      for (const o of opps) { this.scripted.add(o.id); if (meets.has(o.id)) s.go(o.id, h.x, h.y, 5); else s.go(o.id, end.x, end.y, 5); }
       // Taking a pass with a turn into him: the turn is seen first (the defender takes it as the touch ends), so the
       // picture shows the turn he picked, then what it cost.
       const turning = () => this.sc.kind === 'receive' && s.ball.carrier === 'hero' && s.ball.move;
       const rec = this.sc.kind === 'receive'; // (v64) turning into a defender: he steps in on him, not to where the turn was going
-      yield () => { if (rec) for (const o of opps) s.go(o.id, h.x, h.y, 5); return (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5; };
+      yield () => { for (const o of opps) if (rec || meets.has(o.id)) s.go(o.id, h.x, h.y, 5); return (opps.some(o => dist(o, h) < .9) && !turning()) || s.time - t0 > 2.5; };
       yield* this.steal(opps.find(o => dist(o, h) < 1.2) || opps[0]);
     }
   },
