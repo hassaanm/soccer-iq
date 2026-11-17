@@ -142,7 +142,16 @@ export const outcomes = {
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
     s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
-    this.scripted.add(opp.id); s.go(opp.id, Math.max(2.5, opp.x - 4), clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5), 4.8); yield .8;
+    this.scripted.add(opp.id);
+    const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;
+    // (round 5) Running the other way as he wins it (he came in from behind, or was carried past): he takes it on a
+    // curve, half a second round, not straight back on himself.
+    if (ls > 2 && ls < 6 && (lv[0] * (to.x - opp.x) + lv[1] * (to.y - opp.y)) < 0) {
+      const ux = lv[0] / ls, uy = lv[1] / ls, sd = Math.sign(ux * (to.y - opp.y) - uy * (to.x - opp.x)) || 1, c = Math.cos(1.2 * sd), sn = Math.sin(1.2 * sd);
+      s.go(opp.id, clamp(opp.x + (ux * c - uy * sn) * 1.6, 1, L - 1), clamp(opp.y + (ux * sn + uy * c) * 1.6, 1, W - 1), Math.max(2.4, ls * .75)); yield .5;
+      s.go(opp.id, to.x, to.y, 4.8); yield .5; return;
+    }
+    s.go(opp.id, to.x, to.y, 4.8); yield .8;
   },
   *passBad(id) {
     const s = this.sim, m = s.a(id), them = s.team('them');
