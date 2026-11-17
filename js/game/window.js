@@ -4,7 +4,7 @@
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, JOCK } from '../window.js';
-import { L, W, facesBall } from './shared.js';
+import { L, W, gy0, gy1, facesBall } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -83,7 +83,7 @@ export const moving = {
     const D = [dir[0] * v, dir[1] * v];
     // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
     // these moments (to two and a half metres off it, no nearer: from there the window brings him in), never standing.
-    const cm = [...s.agents.values()].filter(a => !a.gk && a.team !== c.team).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
+    const cm = [...s.agents.values()].filter(a => !a.gk && a.team !== c.team && !(a.beat > s.time + .3)).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
     const cd = cm ? Math.hypot(cm.x - c.x, cm.y - c.y) : 0, cs = cm ? Math.max(0, Math.min(2.4, (cd - 2.5 + (burst ? .6 : 0)) / T)) : 0;
     for (const a of s.agents.values()) {
       if (a.gk) continue;
@@ -91,6 +91,12 @@ export const moving = {
       const q = st.at[a.id], own = a === c && burst, v0 = own ? [dir[0] * burst, dir[1] * burst] : [q.vx, q.vy], dv = Math.hypot(D1[0] - v0[0], D1[1] - v0[1]), path = { x: a.x, y: a.y, v0, v1: D1, t1: own ? .25 : 0, tau: own ? T - .25 : Math.max(.3, Math.min(T, dv * 1.5 / 3.5 + .1)) };
       a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team }; a.setPath = path;
     }
+    // (round 7) Within shooting range of their goal, the one of theirs best placed for it (not the one who comes, not one
+    // just beaten) steps across onto the shot's line, three metres off the ball: after a missed tackle the next of them
+    // covers the goal, as a team does. So a shot is not left open by the challenge that failed.
+    if (c.team === 'us' && L - c.x < 13) { const ce = pathAt(c.setPath, T), ay = clamp(ce.y, gy0 + .8, gy1 - .8), dl = Math.hypot(L - ce.x, ay - ce.y) || 1, k = Math.min(3, dl * .5), B = [ce.x + (L - ce.x) / dl * k, ce.y + (ay - ce.y) / dl * k];
+      const bl = [...s.agents.values()].filter(a => !a.gk && a.team !== c.team && a !== cm && !(a.beat > s.time) && a.setPath).sort((p, q) => Math.hypot(p.x - B[0], p.y - B[1]) - Math.hypot(q.x - B[0], q.y - B[1]))[0];
+      if (bl && Math.hypot(bl.x - B[0], bl.y - B[1]) < 6 && Math.hypot(bl.x - B[0], bl.y - B[1]) > .4) { const P = bl.setPath, tau = Math.min(T, .5), sT = tau / 2 + (T - tau); let v1 = [P.v0[0] + (B[0] - bl.x - P.v0[0] * T) / sT, P.v0[1] + (B[1] - bl.y - P.v0[1] * T) / sT]; const vl = Math.hypot(v1[0], v1[1]); if (vl > 4.6) v1 = [v1[0] / vl * 4.6, v1[1] / vl * 4.6]; P.v1 = v1; P.tau = tau; P.t1 = 0; } }
     // (round 6) Nobody of the other team ends these moments at the shoulder of the player on the ball: one whose way
     // would bring him nearer than two steps holds off (his way bends off the ball as he slows).
     { const ce = pathAt(c.setPath, T); for (const a of s.agents.values()) { if (a.gk || a.team === c.team || !a.setPath) continue; const e = pathAt(a.setPath, T), d = Math.hypot(e.x - ce.x, e.y - ce.y);
