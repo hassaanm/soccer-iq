@@ -596,7 +596,7 @@ export function planArrival(sc, st, opts = {}) {
   else {
     const cand = ids.filter(id => at[id].team === defTeam && (!at[id].gk || at[id].rush) && !fixedPaths[id]).map(id => {
       const p = P(id), d = d2(p, H);
-      return { id, d, cost: d + (kind !== 'receive' && !seen(p) && d > PRESSING ? 6 : 0) };
+      return { id, d, cost: d }; // (round 3: the nearest of them to the ball in the picture is the one who comes for it; one from behind is shown coming by a wider view, view.js)
     }).sort((a, b) => a.cost - b.cost);
     th = cand[0]?.id || null;
   }
@@ -630,9 +630,9 @@ export function planArrival(sc, st, opts = {}) {
       const foe = out.filter(j => at[j].team !== at[id].team).map(j => P(j)).sort((a, b) => d2(a, p) - d2(b, p))[0];
       const u = kind === 'defense' ? U([goal.x - p[0], goal.y - p[1]]) : foe ? U([p[0] - foe[0], p[1] - foe[1]]) : line;
       paths[id] = arr(p, u, kind === 'defense' ? RUN.jog : near ? RUN.open : RUN.openFar); role[id] = 'friend';
-    } else { // a cover defender shifts across toward the ball's side; far off, he walks with the play
-      const u = near ? U([0, Math.sign(H[1] - p[1]) || 1]) : line;
-      paths[id] = arr(p, near ? u : [ballTeam === 'us' ? u[0] : -u[0], u[1]], near ? RUN.cover : RUN.walk); role[id] = 'cover';
+    } else { // a cover defender steps across toward the ball's side, from behind the presser's line; far off, he walks in toward the play (never away from the ball)
+      const tb = U([H[0] - p[0], H[1] - p[1]]), u = near ? U([tb[0] * .6, (Math.sign(H[1] - p[1]) || 1) * .8 + tb[1] * .2]) : tb;
+      paths[id] = arr(p, u, near ? RUN.cover : RUN.walk); role[id] = 'cover';
     }
   }
   for (const id of out) { const m = role[id]?.startsWith('marker:') && role[id].slice(7); if (!m || paths[id]) continue; // a marker goes where his man goes, a little quicker: he closes on him
@@ -711,6 +711,21 @@ export function planArrival(sc, st, opts = {}) {
     }
   }
   settle(Gpre); // (again, after the threat's run may have turned)
+  // (round 3) Somebody comes for the ball: as the window opens, the presser is the nearest to it of their players the
+  // picture leaves free (not marking a man). One nearer comes in from a little farther on his own line (a quicker run,
+  // in toward the play); failing that, the presser starts a little nearer (a shorter run).
+  if (th && paths[th]?.arr && !dead && kind !== 'defense') {
+    const Hs = () => { const q = arrAt(paths[holder], -Gpre); return [q.x, q.y]; }, at0 = id => { const q = arrAt(paths[id], -Gpre); return [q.x, q.y]; }, dd = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+    const free = out.filter(id => id !== th && at[id].team === defTeam && paths[id]?.arr && !fixedPaths[id] && !role[id]?.startsWith('marker:'));
+    for (let n = 0; n < 10; n++) {
+      const h = Hs(), dp = dd(at0(th), h), near = free.filter(id => dd(at0(id), h) < dp + .3); if (!near.length) break;
+      for (const id of near) { const p = paths[id], tb = U([h[0] - at[id].x, h[1] - at[id].y]);
+        if (p.u[0] * tb[0] + p.u[1] * tb[1] < .2) p.u = U([p.u[0] * .3 + tb[0], p.u[1] * .3 + tb[1]]);
+        if (p.vRun < 3.2) { p.vRun = Math.min(3.2, Math.max(p.vRun, .6) * 1.3); } }
+      if (n >= 5) { const p = paths[th]; p.vRun = Math.max(1.8, p.vRun * .88); p.vEnd = Math.min(p.vEnd, p.vRun); }
+    }
+    settle(Gpre); // (their new lines may cross someone's)
+  }
   for (const p of Object.values(paths)) if (p.arr) p.base = -Gpre;
   const at0 = Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }]));
   return { arrival: true, G: Gpre + Gpost, a: -Gpre, Gpre, Gpost, cls, look, paths, threat: th ? { id: th, ...(kind === 'defense' ? { to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : {}) } : null, watch, at0, dis: [], k: 0, role };

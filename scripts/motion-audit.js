@@ -99,6 +99,69 @@ function floor(r, sc) {
     th, from: a.at[th].map(v => +v.toFixed(1)), to: b.at[th].map(v => +v.toFixed(1)), ball: a.ball.map(v => +v.toFixed(1)), yaw: +a.yaw?.toFixed(2), scr: pa?.map(Math.round), spot: a.spot, behind, restart: !!sc.restart };
 }
 
+// (round 3) Defending that makes common sense, over the whole window of the time-out play, when his team has the ball
+// in open play: (a) the presser (the window's threat) is the nearest of their outfield players to the ball as it opens;
+// (b) the nearest of them never gets farther from the ball for long; (c) nobody goes away from the ball for more than
+// ROLE.away s, except the presser jockeying close to it or a marker going with his man; (d) never two of them within
+// ROLE.pile m of one of ours as it ends, unless the pattern puts two on him by its idea (PILE); (e) a friend his pass
+// to is graded right has nobody within OPEN m as it ends, and at most one other friend is left free (none within 4 m).
+export const ROLE = { tol: .3, grow: .4, away: .4, pile: 2.5, open: 1.6, free: 4, mark: 3 };
+// Patterns whose idea is two of theirs on one of ours: the trap (two close him down), the wall pass (two press him,
+// the friend beside him is free), a cut-out on the pass (one presses the passer, one waits on the lane).
+export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass']);
+const ourBall = sc => !['defense', 'tackle'].includes(kindOf(sc)) && !sc.restart;
+function roles(r, sc) {
+  const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3 || !ourBall(sc)) return flags;
+  const opp = Object.keys(f[0].at).filter(id => id[0] === 'o'), ours = Object.keys(f[0].at).filter(id => id === 'hero' || id[0] === 'm');
+  const ballAt = q => kindOf(sc) === 'receive' ? q.at.hero : kindOf(sc) === 'follow' ? sc.shot.loose : q.ball;
+  const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(q)[0], q.at[id][1] - ballAt(q)[1]);
+  const a = f[0], th = w.threat;
+  // (free: not marking one of ours; a marker stays nearer his man than the ball, within ROLE.mark m of him, start and end)
+  const e0 = f.at(-1), marks = (q, id) => ours.filter(m => m !== 'hero').some(m => { const dm = Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]); return dm < ROLE.mark && dm < d(q, id); });
+  const won = sc.intro === 'won', freeOf = id => !(marks(a, id) && marks(e0, id)) && !(won && id === 'o1'); // (won it: the one he took it from stumbles on past him by the idea)
+  if (th && th[0] === 'o') { const near = opp.filter(id => id !== th && freeOf(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
+  // (b) and (c), on a 0.1 s grid
+  const g = []; for (let t = a.t, k = 0; t <= f.at(-1).t + 1e-9; t += .1) { while (k + 1 < f.length && f[k + 1].t <= t) k++; g.push(f[k]); }
+  let grow = 0, best = null; const away = Object.fromEntries(opp.map(id => [id, 0]));
+  for (let i = 1; i < g.length; i++) {
+    const q0 = g[i - 1], q = g[i], dt = q.t - q0.t || .1, n = opp.filter(freeOf).sort((x, y) => d(q, x) - d(q, y))[0];
+    if (n === best && d(q, n) > d(q0, n) + .005) { grow += dt; if (grow > ROLE.grow) { flags.push(['role', `(b) ${n}, the nearest, gets farther from the ball for ${grow.toFixed(1)} s`]); grow = -1e9; } } else if (grow >= 0) grow = 0;
+    best = n;
+    for (const id of opp) {
+      const vx = (q.at[id][0] - q0.at[id][0]) / dt, vy = (q.at[id][1] - q0.at[id][1]) / dt, v = Math.hypot(vx, vy), b = ballAt(q), bx = b[0] - q.at[id][0], by = b[1] - q.at[id][1], bl = Math.hypot(bx, by) || 1;
+      const off = v > .5 && (vx * bx + vy * by) / (v * bl) < -.25;
+      const jockey = id === th && bl < 3.5;
+      const man = ours.map(m => ({ m, dd: Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]), mv: [(q.at[m][0] - q0.at[m][0]) / dt, (q.at[m][1] - q0.at[m][1]) / dt] })).sort((x, y) => x.dd - y.dd)[0];
+      const tracking = man && man.dd < 3.5 && Math.hypot(man.mv[0] - vx, man.mv[1] - vy) < .8;
+      away[id] = off && !jockey && !tracking && !(won && id === 'o1') ? away[id] + dt : 0;
+      if (away[id] > ROLE.away + 1e-9) { flags.push(['role', `(c) ${id} goes away from the ball for over ${ROLE.away} s`]); away[id] = -1e9; }
+    }
+  }
+  // (d) and (e), as it ends
+  const e = f.at(-1);
+  if (!PILE.has(sc.pattern)) for (const m of ours) { const on = opp.filter(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]) < ROLE.pile); if (on.length > 1) flags.push(['role', `(d) ${on.join('+')} both on ${m}`]); }
+  const grades = sc.grades || {}, openIds = Object.keys(grades).filter(o => o.startsWith('pass:') && ['best', 'good', 'ok'].includes(grades[o]) || o === sc.best && o.startsWith('pass:')).map(o => 'm' + (+o.slice(5) + 1));
+  for (const m of new Set(openIds)) if (e.at[m]) { const dd = Math.min(...opp.map(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]))); if (dd < ROLE.open) flags.push(['role', `(e) ${m}, graded open, has one of theirs ${dd.toFixed(1)} m from him`]); }
+  // (left free: a friend up the field from the ball (nearer their goal), nobody within ROLE.free m; one behind the ball
+  // is no danger to them, and defenders rightly guard the way to goal first)
+  const gx = PITCH.L, bx = ballAt(e)[0];
+  const free = ours.filter(m => m !== 'hero' && !openIds.includes(m) && e.at[m][0] > bx + 1 && Math.min(...opp.map(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]))) > ROLE.free); void gx;
+  if (free.length > 1) flags.push(['role', `(e) ${free.join(', ')} left free`]);
+  return flags;
+}
+// (round 3) His own player never stands and waits: with the ball he carries it at least HERO.carry m through the window
+// (not at a dead ball), and he is never under walking pace for more than HERO.slow s of game time.
+export const HERO = { carry: 1.5, walk: .8, slow: .5 };
+function heroMoves(r, sc) {
+  const flags = [], f = r.rec.filter(x => x.win && x.wi === 1); if (f.length < 3 || sc.restart || kindOf(sc) === 'tackle') return flags;
+  const a = f[0], e = f.at(-1), trav = Math.hypot(e.at.hero[0] - a.at.hero[0], e.at.hero[1] - a.at.hero[1]);
+  if (a.carrier === 'hero' && trav < HERO.carry) flags.push(['hero', `carries it only ${trav.toFixed(1)} m in the window`]);
+  let slow = 0;
+  for (let i = 1; i < f.length; i++) { const dt = f[i].t - f[i - 1].t; if (!(dt > 0)) continue; const v = Math.hypot(f[i].at.hero[0] - f[i - 1].at.hero[0], f[i].at.hero[1] - f[i - 1].at.hero[1]) / dt;
+    slow = v < HERO.walk ? slow + dt : 0; if (slow > HERO.slow + 1e-9 && !(kindOf(sc) === 'receive' && f.at(-1).t - f[i].t < .4)) { flags.push(['hero', `under walking pace for over ${HERO.slow} s`]); break; } }
+  return flags;
+}
+
 // The checks on the recorded ways.
 function motion(r, sc) {
   for (let i = 1; i <= r.wins.length; i++) motionIn(r, sc, r.rec.filter(f => f.win && f.wi === i));
@@ -168,6 +231,7 @@ for (const size of sizes) {
       }
       const r = await play(sc, null, 1), fl = timeout(r, sc); motion(r, sc).forEach(f => fl.push(f));
       const fo = floor(r, sc);
+      for (const f of roles(r, sc)) fl.push(f); for (const f of heroMoves(r, sc)) fl.push(f);
       if (fo && fo.most < .5) fl.push(['floor', `nobody moves .5 m in the window (most ${fo.most.toFixed(2)} m)`]);
       // (explained: a chaser the scene's own picture has at his back, close; he cannot be seen coming, only felt)
       if (fo && !fo.seen && fo.kind !== 'receive') { if (fo.behind) explained.push(`${size} ${sc.id}: ${r.wins[0].threat} comes from behind him (at his back in the scene)`); else fl.push(['unseen', `${r.wins[0].threat} not in view as it opens`]); }
