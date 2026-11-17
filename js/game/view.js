@@ -88,6 +88,7 @@ export const view = {
     }
     { const t = plan?.threat && sc.kind !== 'receive' && sc.kind !== 'defense' && s.a(plan.threat.id) && o(plan.threat.id); if (t) extra.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // the one who comes, as he sets off
     const levels = [[...mid, ...extra], mid, base];
+    const blockers = []; for (const a of s.agents.values()) if (a.id !== 'hero' && !a.gk) { const q0 = o(a.id), q1 = e(a.id); blockers.push(q0); if (far(q0, q1)) blockers.push(q1, { x: (q0.x + q1.x) / 2, y: (q0.y + q1.y) / 2 }); }
     let pts = levels[0], scales = null;
     let mx = 0, my = 0; for (const p of [...levels[1], ...goalAll]) { mx += p[0]; my += p[1]; } mx /= levels[1].length + goalAll.length; my /= levels[1].length + goalAll.length;
     let cx = mx, cy = my; // where the camera looks: the middle of it all, or (for a closer view) a little toward him
@@ -100,6 +101,9 @@ export const view = {
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
       const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
+      // (round 5) Nobody stands on the line from the camera to his player (as the window opens, or where he will be as it
+      // ends): he and his ring are never behind somebody's back.
+      for (const q of blockers) { const lx = h.x - ex, ly = h.y - ey, l2 = lx * lx + ly * ly || 1, t = ((q.x - ex) * lx + (q.y - ey) * ly) / l2; if (t > .12 && t < .94 && Math.hypot(q.x - ex - lx * t, q.y - ey - ly * t) < .75 && ez * (1 - t) + .5 * t < 2) return false; }
       if (heroMin) for (const q of heroAt) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
       // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
       // under them, nor under the buttons in the top corners.)
@@ -141,8 +145,9 @@ export const view = {
         { goal: 'near', ratio: RING_RATIO_MAX, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 2 }, { goal: 'none', ratio: 9, heroMin: floor, drop: 2 }];
     let best = null, rule = null; for (const t of tiers) if ((best = search(t))) { rule = t; break; }
     // (nothing fits with him that size: a view of him and the rings' middle from as far as keeps him at the floor)
-    const dFloor = 1.85 * F / floor * .93;
-    const { pitch, d, off } = best || { pitch: 1.0, d: dFloor, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? lerp(mx, h.x, .7); cy = best?.cy ?? lerp(my, h.y, .7);
+    // (round 5: looking at him, from a flat angle, so that he is at the floor size whatever else is lost)
+    const dFloor = 1.85 * F * Math.cos(.62) / floor * .9;
+    const { pitch, d, off } = best || { pitch: .62, d: dFloor, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? lerp(mx, h.x, .92); cy = best?.cy ?? lerp(my, h.y, .92);
     const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
     this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null, rule };
     return shift(this.spotFit.spec);
@@ -228,7 +233,8 @@ export const view = {
     // Choosing where to shoot, and with which foot: the aim view (v64, see aimView).
     if (this.step === 'aim' && this.phase === 'decide') return this.aimView(); // (the foot, round 3: his own view, below, so he sees how far he is)
     // Choosing a dribble: raise the camera so all four arrows are on screen.
-    if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 8, h.y, 9], tgt: [h.x, h.y, 0], Ff: .95, Fw: .5 };
+    // (round 5: nearer and lower than it was, so his player is 60 px or more and his timer ring shows round the arrows' hub)
+    if (this.step === 'dribble' && this.phase === 'decide') return { eye: [h.x - 7.6, h.y, 5.2], tgt: [h.x - 1, h.y, 0], Ff: .95, Fw: .5 }; // (flatter: all eight arrows still in the picture)
     // 1v1: a bit higher and farther back, aimed between him and the ball, so the ball and the attacker's feet
     // are always in view (seeing the touch is the whole lesson).
     if (this.sc?.kind === 'tackle') {
@@ -244,7 +250,7 @@ export const view = {
     const C = (this.step === 'turn' && this.phase === 'decide') || (this.phase === 'pre' && this.sc?.kind === 'receive' && this.mode !== 'demo') ? TURN_CAM : HEAD_DOWN; // (v66: from the run-up on, so the view does not change as the pass is played)
     // (round 3) A threat coming from behind him: while he chooses, the view is higher and farther back, so he is seen coming.
     // (v66: from the start of the run-up, so the view does not pull back as the choice opens)
-    const wp = this.phase === 'decide' ? this.win?.plan : this.phase === 'pre' && this.wplan?.sc === this.sc ? this.wplan : null, wide = wp ? lerp(wp.wideK ?? (wp.wide ? 1 : 0), Math.min(wp.wideK ?? (wp.wide ? 1 : 0), 1.2), k) : 0; // (head up: no farther back than keeps him easy to find)
+    const wp = this.phase === 'decide' ? this.win?.plan : this.phase === 'pre' && this.wplan?.sc === this.sc ? this.wplan : null, wk = wp ? Math.max(C === HEAD_DOWN ? .25 : 0, wp.wideK ?? (wp.wide ? 1 : 0)) : 0, wide = wp ? lerp(wk, Math.min(wk, 1.2), k) : 0; // (round 5: always a little back and up while he chooses, so his timer ring is whole, clear of the bottom edge) // (head up: no farther back than keeps him easy to find)
     const [bx, by] = rot(-lerp(C[0], 5.2, k) - 3.5 * wide, lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.

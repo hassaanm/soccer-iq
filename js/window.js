@@ -323,10 +323,13 @@ export function runAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
 // SET_V, in about 0.4 s, so he never crawls: he is above half his run speed until the last half metre).
 export const SET_D = 1, SET_V = 1.3;
 const mkRun = (S, E, G, v0 = null, set = false) => {
-  const d = [E[0] - S[0], E[1] - S[1]], L = len(d), ta = L < 1.6 ? 0 : Math.min(.6, G * .35), dB = set ? Math.min(SET_D, L * .45) : 0;
-  const time = v1 => { const w0 = v0 == null ? .7 * v1 : Math.min(v0, v1), vE = Math.min(SET_V, v1), da = ta * (w0 + v1) / 2; return ta + Math.max(0, L - dB - da) / v1 + (dB > 0 ? 2 * dB / (v1 + vE) : 0); };
+  const d = [E[0] - S[0], E[1] - S[1]], L = len(d), ta = L < 1.6 ? 0 : Math.min(.6, G * .35);
+  // (his last metre; a little more from a sprint, so that he brakes no harder than 6 m/s²)
+  const dBof = v1 => (set ? Math.min(L * .45, Math.max(SET_D, (v1 * v1 - SET_V * SET_V) / 12)) : 0);
+  const time = v1 => { const w0 = v0 == null ? Math.max(.7 * v1, v1 - 3.2 * ta) : Math.min(v0, v1), vE = Math.min(SET_V, v1), da = ta * (w0 + v1) / 2, dB = dBof(v1); return ta + Math.max(0, L - dB - da) / v1 + (dB > 0 ? 2 * dB / (v1 + vE) : 0); };
   let lo = .2, hi = 9; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (time(m) > G) lo = m; else hi = m; }
-  const v1 = (lo + hi) / 2, s0 = v0 == null ? .7 * v1 : Math.min(v0, v1), vE = Math.min(SET_V, v1), tb = dB > 0 ? 2 * dB / (v1 + vE) : 0, tc = set ? Math.max(0, L - dB - ta * (s0 + v1) / 2) / v1 : 1e9;
+  const v1 = (lo + hi) / 2, s0 = v0 == null ? Math.max(.7 * v1, v1 - 3.2 * ta) : Math.min(v0, v1), // (he speeds up no harder than a child can)
+    vE = Math.min(SET_V, v1), dB = dBof(v1), tb = dB > 0 ? 2 * dB / (v1 + vE) : 0, tc = set ? Math.max(0, L - dB - ta * (s0 + v1) / 2) / v1 : 1e9;
   return { run: true, S: [...S], u: U(d), v0: s0, v1, ta, tc, tb, vE, vPre: Math.min(s0, 1.5), L };
 };
 
