@@ -8,7 +8,8 @@
 //   away     no defender within 3.5 m of the ball gets farther from it for more than 0.3 s of play (a marker going with
 //            his man: only if he ends more than 1 m farther from it)
 //   after    nobody turns more than 120° in the 0.6 s after the window closes (a tap, or the time-out): his velocity as it
-//            closes against his net way over the 0.6 s after, both over 0.5 m/s
+//            closes against his net way over the 0.6 s after, both over 0.5 m/s. A turn with a cause in the play passes
+//            by rule (his own player doing what was tapped; the one who goes for the ball; the ball changed sides)
 //   arrive   (share 95%) on a time-out where the threat tackles, he is within 0.8 m of the ball as the ring empties and
 //            touches it within 0.3 s of real time
 //   grade    (share 97% of taps) what he sees when he taps agrees with how the choice is graded: every relation that does
@@ -59,7 +60,7 @@ const KIND = { 'GOAL!': 'kept', 'Kept the ball!': 'kept', 'Stolen!': 'lost', 'Th
 const endOf = banners => { const k = banners.map(b => KIND[b]).filter(Boolean); return k.at(-1) || 'none'; };
 const sameEnd = (a, b) => a === b || (a === 'kept' && b === 'kept');
 
-let VW = 844, VH = 390; const USED = new Map();
+let VW = 844, VH = 390; const USED = new Map(), TURN_RULE = {};
 // Where a point is on the screen through the game's own camera (as world.js draws it), or null behind it.
 function screen(cam, [x, y, z = .9]) {
   if (!cam) return null;
@@ -94,7 +95,7 @@ async function play(sc, opt, u) {
       info.taps = (info.taps || 0) + 1;
       if (a.dis.length || a.threat.length) (info.grade ||= []).push(`${a.dis.length ? 'shape: ' + a.dis.join(',') : ''}${a.threat.length ? ' threat: ' + a.threat.join(',') : ''}`.trim());
     }
-    if (wins.length) { const x = wins.at(-1); x.closeAt = { t: s.time, real: g.realTime, u: g.lastWin?.u, winReal: g.lastWin?.real }; if (o === 'timeout') x.timeoutAt = x.closeAt; }
+    if (wins.length) { const x = wins.at(-1); x.opt = o; x.closeAt = { t: s.time, real: g.realTime, u: g.lastWin?.u, winReal: g.lastWin?.real }; if (o === 'timeout') x.timeoutAt = x.closeAt; }
     return o;
   };
   let step2 = null, first = opt;
@@ -174,12 +175,30 @@ function after(r, sc) {
     if (inW.length < 4 || post.length < 3) continue;
     // (as the review measured it: his velocity over the last moments of the window against his net way over the 0.6 s after)
     const e = inW.at(-1), b0 = inW[Math.max(0, inW.length - 6)], T0 = e.t - b0.t, b1 = post.at(-1), T1 = b1.t - e.t; if (T0 < .01 || T1 < LIM.after * .8) continue;
-    const turnsBack = /^drib:(back|bl|br)/.test(r.o || '') || /^turn:/.test(r.o || ''); // (his own choice to turn with the ball)
+    // A turn with a cause the eye can see passes, by one of these rules (each use is counted in the output):
+    //   own      his own player doing what was tapped: his run to the ring he tapped, or his turn with the ball
+    //   ball     he is the one who goes for the ball now: after the turn he heads at it (or at where it is going), or
+    //            he has it within the next second
+    //   lost     the ball changed sides in that time (a steal, a pass cut out): both teams turn with it
+    //   played   the ball was played away past him and he turns to go the way it went
+    //   line     he stood on the line of the pass or shot being struck (it leaves within the next 1.2 s and passes within
+    //            1.3 m of where he was) and steps off it
+    //   man      a defender whose own man turned (his own player running to the ring he tapped) goes with him
+    const opt = w.opt || r.o || '', ownRun = /^(spot|then|turn):/.test(opt) || /^drib:(back|bl|br|left|right)/.test(opt) || /^push:/.test(opt);
+    const side = c => (c == null ? null : c === 'hero' || c[0] === 'm' || c === 'k1' ? 'us' : 'them'), s0 = side(e.carrier), later = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 1.2);
+    const lost = post.some(x => x.carrier && s0 && side(x.carrier) !== s0);
     for (const id of Object.keys(e.at)) {
-      if (id[0] === 'k' || (id === 'hero' && turnsBack)) continue;
-      const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], v1 = [(b1.at[id][0] - e.at[id][0]) / T1, (b1.at[id][1] - e.at[id][1]) / T1], s0 = Math.hypot(...v0), s1 = Math.hypot(...v1); if (s0 < .5 || s1 < .5) continue;
-      const ang = Math.acos(Math.max(-1, Math.min(1, (v0[0] * v1[0] + v0[1] * v1[1]) / (s0 * s1)))) * 180 / Math.PI;
-      if (ang > LIM.afterTurn) flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
+      if (id[0] === 'k') continue;
+      const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], v1 = [(b1.at[id][0] - e.at[id][0]) / T1, (b1.at[id][1] - e.at[id][1]) / T1], s0v = Math.hypot(...v0), s1 = Math.hypot(...v1); if (s0v < .5 || s1 < .5) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (v0[0] * v1[0] + v0[1] * v1[1]) / (s0v * s1)))) * 180 / Math.PI;
+      if (ang <= LIM.afterTurn) continue;
+      const toBall = [b1.ball, later.at(-1)?.ball || b1.ball].some(bp => { const dx = bp[0] - e.at[id][0], dy = bp[1] - e.at[id][1], l = Math.hypot(dx, dy) || 1; return (v1[0] * dx + v1[1] * dy) / (s1 * l) > .5; });
+      const fly = post.find(x => x.bstate === 'flying'), bd = fly && [b1.ball[0] - e.ball[0], b1.ball[1] - e.ball[1]], played = !!bd && Math.hypot(...bd) > 1.5 && (v1[0] * bd[0] + v1[1] * bd[1]) / (s1 * Math.hypot(...bd)) > .2;
+      const hv = [(b1.at.hero[0] - e.at.hero[0]) / T1, (b1.at.hero[1] - e.at.hero[1]) / T1], hs = Math.hypot(...hv), hd = [b1.at.hero[0] - e.at[id][0], b1.at.hero[1] - e.at[id][1]], man = id[0] === 'o' && ownRun && hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5);
+      const fl = later.filter(x => x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();
+      const rule = id === 'hero' && ownRun ? 'own' : toBall || later.some(x => x.carrier === id) ? 'ball' : lost ? 'lost' : played ? 'played' : onLine ? 'line' : man ? 'man' : null;
+      if (rule) { TURN_RULE[rule] = (TURN_RULE[rule] || 0) + 1; continue; }
+      flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0v.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
     }
   }
   return flags;
@@ -280,6 +299,7 @@ for (const [size, st] of Object.entries(stats)) {
 }
 const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null && p.gap < 9).map(p => p.gap)).sort((a, b) => a - b), dEnds = all.flatMap(r => r.plays.filter(p => p.dEnd != null).map(p => p.dEnd)).sort((a, b) => a - b);
 if (gaps.length) console.log(`\nthe threat as the ring empties: ${dEnds[0].toFixed(2)}–${dEnds.at(-1).toFixed(2)} m from the ball (median ${dEnds[dEnds.length >> 1].toFixed(2)}); he touches it ${gaps[0].toFixed(2)}–${gaps.at(-1).toFixed(2)} s later (median ${gaps[gaps.length >> 1].toFixed(2)}, real)`);
+console.log(`turns after the window closed that pass by rule (own: his own player doing what was tapped; ball: the one who goes for the ball now; lost: the ball changed sides; played: the ball was played past him and he goes the way it went; line: he steps off the line of a pass or shot being struck; man: a defender going with his own player's run): ${JSON.stringify(TURN_RULE)}`);
 if (used.size) { console.log('exemptions used:'); for (const [e, n] of used) console.log(`  ${e[0]}: ${n} window(s): ${e[2]}`); }
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);

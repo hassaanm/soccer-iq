@@ -359,6 +359,7 @@ export class Sim {
     this.time += dt;
     const b = this.ball;
     for (const a of this.agents.values()) {
+      if (a.px != null && dt > 0) { a.lv ||= [0, 0]; a.lv[0] = (a.x - a.px) / dt; a.lv[1] = (a.y - a.py) / dt; } a.px = a.x; a.py = a.y; // (his velocity over the last step)
       if (a.track) { this.follow(a, dt); continue; }
       const has = b.state === 'carried' && b.carrier === a.id, fetch = has && b.reach; // his ball, out of reach: he goes to it first
       if (a.skill && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || touchAt(a) - a.skill.n > 1.4)) a.skill = null; // a dribble skill ends a little after its touch, or when anything else starts
@@ -386,6 +387,9 @@ export class Sim {
         if (a.ease && !m) { // (v64) a player the team AI moves speeds up and slows down as a child does, and slows into where he is going
           const want = Math.min(sp, Math.sqrt(2 * EASE * d)); a.va = (a.va ?? a.sp) + Math.max(-EASE * dt, Math.min(EASE * dt, want - (a.va ?? a.sp))); v = a.va;
         } else a.va = null;
+        // (v66) One the team's shape moves never turns on the spot at speed: sent more than 60° off the way he is going
+        // (a new job, a new place), he comes round from the velocity he has, like anyone coming off a planned way.
+        if (a.ease && !a.mom && !has && !m && !a.gk && a.lv) { const ls = Math.hypot(a.lv[0], a.lv[1]); if (ls > .8 && ls < 6 && (a.lv[0] * dx + a.lv[1] * dy) / (ls * d) < -.17) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)); a.momBack = false; } }
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.
