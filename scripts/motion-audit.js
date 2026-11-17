@@ -129,7 +129,7 @@ function shape(r, sc, st) {
   // (round 6) creep: the one who comes never crawls in from close by: a run-in of under 1.5 m is no run; he jockeys
   // (class 'jockey'), and then he is alive (he steps 0.25 m or more to each side of his bearing, never farther than
   // 1.9 m from the ball nor nearer than 0.85 m until he goes in, edging in all the while) and his lunge over the last 0.65 s (the
-  // world speeds up from a moment before the last half second) is clearly faster on the screen than his jockeying (1.4 times or more).
+  // world speeds up from a moment before the last half second) closes on the ball clearly faster on the screen than his edging in (0.5 m/s or more, three times as fast).
   // backs: nobody of the other team ends the window more than 1 m farther from the ball than he was at his nearest.
   if (ourBall(sc) && th && a.carrier === 'hero' && kindOf(sc) !== 'receive' && !sc.shot) {
     const R1 = e.real - a.real, lun = f.filter(x => e.real - x.real <= .65), jo = f.filter(x => e.real - x.real > .75), sp = q => { let L = 0; for (let i = 1; i < q.length; i++) L += Math.hypot(q[i].at[th][0] - q[i - 1].at[th][0], q[i].at[th][1] - q[i - 1].at[th][1]); return L / Math.max(.05, q.at(-1).real - q[0].real); };
@@ -138,7 +138,8 @@ function shape(r, sc, st) {
       if (Math.max(...rs) > 1.9 || Math.min(...rs) < .85) flags.push(['creep', `${th} jockeys between ${Math.min(...rs).toFixed(2)} and ${Math.max(...rs).toFixed(2)} m from the ball (0.85 to 1.9 m)`]);
       if (rs[0] - rs.at(-1) < .07) flags.push(['creep', `${th} does not edge in while he jockeys (${rs[0].toFixed(2)} to ${rs.at(-1).toFixed(2)} m)`]);
       if (Math.max(...sw) - Math.min(...sw) < .5) flags.push(['creep', `${th} jockeys with steps of only ${(Math.max(...sw) - Math.min(...sw)).toFixed(2)} m from side to side`]);
-      if (lun.length > 2 && jo.length > 2 && sp(lun) < 1.4 * sp(jo)) flags.push(['creep', `${th}'s lunge is ${sp(lun).toFixed(2)} m/s on the screen, his jockeying ${sp(jo).toFixed(2)} m/s`]);
+      { const cl = q => (d(q[0], th) - d(q.at(-1), th)) / Math.max(.05, q.at(-1).real - q[0].real); // (how fast he closes on the ball, on the screen)
+        if (lun.length > 2 && jo.length > 2 && (cl(lun) < .5 || cl(lun) < 3 * Math.max(0, cl(jo)))) flags.push(['creep', `${th} closes at ${cl(lun).toFixed(2)} m/s on the screen in his lunge, ${cl(jo).toFixed(2)} m/s while he jockeys (the lunge: 0.5 m/s or more, and three times his edging in)`]); }
     } else if (d(a, th) - d(e, th) < 1.5 && R1 > 2) flags.push(['creep', `${th} comes only ${(d(a, th) - d(e, th)).toFixed(1)} m in ${R1.toFixed(1)} s (from ${d(a, th).toFixed(1)} m; class ${w.cls}): no run and no jockey`]);
   }
   if (ourBall(sc)) for (const id of opp) { const lo = Math.min(...g.map(x => d(x, id))); if (id !== th && d(e, id) - lo > 1 && lo < 8) flags.push(['backs', `${id} goes from ${lo.toFixed(1)} to ${d(e, id).toFixed(1)} m from the ball in the window`]); }
