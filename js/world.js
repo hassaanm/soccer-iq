@@ -555,7 +555,7 @@ export class World {
       // Anyone standing right next to the camera would fill the screen as a blur: leave them out of the picture. He
       // is still posed, so when he shows again his body goes on from where it would be, without a jump.
       (a.gk ? animateKeeper : animateRig)(g, a, sim, mood ? (a.team === mood.team ? moodK : -moodK) : 0, mood ? mood.t : 0, time);
-      if (Math.hypot(a.x - eye[0], a.y - eye[1]) < 1.7 && eye[2] < 5) { g.visible = false; continue; }
+      if (Math.hypot(a.x - eye[0], a.y - eye[1]) < (ui.aims?.length ? 3 : 1.7) && eye[2] < 5) { g.visible = false; continue; } // (v66: while he aims, from a little farther off: nobody's head in front of the goal and his ring)
       const s = ui.glow?.[id] || 0, mats = g.userData.mats;
       for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
       if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
