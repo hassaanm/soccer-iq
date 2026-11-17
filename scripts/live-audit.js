@@ -25,25 +25,34 @@ export async function liveAudit(size, N = 4, verbose = false) {
   try {
     for (let seed = 1; seed <= N; seed++) {
       let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
-      const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id)); const s = g.sim, rec = []; let last = null, nDec = 0, lastWin = null, defPlay = null, defSeen = null, defD0 = null;
+      const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id)); const s = g.sim, rec = []; let last = null, nDec = 0, lastWin = null, defPlay = null, w0 = null, two = null, prevT = 0, move = null, lastCar = null, hp = null, hpNow = null, scId = null;
       const side = id => (id == null ? null : s.a(id)?.team || null);
       await drive(g, g.match(PATH.map(k => k.id), [], 5, 'free'), { maxSec: 9000,
         pick: gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
           if (gm._choose !== last) { last = gm._choose; nDec++; stat.plays++;
             if (gm.sc.live && gm.sc.kind !== 'tackle') { if (!gm.win) flags.push(['noring', `${size} match ${seed} choice ${nDec} (${gm.sc.kind || 'attack'} ${gm.sc.id || ''}): no window`]); }
-            // defbest: "one goes, one guards": the best answer is to go to the ball only when his player is our nearest to it
-            if (gm.sc.live && gm.sc.kind === 'defense' && gm.sc.best && gm.sc.nearest) { stat.def = (stat.def || 0) + 1; const b = gm.sc.best.slice(5), goes = b === 'home' || b === 'chase'; stat['def ' + (goes ? 'go' : 'guard') + ', nearest ' + (gm.sc.nearest === 'hero' ? 'him' : gm.sc.nearest === 'close' ? 'close' : 'a friend')] = (stat['def ' + (goes ? 'go' : 'guard') + ', nearest ' + (gm.sc.nearest === 'hero' ? 'him' : gm.sc.nearest === 'close' ? 'close' : 'a friend')] || 0) + 1;
-              const guardOK = (gm.sc.spots || []).some(sp => sp.id !== 'home' && sp.id !== 'chase' && !gm.sc.exploits[sp.id]);
-              if (goes && gm.sc.nearest !== 'hero' && gm.sc.nearest !== 'close' && guardOK) flags.push(['defbest', `${size} match ${seed} choice ${nDec}: the best answer is to go to the ball (${b}), but ${gm.sc.nearest} is more than a metre nearer it and a guard spot stops them`]);
-              if (!goes && gm.sc.nearest === 'hero' && !gm.sc.exploits.home && gm.sc.spots.some(sp => sp.id === 'home')) flags.push(['defbest', `${size} match ${seed} choice ${nDec}: the best answer is to guard (${b}), but he is our nearest to the ball by a metre and going stops them`]);
-              defPlay = nDec; const c1 = s.a(gm.sc.carrier); defD0 = Object.fromEntries(s.team('us').map(a => [a.id, c1 ? Math.hypot(a.x - c1.x, a.y - c1.y) : 0])); } }
+            // defbest (round 7, as the verifier measures it): by where everyone is as the window opens (what he sees): his
+            // player nearer the ball carrier than any friend by more than a metre and the best answer is not to go, or a
+            // friend nearer by more than a metre and the best answer is to go
+            if (gm.sc.live && gm.sc.kind === 'defense' && gm.sc.best && w0 && w0.w === gm.win) { stat.def = (stat.def || 0) + 1; const b = gm.sc.best.slice(5), goes = ['home', 'chase', 'press'].includes(b), who = w0.dh < w0.dm - 1 ? 'him' : w0.dm < w0.dh - 1 ? 'a friend' : 'close';
+              stat['def nearest ' + who] = (stat['def nearest ' + who] || 0) + 1;
+              if ((who === 'him' && !goes) || (who === 'a friend' && goes)) flags.push(['defbest', `${size} match ${seed} choice ${nDec}: ${who} is nearest the ball (his player ${w0.dh.toFixed(1)} m, a friend ${w0.dm.toFixed(1)} m), and the best answer is ${b} (rings ${gm.sc.spots.map(p => p.id).join(',')})`]);
+              two = { t0: s.time, run: 0, max: 0, n: nDec };
+            } }
           return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); },
-        onFrame: gm => { const w = gm.win;
-          // twoball: after a defending play, never two of ours on the ball while one of theirs stands free
-          if (defPlay != null && gm.result && gm.phase === 'outcome' && defSeen !== defPlay) { defSeen = defPlay; const c0 = s.ball.carrier && s.a(s.ball.carrier);
-            if (c0 && c0.team === 'them' && !c0.gk) { const us = s.team('us').filter(a => !a.gk), onJob = a => { const j = a.id === 'hero' ? null : gm.roles?.jobs?.[a.id] ?? gm.teamJob?.[a.id]?.job; return !j || j === 'press' || j === 'chase'; }, on = us.filter(a => Math.hypot(a.x - c0.x, a.y - c0.y) < 2 && onJob(a)) /* (a friend whose job is another of their players, on his way to him round the ball when the play ended, is not on the ball) */, fr = s.team('them').filter(o => o !== c0 && !o.gk && Math.hypot(o.x - c0.x, o.y - c0.y) < 12 && us.every(a => Math.hypot(a.x - o.x, a.y - o.y) > 3));
-              stat.defEnds = (stat.defEnds || 0) + 1;
-              if (on.length >= 2 && fr.length) flags.push(['twoball', `${size} match ${seed} after choice ${defPlay}: ${on.map(a => a.id).join(' and ')} are within 2 m of ${c0.id} while ${fr.map(o => o.id).join(', ')} has nobody within 3 m (his job ${JSON.stringify(gm.teamJob)}, best ${gm.sc.best}, nearest ${gm.sc.nearest}, result ${gm.result}, roles ${JSON.stringify(gm.roles?.jobs)}, scripted ${[...gm.scripted]}, ${on.map(a => a.id + " tk " + (a.tk ?? -9).toFixed(1) + " beat " + (a.beat ?? -9).toFixed(1) + " now " + s.time.toFixed(1)).join("; ")})`]); } }
+        onFrame: gm => { const w = gm.win; const dtF = s.time - prevT; prevT = s.time;
+          if (w && gm.sc?.live && gm.sc.kind === 'defense' && w0?.w !== w) { const c1 = s.a(gm.sc.carrier) || (s.ball.carrier && s.a(s.ball.carrier)), h1 = s.a('hero'); if (c1 && h1) w0 = { w, dh: Math.hypot(h1.x - c1.x, h1.y - c1.y), dm: Math.min(99, ...s.team('us').filter(a => a.id !== 'hero' && !a.gk).map(a => Math.hypot(a.x - c1.x, a.y - c1.y))) }; }
+          // twoball (round 7, as the verifier measures it): in the 4 s after a defending choice, two of ours within 2 m of
+          // their player on the ball while another of theirs within 12 m of it has nobody of ours within 3 m, for more than 0.5 s on end
+          if (two) { if (s.time - two.t0 > 4) { if (two.max > .5) flags.push(['twoball', `${size} match ${seed} after choice ${two.n}: two of ours on the ball with one of theirs free for ${two.max.toFixed(1)} s`]); two = null; }
+            else { const cc = s.ball.state === 'carried' && s.a(s.ball.carrier); if (cc && cc.team !== 'us') { const ours = s.team('us').filter(a => !a.gk), on = ours.filter(a => Math.hypot(a.x - cc.x, a.y - cc.y) < 2).length, fr = s.team('them').some(o => o !== cc && !o.gk && Math.hypot(o.x - s.ball.x, o.y - s.ball.y) < 12 && Math.min(...ours.map(a => Math.hypot(a.x - o.x, a.y - o.y))) > 3);
+              if (on >= 2 && fr) { two.run += dtF; two.max = Math.max(two.max, two.run); } else two.run = 0; } else two.run = 0; } }
+          // twice (round 7): in one spell of our possession (from one situation set up or ball won, until it is lost or a new one is set up) the ball comes to his player from the same friend twice (by the ids: taking over a friend who carried it on counts too)
+          { const hq = s.a('hero'); hp = hpNow; hpNow = hq ? [hq.x, hq.y] : null; }
+          // (a new situation set up, after a goal or four plays: a lesson's scene, with its own pass to him: is a new move)
+          if (gm.sc && !gm.sc.live && gm.sc.id !== scId) { scId = gm.sc.id; move = null; lastCar = null; } if (gm.sc?.live) scId = null;
+          { const car = s.ball.state === 'carried' ? s.ball.carrier : null; if (car && car !== lastCar) { const a = s.a(car);
+            if (a?.team !== 'us') move = null; else { move ||= { seq: [], ret: {} }; const hh = s.a('hero'); move.seq.push(car === 'hero' && hp && Math.hypot(hh.x - hp[0], hh.y - hp[1]) > 1.5 ? 'hero(took over)' : car === 'hero' ? 'hero' : car); if (move.seq.at(-1) !== car) move.seq[move.seq.length - 1] = car, move.note = (move.note || '') + ` [${move.seq.length}: took over, ${gm.sc?.kind || 'attack'} ${gm.result || ''}]`; else if (car === 'hero' && move.seq.length > 1) move.note = (move.note || '') + ` [${move.seq.length}: passed to him, ${gm.sc?.id || ''} ${gm.result || ''}]`; const q = move.seq; if (q.length >= 3 && q.at(-1) === 'hero' && q.at(-3) === 'hero') { const f = q.at(-2); move.ret[f] = (move.ret[f] || 0) + 1; stat.returns = (stat.returns || 0) + 1; if (move.ret[f] === 2) flags.push(['twice', `${size} match ${seed}: ${q.join('>')}${move.note || ''}`]); } } lastCar = car; } }
           if (w && w !== lastWin) { lastWin = w; stat.windows++; if (gm.sc.live) { stat.minWin = Math.min(stat.minWin, w.R); const fl = gm.windowMin(); if (w.R < fl - .05) flags.push(['short', `${size} match ${seed} choice ${nDec + 1} (${gm.sc.kind || 'attack'}): ${w.R.toFixed(2)} s, the floor is ${fl.toFixed(1)} s (G ${w.G.toFixed(2)}, ${w.plan.cls || ""}${w.plan.live ? " live" : ""}${w.plan.fromLive ? " from-live" : ""}, threat ${w.threat?.id || "none"}, run ${w.plan.r0?.toFixed(1)}→${w.plan.rP?.toFixed(1)})`]); } }
           const c = s.ball.carrier, cs = side(c);
           rec.push({ t: s.time, win: !!w, c, cs, st: s.ball.state, b: [s.ball.x, s.ball.y], at: Object.fromEntries([...s.agents.values()].filter(a => !a.gk).map(a => [a.id, [a.x, a.y, a.team, a.tk ?? -9, a.beat ?? -9]])), n: nDec, k: gm.sc?.kind, ph: gm.phase, scr: [...gm.scripted], res: gm.result }); } });
@@ -76,7 +85,7 @@ export async function liveAudit(size, N = 4, verbose = false) {
           i = found ? i + 1 : i + 6; } }
     }
   } finally { Math.random = real; }
-  stat.counts = { hover: stat.hover, yoyo: stat.yoyo, short: flags.filter(f => f[0] === 'short').length, noring: flags.filter(f => f[0] === 'noring').length, defbest: flags.filter(f => f[0] === 'defbest').length, twoball: flags.filter(f => f[0] === 'twoball').length,
+  stat.counts = { hover: stat.hover, yoyo: stat.yoyo, short: flags.filter(f => f[0] === 'short').length, noring: flags.filter(f => f[0] === 'noring').length, defbest: flags.filter(f => f[0] === 'defbest').length, twoball: flags.filter(f => f[0] === 'twoball').length, twice: flags.filter(f => f[0] === 'twice').length, returns: stat.returns || 0,
     passback: flags.filter(f => f[0] === 'passback').length, ...Object.fromEntries(Object.entries(stat).filter(([k]) => k.startsWith('def') || k.startsWith('friend'))) };
   return { flags, stat };
 }

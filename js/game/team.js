@@ -107,7 +107,9 @@ export const team = {
     // (round 6) How far off the ball the one pressing holds: two steps, goal-side (he holds him up; nearer than a step and a half he must go in).
     const standOff = () => PRESS_OFF;
     // (round 6) One going to the player he guards goes round the ball, not through it (two and a half metres off it).
-    const round = (d, p) => { const c = closestOnLane(ball, d, p, 0); if (c.d >= 2.3 || c.t <= .05 || c.t >= .95) return p; const nx = c.x - ball.x, ny = c.y - ball.y, l = Math.hypot(nx, ny); return l < .05 ? p : { x: clamp(ball.x + nx / l * 2.8, 1, L - 1), y: clamp(ball.y + ny / l * 2.8, 1, W - 1) }; };
+    // (round 7) And the place he guards from is never at the shoulder of the player on the ball: two steps and more off it.
+    const off2 = p => { const dx = p.x - ball.x, dy = p.y - ball.y, l = Math.hypot(dx, dy); return l >= 2.4 || l < .05 ? p : { x: clamp(ball.x + dx / l * 2.4, 1, L - 1), y: clamp(ball.y + dy / l * 2.4, 1, W - 1) }; };
+    const round = (d, p0) => { const p = off2(p0); const c = closestOnLane(ball, d, p, 0); if (c.d >= 2.3 || c.t <= .05 || c.t >= .95) return p; const nx = c.x - ball.x, ny = c.y - ball.y, l = Math.hypot(nx, ny); return l < .05 ? p : { x: clamp(ball.x + nx / l * 2.8, 1, L - 1), y: clamp(ball.y + ny / l * 2.8, 1, W - 1) }; };
     // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
     const key = def + ':' + (s.ball.carrier || 'loose');
     // (v66) Unless the one pressing has been beaten (the ball is past him, on its way to his goal): then the jobs are
@@ -117,7 +119,8 @@ export const team = {
     // feet again. And nobody stands or jogs within a step and a half of the player on the ball: one who finds himself
     // there, with no play's script deciding it (this.challenge: outcomes.js finish does), goes in for it, and is beaten.
     const car = s.ball.carrier && s.a(s.ball.carrier), off = d => d.beat > s.time, free0 = free; free = d => free0(d) && !off(d);
-    if (car && car.team !== def && !this.inFinish && !this.win) for (const d of mine) if (free(d) && !d.gk && !this.leaving(d) && dist(d, car) < 1.5) {
+    // (round 7: live play only; a lesson's scene plays as it was written)
+    if (car && car.team !== def && !this.inFinish && !this.win && (this.mode === 'match' || this.mode === 'free')) for (const d of mine) if (free(d) && !d.gk && !this.leaving(d) && dist(d, car) < 1.5) {
       const dx = s.ball.x - d.x, dy = s.ball.y - d.y, l = Math.hypot(dx, dy) || 1; d.tk = s.time; d.beat = s.time + .9; d.mom = null; d.aic = null;
       s.go(d.id, clamp(s.ball.x + dx / l * 1.3, .5, L - .5), clamp(s.ball.y + dy / l * 1.3, .5, W - .5), 5); this.beatenId = d.id; if (this.roles) { this.roles = null; } this.wasBeaten = d.id; this.wasBeatenT = s.time; }
     let beaten = false;

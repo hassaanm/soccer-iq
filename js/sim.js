@@ -260,7 +260,8 @@ export class Sim {
     if (!dry) c.skT = this.time;
     const r = rnd(c.x * 20, c.y * 20, c.dist * 20, idn(c.id));
     let k = null, q = rnd(r * 1e6, 17) * all;
-    if (r < f.p) for (let i = 0; i < kinds.length && !k; i++) if ((q -= w[i]) < 0) k = kinds[i];
+    // (round 7: the child's own player, who taps for his moves, is offered one whenever it fits: no dice)
+    if (r < (this.taps?.has(c.id) ? 1 : f.p)) for (let i = 0; i < kinds.length && !k; i++) if ((q -= w[i]) < 0) k = kinds[i];
     if (!dry) this.skillLog?.push(`${k || '-'}|${this.flair.ctx}|${sit}|${f.tier}|${c.id}`);
     return k;
   }
@@ -281,8 +282,11 @@ export class Sim {
     const b = this.ball; if (!this.flair?.by[a.id] || a.sp < 1.8 || (a.kickAt != null && this.time - a.kickAt < .7)) return;
     // A player who taps for his skills (see taps) is offered one two touches ahead, so the child has time to see it
     // and tap, and only when his run goes on long enough for the whole move (to its touch and a little past it).
-    const tap = this.taps?.has(a.id), ahead = tap ? 2.8 : 1.4;
-    if (tap && (!this.offerOK || a.offer || Math.hypot(a.tx - a.x, a.ty - a.y) < ahead + 1.4 * 1.3 + .3)) return;
+    // (round 7: two touches ahead when a defender is that far off; else one touch ahead, a shorter moment to tap, rather than no offer)
+    const tap = this.taps?.has(a.id), left = Math.hypot(a.tx - a.x, a.ty - a.y); let ahead = tap ? 2.8 : 1.4;
+    if (tap && (!this.offerOK || a.offer)) return;
+    if (tap) { const far = o => { const f = (o.x - a.x) * Math.cos(this.ball.h) + (o.y - a.y) * Math.sin(this.ball.h) - 2.8, l = (o.y - a.y) * Math.cos(this.ball.h) - (o.x - a.x) * Math.sin(this.ball.h); return o.team !== a.team && !o.gk && f > 1.6 && f < 6 && Math.abs(l) < 2.5; };
+      if (left < 2.8 + 1.4 * 1.3 + .3 || ![...this.agents.values()].some(far)) ahead = 1.4; if (left < ahead + 1.4 * 1.3 + .3) return; }
     const ch = Math.cos(b.h), sh = Math.sin(b.h), n0 = a.tN || 0; // (just after a touch: the next is chosen after this, and is 1.4 m if a skill comes)
     // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
     // for that, at this one
@@ -404,7 +408,7 @@ export class Sim {
         // (v66) One the team's shape moves never turns on the spot at speed: sent more than 60° off the way he is going
         // (a new job, a new place), he comes round from the velocity he has, like anyone coming off a planned way.
         // (round 6: and nobody, whoever moves him, snaps round at a run: sent more than 120° off his way at 2 m/s or more, he comes round too)
-        if (!a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5 && !kicking)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)); a.momBack = false; } }
+        if (!a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5 && !kicking)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + (a.ease ? MOM_T : .45); a.momA = a.ease ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : 12; a.momBack = false; } } // (one the play's script sends: round hard, in under half a second, so he is where the play needs him)
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.

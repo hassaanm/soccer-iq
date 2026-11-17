@@ -163,7 +163,7 @@ export const outcomes = {
     for (const p of s.agents.values()) if (p.id !== id && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
     // (v66) One of the other team the play's script has coming at the kicker (the one who was running in) may be on the
     // ball's line near its start: he too steps off it. (Not one waiting where it is going: he is there to cut it out.)
-    for (const p of s.agents.values()) if (p.id !== id && !p.gk && this.scripted.has(p.id) && !this.frozen.includes(p.id) && dist(p, to) > 1.5 && (p.team === a.team || dist(p, s.ball) < 3) && closestOnLane(p, s.ball, to, .02).d < .9) this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); // (and a friend who has drifted onto it, anywhere along it)
+    for (const p of s.agents.values()) if (p.id !== id && !p.gk && this.scripted.has(p.id) && !this.frozen.includes(p.id) && dist(p, to) > 1.1 && (p.team === a.team || dist(p, s.ball) < 3) && closestOnLane(p, s.ball, to, .02).d < .9) this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); // (and a friend who has drifted onto it, anywhere along it)
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
     const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, x > L - .5 || x < .5 ? 'shot' : kind, [...s.agents.values()].filter(o => o.team !== a.team)); // (at goal, the side's foot, also for a placed inside-foot shot: v64, he may come to it from any way he was carrying the ball)
@@ -464,7 +464,7 @@ export const outcomes = {
         if (fp.act === 'forward') { const m = fp.to; this.scripted.add(m.id); s.stop(m.id); yield* this.strike(c.id, m.x, m.y, { speed: 11, arc: .15 }); yield () => s.ball.state === 'loose' || dist(m, s.ball) < .5; s.give(m.id); this.scripted = new Set(['hero', m.id]); this.ai = true; yield* this.finish(m.id); return; }
         yield* this.finish(c.id); return;
       }
-      if (good) this.returns = (this.returns || 0) + 1;
+      if (good) { this.returns = (this.returns || 0) + 1; this.cameFrom = c.id; this.gotBack = true; } // (it comes back to him from this friend: the pass straight back to him again is not the best next, live.js)
     }
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
@@ -932,8 +932,10 @@ export const outcomes = {
       return (good ? dist(h, P) < 1.5 : spotId === 'stay' ? dist(o2, m) < 2.2 : dist(h, P) < .4) || s.time - t0 > 3;
     };
     if (good && this.rating('spot:' + spotId) === 'safe') { // only okay: the pass reaches him there, but it goes nowhere
-      const t1 = s.time; yield () => { alive?.(); return dist(h, P) < .4 || s.time - t1 > 1.5; };
+      // (round 7: his defender stays with him on the far side from the passer, never left standing on the pass's line)
+      const t1 = s.time; yield () => { alive?.(); const k = dist(h, m) || 1; if (closestOnLane(o2, m, h, 0).d < 1.3 && dist(o2, h) > 1) s.go('o2', h.x + (h.x - m.x) / k * 1.5, h.y + (h.y - m.y) / k * 1.5, 4.4); return dist(h, P) < .4 || s.time - t1 > 1.5; };
       s.stop('hero'); faceTo(h, m.x, m.y);
+      { const t2 = s.time; yield () => closestOnLane(o2, m, h, 0).d > .9 || dist(o2, h) < 1 || s.time - t2 > .8; }
       yield* this.strike('m1', h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;
       s.give('hero'); yield* this.closedDown(); return;

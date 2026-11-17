@@ -12,7 +12,7 @@ const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y
 // moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
 // (v66) `near`: { id, x, y }: the one of theirs who is coming for the ball, taken where he will be when he has closed on
 // it (on the bearing he comes from): a choice is right or wrong by where he comes from, not by how far off he still is.
-function liveScenario(s, skill, pushAllowed, near = null) {
+function liveScenario(s, skill, pushAllowed, near = null, back = null) { // back: the index (0 for m1) of the friend the ball has just come from
   const at = a => (near && a.id === near.id ? near : a), P = a => [at(a).x, at(a).y], h = s.a('hero'), foes = s => s.team('them').map(P);
   const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: friends(s),
     opps: foes(s) };
@@ -30,6 +30,9 @@ function liveScenario(s, skill, pushAllowed, near = null) {
   });
   const gain = o => o === 'shoot' ? 99 : (o.startsWith('pass:') ? sc.mates[+o[5]][0] - 1.5 : (o.startsWith('push:') ? pushEnd(h, o.slice(5)) : dribbleEnd(h, o.slice(5), L, W)).x) - h.x;
   const goods = Object.keys(g).filter(o => g[o] === 'good' && (pushAllowed || !o.startsWith('push:'))).sort((a, b) => gain(b) - gain(a));
+  // (round 7) The pass straight back to the friend the ball has just come from is never the best answer while something
+  // else is on (a run with it, a shot, another friend): no passing it back and forth between two players.
+  if (back != null && goods.length > 1 && goods[0] === 'pass:' + back) goods.push(goods.shift());
   sc.grades = g; sc.best = goods[0] || null; sc.ok = goods.slice(1); sc.safe = Object.keys(g).filter(o => g[o] === 'safe');
   sc.cue = !sc.best ? 'That was a tough spot!' : sc.best === 'shoot' ? 'Close to the goal and nobody in the way. Shoot!' : sc.best.startsWith('pass:') ? `{m${sc.best[5]}} was open!`
     : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
@@ -76,8 +79,17 @@ function liveDefense(s, guard = true) {
   const goods = spots.filter(sp => !sc.exploits[sp.id]).map(sp => sp.id), guards = goods.filter(g => !go(g));
   // (a guard spot by a player nobody of ours is on comes before helping a friend guard)
   const open = id => { const o = s.a(id); return o ? Math.min(99, ...fr.map(m => dist(m, o))) : 0; }; guards.sort((p, q) => open(q) - open(p));
-  if (spots.length < 2 || !goods.length) return null;
-  const best = mateNearest ? guards[0] || goods.find(g => g === 'chase') || goods[0] : goods.includes('home') ? 'home' : guards[0] || goods[0];
+  if (spots.length < 2) return null;
+  // (round 7) The rule holds on what he sees, with no way round it. His player plainly the nearest: the best answer is
+  // to go to the ball (the ring in front of it), and it is a right answer: his friends guard (teamJobs), and what the
+  // play then shows is him stopping the ball. A friend plainly the nearest: the best answer is a guard ring that stops
+  // them. Where the picture offers no such ring (no ring in front of the ball; no guard ring that works), there is no
+  // fair choice to ask for, and play runs on.
+  const hasHome = spots.some(sp => sp.id === 'home');
+  if (heroNearest) { if (!hasHome) return null; sc.exploits.home = null; if (!goods.includes('home')) goods.unshift('home'); }
+  if (mateNearest && !guards.length) return null;
+  if (!goods.length) return null;
+  const best = mateNearest ? guards[0] : goods.includes('home') ? 'home' : guards[0] || goods[0];
   if (goods.length === spots.length && !mateNearest && !heroNearest) return null; // (every spot stops them and nobody is plainly the nearest: no real choice)
   sc.best = 'spot:' + best; sc.ok = goods.filter(g => g !== best).map(g => 'spot:' + g);
   sc.cue = mateNearest ? (go(best) ? 'Your friends had it covered. Stay close!' : 'Your friend was closer to the ball. You guard!') : best === 'home' ? (heroNearest ? 'You were the closest to the ball. You go!' : 'Nobody was in front of the ball. Get in front!') : best === 'chase' ? 'Your friends had it covered. Stay close!' : 'A friend was on the ball. Guard the open player!';
@@ -98,6 +110,8 @@ export const live = {
   // Continue a match from wherever the last play ended: a defender steps up, then he makes the next choice.
   async continueLive() {
     const s = this.sim, c = s.a(s.ball.carrier);
+    // (round 7: the friend who has just played it to the player he now is: after taking over a friend, that is the body he was, which now has the friend's id)
+    if (c && c.team === 'us' && c.id !== 'hero') this.cameFrom = c.id; else if (!this.gotBack) this.cameFrom = null; this.gotBack = false;
     if (c && c.team === 'us') this.takeOver(c.id);
     const h = s.a('hero');
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, yaw: 0 });
@@ -112,7 +126,7 @@ export const live = {
     let near = null;
     try { const th = rolesOf({ kind: 'attack' }, st.at).th, t = th && st.at[th], bx = h.x + .5, d = t ? Math.hypot(t.x - bx, t.y - h.y) : 0;
       if (t && !t.gk && d > 2.5) { near = { id: th, x: bx + (t.x - bx) / d * 2.3, y: h.y + (t.y - h.y) / d * 2.3 }; P.at[th].x = near.x; P.at[th].y = near.y; } } catch (e) { console.error(e); }
-    this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed, near);
+    this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed, near, this.cameFrom && MATES.includes(this.cameFrom) && s.a(this.cameFrom) ? MATES.indexOf(this.cameFrom) : null);
     if (near) { let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), Rfloor: this.windowMin(), options: this.offerList(), from: st.at, lead: 0, yaw: this.yaw }); } catch (e) { console.error(e); }
       if (plan && plan.threat?.id === near.id) { plan.sc = this.sc; plan.live = false; plan.fromLive = true; plan.ready = true; this.wplan = plan; } }
   },
@@ -121,7 +135,7 @@ export const live = {
   // If no spot could stop them, the play just runs on and the geometry decides what happens.
   async continueDefense() {
     const s = this.sim, c = s.a(s.ball.carrier);
-    this.returns = 0; // (their ball: the move is over)
+    this.returns = 0; this.cameFrom = null; // (their ball: the move is over)
     const choose = this.has('get-goal-side'), guard = this.has('one-goes'); // (saves that had "Guard the open player" have "One goes, one guards": progress.js MERGED)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, roles: null, ai: true, scripted: new Set(['hero', c.id]), ballTeam: 'them' });
     const h = s.a('hero');

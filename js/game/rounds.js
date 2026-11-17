@@ -27,7 +27,7 @@ import { arrAt, pathAt, planHold, PACE } from '../window.js';
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
   async pre() {
-    this.phase = 'pre'; this.returns = 0; // (a new move: outcomes.js supportGen)
+    this.phase = 'pre'; this.returns = 0; this.cameFrom = null; // (a new move: outcomes.js supportGen, live.js continueLive)
     const sc = this.sc, s = this.sim;
     if (sc.intro === 'won') return this.wonIntro();
     if (sc.kind === 'receive') return this.passIn();
