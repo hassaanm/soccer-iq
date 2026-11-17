@@ -1,29 +1,17 @@
-// The decision window in the game (v64; the plan itself is js/window.js). The run-up brings everyone to the way they
-// move as the choice opens; then play drops into slow motion and goes on, each player on his planned way, until he
-// chooses or the threat's reach gets to the ball (the time-out: outcomes.js timeoutGen). His player's own ring and the
-// threat's reach on the grass show how long he has (ui.reach, drawn by world.js).
-import { planWindow, planArrival, planLive, pathAt, arrAt, hermAt, windowSeconds, kindOf, attackOptions, spotsNow, STANCE } from '../window.js';
+// The decision window in the game (v64; the plan itself is js/window.js planHold). The scene's own picture holds for the
+// whole window: the run-up brings everyone to the way he moves in it (the play drifting on, each with his own small
+// part, and the threat already running in from farther out); then play drops into slow motion and goes on until he
+// chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
+// long he has (ui.timer, drawn by world.js).
+import { planHold, planLive, pathAt, windowSeconds, kindOf, attackOptions, spotsNow, PACE } from '../window.js';
 import { L, W, facesBall } from './shared.js';
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
-const mulv = (v, k) => [v[0] * k, v[1] * k]; // seconds of the run-up before the choice (as before v64)
-const PACE_MIN = .03; // the slowest the world goes in a window (a very short piece of play in a long window)
 // In demos and in the replay of the better play nobody runs out of time: the window is this long (real seconds), and
 // the hand taps well inside it.
 const SHOW = { demo: 16, replay: 7 };
-
-// Cubic Hermite from (p0, v0) to (p1, v1) over T seconds: a smooth way that leaves and arrives at the given velocities.
-function hermite(p0, v0, p1, v1, T) {
-  return t => {
-    const s = clamp(t / T, 0, 1), s2 = s * s, s3 = s2 * s, h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
-    const d00 = (6 * s2 - 6 * s) / T, d10 = (3 * s2 - 4 * s + 1), d01 = (-6 * s2 + 6 * s) / T, d11 = (3 * s2 - 2 * s);
-    if (t > T) { const e = t - T; return { x: p1[0] + v1[0] * e, y: p1[1] + v1[1] * e, vx: v1[0], vy: v1[1] }; }
-    return { x: h00 * p0[0] + h10 * T * v0[0] + h01 * p1[0] + h11 * T * v1[0], y: h00 * p0[1] + h10 * T * v0[1] + h01 * p1[1] + h11 * T * v1[1],
-      vx: d00 * p0[0] + d10 * v0[0] + d01 * p1[0] + d11 * v1[0], vy: d00 * p0[1] + d10 * v0[1] + d01 * p1[1] + d11 * v1[1] };
-  };
-}
 
 export const moving = {
   // ---------- planning ----------
@@ -62,65 +50,35 @@ export const moving = {
     const x = sc.heroTo?.[0] ?? this.sim.a('hero').x, shoot = !facesBall(sc) && x > L - (sc.skill === 'shoot-close' || sc.shots ? 18 : 13) && !sc.shots;
     return attackOptions(sc, { push: this.pushAllowed, shoot });
   },
-  // live: from play already going, the old way (the play moving together, window.js planWindow); else the scene's own
-  // picture is where the window ends (planArrival). `extra`: options for planArrival (who to leave out, its lead-in).
+  // The plan for this choice (window.js planHold). live: from play already going (a match, a give-and-go's second step):
+  // the picture is where everyone is now. Else the scene's own picture, planned before the run-up. `extra`: options for
+  // planHold (who the scene's own script moves, runs the scene gives, a length the play gives).
   plan(live, extra = {}) {
     const sc = this.sc;
     if (kindOf(sc) === 'tackle') return null;
     const st = live ? this.liveState() : this.sceneState(sc);
     try {
-      const p = live ? planWindow(sc, st, { fixed: false, options: this.offerList() }) : planArrival(sc, st, { options: this.offerList(), yaw: this.yaw, ...extra }) || planWindow(sc, st, { fixed: true, options: this.offerList() });
+      const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), ...extra });
       if (p) p.live = live;
-      if (p && live && !p.arrival) this.liveArrival(p, st);
       return p;
     } catch (e) { console.error(e); return null; } // (never a stuck choice: without a plan the choice opens as before v64)
   },
 
-  // (round 2) A window from live play (a match): the threat is not carried along with the play but runs in on the player
-  // with the ball from where he is, as he moves now, to a stance STANCE m off where the ball will be, slowing as he
-  // gets there; the window is as long as that run takes (a child's run, never under 1.2 s).
-  liveArrival(p, st) {
-    const th = p.threat?.id, car = st.ball?.carrier, a = th && st.at[th];
-    if (!a || !car || car === th || !p.paths[car] || a.gk) return;
-    let G = p.G, u = [1, 0], A = [a.x, a.y];
-    for (let k = 0; k < 3; k++) {
-      const H = pathAt(p.paths[car], G), dx = H.x - a.x, dy = H.y - a.y, l = Math.hypot(dx, dy) || 1; u = [dx / l, dy / l];
-      A = [H.x - u[0] * STANCE, H.y - u[1] * STANCE]; G = clamp(Math.hypot(A[0] - a.x, A[1] - a.y) / 2.4 + .4, 1.2, 3.2);
-    }
-    // (one going the other way now is not coming yet: the play's own plan stays. Long enough that he speeds up and slows
-    // down no harder than a child: the Hermite curve's pull at either end under 3 m/s²)
-    const D = [A[0] - a.x, A[1] - a.y]; if (D[0] * a.vx + D[1] * a.vy < -.2 * Math.hypot(...D)) return;
-    // (a way he could run: no harder than 3.5 m/s² and never turning back on himself; else the play's own plan stays)
-    const ok = path => { let v0 = null, prev = null;
-      for (let k = 0; k <= 20; k++) { const q = hermAt(path, path.T * k / 20), sp = Math.hypot(q.vx, q.vy);
-        if (prev && Math.hypot(q.vx - prev.vx, q.vy - prev.vy) / (path.T / 20) > 3.5) return false;
-        if (sp > .4) { if (!v0) v0 = [q.vx / sp, q.vy / sp]; else if (q.vx / sp * v0[0] + q.vy / sp * v0[1] < -.17) return false; }
-        prev = q; }
-      return true; };
-    let path = null;
-    for (const g = G; G < g + 1.6; G += .1) { const t = { herm: true, S: [a.x, a.y], V0: [a.vx, a.vy], E: A, V1: [u[0], u[1]], T: G }; if (ok(t)) { path = t; break; } }
-    if (!path) return;
-    p.paths[th] = path; p.G = G; p.watch.add(th); p.cls = 'live';
-  },
   // ---------- the run-up ----------
-  // A lesson's scene: the window's plan first, then a run-up that brings everyone to where the window opens, moving as
-  // it will have him move (cut short when the window opens before the scene's own moment, plan.a < 0). Each comes in
-  // a little faster than he goes on: the player on the ball slows down to look up, the presser was closing down and eases
-  // into his jockey; everyone else is already going his way.
-  // (round 2) With the scene as the window's end: everyone is already on the way he will go on in the window, from the
-  // run-up's start (RUNUP s before it opens, less if someone would start well off the pitch). `extra.during(T)`: what the
-  // scene's script does meanwhile (a pass played to him so it gets to him as the window ends).
+  // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window
+  // (RUNUP s before it opens, less if someone would start well off the pitch): the play drifting on, the threat coming
+  // at a jog and speeding up. `extra.during(T)`: what the scene's script does meanwhile (a pass played to him).
   async plannedRunUp(extra = {}) {
     const s = this.sim, sc = this.sc, plan = this.wplan = this.plan(false, extra);
     if (!plan) return;
     plan.sc = sc;
-    if (plan.arrival) {
+    {
       if (plan.look != null) this.yaw = plan.look; // (the view turns to where the threat comes from: window.js planArrival)
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
-        const base = plan.a - T, q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy); void base;
+        const q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy);
         Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
         if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
         else if (plan.watch.has(id) || a.gk) { const h = plan.paths[sc.carrier || 'hero'] || plan.paths.hero, hq = h && pathAt(h, -T); if (hq) { const dx = hq.x - a.x, dy = hq.y - a.y, l = Math.hypot(dx, dy) || 1; a.face = [dx / l, dy / l]; } }
@@ -130,27 +88,7 @@ export const moving = {
       if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }
       await Promise.all([this.delay(T), extra.during?.(T)]);
       plan.ready = true;
-      return;
     }
-    const T = Math.max(.6, RUNUP + plan.a), th = plan.threat?.id;
-    for (const [id, p] of Object.entries(plan.paths)) {
-      const a = s.a(id); if (!a) continue;
-      const P = [p.x, p.y], V = p.v0, sp = Math.hypot(...V);
-      let ex = [0, 0];
-      const cp = plan.paths[s.ball.carrier]; // where the ball's carrier is as the window opens
-      if (id === s.ball.carrier) { const l = sp > .1 ? [V[0] / sp, V[1] / sp] : [1, 0]; ex = mulv(l, id === 'hero' ? 1.1 : .6); } // the player on the ball slows down to look up
-      else if (id === th && cp) { const dx = cp.x - p.x, dy = cp.y - p.y, l = Math.hypot(dx, dy) || 1; ex = [dx / l * 1.6, dy / l * 1.6]; } // the presser eases from closing down into his jockey
-      const Vs = [V[0] + ex[0], V[1] + ex[1]];
-      const S = [clamp(P[0] - T * (Vs[0] + V[0]) / 2, .6, L - .6), clamp(P[1] - T * (Vs[1] + V[1]) / 2, .6, W - .6)];
-      a.x = S[0]; a.y = S[1]; a.tx = a.x; a.ty = a.y;
-      const vs = Math.hypot(...Vs); if (vs > .1 && !a.gk && !plan.watch.has(id)) a.face = [Vs[0] / vs, Vs[1] / vs];
-      a.track = { at: hermite(S, Vs, P, V, T), t0: s.time, watch: plan.watch.has(id) };
-    }
-    const c = s.a(s.ball.carrier);
-    if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }
-    if (sc.kind === 'defense' && this.sim.a('hero')) { const hh = s.a('hero'); hh.face = [-1, 0]; }
-    await this.delay(T);
-    plan.ready = true; // the play is where the plan opens
   },
 
   // After a shot that came back out (round 2): the window is the ball's roll to rest; everyone goes from where he is to
@@ -188,9 +126,10 @@ export const moving = {
     const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' && !sc.live ? this.followPlan() : this.plan(true);
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
-    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, R = show || this.windowReal(), G = plan.G;
+    // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
+    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, R = Math.max(G, Math.min(show || this.windowReal(), (G - .1) / PACE + .1));
     this.spotsReset();
-    this.win = { plan, G, R, f: Math.max(PACE_MIN, Math.min(1, (G - .1) / Math.max(.5, R - .1))), t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
+    this.win = { plan, G, R, f: Math.max(PACE, Math.min(1, (G - .1) / Math.max(.5, R - .1))), t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
     // (round 2) A pass coming to him from live play: he meets it where it is going, a small step behind where it stops,
     // as it gets there (not on with the play, a metre off it).
     const b = s.ball, h = s.a('hero');
@@ -200,7 +139,7 @@ export const moving = {
     }
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
-      this.win.at0[id] = plan.at0?.[id] && !plan.live ? plan.at0[id] : { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
+      this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
       a.track = { at: t => pathAt(p, t), t0: s.time, watch: plan.watch.has(id) };
     }
   },

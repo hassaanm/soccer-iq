@@ -3,15 +3,11 @@
 // length, how everyone moves in it, and the check that what he sees agrees with how each choice is graded. The game
 // (game/window.js), the tests and the audits (scripts/motion-audit.js) all use it.
 //
-// How it works. Each scene is graded from one picture (generate.js). In the window everyone moves on, so the picture
-// changes; the grades must stay true at every moment he could tap. Most grades are about players relative to each other
-// (a lane between two players, a defender next to a friend), and a play that moves together keeps them. So play moves
-// as a whole ("the drift": the player on the ball keeps it rolling, and everyone near goes with him: defenders give
-// ground facing the ball, markers stay with their players, friends move with the play), and each player adds his own
-// small part on top (the presser edges in, a friend steps across). Each player moves at one steady velocity through the
-// window, which the run-up brings him to, so nobody stops, turns back or starts from nothing in it. The planner tries
-// the most lively version first and calmer ones after, and takes the first in which every choice keeps its grade at
-// every moment of the window (agree, below). The window ends when the threat's reach gets to the ball: he takes it.
+// How it works (v66). Each scene is graded from one picture (generate.js). That picture holds for the whole window: the
+// whole group drifts with the play and each player adds one small steady movement of his own, so every relation between
+// players that a grade rests on stays as it was (planHold, below, checks it at every moment with `disagree`). One player
+// does not hold his place: the threat, who runs in at the ball from farther out on the bearing the picture has him on,
+// and gets to it as the window ends: he takes it.
 import { dist, closestOnLane, interceptor, clamp, PITCH, dribbleEnd, BACKWARD } from './geom.js';
 import { grade, exploit, leadPoint, LEAD, DEF_RUN, HERO_RUN, pushEnd, takeOn } from './generate.js';
 import { resolve, bestSpaceY, spaceY, rightFoot } from './shot.js';
@@ -28,9 +24,6 @@ export function windowSeconds({ level = 1, first = false, think = 'normal', retr
   const base = Math.max(MIN_NORMAL, first ? WINDOW.first : WINDOW[clamp(Math.round(level) || 1, 1, 3)]);
   return base * (THINK[think] ?? 1) * Math.pow(RETRY, Math.min(3, retry));
 }
-// How much soccer a window shows (game seconds): about 1.5 s, the time the space closes on a real pitch. The world's
-// speed in the window is this over the real seconds (about 0.15× for the longest window, 0.33× for the shortest).
-export const GAME = 1.5, GAME_MIN = .25, GAME_FAR = 2; // (GAME_FAR: the threat comes from farther off: more of his run is in the window)
 // Child speeds (v64 research, section 1, ages 6–8) and the most a child speeds up or slows down: the motion audit's limits.
 export const SPEED = { stand: .2, walk: [.8, 1.3], jog: [1.8, 2.5], run: [3, 3.5], sprint: [4, 4.5] }, ACC = 3.5;
 
@@ -40,9 +33,9 @@ export const SPEED = { stand: .2, walk: [.8, 1.3], jog: [1.8, 2.5], run: [3, 3.5
 // pull is 1.5 |v1 - v0| / tau, kept under ACC.
 export const easeTime = (v0, v1, t1 = 0) => Math.max(.35, Math.hypot(v1[0] - v0[0], v1[1] - v0[1]) * 1.5 / ACC);
 export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
+  if (p.run) return runAt(p, t, out);
   if (p.arr) return arrAt(p, t + (p.base || 0), out);
   if (p.go) return goAt(p, t, out);
-  if (p.rel) return relAt(p, t, out);
   if (p.herm) return hermAt(p, t, out);
   const t1 = p.t1 || 0, tau = p.tau || 0, dvx = p.v1[0] - p.v0[0], dvy = p.v1[1] - p.v0[1];
   let k = 0, s = 0; // k: how far the change is (velocity), s: the distance it has added, per unit of change
@@ -64,13 +57,6 @@ export function arrAt(p, tr, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   else { r = dB + p.vRun * (tau - tb); v = p.vRun; }                                // running in
   out.x = p.P[0] - p.u[0] * r; out.y = p.P[1] - p.u[1] * r; out.vx = p.u[0] * v; out.vy = p.u[1] * v;
   return out;
-}
-// (round 3) A marker going with his man: where his man is (his own path), plus an offset that goes over the lead-in
-// from a step goal-side of him (o0) to where the picture has the marker (o1), smoothly.
-export function relAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
-  const q = pathAt(p.man, t), k = Math.min(1, Math.max(0, t / p.T)), s = k * k * (3 - 2 * k), ds = t > 0 && t < p.T ? 6 * k * (1 - k) / p.T : 0;
-  out.x = q.x + p.o0[0] + (p.o1[0] - p.o0[0]) * s; out.y = q.y + p.o0[1] + (p.o1[1] - p.o0[1]) * s;
-  out.vx = q.vx + (p.o1[0] - p.o0[0]) * ds; out.vy = q.vy + (p.o1[1] - p.o0[1]) * ds; return out;
 }
 // From standing at S, after t0 s, toward E: speeding up and slowing down at a (m/s²), no faster than vMax, stopping at E
 // (a shooter's follow-through after the wind-up).
@@ -111,6 +97,7 @@ export function gradedAs(sc, o, g0 = sc.grades || grade(sc)) {
   if (o.startsWith('drib:') || o.startsWith('push:') || o === 'shoot') return g0[o] === 'good' ? 'good' : g0[o] === 'safe' ? 'safe' : 'bad';
   return 'bad';
 }
+const gPs = new WeakMap(), gP = sc => { let g = gPs.get(sc); if (!g) gPs.set(sc, g = grade(sc)); return g; };
 const cls = v => (v === 'good' ? 'good' : v === 'safe' ? 'safe' : 'bad');
 const fits = (was, now) => (was === 'good' ? now === 'good' : was === 'safe' ? now !== 'bad' : now === 'bad');
 // What he sees "agrees" with a grade within TOL metres of the line the grade was drawn on: nobody can see 30 cm on a
@@ -173,6 +160,7 @@ function attackDis(sc, pos, { options, ball } = {}) {
     if (o.startsWith('shoot:')) { if (sc.shots && shotNow(sc, o, h, k2, O) !== sc.shots[o]) bad.push(o); continue; }
     const was = gradedAs(sc, o, g0), g = was === 'bad' ? gt : gl; // (in its favour, or against it)
     if ((!o.startsWith('pass:') || !sc.live) && g1[o] === g0[o]) continue; // (graded now just as it was: it agrees)
+    if (!sc.live && gP(sc)[o] !== g0[o] && !o.startsWith('shoot:')) continue; // (a grade the scene set by hand, not from the picture alone: a dribble out over the line at a restart)
     let now = cls(g[o]);
     if (o.startsWith('pass:') && sc.live) now = livePass(b, P(mates[+o[5]]), O, was === 'bad' ? -TOL : TOL);
     if (!fits(was, now)) bad.push(o);
@@ -193,7 +181,8 @@ export function spotRef(sc, sp) {
   if (k === 'defense') return sp.id === 'home' || sp.id === 'chase' || sp.id === 'press' ? sc.carrier || 'o1' : /^o\d$/.test(sp.id) ? sp.id : sp.id === 'stay' ? 'hero' : null;
   if (k === 'lead') return 'm1';
   if ((k === 'support' || k === 'goal') && sp.id === 'stay') return 'hero';
-  if (k === 'follow' && sp.id === 'watch') return 'hero';
+  if (k === 'follow') return sp.id === 'watch' ? 'hero' : null; // (a place on the grass: where the ball comes out to)
+  if ((k === 'support' || k === 'goal') && !sc.shot) return sc.carrier || 'm1'; // (v66) a place to run to goes with the play: with the friend on the ball
   return null; // a place on the grass
 }
 // Where each ring is now (rings that belong to a player move with him; `at0(id)`: where he was as the window opened).
@@ -294,483 +283,281 @@ function whyHolds(why, c, q, opps, goal, sc = null, h = null) {
   return true;
 }
 
-// ---------- the plan ----------
-// st: { at: { id: { x, y, vx, vy, team, gk } }, ball: { x, y, carrier } } (where everyone is and how he is moving as the
-// window opens). Returns { G (game seconds), threat: { id, to: [x, y] }, paths: { id: path }, watch: Set of ids who face
-// the ball as they move, k: which calmer try it took (0 = the liveliest), dis: what still disagrees (empty) }.
-// opts: { options (attack: the choices on offer), fixed: true when the run-up will bring everyone to their velocity (the
-// paths are steady); otherwise each eases from how he moves now }.
-// With `fixed` (a lesson's own scene, whose run-up brings everyone to his velocity), the window need not open at the
-// scene's own moment: it may open up to EARLY s before it (the run-up is cut short), wherever the longest window agrees.
-// `a` (≤ 0): when it opens, counted from the scene's moment; the paths are then given from there.
-export const EARLY = .9;
-export function planWindow(sc, st, opts = {}) {
-  const kind = kindOf(sc); if (kind === 'tackle') return null;
-  opts = { ...opts, ids: Object.keys(st.at).filter(id => !st.at[id].gk) };
-  const tries = TRIES[kind](sc, st, opts), at0 = id => st.at[id];
-  let best = null;
-  for (let k = 0; k < tries.length; k++) {
-    const p = build(sc, st, tries[k], opts), r = longest(sc, p, at0, opts);
-    const near = nearEnd(sc, st, p, r); // (a threat from far off: how far from the ball he still is as it ends)
-    const score = r.G - .3 * Math.max(0, near - 2.5);
-    if (!best || score > best.score + .001 || (Math.abs(score - best.score) < .001 && !r.dis.length && best.dis.length)) best = { ...p, ...r, k, want: p.G, score };
-    if (r.G >= p.G - .001 && !r.dis.length && near <= 2.5) break; // the liveliest try that agrees all the way, with the threat close at the end
-  }
-  best.at0 = Object.fromEntries(Object.entries(st.at).map(([id, a]) => [id, { x: a.x, y: a.y }])); // (the scene's own picture: rings that go with a player are placed from it)
-  if (best.a) { // the paths from where everyone is when it opens
-    for (const path of Object.values(best.paths)) { const q = pathAt(path, best.a); Object.assign(path, { x: q.x, y: q.y }); }
-  }
-  return best;
-}
-// The longest window (up to the try's own, at least GAME_MIN) in which every choice agrees with its grade at every
-// moment (sampled every STEP_T s), opening at a (0, or earlier with `fixed`). dis: what disagrees, when even the
-// shortest window cannot be had.
-const STEP_T = .05, ROOM = .85;
-// How far the threat is from what he goes for as a window ends (0 when there is no threat).
-function nearEnd(sc, st, p, r) {
-  const id = p.threat?.id; if (!id || !p.paths[id] || r.dis.length) return 0;
-  const q = pathAt(p.paths[id], r.a + r.G), t = p.threat.to ? { x: p.threat.to[0], y: p.threat.to[1] } : (() => { const c = st.ball?.carrier || 'hero', cp = p.paths[c]; return cp ? pathAt(cp, r.a + r.G) : st.at[c] || st.at.hero; })();
-  return t ? Math.hypot(q.x - t.x, q.y - t.y) : 0;
-}
-function longest(sc, p, at0, opts) {
-  const tmp = {}, lo = opts.fixed ? -EARLY : 0, n = Math.round((p.G - lo) / STEP_T), ok = [];
-  let first = null;
-  for (let i = 0; i <= n; i++) {
-    const t = lo + i * STEP_T, d = disagree(sc, posAt(p, at0, t, tmp), t, { ...opts, at0 });
-    ok.push(!d.length); if (d.length && t >= -1e-6 && !first) first = d;
-  }
-  // the longest run of agreeing samples, at most G long; of equal ones, the one opening nearest the scene's moment
-  let bestG = -1, bestA = 0;
-  for (let i = 0; i <= n; i++) {
-    if (!ok[i]) continue;
-    let j = i; while (j + 1 <= n && ok[j + 1] && (j + 1 - i) * STEP_T <= p.G + 1e-6) j++;
-    const G = Math.round((j - i) * STEP_T * 100) / 100, a = Math.round((lo + i * STEP_T) * 100) / 100;
-    if (G > bestG + 1e-6 || (Math.abs(G - bestG) < 1e-6 && Math.abs(a) < Math.abs(bestA))) { bestG = G; bestA = a; }
-  }
-  return bestG >= GAME_MIN - 1e-6 ? { G: bestG, a: bestA, dis: [] } : { G: GAME_MIN, a: 0, dis: first || ['?'] };
-}
-export function posAt(p, at0, t, cache = {}) {
-  return id => { const path = p.paths[id]; if (!path) return at0(id); return pathAt(path, t, cache[id] ||= {}); };
-}
+// ---------- the plan (v66): the shape holds, one defender comes ----------
+// The scene's own picture P (the positions its choices were graded from) is the picture for the whole window, not its
+// end. Everybody except one player keeps P's arrangement all through: the whole group drifts with the play at a walk or
+// a slow jog (the way the ball is being carried), and inside that each player makes one small, steady movement of his
+// own (a friend steps across to keep his lane, a marker mirrors his man, a cover defender shuffles toward the ball's
+// side, a keeper adjusts on his line). So a friend graded open is open from the first moment to the last, a marked
+// friend is marked, a blocked lane is blocked. The one player who does not hold his place is the threat: the free
+// defender P puts nearest the ball. As the window opens he is farther back on the same bearing from the ball as in P,
+// and he runs straight in for the whole window (speeding up gently, never braking), reaching the ball as the ring
+// empties. Choices that are right or wrong because of him are judged by where he comes from (his bearing), not by how
+// far off he still is (agreeAt).
+export const PACE = .12;                       // the slowest the world goes in a window (as a share of real time)
+export const RUNIN = 6.5, CONTACT = .6;        // how far out the threat starts where there is room (m); how near the ball he gets (m)
+export const V_RUN = { min: 1.8, tight: 1.5, pref: 3.3, max: 4.1 }; // his average speed over the run-in (m/s): a jog at the least, a run by choice
+const ROOM = .85, STEP_T = .1, MOVE = .45, STEP_OWN = .9, BEAR = .45; // BEAR: how far (rad) his bearing may differ from P's
+const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], mul = (a, k) => [a[0] * k, a[1] * k], len = a => Math.hypot(a[0], a[1]);
+const U = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, perp = u => [-u[1], u[0]], rotv = (u, a) => [u[0] * Math.cos(a) - u[1] * Math.sin(a), u[0] * Math.sin(a) + u[1] * Math.cos(a)];
+const onPitch = (x, y, m = .5) => x > m && x < PITCH.L - m && y > m && y < PITCH.W - m;
 
-// Builds the paths for one try. A try says, for each role, the velocity (m/s) it moves at in the window.
-function build(sc, st, tr, opts) {
-  const paths = {}, watch = new Set(tr.watch || []), at = st.at;
-  for (const [id, a] of Object.entries(at)) {
-    const v1 = [...(tr.v[id] || [0, 0])], v0 = opts.fixed ? [...v1] : [a.vx || 0, a.vy || 0];
-    // (from play going on: one who is going the other way slows down and bends his way, he does not turn straight back)
-    const s0 = Math.hypot(...v0), s1 = Math.hypot(...v1);
-    if (!opts.fixed && s0 > .4 && s1 > .1 && (v0[0] * v1[0] + v0[1] * v1[1]) / (s0 * s1) < -.3) { const k = Math.min(1, .5 * s0 / s1); v1[0] = v0[0] * .35 + v1[0] * k * .3; v1[1] = v0[1] * .35 + v1[1] * k * .3; }
-    if (tr.start?.[id] && Math.hypot(...v0) < .3 && Math.hypot(...v1) > .5) { const l = Math.hypot(...v1); v0[0] = v1[0] / l * .3; v0[1] = v1[1] / l * .3; } // (before he sets off: already leaning that way, a small step)
-    paths[id] = { x: a.x, y: a.y, v0, v1, t1: tr.start?.[id] || 0, tau: opts.fixed && !tr.start?.[id] ? 0 : easeTime(v0, v1) };
-  }
-  // Nobody walks through anybody: two players whose ways come closer than ROOM in the window move together (the one with
-  // less to do, not the player on the ball nor the threat, goes the other's way), so they stay as far apart as they are.
-  const out = { G: tr.G || GAME, threat: tr.threat, paths, watch };
-  const keep = new Set(['hero', st.ball?.carrier, tr.threat?.id]), list = Object.entries(paths).filter(([id]) => !st.at[id].gk), lo = opts.fixed ? -EARLY : 0, hi = out.G, q1 = {}, q2 = {};
-  for (let n = 0; n < 2; n++) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-    let dmin = 9;
-    for (let t = lo; t <= hi + 1e-6; t += .1) { const a = pathAt(list[i][1], t, q1), b = pathAt(list[j][1], t, q2); dmin = Math.min(dmin, Math.hypot(b.x - a.x, b.y - a.y)); }
-    if (dmin >= ROOM) continue;
-    const [from, to] = keep.has(list[j][0]) ? [list[j][1], list[i][1]] : [list[i][1], list[j][1]];
-    to.v0 = [...from.v0]; to.v1 = [...from.v1]; to.t1 = from.t1; to.tau = from.tau;
-  }
-  return out;
+// The threat's run: from S along u, at v0 as the window opens, up to v1 over ta s, then on at v1 (also past the window's
+// end). Before it opens (the run-up) he was coming at a jog and speeding up (vPre).
+export function runAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
+  const a = p.ta > 0 ? (p.v1 - p.v0) / p.ta : 0; let s, v;
+  if (t >= p.ta) { s = (p.v0 + p.v1) / 2 * p.ta + p.v1 * (t - p.ta); v = p.v1; }
+  else if (t >= 0) { s = p.v0 * t + .5 * a * t * t; v = p.v0 + a * t; }
+  else { const tb = Math.max(0, (p.v0 - p.vPre) / 2.5); if (t > -tb) { s = p.v0 * t + 1.25 * t * t; v = p.v0 + 2.5 * t; } else { s = -p.v0 * tb + 1.25 * tb * tb + p.vPre * (t + tb); v = p.vPre; } }
+  out.x = p.S[0] + p.u[0] * s; out.y = p.S[1] + p.u[1] * s; out.vx = p.u[0] * v; out.vy = p.u[1] * v; return out;
 }
+const mkRun = (S, E, G, v0 = null) => { const d = [E[0] - S[0], E[1] - S[1]], L = len(d), ta = Math.min(.6, G * .35), w0 = v0 == null ? null : v0;
+  const v1 = w0 == null ? L / (G - .15 * ta) : (L - w0 * ta / 2) / (G - ta / 2); const s0 = w0 == null ? .7 * v1 : w0;
+  return { run: true, S: [...S], u: U(d), v0: s0, v1, ta, vPre: Math.min(s0, 1.5), L }; };
 
-// ---------- the tries, by kind ----------
-const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], mul = (a, k) => [a[0] * k, a[1] * k];
-const unit = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
-const perp = u => [-u[1], u[0]];
-const roomAt = (st, p, skip) => Math.min(9, ...Object.entries(st.at).filter(([id]) => !skip.includes(id)).map(([, a]) => Math.hypot(a.x - p[0], a.y - p[1])));
-const inside = (p, m = 1.2) => p[0] > m && p[0] < PITCH.L - m && p[1] > m && p[1] < PITCH.W - m;
-// The side to move across to: the one with more room, and on the pitch.
-function sideways(st, id, u, skip) {
-  const a = st.at[id], c = [1, -1].map(s => { const d = mul(perp(u), s), q = [a.x + d[0] * 2, a.y + d[1] * 2]; return { d, r: inside(q) ? roomAt(st, q, [id, ...skip]) : -1 }; });
-  return c.sort((p, q) => q.r - p.r)[0].d;
+// Where the ball is for the plan: at the feet of the player on it (a step ahead of his own player, as generate.js
+// grades it); a pass on its way to him: where it comes to (him).
+const ballOf = (sc, kind, holder, p) => (holder === 'hero' && kind !== 'receive' ? { x: p.x + .5, y: p.y } : { x: p.x, y: p.y });
+const holderOf = (sc, kind = kindOf(sc)) => (kind === 'defense' ? sc.carrier || 'o1' : kind === 'support' || kind === 'goal' ? sc.carrier || 'm1' : 'hero');
+// How a choice is rated in the scene: 'good', 'safe' or 'bad' (every kind of decision).
+function ratedAs(sc, o, kind, g0) {
+  if (kind === 'attack') return gradedAs(sc, o, g0);
+  return o === sc.best || (sc.ok || []).includes(o) || o === 'lanes' ? 'good' : (sc.safe || []).includes(o) ? 'safe' : 'bad';
 }
-// Each player of `team` (besides `skip`) and what he does with the play: a marker (the nearest of the other team to one
-// of ours, within 2.6 m) goes with his player; everyone else goes with the drift D, those far from the ball at part of
-// it, plus their own small part: a friend steps across his line to the ball (to stay open), a defender a little toward the
-// ball's side. `k`: how big their own part is.
-function shape(sc, st, ball, D, v, k, skip, def = 'them') {
-  const at = st.at, out = [];
-  const outfield = Object.entries(at).filter(([id, a]) => !a.gk && !skip.includes(id));
-  for (const [id, a] of outfield) {
-    if (v[id]) continue;
-    const near = Math.hypot(a.x - ball.x, a.y - ball.y) < 12, base = mul(D, near ? 1 : .6);
-    // (never still: at least a slow walk with the play, research Q1: still for at most about a second)
-    const u = unit(ball, a), sd = sideways(st, id, u, skip), own = mul(sd, Math.max(MOVE, (near ? .55 : .35) * k));
-    let w = add(base, own); const sp = Math.hypot(...w); if (sp < MOVE) w = sp > .05 ? mul(w, MOVE / sp) : mul(sd, MOVE); // (never under a slow walk's start)
-    v[id] = w; out.push(id);
-  }
-  // markers go exactly with the player they mark
-  for (const [id, a] of outfield) {
-    if (a.team !== def) continue;
-    const foes = outfield.filter(([j, b]) => b.team !== a.team && !skip.includes(j)).map(([j, b]) => ({ j, d: Math.hypot(b.x - a.x, b.y - a.y) })).sort((p, q) => p.d - q.d);
-    const f = foes[0]; if (!f || f.d > 2.6) continue;
-    const back = outfield.filter(([j, b]) => b.team === a.team && j !== id).map(([j, b]) => ({ j, d: Math.hypot(b.x - at[f.j].x, b.y - at[f.j].y) })).sort((p, q) => p.d - q.d)[0];
-    if (back && back.d < f.d) continue; // someone of his own team is nearer that player: that one marks him
-    if (v[f.j]) v[id] = [...v[f.j]];
-  }
-  return out;
-}
-// The keepers: set (v64 research Q1: the keeper is still, "set", as a shot may come; his body still shows life:
-// pro/keeper.js), also one who rushed out at him (then he is the threat, and smothers the ball at the end). A shot's
-// result is worked out from where he stands (shot.js), so he must not drift.
-function keepers(sc, st, D, v) { for (const [id, a] of Object.entries(st.at)) if (a.gk) v[id] = [0, 0]; } // (one who rushed out is set too, low, ready to smother: the threat)
-// The threat: of the other team, the one who gets to the ball soonest (time to cover the distance, as a child runs).
-function threatOf(st, team, ball, skip = []) {
-  return Object.entries(st.at).filter(([id, a]) => a.team !== team && !skip.includes(id) && (!a.gk || a.rush)).map(([id, a]) => ({ id, a, d: Math.hypot(a.x - ball.x, a.y - ball.y) }))
-    .sort((p, q) => p.d - q.d)[0];
-}
-const PRESS = 3.4, MOVE = .4; // MOVE: the least anyone moves in the window (m/s) on top of the drift // a defender this close to the ball presses it: he goes with the ball and edges in
-// The presser's own part: in toward the ball, so that he gets `b` metres nearer over the window (he edges in, low and
-// side-on, as he jockeys); `b` gets smaller in calmer tries.
-const edge = (st, id, ball, b, G) => mul(unit(st.at[id], ball), b / G);
-
-const TRIES = {
-  // He has the ball. With a defender close (PRESS), he shields: small touches across, away from the defender, who goes
-  // with him and edges in. Otherwise he keeps it rolling on his way, and the nearest of theirs comes at it.
-  attack(sc, st) {
-    const h = st.at.hero, ball = st.ball || { x: h.x + .5, y: h.y }, hv = [h.vx || 0, h.vy || 0], line = Math.hypot(...hv) > .2 ? mul(hv, 1 / Math.hypot(...hv)) : [1, 0];
-    const th = threatOf(st, 'us', ball, []), out = [];
-    if (!th) return [{ v: { hero: mul(line, .8) }, G: GAME }];
-    const near = th.d < PRESS, u = unit(th.a, h);
-    const behind = !near && (th.a.x - h.x) * line[0] + (th.a.y - h.y) * line[1] < 0;
-    const rows = near ? [[.8, .35, 1], [.8, .2, .6], [.6, .2, .5], [.5, .12, .3], [.4, .06, .2], [.3, .03, 0]]
-      : [[1.2, 3.4, 1], [1.2, 2.8, .6], [1.4, 2.2, .4], [1, 1.8, .3], [.8, 1.4, .2], [.6, 1.1, 0]];
-    for (const [vh, b, k] of rows) {
-      const D = near ? mul(sideways(st, 'hero', u, [th.id]), vh) : mul(line, vh), v = { hero: D };
-      if (near) v[th.id] = add(D, edge(st, th.id, h, b, GAME));
-      else if (behind) { // a recovery run: up toward his own goal, to get goal-side of the ball, not straight at him
-        const off = [(th.a.x - h.x), (th.a.y - h.y)], side = off[0] * -line[1] + off[1] * line[0];
-        const Q = { x: h.x + line[0] * 2 - line[1] * side * .7, y: h.y + line[1] * 2 + line[0] * side * .7 };
-        v[th.id] = mul(unit(th.a, Q), b);
-      } else v[th.id] = mul(u, b * .7); // in front, farther off: he steps up toward the ball
-      shape(sc, st, ball, D, v, k, ['hero', th.id]);
-      keepers(sc, st, D, v);
-      out.push({ v, G: near ? GAME : GAME_FAR, threat: { id: th.id }, watch: near ? [th.id] : [] });
-    }
-    return out;
-  },
-  // They have the ball: their dribbler goes on toward our goal; everyone goes with the play (ours back toward our goal,
-  // goal-side, facing the ball), and the rings go with the players they belong to.
-  defense(sc, st) {
-    const cid = sc.carrier || 'o1', c = st.at[cid], to = { x: 4.5, y: c.y + (PITCH.W / 2 - c.y) * .6 }, line = unit(c, to), out = [];
-    for (const [vc, k] of [[1.2, 1], [1, .6], [.8, .4], [.6, .2], [.4, 0]]) {
-      const D = mul(line, vc), v = { [cid]: D };
-      v.hero = add(D, mul(line, .2 * k));
-      shape(sc, st, c, D, v, k, [cid, 'hero'], 'us');
-      keepers(sc, st, D, v);
-      const ours = Object.keys(st.at).filter(id => st.at[id].team === 'us' && !st.at[id].gk);
-      out.push({ v, G: GAME, threat: { id: cid, to: [to.x, to.y] }, watch: ours });
-    }
-    return out;
-  },
-  // A friend has the ball under pressure: he shields it with small touches across, the defender on him goes with him and
-  // edges in (the threat), he himself steps across his line to the ball, and everyone else goes on a little.
-  support(sc, st) { return friendBall(sc, st, false); },
-  goal(sc, st) { return friendBall(sc, st, true); },
-  // After the shot: the ball rolls to rest; the one of theirs who gets there first goes once he reacts; his friends jog
-  // up, their others step back toward their goal.
-  follow(sc, st) {
-    const loose = { x: sc.shot.loose[0], y: sc.shot.loose[1] }, h = st.at.hero, out = [];
-    const racer = Object.entries(st.at).filter(([, a]) => a.team === 'them' && !a.gk).map(([id, a]) => ({ id, a, t: Math.hypot(a.x - loose.x, a.y - loose.y) / DEF_RUN + reactOf(sc, id) })).sort((p, q) => p.t - q.t)[0];
-    const hv = [h.vx || 0, h.vy || 0], hs = Math.hypot(...hv), hl = hs > .2 ? mul(hv, 1 / hs) : unit(h, loose);
-    for (const [vr, k] of [[3.4, 1], [3, .6], [2.6, .3], [2.2, 0]]) {
-      const v = { hero: mul(hl, .5) }, start = { [racer.id]: reactOf(sc, racer.id) };
-      v[racer.id] = mul(unit(racer.a, loose), vr);
-      for (const [id, a] of Object.entries(st.at)) {
-        if (v[id] || a.gk) continue;
-        v[id] = a.team === 'us' ? [1.2 * k + .4, 0] : [.8, 0];
-      }
-      keepers(sc, st, [0, 0], v);
-      out.push({ v, G: GAME, threat: { id: racer.id, to: sc.shot.loose }, start, watch: [] });
-    }
-    return out;
-  },
-  // A pass is on its way to him: he steps toward it (to meet it), the defender behind him (if one) comes with him and
-  // edges in, the others go on a little. The window is the ball's flight: he picks his turn before it gets to him.
-  receive(sc, st) {
-    const h = st.at.hero, ball = st.ball || { x: h.x - 1, y: h.y }, to = unit(h, ball), th = threatOf(st, 'us', h, []), out = [];
-    for (const [vh, b, k] of [[.5, .4, 1], [.4, .25, .6], [.3, .12, .3], [.2, .05, 0]]) {
-      const D = mul(to, vh), v = { hero: D };
-      if (th && th.d < 4) v[th.id] = add(D, edge(st, th.id, h, b, GAME));
-      shape(sc, st, h, D, v, k, ['hero', ...(th && th.d < 4 ? [th.id] : [])]);
-      keepers(sc, st, [0, 0], v);
-      out.push({ v, G: st.flight ? Math.max(GAME_MIN, st.flight - .1) : GAME, threat: th ? { id: th.id } : null, watch: th ? [th.id] : [] });
-    }
-    return out;
-  },
-  // "Pass in front!": his friend runs on (the rings with him), the defender chasing him too; he keeps it rolling, the
-  // defender near him goes with him and edges in (the threat), their last defender drifts across to the run.
-  lead(sc, st) {
-    const h = st.at.hero, mv = sc.moves, [dx, dy] = sc.dir, out = [], th = threatOf(st, 'us', h, ['o2', 'o3', 'o4']);
-    for (const [vh, b, k, G] of [[.6, .25, 1, GAME], [.5, .15, .5, 1.3], [.45, .08, .2, 1.1], [.4, .04, 0, .9]]) {
-      const D = th ? mul(sideways(st, 'hero', unit(th.a, h), [th.id]), vh) : [vh, 0], v = { hero: D, m1: [dx * mv.m1.speed, dy * mv.m1.speed] };
-      if (mv.o2) v.o2 = [dx * mv.o2.speed, dy * mv.o2.speed];
-      if (th) v[th.id] = add(D, edge(st, th.id, h, b, G));
-      const o3 = st.at.o3; if (o3) v.o3 = mul(unit(o3, { x: o3.x - dx * 3, y: o3.y + (st.at.m1.y - o3.y) * .3 }), Math.max(MOVE, .8 * (k + .3)));
-      shape(sc, st, h, D, v, k, ['hero', 'm1', ...(mv.o2 ? ['o2'] : []), 'o3', ...(th ? [th.id] : [])]);
-      keepers(sc, st, D, v);
-      out.push({ v, G, threat: th ? { id: th.id } : null, watch: th ? [th.id] : [] });
-    }
-    return out;
-  },
-};
-// A friend with the ball (getting open, a give-and-go's run, running to the goal with him).
-function friendBall(sc, st, goal) {
-  const cid = sc.carrier || 'm1', c = st.at[cid], th = threatOf(st, 'us', c, ['hero']), h = st.at.hero, out = [];
-  const g = { x: PITCH.L, y: PITCH.W / 2 }, fwd = unit(c, g);
-  // (a friend about to shoot, 'go-shot': he lines it up calmly, as the race for the rebound is close)
-  for (const [vc, b, vh, k] of goal && sc.shot ? [[.4, .03, .4, 0]] : goal ? [[1.2, .3, 1, 1], [1, .2, .8, .6], [.8, .12, .6, .4], [.6, .06, .4, .2], [.4, .03, .4, 0]] : [[.6, .3, .5, 1], [.5, .2, .45, .6], [.45, .12, .4, .3], [.4, .06, .4, 0]]) {
-    const D = goal ? mul(fwd, vc) : mul(sideways(st, cid, th ? unit(th.a, c) : [1, 0], th ? [th.id] : []), vc), v = { [cid]: D };
-    if (th) v[th.id] = add(D, edge(st, th.id, c, b, GAME));
-    const hv = [h.vx || 0, h.vy || 0], hs = Math.hypot(...hv);
-    v.hero = goal ? add(mul(D, .8), mul(hs > .2 ? mul(hv, 1 / hs) : fwd, .2 * vh))
-      : sc.then ? mul(unit(h, c), Math.max(MOVE, vh)) // (after his pass: he steps after it, still behind the defender who now stands between them)
-      : mul(sideways(st, 'hero', unit(c, h), []), vh); // with the play; or across his line to the ball
-    shape(sc, st, c, goal ? D : mul(D, .4), v, k, [cid, 'hero', ...(th ? [th.id] : [])]);
-    keepers(sc, st, D, v);
-    out.push({ v, G: GAME, threat: th ? { id: th.id } : null, watch: th ? [th.id] : [] });
-  }
-  return out;
-}
-export const __tries = (sc, st, opts) => TRIES[kindOf(sc)](sc, st, opts); // (for tools)
-
-// ---------- round 2: the window ends where the scene was graded (v64) ----------
-// The scene's own picture is the moment the threat arrives: the end of the window. The window opens G_PRE s earlier in
-// the same play. Everyone is on his way to his place in that picture, as play really goes: the threat runs in (fast, then
-// braking over his last 1.6 m into a low stance), a friend runs into the open space he will stand in, a marker closes on
-// his man, a cover defender shifts across, the player on the ball carries it on his way. When the threat starts far from
-// the ball in the scene (he was getting back, not pressing), the window goes on past the scene's moment until he gets
-// there (G_POST). Each choice is graded as the scene says; what decides a choice's result is the play itself, which goes
-// on as it was going after his tap (the threat keeps coming), and the motion audit checks every result at an early,
-// middle and late tap against the scene's own play (scripts/motion-audit.js). planArrival returns the plan in the same
-// shape as planWindow (paths keyed by player, read with pathAt from the window's opening), plus `cls`: 'full' (the whole
-// G_PRE lead-in), 'short' (a shorter one, where the run could not start on the pitch).
-export const G_PRE = [1.5, 1.2, .9, .6], STANCE = 1.7, PRESSING = 2.8;
-// The last resort (round 2): patterns where a tap early in the full lead-in ends another way than the scene's own play
-// (the motion audit plays every choice early, midway and late), with the shorter lead-ins they get instead.
-// 'co-moving': the round-1 plan (play moving together, the scene's picture at the window's start).
-//   (round 3: keeper-out (5v5) now comes in full, the keeper seen rushing out: a shot early in his run, before he is out,
-//   goes in, and that is the true result for an early tap; scripts/motion-audit.js says so)
-export const SHORT_LEAD = { 'go-shot': [1.2] };
-//   go-shot (4v4): running to the goal when his friend will shoot: tapped early in a 1.5 s lead-in, the okay run is
-//   still too far back to win the rebound race. 1.2 s holds it.
-// Child speeds for each role's run (m/s; research Q1): vRun, vEnd (as he gets there), dB (the metres he slows over).
-export const RUN = {
-  threat: [3.4, 1, 1.6], far: [4.2, 1, 1.6], stepUp: [3.2, .3, 1.8], chase: [4, 2.6, .8], // closing down; a recovery run from far off; stepping up to the ball
-  carry: [2.2, 1.5, .6],                                  // the player on the ball, carrying it on, slowing to look up
-  open: [2.2, .6, 1], openFar: [1.1, .5, .5],             // a friend running into the space he will stand in (near, or far from the ball)
-  cover: [1.4, .4, .6], walk: [1, .5, .5],                // a cover defender shifting across; a far player walking with the play
-  attack: [2.4, 1.6, .8], recover: [3.2, 2.2, 1],          // their dribbler driving at our goal; his recovery run (defending)
-  still: [0, 0, 0], standOff: [.8, .2, .3],
-  shield: [.9, .4, .3], drive: [2.8, 2, .8], jog: [2.6, 1.6, .8], step: [1.4, .9, .4], keeper: [.4, 0, .25],
-};
-const U = ([x, y]) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
-const arr = (P, u, [vRun, vEnd, dB], T = 0) => ({ arr: true, P: [...P], u: U(u), vRun, vEnd, dB, T, base: 0 });
-// How long a run of `d` metres takes on profile [vRun, vEnd, dB].
-const runTime = (d, [vRun, vEnd, dB]) => { const dv = vRun * vRun - vEnd * vEnd, a = vRun > vEnd ? Math.min(BRAKE, dv / (2 * dB)) : 0, db = a ? dv / (2 * a) : 0, tb = a ? (vRun - vEnd) / a : 0; return d <= db ? (Math.sqrt(vEnd * vEnd + 2 * a * d) - vEnd) / Math.max(a, .1) : tb + (d - db) / vRun; };
-
-export function planArrival(sc, st, opts = {}) {
-  const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow' || SHORT_LEAD[sc.pattern] === 'co-moving') return null;
-  const at = st.at, skip = new Set(opts.skip || []), ids = Object.keys(at).filter(id => !skip.has(id)), out = ids.filter(id => !at[id].gk), paths = {}, role = {}, watch = new Set();
-  const P = id => [at[id].x, at[id].y], d2 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  const holder = kind === 'defense' ? sc.carrier || 'o1' : kind === 'support' || kind === 'goal' ? sc.carrier || 'm1' : 'hero';
-  const us = id => at[id].team === 'us', ballTeam = at[holder].team, defTeam = ballTeam === 'us' ? 'them' : 'us';
-  const goal = { x: ballTeam === 'us' ? PITCH.L : 0, y: PITCH.W / 2 };
-  const fixedPaths = opts.keep || {}; // (paths given by the scene itself: a lead pass's runners)
-  const dead = !!sc.restart; // (a restart: a dead ball)
-  // The player on the ball, and the hero
-  const H = P(holder), line = kind === 'defense' ? U([4.5 - H[0], PITCH.W / 2 + (H[1] - PITCH.W / 2) * .6 - H[1]]) : sc.hero && sc.heroTo && holder === 'hero' ? U([sc.heroTo[0] - sc.hero[0] || 1, sc.heroTo[1] - sc.hero[1]]) : U([goal.x - H[0], goal.y - H[1]]);
-  // (a restart: a dead ball. The taker stands over it, life only in his body; their players stand off, adjusting a step;
-  // friends move to find space. Nobody runs in to tackle.)
-  paths[holder] = arr(H, kind === 'support' ? perp(line) : line, dead ? RUN.still : kind === 'defense' ? RUN.attack : kind === 'support' ? RUN.shield : kind === 'goal' ? RUN.drive : RUN.carry); role[holder] = 'ball';
-  if (holder !== 'hero') {
-    const h = P('hero'), from = sc.hero && sc.heroTo ? U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]) : U([goal.x - h[0], goal.y - h[1]]);
-    paths.hero = dead ? arr(h, Math.hypot(...from) > .1 ? from : U([goal.x - h[0], 0]), RUN.walk) // (a restart: he walks, looking for his place)
-      : arr(h, kind === 'defense' ? (Math.hypot(...from) > .1 ? from : [-1, 0]) : kind === 'receive' ? U([P('m1')[0] - h[0], P('m1')[1] - h[1]]) : from, kind === 'defense' ? RUN.recover : kind === 'goal' ? RUN.jog : RUN.step); role.hero = 'hero';
-  } else if (kind === 'receive') { const m = P(sc.carrier || 'm1'), h = P('hero'); paths.hero = arr(h, [m[0] - h[0], m[1] - h[1]], RUN.step); }
-  // The threat: of the other team, the one who gets to the ball first (one the camera sees as he comes first, unless
-  // the idea is a defender he cannot see: peek, then turn); for their dribbler, he himself (nearing the shooting spot).
+// The roles in a picture: who is on the ball, who marks whom (a defender nearer one of the other team's players than
+// the ball, within 2.6 m of him), who is free, and the threat: the free defender nearest the ball (a keeper who rushed
+// out at him first). `at`: { id: { x, y, team, gk, rush } }.
+export function rolesOf(sc, at, { skip = [], never = [] } = {}) {
+  const kind = kindOf(sc), holder = holderOf(sc, kind), ids = Object.keys(at).filter(id => !skip.includes(id)), out = ids.filter(id => !at[id].gk);
+  const ballTeam = at[holder]?.team || 'us', defTeam = ballTeam === 'us' ? 'them' : 'us', B = ballOf(sc, kind, holder, at[holder] || at.hero);
+  const d = (p, q) => Math.hypot(p.x - q.x, p.y - q.y), defs = out.filter(id => at[id].team === defTeam), atk = out.filter(id => at[id].team === ballTeam && id !== holder);
+  const mark = {};
+  for (const id of defs) { const m = atk.map(j => ({ j, d: d(at[j], at[id]) })).sort((a, b) => a.d - b.d)[0]; if (m && m.d < 2.6 && m.d < d(at[id], B)) mark[id] = m.j; }
+  const free = defs.filter(id => !mark[id]).sort((a, b) => d(at[a], B) - d(at[b], B));
   let th = null;
+  if (kind !== 'defense' && !sc.restart && kind !== 'tackle') {
+    const rush = ids.find(id => at[id].gk && at[id].rush && at[id].team === defTeam);
+    th = rush || free.find(id => !never.includes(id)) || defs.filter(id => !never.includes(id)).sort((a, b) => d(at[a], B) - d(at[b], B))[0] || null;
+  }
+  return { kind, holder, ballTeam, defTeam, B, defs, atk, mark, free, th, out, ids };
+}
+
+// What he sees at time t of a window (pos(id): where each player is) against how the scene grades each choice:
+//   dis     choices whose look does not fit their grade with the threat taken at his place in the picture (moved on with
+//           the play): every relation that does not hang on him. Empty when the shape holds.
+//   threat  what the threat himself spoils: a right choice he makes look wrong while he is still farther out than his
+//           place in the picture; or a wrong choice that looks right while he is not coming on the picture's bearing.
+//           (Nearer than his place he is on the ball: then the choice is judged by his coming, not by where he is.)
+export function agreeAt(sc, plan, pos, t, opts = {}) {
+  const kind = kindOf(sc), th = plan.threat?.id, at0 = opts.at0 || (id => plan.at0[id] || pos(id)), o2 = { ...opts, at0 };
+  if (!th || !plan.virt || kind === 'defense' || kind === 'follow') return { dis: disagree(sc, pos, t, o2), threat: [] };
+  const tP = plan.tP || 0, D = plan.D || [0, 0], vp = {}; for (const c of plan.comers || [{ id: th, ...plan.virt }]) vp[c.id] = { x: c.x + D[0] * (t - tP), y: c.y + D[1] * (t - tP) };
+  const dis = disagree(sc, id => vp[id] || pos(id), t, o2), real = disagree(sc, pos, t, o2), out = [];
+  const q = pos(th), B = ballOf(sc, kind, plan.holder, pos(plan.holder)), r = Math.hypot(q.x - B.x, q.y - B.y);
+  const a = Math.atan2(q.y - B.y, q.x - B.x) - plan.bear, sh = Math.abs(Math.atan2(Math.sin(a), Math.cos(a))), g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
+  for (const o of real) {
+    if (dis.includes(o)) continue;
+    if (ratedAs(sc, o, kind, g0) !== 'bad') { if (r > plan.rP + .3) out.push(o); }
+    else if (sh > BEAR + .1 && r > 1.5) out.push(o);
+  }
+  return { dis, threat: out };
+}
+
+// st: { at: { id: { x, y, vx, vy, team, gk, rush } }, ball } : the picture P (a lesson's scene), or with opts.live where
+// everyone is and how he moves now (a match, a give-and-go's second step: the picture is now).
+// opts: { live, R (the real seconds wanted), options (attack: the choices on offer), skip (ids the scene's own script
+// moves), keep ({ id: [vx, vy] }: runs the scene gives, a lead pass's runners), never (ids that cannot be the threat),
+// G (a window whose length the play gives: a pass on its way), yaw (the way he looks) }.
+// Returns { G, R (the real seconds it can have at PACE or more), tP (the window time at which play is exactly P), D (the
+// drift), paths, threat: { id }, virt, bear, rP (the threat's place, bearing and distance in P), watch, at0, role, cls,
+// dis (what still disagrees: empty), look, wide }.
+const cache = new WeakMap();
+export function planHold(sc, st, opts = {}) {
+  const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
+  const key = opts.live ? null : JSON.stringify([opts.R, opts.skip, opts.never, opts.G, opts.keep, opts.options, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
+  if (key) { const hit = cache.get(sc)?.[key]; if (hit) return clonePlan(hit); }
+  const p = planHold0(sc, st, opts, kind);
+  if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return clonePlan(p); }
+  return p;
+}
+const clonePlan = p => ({ ...p, paths: Object.fromEntries(Object.entries(p.paths).map(([id, q]) => [id, { ...q }])), watch: new Set(p.watch), threat: p.threat && { ...p.threat } });
+const SPEEDS = { attack: [1.3, 1, .8, .5, .25], lead: [1.2, 1, .8, .5, .25], defense: [1.8, 1.4, 1, .8, .5, .25], support: [.9, .7, .5, .25], goal: [1.6, 1.3, 1, .8, .5, .25], receive: [0], dead: [0] };
+function planHold0(sc, st, opts, kind) {
+  const live = !!opts.live, at = st.at, R = opts.R || 8, never = opts.never || [], keep = opts.keep || {};
+  const ro = rolesOf(sc, at, { skip: opts.skip, never: [...never, ...Object.keys(keep)] }), { holder, ballTeam, defTeam, out, ids, mark } = ro;
+  if (!at[holder]) return null;
+  const dead = !!sc.restart || (at[holder].gk && !at[holder].rush), P = id => [at[id].x, at[id].y], dd = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const H = P(holder), goal = [ballTeam === 'us' ? PITCH.L : 0, PITCH.W / 2], B = [ro.B.x, ro.B.y], th = dead ? null : ro.th;
+  // The way the play goes: the way the ball is being carried (a lesson: his run-up's way; live: as he moves), toward
+  // the goal they attack when that says nothing.
+  let line = U([goal[0] - H[0], goal[1] - H[1]]);
+  if (kind === 'defense') line = U([4.5 - H[0], PITCH.W / 2 + (H[1] - PITCH.W / 2) * .6 - H[1]]);
+  else if (live) { const v = [at[holder].vx || 0, at[holder].vy || 0]; if (len(v) > .4) line = U(v); }
+  else if (holder === 'hero' && sc.hero && sc.heroTo && dd(sc.hero, sc.heroTo) > .3) line = U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]);
+  const passer = kind === 'receive' ? at[sc.carrier || 'm1'] || st.ball : null;
+  // ---- who comes ----
+  // The threat; and, where the picture has a second free defender on the ball too (a trap, two pressing him), that one
+  // comes in with him, a step behind, to his own place in the picture: two close him down, the nearer one tackles.
+  const toP = kind === 'receive'; // (a pass on its way to him: the threat is at his place in the picture as it gets there, still coming)
+  const rP = th ? dd(P(th), B) : 0, bear0 = th ? U([at[th].x - B[0], at[th].y - B[1]]) : [1, 0], bearA = Math.atan2(bear0[1], bear0[0]);
+  const frees = ro.free.filter(id => id !== th && !at[id].gk && !never.includes(id) && !keep[id]);
+  const second = th && !live && !toP && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
+  // (he is the nearest free defender from the first moment: never farther out than another free one)
+  const cap = th ? Math.min(9e9, ...frees.filter(id => id !== second).map(id => dd(P(id), B) - .4 - (second ? d2 - rP + .4 : 0))) : 0;
+  const rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, RUNIN)) : Math.max(rP, RUNIN);
+  const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
+  const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
+  const Gfor = L => { let G = Math.max(L / V_RUN.pref, PACE * R * RETRY); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
+  let G = opts.G || (th ? Gfor(lenOf(rMax)) : clamp(PACE * R * RETRY, 1.6, 2.6)), fixedG = !!opts.G;
+  // ---- everyone else: the drift, and his own small part ----
+  const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
+    const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
+    return c.sort((a, b) => b.r - a.r)[0].d;
+  };
+  const own = {}, comer = id => id === th || id === second;
+  for (const id of out) {
+    if (id === holder || keep[id] || comer(id)) continue;
+    const p = P(id), tb = U([B[0] - p[0], B[1] - p[1]]), far = dd(p, B) > 12 ? .6 : 1;
+    if (at[id].team === ballTeam) { const sd = sideways(id, tb); own[id] = mul(U(add(mul(sd, .9), tb, .3)), far); } // a friend steps across his line to the ball, never away from it
+    else if (!mark[id]) { // a cover defender shuffles toward the ball's side (the line from the ball to his goal), never away from it
+      const g = [defTeam === 'us' ? 0 : PITCH.L, PITCH.W / 2], c = closestOnLane({ x: p[0], y: p[1] }, { x: B[0], y: B[1] }, { x: g[0], y: g[1] }, .15), to = [c.x - p[0], c.y - p[1]];
+      own[id] = mul(U(add(len(to) > .6 ? mul(U(to), .75) : [0, 0], tb, .35)), .8 * far);
+    }
+  }
+  for (const id of out) if (mark[id] && !comer(id) && own[mark[id]] && !keep[id]) own[id] = [...own[mark[id]]]; // a marker mirrors his man
+  if (toP && passer) own.hero = mul(U([passer.x - at.hero.x, passer.y - at.hero.y]), 2); // he steps to meet the pass
+  const keeperV = id => { if (sc.shots || at[id].rush || sc.gk?.hold || sc.gk?.out || sc.shot) return [0, 0]; const dy = B[1] - at[id].y; return [0, Math.abs(dy) > .3 ? Math.sign(dy) * .22 : 0]; };
+  function build(sp, k, tP, G) {
+    const D = mul(line, sp), paths = {}, wmag = Math.min(.6, STEP_OWN / G) * k;
+    for (const id of ids) {
+      if (comer(id)) continue;
+      const a = at[id]; let v;
+      if (a.gk) v = dead && id === holder ? [0, 0] : keeperV(id);
+      else if (keep[id]) v = [...keep[id]];
+      else if (id === holder) v = dead ? [0, 0] : D;
+      else { v = add(D, own[id] || [0, 0], wmag); const s = len(v); if (s < MOVE && (k > 0 || sp > 0)) v = s > .05 ? mul(v, MOVE / s) : mul(own[id] || line, MOVE); // (never still: at least a slow walk)
+        if (id === 'hero' && !dead && k > 0 && len(v) < .85) v = mul(U(v), .85); } // (his own player: a walk at the least)
+      const v0 = live ? [a.vx || 0, a.vy || 0] : [...v]; let v1 = v;
+      if (live) { const s0 = len(v0), s1 = len(v1); if (s0 > .4 && s1 > .1 && (v0[0] * v1[0] + v0[1] * v1[1]) / (s0 * s1) < -.3) v1 = add(mul(v0, .35), v1, .3); } // (one going the other way slows and bends his way: he does not turn straight back)
+      paths[id] = { x: a.x - (live ? 0 : v[0] * tP), y: a.y - (live ? 0 : v[1] * tP), v0, v1, t1: 0, tau: live ? easeTime(v0, v1) : 0 };
+    }
+    // Nobody walks through anybody: two whose ways come closer than ROOM move together (the one with less to do goes the other's way).
+    const list = Object.entries(paths).filter(([id]) => !at[id].gk), q1 = {}, q2 = {}, fixed = new Set([holder, 'hero', ...Object.keys(keep)]);
+    if (!live) for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      let dmin = 9; for (let t = -1; t <= G + 1e-6; t += .25) { const a = pathAt(list[i][1], t, q1), b = pathAt(list[j][1], t, q2); dmin = Math.min(dmin, Math.hypot(b.x - a.x, b.y - a.y)); }
+      if (dmin >= ROOM) continue;
+      const [from, to, tid] = fixed.has(list[j][0]) ? [list[j][1], list[i][1], list[i][0]] : [list[i][1], list[j][1], list[j][0]]; if (fixed.has(tid)) continue;
+      const a = at[tid]; to.v0 = [...from.v0]; to.v1 = [...from.v1]; to.x = a.x - to.v1[0] * tP; to.y = a.y - to.v1[1] * tP;
+    }
+    return { paths, tP, D, sp, k, G };
+  }
+  // (a comer's place in the picture, moved on with the play)
+  const virtAt = (b, t, id = th) => ({ x: at[id].x + b.D[0] * (t - b.tP), y: at[id].y + b.D[1] * (t - b.tP) });
+  const posOf = (b, t, real = null, tmp = {}) => id => (comer(id) ? real?.[id] ? pathAt(real[id], t, tmp[id] ||= {}) : virtAt(b, t, id) : b.paths[id] ? pathAt(b.paths[id], t, tmp[id] ||= {}) : at[id]);
+  const o2 = { options: opts.options, ids: ids.filter(id => !at[id].gk), at0: id => at[id], ball: st.ball };
+  // Which moments of the window agree (ok[i]: at i·STEP_T), and whether everyone stays on the pitch.
+  function score(b) {
+    const tmp = {}, ok = [], vd = []; let bad = 0, first = null;
+    for (let i = 0; i * STEP_T <= b.G + 1e-6; i++) { const d = disagree(sc, posOf(b, i * STEP_T, null, tmp), i * STEP_T, o2); ok.push(!d.length); vd.push(d); if (d.length) { bad++; first ||= d; } }
+    let offp = 0; for (const [id, p] of Object.entries(b.paths)) for (const t of [-.8, 0, b.G]) { const q = pathAt(p, t, tmp[id] ||= {}); if (!at[id].gk && !onPitch(q.x, q.y, .4) && onPitch(at[id].x, at[id].y, .4)) offp++; }
+    let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
+    return Object.assign(b, { bad, first, offp, ok, vd, runOk: [r0, r1] });
+  }
+  let best = null;
+  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live ? [0] : toP ? [1] : [.5, 1, 0];
+  search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
+    const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
+    if (opts.debug) console.log('try', sp, k, frac, 'bad', b.bad, 'offp', b.offp, 'ok', b.ok.map(x => +x).join(''), JSON.stringify(b.first));
+    if (!best || cost < best.cost) { best = b; best.cost = cost; }
+    if (!b.bad && !b.offp) break search;
+  }
+  // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
+  // the picture itself may then lie just outside it, and play is as near it as it ever is)
+  if (best.bad && !live && !fixedG) {
+    const [i0, i1] = best.runOk, Gs = (i1 - i0) * STEP_T;
+    if (Gs >= .6 - 1e-6) { const b = score(build(best.sp, best.k, best.tP - i0 * STEP_T, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } }
+  }
+  // ---- the runs in ----
+  let r0 = 0, shift = 0, tviol = 0, tclash = 0; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
+  if (th) {
+    const tmp = {};
+    const tryRun = (b, G, r, sh) => {
+      const hp0 = pathAt(b.paths[holder], 0), hp1 = pathAt(b.paths[holder], G), B0 = ballOf(sc, kind, holder, hp0), B1 = ballOf(sc, kind, holder, hp1), u = [Math.cos(bearA + sh), Math.sin(bearA + sh)];
+      const S = live ? [at[th].x, at[th].y] : [B0.x + u[0] * r, B0.y + u[1] * r];
+      if (!live && !onPitch(S[0], S[1], .8)) return null;
+      let E;
+      if (toP) { const v = virtAt(b, G); E = [v.x, v.y]; }
+      else { // the nearest point to where he starts, CONTACT m from the ball, that is not on top of the player on it
+        const mv = len(b.D) > .1, bc = mv ? [hp1.x + line[0] * .5, hp1.y + line[1] * .5] : [B1.x, B1.y], fa = mv ? Math.atan2(line[1], line[0]) : null, wa = Math.atan2(S[1] - bc[1], S[0] - bc[0]);
+        let a = wa; if (fa != null) { const da = Math.atan2(Math.sin(wa - fa), Math.cos(wa - fa)); a = fa + clamp(da, -1.4, 1.4); }
+        const rr = fa != null ? CONTACT : Math.max(CONTACT, .9); E = [bc[0] + Math.cos(a) * rr, bc[1] + Math.sin(a) * rr];
+      }
+      const L = dd(S, E); if (L < .2) return null;
+      const va = live ? clamp((at[th].vx || 0) * (E[0] - S[0]) / L + (at[th].vy || 0) * (E[1] - S[1]) / L, .6, Math.min(3, L / G)) : null; let path = mkRun(S, E, G, va);
+      if (path.v1 > 4.45) return null;
+      if (live) { // from how he moves now, smoothly, when that is a way a child could run (no harder than 3.5 m/s², never back on himself)
+        const uu = U([E[0] - S[0], E[1] - S[1]]), hp = { herm: true, S, V0: [at[th].vx || 0, at[th].vy || 0], E, V1: mul(uu, clamp(L / G, 1.2, 4.2)), T: G, L }; let ok = true, prev = null, v0 = null;
+        for (let k = 0; k <= 20 && ok; k++) { const q = hermAt(hp, G * k / 20), sp = Math.hypot(q.vx, q.vy); if (sp > 4.5 || (prev && Math.hypot(q.vx - prev.vx, q.vy - prev.vy) / (G / 20) > 3.5)) ok = false; if (sp > .4) { if (!v0) v0 = [q.vx / sp, q.vy / sp]; else if (q.vx / sp * v0[0] + q.vy / sp * v0[1] < -.17) ok = false; } prev = { ...q }; }
+        if (ok) path = hp;
+      }
+      const real = { [th]: path };
+      // (how often a run comes too near anyone on his way: bodies, not the player it ends at)
+      const near = (pp, skipId, endAt) => { let n = 0; for (let i = 0; i * STEP_T <= G + 1e-6; i++) { const t = i * STEP_T, q = pathAt(pp, t, tmp.n1 ||= {}); for (const id of out) { if (id === skipId) continue; const op = real[id] && real[id] !== pp ? real[id] : b.paths[id]; if (!op || op === pp) continue; const o = pathAt(op, t, tmp.n2 ||= {}), d = Math.hypot(o.x - q.x, o.y - q.y); if (d < (id === holder ? endAt : 1) && !(id === holder && endAt < .6 && t > G - .3)) n++; } } return n; };
+      if (second) { // the second one: from as much farther out as he is in the picture (and a step more), to his place in it
+        let p2 = null, c2 = 1e9;
+        for (const s2 of [0, .12, -.12, .25, -.25, .4, -.4, .55, -.55]) { const u2 = [Math.cos(bear2 + s2), Math.sin(bear2 + s2)], S2 = [B0.x + u2[0] * (r + d2 - rP + .4), B0.y + u2[1] * (r + d2 - rP + .4)], v = virtAt(b, G, second);
+          if (!onPitch(S2[0], S2[1], .8) || dd(S2, [v.x, v.y]) < .3) continue; const c = mkRun(S2, [v.x, v.y], G); if (c.v1 > 4.45) continue; const n = near(c, second, .9); if (n < c2) { c2 = n; p2 = c; } if (!n) break; }
+        if (!p2) return null; real[second] = p2;
+      }
+      let viol = 0, clash = near(path, th, .55) + (second ? near(real[second], second, .9) : 0);
+      for (let i = 0; i * STEP_T <= G + 1e-6; i++) {
+        const t = i * STEP_T, q = pathAt(path, t, tmp.th ||= {});
+        const Bt = ballOf(sc, kind, holder, pathAt(b.paths[holder], t, tmp.h ||= {})), r1 = Math.hypot(q.x - Bt.x, q.y - Bt.y);
+        if (r1 > rP + .3) { const rd = disagree(sc, posOf(b, t, real, {}), t, o2), virt = b.vd?.[i] || []; for (const o of rd) if (!virt.includes(o) && ratedAs(sc, o, kind, g0) !== 'bad') viol++; }
+      }
+      return { real, path, L, viol, clash };
+    };
+    const pick = (b, G, fixed) => {
+      let got = null, fall = null;
+      const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || !rs.length) { rs.length = 0; rs.push(live ? rP : rLow); }
+      outer: for (const r of rs) for (const sh of live ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
+        const t = tryRun(b, G, r, sh); if (!t) continue;
+        if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
+        if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
+      }
+      return got || fall;
+    };
+    let got = pick(best, G, fixedG);
+    // (a shorter run than hoped for: the window is as long as that run takes, and the shape is built again for it)
+    for (let n = 0; n < 3 && got && !fixedG; n++) {
+      const G2 = Gfor(got.L); if (Math.abs(G2 - G) <= .05) break;
+      const b = score(build(best.sp, best.k, best.tP * G2 / G, G2)); if (b.bad > best.bad) break;
+      best = b; G = G2; const g2 = pick(best, G, true); if (!g2) break; got = g2;
+    }
+    if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
+    else for (const id of [th, second].filter(Boolean)) { const a = at[id]; best.paths[id] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; }
+  }
+  // ---- the view: the threat is seen coming ----
   // (seen: in his head-up view, looking the way the scene has him look; view.js camSpec: from 5.2 m behind him, about
-  // 44° to each side at 844x390, a little less to be sure)
-  const view = opts.yaw ?? Math.atan2(line[1], line[0]);
-  const seen = (q, h = P('hero'), yaw = view) => { const e = [h[0] - 5.2 * Math.cos(yaw), h[1] - 5.2 * Math.sin(yaw)], a = Math.atan2(q[1] - e[1], q[0] - e[0]) - yaw; return Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < .66; };
-  if (kind === 'defense') th = holder;
-  else {
-    const cand = ids.filter(id => at[id].team === defTeam && (!at[id].gk || at[id].rush) && !fixedPaths[id]).map(id => {
-      const p = P(id), d = d2(p, H);
-      return { id, d, cost: at[id].rush ? -1 : d }; // (a keeper rushing out at him is the one who comes) (round 3: the nearest of them to the ball in the picture is the one who comes for it; one from behind is shown coming by a wider view, view.js)
-    }).sort((a, b) => a.cost - b.cost);
-    th = cand[0]?.id || null;
+  // 44° to each side at 844x390, a little less to be sure). If he starts outside it the view turns toward him, as little
+  // as does it; one coming from behind is shown by a higher, wider view (wide), except on a pass to him with his back to
+  // their goal (the idea is the defender he cannot see).
+  let look = null, wide = false; const run = th && best.paths[th];
+  if (run?.run && best.paths.hero && !live) {
+    const view = opts.yaw ?? Math.atan2(line[1], line[0]), h = pathAt(best.paths.hero, 0), q = pathAt(run, 0);
+    const seen = yaw => { const e = [h.x - 5.2 * Math.cos(yaw), h.y - 5.2 * Math.sin(yaw)], a = Math.atan2(q.y - e[1], q.x - e[0]) - yaw; return Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < .62; };
+    const rel = Math.atan2(q.y - h.y, q.x - h.x) - view, ab = Math.abs(Math.atan2(Math.sin(rel), Math.cos(rel))), sg0 = Math.sign(Math.sin(rel)) || 1;
+    if (kind !== 'receive' && kind !== 'defense') { wide = ab > 1.9; if (!seen(view) && !wide) for (let k = 1; k <= 14 && look == null; k++) for (const sg of [sg0, -sg0]) if (seen(view + sg * k * .1)) { look = view + sg * k * .1; break; } }
   }
-  // Gpost: a threat the scene has far from the ball runs on past his place until he gets there.
-  const holderAt = t => arrAt(paths[holder], t), stanceFrom = (p, t) => { const h = holderAt(t); const u = U([h.x - p[0], h.y - p[1]]); return { u, A: [h.x - u[0] * STANCE, h.y - u[1] * STANCE], d: Math.hypot(h.x - p[0], h.y - p[1]) }; };
-  let Gpost = 0;
-  if (th && kind !== 'defense') {
-    const p = P(th), d0 = d2(p, H);
-    // (a pass to him: the window ends as it gets to him, wherever the threat is; running to the goal, it ends at the
-    // scene's picture: the pass decides it, not who gets to the friend on the ball)
-    if (d0 > PRESSING && kind !== 'receive' && kind !== 'goal') for (let k = 0; k < 3; k++) { const s0 = stanceFrom(p, Gpost); Gpost = runTime(Math.max(0, s0.d - STANCE), RUN.far); }
-    const s0 = stanceFrom(p, Gpost), u = Gpost ? s0.u : U([H[0] - p[0], H[1] - p[1]]);
-    if (dead) Gpost = 0;
-    paths[th] = dead ? arr(p, u, RUN.standOff) : Gpost ? { ...arr(s0.A, u, RUN.far), T: Gpost } : arr(p, u, kind === 'goal' ? ((p[0] - H[0]) * line[0] + (p[1] - H[1]) * line[1] < 0 ? RUN.chase : RUN.stepUp) : RUN.threat); // (running to the goal: one chasing the friend with the ball from behind runs him down) // (running to the goal: their defender steps up to the friend on the ball, all but stopped as it opens)
-    // (from his place in the scene on to the ball: the path passes his place at 0 when it is on his line)
-    if (Gpost) { const r = Math.hypot(s0.A[0] - p[0], s0.A[1] - p[1]); paths[th].T = runTime(r, RUN.far); Gpost = paths[th].T; }
-    role[th] = 'threat'; watch.add(th);
-  } else if (th) role[th] = 'threat';
-  // (round 3) A defender the ball has gone past (behind it on its way, close): he chases it, a little quicker than it
-  // goes, so he closes on it from behind; never walking off away from it.
-  if (!dead && kind !== 'defense') for (const id of out) {
-    if (id === th || paths[id] || fixedPaths[id] || at[id].team !== defTeam) continue;
-    const p = P(id), rel = (p[0] - H[0]) * line[0] + (p[1] - H[1]) * line[1];
-    if (rel < -.5 && d2(p, H) < 5) { const hp = paths[holder]; paths[id] = arr(p, line, [Math.min(4, (hp?.vRun || 1.8) + .7), Math.min(3, (hp?.vEnd || 1.1) + .5), .9]); role[id] = 'chaser'; }
-  }
-  // Markers: of the defending team, the nearest to one of the attackers (within 2.6 m, and nearer him than any of his own team).
-  for (const id of out) {
-    if (paths[id] || fixedPaths[id] || at[id].team !== defTeam) continue;
-    const foes = out.filter(j => at[j].team === ballTeam && j !== holder).map(j => ({ j, d: d2(P(j), P(id)) })).sort((a, b) => a.d - b.d), f = foes[0];
-    if (!f || f.d > 2.6 || out.some(k => k !== id && at[k].team === defTeam && d2(P(k), P(f.j)) < f.d)) continue;
-    role[id] = 'marker:' + f.j;
-  }
-  // Friends (and, defending, their players off the ball): into the space they will stand in, away from the nearest of the other team.
-  for (const id of out) {
-    if (paths[id] || fixedPaths[id] || role[id]) continue;
-    const p = P(id), near = d2(p, H) < 12;
-    if (at[id].team === ballTeam) {
-      const foe = out.filter(j => at[j].team !== at[id].team).map(j => P(j)).sort((a, b) => d2(a, p) - d2(b, p))[0];
-      const u = kind === 'defense' ? U([goal.x - p[0], goal.y - p[1]]) : foe ? U([p[0] - foe[0], p[1] - foe[1]]) : line;
-      paths[id] = arr(p, u, kind === 'defense' ? RUN.jog : near ? RUN.open : RUN.openFar); role[id] = 'friend';
-    } else { // a cover defender steps across toward the ball's side, from behind the presser's line; far off, he walks in toward the play (never away from the ball)
-      const tb = U([H[0] - p[0], H[1] - p[1]]), u = near ? U([tb[0] * .6, (Math.sign(H[1] - p[1]) || 1) * .8 + tb[1] * .2]) : tb;
-      paths[id] = arr(p, u, near ? RUN.cover : RUN.walk); role[id] = 'cover';
-    }
-  }
-  for (const id of out) { const m = role[id]?.startsWith('marker:') && role[id].slice(7); if (!m || paths[id]) continue; // a marker goes where his man goes, a little quicker: he closes on him
-    const mp = paths[m]; paths[id] = arr(P(id), mp ? mp.u : line, mp ? [mp.vRun + .5, mp.vEnd, mp.dB] : RUN.cover); watch.add(id); }
-  for (const id of ids) if (at[id].gk && !paths[id] && !fixedPaths[id]) { // keepers: small steps across with the ball's side, set as it ends
-    const p = P(id); paths[id] = arr(p, [0, Math.sign(H[1] - p[1]) || 1], RUN.keeper); }
-  Object.assign(paths, fixedPaths);
-  // The lead-in: the longest of G_PRE whose start has the threat (and the player on the ball) on the pitch, with nobody
-  // walking through anybody.
-  const inside = (q, m = .6) => q.x > m && q.x < PITCH.L - m && q.y > m && q.y < PITCH.W - m;
-  const GP = opts.Gpre || SHORT_LEAD[sc.pattern] || (kind === 'defense' ? [2.5, 2, ...G_PRE] : G_PRE); // (defending: their dribbler comes on from a little further, so his run shows in the wider view)
-  // Anyone else who would start off the pitch runs less far (a slower run, from inside it). Two whose ways would cross
-  // closer than bodies allow: one of them (not the threat, nor the player on the ball) comes in on a slightly different
-  // line, turned about his place in the picture, the least that clears it (or else he only walks in). True if all clear.
-  function settle(Gpre) {
-    for (const id of out) { const p = paths[id]; if (!p?.arr || p === paths[th] || id === holder || fixedPaths[id]) continue; let k = 0; while (!inside(arrAt(p, -Gpre), .4) && k++ < 6) { p.vRun *= .7; p.vEnd = Math.min(p.vEnd, p.vRun); } }
-    for (let n = 0; n < 6; n++) {
-      const c = clash(paths, out, -Gpre, Gpost); if (!c) return true;
-      const id = c.find(i => i !== th && i !== holder && !fixedPaths[i] && paths[i]?.arr);
-      if (!id) { // (the other is a marker going with his man, or the player on the ball: the threat's line bends round him)
-        if (!c.includes(th) || !paths[th]?.arr) return false;
-        const q = paths[th], w0 = [...q.u], in0 = inside(arrAt(q, -Gpre)); let ok2 = false;
-        for (let k = 1; k <= 10 && !ok2; k++) for (const sgn of [1, -1]) { const a = sgn * k * .08; q.u = [w0[0] * Math.cos(a) - w0[1] * Math.sin(a), w0[0] * Math.sin(a) + w0[1] * Math.cos(a)]; const c2 = clash(paths, out, -Gpre, Gpost); if ((inside(arrAt(q, -Gpre)) || !in0) && (!c2 || !c2.includes(th))) { ok2 = true; break; } }
-        if (!ok2) { q.u = w0; return false; }
-        continue;
-      }
-      const p = paths[id], u0 = [...p.u]; let ok = false;
-      for (let k = 1; k <= 12 && !ok; k++) for (const sgn of [1, -1]) {
-        const a = sgn * k * .15; p.u = [u0[0] * Math.cos(a) - u0[1] * Math.sin(a), u0[0] * Math.sin(a) + u0[1] * Math.cos(a)];
-        const c2 = clash(paths, out, -Gpre, Gpost); if (inside(arrAt(p, -Gpre), .4) && (!c2 || !c2.includes(id))) { ok = true; break; }
-      }
-      if (!ok && c.includes(th) && paths[th]?.arr) { // (or the threat comes in on a slightly different line, round him)
-        const q = paths[th], w0 = [...q.u], in0 = inside(arrAt(q, -Gpre));
-        for (let k = 1; k <= 10 && !ok; k++) for (const sgn of [1, -1]) {
-          const a = sgn * k * .08; q.u = [w0[0] * Math.cos(a) - w0[1] * Math.sin(a), w0[0] * Math.sin(a) + w0[1] * Math.cos(a)];
-          const c2 = clash(paths, out, -Gpre, Gpost); if ((inside(arrAt(q, -Gpre)) || !in0) && (!c2 || !c2.includes(th))) { ok = true; break; }
-        }
-        if (!ok) q.u = w0;
-        p.u = u0;
-      }
-      if (!ok) { // (or he comes in quicker or slower, on his own line: the two pass at another moment)
-        const v0 = [p.vRun, p.vEnd]; p.u = u0;
-        for (const k of [1.4, .6, 1.8, .4]) { p.vRun = Math.min(3.2, v0[0] * k); p.vEnd = Math.min(p.vRun, v0[1] * k); const c2 = clash(paths, out, -Gpre, Gpost); if (inside(arrAt(p, -Gpre), .4) && (!c2 || !c2.includes(id))) { ok = true; break; } }
-        if (!ok) { p.vRun = v0[0]; p.vEnd = v0[1]; }
-      }
-      if (!ok) { p.u = u0; p.vRun = Math.min(p.vRun, 1); p.vEnd = Math.min(p.vEnd, p.vRun); }
-    }
-    return !clash(paths, out, -Gpre, Gpost);
-  }
-  const snap = () => Object.fromEntries(Object.entries(paths).filter(([, p]) => p.arr).map(([id, p]) => [id, { u: [...p.u], vRun: p.vRun, vEnd: p.vEnd }]));
-  const back = sn => { for (const [id, v] of Object.entries(sn)) Object.assign(paths[id], { u: [...v.u], vRun: v.vRun, vEnd: v.vEnd }); };
-  let Gpre = GP[GP.length - 1], cls = 'short';
-  const sn0 = snap(); let found = false;
-  for (const g of GP) {
-    const ok = [th, dead ? null : holder].filter(Boolean).every(id => inside(arrAt(paths[id], -g))); // (a restart's taker stands on the line)
-    if (ok && settle(g)) { Gpre = g; cls = SHORT_LEAD[sc.pattern] && !opts.Gpre ? 'last-resort' : g === GP[0] ? 'full' : 'short'; found = true; break; }
-    back(sn0);
-  }
-  if (!found) settle(Gpre);
-  // The threat is seen coming (point 5): if he would start out of the head-up view, his run comes in a little more from
-  // in front (turned about the place he gets to, up to 50°), unless the idea is a defender he cannot see (a pass to
-  // him with his back to their goal).
-  // If even that cannot bring him into view, the view itself turns toward him (look: the yaw the run-up turns to), as
-  // little as does it. Off the pitch at the start, his run turns in the same way, and if it must, he comes a little slower.
-  const tp = th && paths[th]; let look = null;
-  if (tp?.arr) {
-    const hq = () => { const r = paths.hero?.arr ? arrAt(paths.hero, -Gpre) : at.hero; return [r.x, r.y]; };
-    const q0 = () => { const r = arrAt(tp, -Gpre); return [r.x, r.y]; }, u0 = [...tp.u], look4 = kind !== 'receive' && kind !== 'defense';
-    const good = (need) => { const q = q0(); return (!need || seen(q, hq())) && inside({ x: q[0], y: q[1] }) && !clash(paths, out, -Gpre, Gpost); };
-    if (!good(look4)) {
-      let best = null;
-      for (const need of look4 ? [true, false] : [false]) for (let k = 1; k <= 9 && !best; k++) for (const sgn of [1, -1]) {
-        const a = sgn * k * .1; tp.u = [u0[0] * Math.cos(a) - u0[1] * Math.sin(a), u0[0] * Math.sin(a) + u0[1] * Math.cos(a)];
-        if (good(need)) { best = tp.u; break; }
-      }
-      tp.u = best || u0;
-      // (still off the pitch: he was further back, and comes on a little slower; a run on past the picture takes longer)
-      for (let k = 0; k < 6 && !inside(arrAt(tp, -Gpre)); k++) {
-        tp.vRun = Math.max(2.4, tp.vRun * .85);
-        if (Gpost) { const r = Math.hypot(tp.P[0] - at[th].x, tp.P[1] - at[th].y); tp.T = runTime(r, [tp.vRun, tp.vEnd, tp.dB]); Gpost = tp.T; }
-      }
-      if (look4 && !seen(q0(), hq())) for (let k = 1; k <= 14 && look == null; k++) for (const sgn of [1, -1]) if (seen(q0(), hq(), view + sgn * k * .1)) { look = view + sgn * k * .1; break; }
-    }
-  }
-  // (round 3) A marker has been tracking his man: as the window opens he is a step from him on the goal side, and goes
-  // with him to his place in the picture, straight, at an even pace.
-  const theirGoal = { x: ballTeam === 'us' ? PITCH.L : 0, y: PITCH.W / 2 };
-  for (const id of out) {
-    const man = role[id]?.startsWith('marker:') && role[id].slice(7); if (!man || !paths[man]?.arr || !paths[id]?.arr) continue;
-    const m0 = arrAt(paths[man], -Gpre), gu = U([theirGoal.x - m0.x, theirGoal.y - m0.y]), S = [m0.x + gu[0] * 1.2, m0.y + gu[1] * 1.2], E = P(id), r = d2(S, E);
-    if (r < .3) { paths[id] = arr(E, gu, [.6, .6, 0]); continue; }
-    if (opts.Gpre) continue; // (an intro that plans its own lead-in: he goes with his man as before)
-    // (the offset changes by no more than a child's pull allows over the lead-in: 6·Δ/T² ≤ 2.5 m/s²)
-    const M = P(man), o1 = [E[0] - M[0], E[1] - M[1]], dv = [S[0] - m0.x - o1[0], S[1] - m0.y - o1[1]], dl = Math.hypot(...dv), cap = 2.5 * Gpre * Gpre / 6, k = dl > cap ? cap / dl : 1;
-    let o0 = [o1[0] + dv[0] * k, o1[1] + dv[1] * k];
-    { const ex = o1[0] - o0[0], ey = o1[1] - o0[1], L2 = ex * ex + ey * ey || 1e-9, tt = clamp(-(o0[0] * ex + o0[1] * ey) / L2, 0, 1); if (Math.hypot(o0[0] + ex * tt, o0[1] + ey * tt) < .8) o0 = [...o1]; } // (never through his man: else he keeps his place by him)
-    paths[id] = { rel: true, man: paths[man], o0, o1, T: Gpre };
-  }
-  settle(Gpre); // (again, after the threat's run may have turned)
-  // (round 3) Somebody comes for the ball: as the window opens, the presser is the nearest to it of their players the
-  // picture leaves free (not marking a man). One nearer comes in from a little farther on his own line (a quicker run,
-  // in toward the play); failing that, the presser starts a little nearer (a shorter run).
-  if (th && paths[th]?.arr && !dead && kind !== 'defense') {
-    const Hs = () => { const q = arrAt(paths[holder], -Gpre); return [q.x, q.y]; }, at0 = id => { const q = arrAt(paths[id], -Gpre); return [q.x, q.y]; }, dd = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
-    const free = out.filter(id => id !== th && at[id].team === defTeam && paths[id]?.arr && !fixedPaths[id] && !role[id]?.startsWith('marker:'));
-    for (let n = 0; n < 16; n++) {
-      // (one nearer already coming in at the ball, a second presser as in a trap, is somebody coming: he may stay nearer)
-      const coming = id => { const p = paths[id], q = at0(id), e = arrAt(p, 0); return dd(q, Hs()) - dd([e.x, e.y], [at[holder].x, at[holder].y]) > 1; };
-      const h = Hs(), dp = dd(at0(th), h), near = free.filter(id => dd(at0(id), h) < dp + .3 && !coming(id)); if (!near.length) break;
-      for (const id of near) { const p = paths[id], tb = U([h[0] - at[id].x, h[1] - at[id].y]);
-        if (p.u[0] * tb[0] + p.u[1] * tb[1] < .2) p.u = U([p.u[0] * .3 + tb[0], p.u[1] * .3 + tb[1]]);
-        if (p.vRun < 3.2) { p.vRun = Math.min(3.2, Math.max(p.vRun, .6) * 1.3); } }
-      if (n >= 5) { const p = paths[th]; p.vRun = Math.max(1.8, p.vRun * .88); p.vEnd = Math.min(p.vEnd, p.vRun); }
-    }
-    settle(Gpre); // (their new lines may cross someone's)
-  }
-  for (const p of Object.values(paths)) if (p.arr) p.base = -Gpre;
-  const at0 = Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }]));
-  // (round 3) A threat coming from behind him, by the scene's idea: the view as it opens is a little higher and farther
-  // back, so he is seen coming (view.js camSpec).
-  let wide = false;
-  if (th && paths[th] && paths.hero && kind !== 'receive') { const hq = pathAt(paths.hero, 0), tq = pathAt(paths[th], 0); wide = Math.abs(Math.atan2(Math.sin(Math.atan2(tq.y - hq.y, tq.x - hq.x) - view), Math.cos(Math.atan2(tq.y - hq.y, tq.x - hq.x) - view))) > 1.9; }
-  return { arrival: true, G: Gpre + Gpost, a: -Gpre, Gpre, Gpost, cls, look, wide, paths, threat: th ? { id: th, ...(kind === 'defense' ? { to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : {}) } : null, watch, at0, dis: [], k: 0, role };
+  const watch = new Set(out.filter(id => at[id].team === defTeam && id !== holder));
+  if (th && at[th].gk) watch.add(th);
+  const role = {}; for (const id of out) role[id] = id === holder ? 'ball' : id === th ? 'threat' : id === second ? 'second' : mark[id] ? 'marker:' + mark[id] : at[id].team === defTeam ? 'cover' : id === 'hero' ? 'hero' : 'friend';
+  const Rmax = (G - .1) / PACE + .1, closes = th ? r0 - (toP ? rP : CONTACT) : 0;
+  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax), tP: best.tP, Gpre: clamp(best.tP, 0, G), Gpost: G - clamp(best.tP, 0, G), a: 0, D: best.D, paths: best.paths, holder,
+    threat: th ? { id: th } : kind === 'defense' ? { id: holder, to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : null, second,
+    comers: [th, second].filter(Boolean).map(id => ({ id, x: at[id].x, y: at[id].y })), virt: th ? { x: at[th].x, y: at[th].y } : null, bear: bearA, rP, r0, shift, watch, role, look, wide,
+    at0: Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }])), dis: best.bad ? best.first || ['?'] : [], disN: best.bad, k: best.k, sp: best.sp,
+    cls: !th ? (dead ? 'dead' : 'no-threat') : best.bad ? 'disagrees' : best.sp < .8 && !dead && !toP ? 'calm' : closes < 2.5 ? 'short' : 'full', tviol, tclash };
 }
 // From play already going (a rebound, a match): everyone goes from where he is, as he moves, to where the decision's
 // picture has him at its end (`end`), in G seconds; the threat gets there moving in, the rest settling.
@@ -785,14 +572,4 @@ export function planLive(st, end, G, threat = null) {
   if (threat) watch.add(threat);
   const at0 = Object.fromEntries(Object.entries(end).map(([id, p]) => [id, { x: p[0], y: p[1] }]));
   return { live: true, arrival: true, G, a: 0, Gpre: G, Gpost: 0, cls: 'live', paths, threat: threat ? { id: threat } : null, watch, at0, dis: [], k: 0 };
-}
-// Whether two players' ways come closer than .6 m in the window (scene-time from..to).
-export function clash(paths, ids, from, to) {
-  const q1 = {}, q2 = {}, at = (p, t, q) => { if (p.arr) return arrAt(p, t, q); if (!p.rel || !p.man.arr) return null; // (scene time; a marker's way from his man's)
-    const m = arrAt(p.man, t, q), k = Math.min(1, Math.max(0, (t + p.T) / p.T)), sm = k * k * (3 - 2 * k); q.x = m.x + p.o0[0] + (p.o1[0] - p.o0[0]) * sm; q.y = m.y + p.o0[1] + (p.o1[1] - p.o0[1]) * sm; return q; };
-  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
-    const a = paths[ids[i]], b = paths[ids[j]]; if (!a || !b || !(a.arr || a.rel) || !(b.arr || b.rel)) continue;
-    for (let t = from; t <= to + 1e-6; t += .05) { const p = at(a, t, q1), q = at(b, t, q2); if (p && q && Math.hypot(p.x - q.x, p.y - q.y) < .7) return [ids[i], ids[j]]; }
-  }
-  return null;
 }

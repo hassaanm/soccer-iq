@@ -14,7 +14,7 @@ export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! C
   // (round 2) A restart: nobody comes for the ball; the taker plays it, and he was not in his place yet.
   restart: { title: 'Ball played!', first: 'Find your place before the ball is played!', again: 'Find your place a bit quicker!' } };
 import { pickFoot } from './outcomes.js';
-import { arrAt, hermAt, pathAt } from '../window.js';
+import { arrAt, pathAt } from '../window.js';
 
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
@@ -39,45 +39,32 @@ export const rounds = {
   },
   // "Won it? Go!": their player dribbles straight at him, he steps in and pokes the ball off him, and their player
   // stumbles on past him (around him, on the camera's side) and ends up behind him.
-  // (round 2) The choice opens the moment he wins it (WON.poke s in), and the scene's own picture is its end (WON.lead s
-  // on): meanwhile the player he took it from stumbles on to his place behind him, the rest run on to theirs (planned
-  // from the start of the intro, so they are on their way all through it), and he carries it on into the picture.
+  // (v66) The choice opens the moment he wins it (WON.poke s in). The scene's picture holds from then on: everyone is
+  // already moving as the window has him move (planned before the intro, so nobody changes his way as it opens), he
+  // carries the ball on, and the player he took it from stumbles on to his place behind him (WON.lead s).
   async wonIntro() {
-    const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1');
-    const plan = this.wplan = this.plan(false, { skip: ['o1'], Gpre: [WON.poke + WON.lead] });
-    if (!plan?.arrival) return this.wonIntroOld();
+    const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), T = WON.poke;
+    const plan = this.wplan = this.plan(false, { never: ['o1'] });
+    if (!plan) return this.wonIntroOld();
     plan.sc = sc;
-    const hp = plan.paths.hero, at = (p, t) => arrAt(p, t), meetH = at(hp, -WON.lead); // where he is as he wins it
-    const o0 = { x: sc.oppsTo[0][0], y: sc.oppsTo[0][1] }, side = Math.sign(o0.y - meetH.y) || 1, meet = { x: meetH.x + 1, y: meetH.y + side * .45 }; // (a little to the side he stumbles past on)
+    const meetH = pathAt(plan.paths.hero, 0), op = plan.paths.o1, o0 = pathAt(op, WON.lead); // where he is as he wins it; where their player has stumbled to
+    const side = Math.sign(o0.y - meetH.y) || 1, meet = { x: meetH.x + 1, y: meetH.y + side * .45 }; // (a little to the side he stumbles past on)
     Object.assign(o1, { x: meetH.x + 3.6, y: meetH.y + side * .2, tx: meetH.x + 3.6, ty: meetH.y + side * .2, face: [-1, 0] });
     Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1'); // the ball at his feet first, so it is his straight away
-    const h0 = at(hp, -WON.lead - WON.poke); Object.assign(h, { x: h0.x, y: h0.y, tx: h0.x, ty: h0.y });
-    s.go('hero', meetH.x, meetH.y, Math.hypot(meetH.x - h.x, meetH.y - h.y) / WON.poke); s.go('o1', meet.x, meet.y, Math.hypot(meet.x - o1.x, meet.y - o1.y) / WON.poke);
-    const base = -(WON.poke + WON.lead);
     for (const [id, p] of Object.entries(plan.paths)) {
-      const a = s.a(id); if (!a || id === 'hero' || id === 'o1') continue;
-      const q = arrAt(p, base); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
+      const a = s.a(id); if (!a || id === 'o1') continue;
+      const q = pathAt(p, -T); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
       const v = Math.hypot(q.vx, q.vy); if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
-      a.track = { at: tt => arrAt(p, base + tt), t0: s.time, watch: plan.watch.has(id) };
+      a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: plan.watch.has(id) && id !== 'hero' };
     }
-    await this.delay(WON.poke);
+    s.go('o1', meet.x, meet.y, Math.hypot(meet.x - o1.x, meet.y - o1.y) / T);
+    await this.delay(T);
     s.give('hero'); this.sfx('tap'); this.say('You won the ball!');
-    // The window from here: he carries on into the picture; the player he took it from stumbles on to his place behind
-    // him, braking as a child does, getting his balance back (a smooth way from how he moves now).
-    const ov = { x: (meet.x - (meetH.x + 3.6)) / WON.poke, y: (meet.y - (meetH.y + side * .2)) / WON.poke }, back = Math.hypot(o0.x - o1.x, o0.y - o1.y) || 1;
-    // (round the camera's side of him: he goes past, not through him)
-    plan.paths.o1 = { herm: true, S: [o1.x, o1.y], V0: [ov.x, ov.y], E: [o0.x, o0.y], V1: [(o0.x - o1.x) / back * .3, (o0.y - o1.y) / back * .3], T: WON.lead + .4 }; // (stumbling, he gets his balance back a moment after the picture)
-    for (const p of Object.values(plan.paths)) if (p.arr) p.base = -WON.lead;
-    // (where he stumbles to, a little aside of anyone whose way comes by it: never through a player)
-    const op = plan.paths.o1;
-    for (let n = 0; n < 4; n++) {
-      let worst = null;
-      for (let t = 0; t <= plan.Gpost + WON.lead + 1e-6; t += .1) { const q = hermAt(op, t); for (const [id, p] of Object.entries(plan.paths)) { if (id === 'o1' || !p.arr) continue; const r = pathAt(p, t), d = Math.hypot(q.x - r.x, q.y - r.y); if (d < .65 && (!worst || d < worst.d)) worst = { d, dx: q.x - r.x, dy: q.y - r.y }; } }
-      if (!worst) break;
-      const l = Math.hypot(worst.dx, worst.dy) || 1; op.E = [op.E[0] + worst.dx / l * (.7 - worst.d), op.E[1] + worst.dy / l * (.7 - worst.d)];
-    }
-    plan.at0 = { ...plan.at0, o1: { x: op.E[0], y: op.E[1] } };
-    Object.assign(plan, { a: -WON.lead, Gpre: WON.lead, G: WON.lead + plan.Gpost, ready: true });
+    // The player he took it from stumbles on, braking as a child does, to his place behind him (a smooth way from how
+    // he moves now, round the camera's side of him: past him, not through him), and then goes on with the play.
+    const ov = { x: (meet.x - (meetH.x + 3.6)) / T, y: (meet.y - (meetH.y + side * .2)) / T };
+    plan.paths.o1 = { herm: true, S: [o1.x, o1.y], V0: [ov.x, ov.y], E: [o0.x, o0.y], V1: [o0.vx, o0.vy], T: WON.lead };
+    plan.ready = true;
   },
   async wonIntroOld() {
     const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), [hx, hy] = sc.heroTo, meet = { x: hx + 1, y: hy };
@@ -100,7 +87,7 @@ export const rounds = {
     // (round 2) Everyone comes on as the pass travels, and is where the scene has him as it gets to him: the window is
     // the pass's flight (it is played as the window opens), and he picks his turn before it arrives.
     const dur = Math.max(.25, Math.hypot(hx - .45 - (m.x + .4), hy - m.y) / PASS_IN);
-    await this.plannedRunUp({ skip: ['m1'], Gpre: [dur], during: async T => {
+    await this.plannedRunUp({ skip: ['m1'], G: dur, during: async T => {
       await this.delay(Math.max(0, T - .2));
       const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
       this.scripted.add('m1'); faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2); // (the passer: not one to step out of his own pass's way)
@@ -113,10 +100,10 @@ export const rounds = {
   // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the choice opens
   // mid-run and the run goes on while he chooses, the rings with the runner.
   async runIn() {
-    const sc = this.sc, mv = sc.moves, d = sc.dir, line = (p, v) => ({ arr: true, P: [...p.at], u: [...d], vRun: v, vEnd: v, dB: 0, T: 0, base: 0 });
-    // (round 2) His friend (and a defender chasing him) run on through the window and are where the scene has them as
-    // it ends; the rings go with the runner.
-    await this.plannedRunUp({ keep: { m1: line(mv.m1, mv.m1.speed), ...(mv.o2 ? { o2: line(mv.o2, mv.o2.speed) } : {}) } });
+    const sc = this.sc, mv = sc.moves, d = sc.dir;
+    // His friend (and a defender chasing him) run on through the window, where the scene has them at its own moment;
+    // the rings go with the runner.
+    await this.plannedRunUp({ keep: { m1: [d[0] * mv.m1.speed, d[1] * mv.m1.speed], ...(mv.o2 ? { o2: [d[0] * mv.o2.speed, d[1] * mv.o2.speed] } : {}) } });
   },
   // "Follow your shot!": the shooter (he, or a friend) dribbles up and shoots; it comes back out off the post or a
   // defender's leg, and a short call says which. The choice opens as the rebound slows down, loose in front of the
