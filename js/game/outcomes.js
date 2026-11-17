@@ -191,9 +191,10 @@ export const outcomes = {
     // (round 5) Running the other way as he wins it (he came in from behind, or was carried past): he takes it on a
     // curve, half a second round, not straight back on himself.
     if (ls > 2 && ls < 6 && (lv[0] * (to.x - opp.x) + lv[1] * (to.y - opp.y)) < 0) {
-      const ux = lv[0] / ls, uy = lv[1] / ls, sd = Math.sign(ux * (to.y - opp.y) - uy * (to.x - opp.x)) || 1, c = Math.cos(1.2 * sd), sn = Math.sin(1.2 * sd);
-      s.go(opp.id, clamp(opp.x + (ux * c - uy * sn) * 1.6, 1, L - 1), clamp(opp.y + (ux * sn + uy * c) * 1.6, 1, W - 1), Math.max(2.4, ls * .75)); yield .5;
-      s.go(opp.id, to.x, to.y, 4.8); yield .5; return;
+      // (round 6: in three bends, each under 70°, so no step of it is a snap)
+      const ux = lv[0] / ls, uy = lv[1] / ls, sd = Math.sign(ux * (to.y - opp.y) - uy * (to.x - opp.x)) || 1, A = Math.acos(clamp((ux * (to.x - opp.x) + uy * (to.y - opp.y)) / (Math.hypot(to.x - opp.x, to.y - opp.y) || 1), -1, 1));
+      for (const f of [.34, .67]) { const c = Math.cos(A * f * sd), sn = Math.sin(A * f * sd); s.go(opp.id, clamp(opp.x + (ux * c - uy * sn) * 1.4, 1, L - 1), clamp(opp.y + (ux * sn + uy * c) * 1.4, 1, W - 1), Math.max(2.4, ls * .7)); yield .3; }
+      s.go(opp.id, to.x, to.y, 4.8); yield .4; return;
     }
     s.go(opp.id, to.x, to.y, 4.8); yield .8;
   },

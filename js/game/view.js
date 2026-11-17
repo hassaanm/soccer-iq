@@ -72,14 +72,17 @@ export const view = {
     if (sc.restart && sc.carrier && sc.carrier !== 'hero' && s.a(sc.carrier)) { const a = o(sc.carrier); base.push([a.x, a.y, 0], [a.x, a.y, 1.5]); }
     const heroAt = [h, he]; if (P0) { const hn = s.a('hero'), q = { x: hn.x, y: hn.y }; heroAt.push(q); base.push([q.x, q.y, .9], [q.x, q.y, 0]); }
     const mid = [...base], extra = [];
-    if (sc.restart) { const fr = s.team('us').filter(a => a.id !== 'hero' && a.id !== sc.carrier).map(a => o(a.id)).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0]; if (fr) mid.push([fr.x, fr.y, 0], [fr.x, fr.y, 1.5]); }
+    // (round 6: and one of theirs who is marking: the nearest to his player, whole, well inside the picture)
+    if (sc.restart) { const fr = s.team('us').filter(a => a.id !== 'hero' && a.id !== sc.carrier && !a.gk).map(a => o(a.id)).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0]; if (fr) mid.push([fr.x, fr.y, 0], [fr.x, fr.y, 1.9], [fr.x + .8, fr.y, 0], [fr.x - .8, fr.y, 0], [fr.x, fr.y + .8, 0], [fr.x, fr.y - .8, 0]);
+      const mk = s.team('them').filter(a => !a.gk).map(a => o(a.id)).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0]; if (mk) mid.push([mk.x, mk.y, 0], [mk.x, mk.y, 1.9]); }
     if (far(he, h)) mid.push([he.x, he.y, .9], [he.x, he.y, 0]);
     for (const sp of sp1) ring(mid, sp);
     if (sc.run === 'follow' && sc.shot) mid.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (it opens as he shoots: where it hits, and where it comes out to)
     if (even) {
       const cid = sc.carrier, near = s.team('them').map(p => ({ id: p.id, q: o(p.id) })).filter(p => Math.hypot(p.q.x - ball.x, p.q.y - ball.y) < 10).sort((p, q) => Math.hypot(p.q.x - ball.x, p.q.y - ball.y) - Math.hypot(q.q.x - ball.x, q.q.y - ball.y)).slice(0, sc.run ? 1 : 2);
       if (cid && cid !== 'hero' && s.a(cid)) { const a = o(cid); mid.push([a.x, a.y, 0], [a.x, a.y, 1.5]); }
-      for (const p of near) { extra.push([p.q.x, p.q.y, 0], [p.q.x, p.q.y, 1.5]); const q = e(p.id); if (far(q, p.q) && p.id !== plan?.threat?.id) extra.push([q.x, q.y, 0]); }
+      // (round 6: a friend about to shoot: the one closing on him is in the picture as it opens)
+      for (const p of near) { (sc.shot && sc.run !== 'follow' && p.id === plan?.threat?.id ? base : extra).push([p.q.x, p.q.y, 0], [p.q.x, p.q.y, 1.5]); const q = e(p.id); if (far(q, p.q) && p.id !== plan?.threat?.id) extra.push([q.x, q.y, 0]); }
       if (stay) mid.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
         const ny = Math.abs(h.y - gy0) < Math.abs(h.y - gy1) ? gy0 : gy1;

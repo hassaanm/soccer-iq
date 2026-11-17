@@ -451,7 +451,7 @@ function planHold0(sc, st, opts, kind) {
   // (he is the nearest free defender from the first moment: never farther out than another free one)
   const cap = th ? Math.min(9e9, ...frees.filter(id => id !== second).map(id => dd(P(id), B) - .4 - (second ? d2 - rP + .4 : 0))) : 0;
   // (opts.rCap: no farther out than this, unless the picture itself has him farther: for a view that shows him as he sets off)
-  const runin = Math.min(RUNIN, opts.rCap || RUNIN), rWant = !th ? 0 : live ? rP : shotOn ? rP + 2 : toP ? Math.min(rP + 4, Math.max(rP + 1.5, runin)) : Math.max(rP, runin);
+  const runin = Math.min(RUNIN, opts.rCap || RUNIN), rWant = !th ? 0 : live ? rP : shotOn ? rP + 2.2 : toP ? Math.min(rP + 4, Math.max(rP + 1.5, runin)) : Math.max(rP, runin);
   const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
   const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
   const Gpace = PACE * (R * RETRY - .1) + .1 + .01; // (the play a window of R s, and of its first longer retry, needs at PACE)
@@ -459,7 +459,8 @@ function planHold0(sc, st, opts, kind) {
   // short run-in (V_RUN.tight), and for the window's floor (opts.Rfloor) a walk (V_RUN.slow): still a defender closing in.
   const Gfloor = PACE * (Math.min(R, opts.Rfloor || 0) - .1) + .1 + .01;
   const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, Math.min(Gfloor, L / V_RUN.slow), L / V_RUN.max, .6, live ? Gfloor : 0); }; // (round 6: from live play too, the window is never under its floor) // (a very short run-in: he steps in; never under .6 s of play)
-  let G = opts.G || (th ? Gfor(lenOf(rMax)) : dead ? clamp(Gpace, 2.4, 2.8) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G; // (a dead ball: a longer stretch of play, so the runs to find space are seen)
+  // (round 6: a friend about to shoot: about two seconds of play up to his strike, so the world runs at a quarter speed or more: a passage of play, not a still picture)
+  let G = opts.G || (shotOn ? clamp(R * .27, 1.8, 2.2) : th ? Gfor(lenOf(rMax)) : dead ? clamp(Gpace, 2.4, 2.8) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G || shotOn; // (a dead ball: a longer stretch of play, so the runs to find space are seen)
   // ---- everyone else: the drift, and his own small part ----
   const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
     const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
@@ -518,16 +519,19 @@ function planHold0(sc, st, opts, kind) {
     let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
   }
-  let best = null;
+  let best = null, tail = null;
   const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
   search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
+    if (shotOn && tail && sp < .5) break search; // (a stretch of real play up to his strike comes before a slower, stiller one)
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
     if (!b.bad && !b.offp) break search;
     // (a friend about to shoot: rather than a slower play, a shorter stretch of this one, the last of it up to his strike,
     // as long as it is no shorter than the window's floor needs)
-    if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6) { const c = score(build(sp, k, Gs, Gs)); if (!c.bad) { best = c; best.cost = cost; G = Gs; fixedG = true; break search; } } }
+    // (round 6: the longest such stretch over all the speeds is taken, not the first found: a slower carry that holds for longer is the better passage)
+    if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6 && (!tail || Gs > tail.Gs + .15)) { const c = score(build(sp, k, Gs, Gs)); if (!c.bad) tail = { c, Gs, cost }; } }
   }
+  if (tail && (best.bad || best.offp || best.sp < .5)) { best = tail.c; best.cost = tail.cost; G = tail.Gs; fixedG = true; }
   // (round 5) A dead ball whose runs had to be made smaller to keep the picture: each player whose own run can be
   // bigger (its full size, or half, the way he would go or another way) without spoiling anything gets it, one by one.
   if (dead && !best.bad && best.k < 1) { const ks = {};
