@@ -306,15 +306,25 @@ const onPitch = (x, y, m = .5) => x > m && x < PITCH.L - m && y > m && y < PITCH
 // end). Before it opens (the run-up) he was coming at a jog and speeding up (vPre).
 export function runAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   t += p.shift || 0; // (a run that set off before the window opened: a give-and-go's second step)
-  const a = p.ta > 0 ? (p.v1 - p.v0) / p.ta : 0; let s, v;
-  if (t >= p.ta) { s = (p.v0 + p.v1) / 2 * p.ta + p.v1 * (t - p.ta); v = p.v1; }
+  const a = p.ta > 0 ? (p.v1 - p.v0) / p.ta : 0, sa = (p.v0 + p.v1) / 2 * p.ta, tc = p.tc ?? 1e9; let s, v;
+  if (t >= p.ta + tc) { // (round 5) his last metre: he drops to a controlled, low approach, and is set by the ball as the ring empties
+    const q = t - p.ta - tc, ab = p.tb > 0 ? (p.v1 - p.vE) / p.tb : 0;
+    if (q < p.tb) { s = sa + p.v1 * tc + p.v1 * q - .5 * ab * q * q; v = p.v1 - ab * q; } else { s = sa + p.v1 * tc + (p.v1 + p.vE) / 2 * p.tb + p.vE * (q - p.tb); v = p.vE; }
+  } else if (t >= p.ta) { s = sa + p.v1 * (t - p.ta); v = p.v1; }
   else if (t >= 0) { s = p.v0 * t + .5 * a * t * t; v = p.v0 + a * t; }
   else { const tb = Math.max(0, (p.v0 - p.vPre) / 2.5); if (t > -tb) { s = p.v0 * t + 1.25 * t * t; v = p.v0 + 2.5 * t; } else { s = -p.v0 * tb + 1.25 * tb * tb + p.vPre * (t + tb); v = p.vPre; } }
   out.x = p.S[0] + p.u[0] * s; out.y = p.S[1] + p.u[1] * s; out.vx = p.u[0] * v; out.vy = p.u[1] * v; return out;
 }
-const mkRun = (S, E, G, v0 = null) => { const d = [E[0] - S[0], E[1] - S[1]], L = len(d), ta = Math.min(.6, G * .35), w0 = v0 == null ? null : v0;
-  const v1 = w0 == null ? L / (G - .15 * ta) : (L - w0 * ta / 2) / (G - ta / 2); const s0 = w0 == null ? .7 * v1 : w0;
-  return { run: true, S: [...S], u: U(d), v0: s0, v1, ta, vPre: Math.min(s0, 1.5), L }; };
+// A run from S to E in G s. `set`: the threat's own run to the ball: fast, then set (he brakes over his last SET_D m to
+// SET_V, in about 0.4 s, so he never crawls: he is above half his run speed until the last half metre).
+export const SET_D = 1, SET_V = 1.3;
+const mkRun = (S, E, G, v0 = null, set = false) => {
+  const d = [E[0] - S[0], E[1] - S[1]], L = len(d), ta = L < 1.6 ? 0 : Math.min(.6, G * .35), dB = set ? Math.min(SET_D, L * .45) : 0;
+  const time = v1 => { const w0 = v0 == null ? .7 * v1 : Math.min(v0, v1), vE = Math.min(SET_V, v1), da = ta * (w0 + v1) / 2; return ta + Math.max(0, L - dB - da) / v1 + (dB > 0 ? 2 * dB / (v1 + vE) : 0); };
+  let lo = .2, hi = 9; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (time(m) > G) lo = m; else hi = m; }
+  const v1 = (lo + hi) / 2, s0 = v0 == null ? .7 * v1 : Math.min(v0, v1), vE = Math.min(SET_V, v1), tb = dB > 0 ? 2 * dB / (v1 + vE) : 0, tc = set ? Math.max(0, L - dB - ta * (s0 + v1) / 2) / v1 : 1e9;
+  return { run: true, S: [...S], u: U(d), v0: s0, v1, ta, tc, tb, vE, vPre: Math.min(s0, 1.5), L };
+};
 
 // Where the ball is for the plan: at the feet of the player on it (a step ahead of his own player, as generate.js
 // grades it); a pass on its way to him: where it comes to (him).
@@ -506,8 +516,8 @@ function planHold0(sc, st, opts, kind) {
         const rr = fa != null ? CONTACT : Math.max(CONTACT, .9); E = [bc[0] + Math.cos(a) * rr, bc[1] + Math.sin(a) * rr];
       }
       const L = dd(S, E); if (L < .2) return null;
-      const va = live ? clamp((at[th].vx || 0) * (E[0] - S[0]) / L + (at[th].vy || 0) * (E[1] - S[1]) / L, .6, Math.min(3, L / G)) : null; let path = mkRun(S, E, G, va);
-      if (cur) { const T = opts.lead || 0; path = mkRun(S, E, G + T, .8); path.shift = T; }
+      const va = live ? clamp((at[th].vx || 0) * (E[0] - S[0]) / L + (at[th].vy || 0) * (E[1] - S[1]) / L, .6, Math.min(3, L / G)) : null; let path = mkRun(S, E, G, va, !toP);
+      if (cur) { const T = opts.lead || 0; path = mkRun(S, E, G + T, .8, true); path.shift = T; }
       if (path.v1 > 4.45) return null;
       if (live) { // from how he moves now, smoothly, when that is a way a child could run (no harder than 3.5 m/s², never back on himself)
         const uu = U([E[0] - S[0], E[1] - S[1]]), hp = { herm: true, S, V0: [at[th].vx || 0, at[th].vy || 0], E, V1: mul(uu, clamp(L / G, 1.2, 4.2)), T: G, L }; let ok = true, prev = null, v0 = null;
