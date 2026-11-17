@@ -359,7 +359,7 @@ export class Sim {
   momentum(a, wx, wy, dt, d = 9, once = false) {
     const m = a.mom, acc = a.momA || MOM_A, sp0 = Math.hypot(m[0], m[1]);
     // (near where he is going he is let down onto it: the usual way takes over, at the speed he has)
-    if (this.time > a.momT || (d < 9 && d < Math.max(.2, sp0 * .15) && m[0] * wx + m[1] * wy >= 0)) { a.mom = null; a.va = sp0; return true; } // (round 7: not when it is behind him: then he comes round to it)
+    if (this.time > a.momT || (d < 9 && d < Math.max(.2, sp0 * .15) && (m[0] * wx + m[1] * wy >= 0 || !(a.momA >= 15)))) { a.mom = null; a.va = sp0; return true; } // (round 7: not when it is behind one the play sends back at a run (momA 15 and up): he comes round to it)
     const w = Math.hypot(wx, wy), k = w > 1e-6 && d < 9 ? Math.min(1, Math.sqrt(2 * acc * d) / w) : 1; wx *= k; wy *= k; // (he slows into it)
     const ex = wx - m[0], ey = wy - m[1], el = Math.hypot(ex, ey), st = acc * dt;
     if (el <= st) { if (once) { a.mom = null; a.momBack = false; a.va = Math.hypot(wx, wy); return true; } m[0] = wx; m[1] = wy; } else { m[0] += ex / el * st; m[1] += ey / el * st; } // (once: he has come round, and goes on as the play says)

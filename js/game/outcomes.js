@@ -150,7 +150,7 @@ export const outcomes = {
     const shut = q => [...this.sim.agents.values()].some(o => { if (o === p) return false; const k = closestOnLane(o, p, q, 0); return k.d < .8 && k.t > .15; }); // (on his way there, not merely beside him)
     const q = shut(at(1)) && !shut(at(-1)) ? at(-1) : at(1);
     // (round 7: running the other way, he sets off for it from a stop, a little softer: off the line in time, without flipping at a run)
-    { const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0; if (ls >= 2 && (lv[0] * (q.x - p.x) + lv[1] * (q.y - p.y)) / (ls * (Math.hypot(q.x - p.x, q.y - p.y) || 1)) < -.4) { p.rv = 0; p.rA = 13; } }
+    { const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0; if (p.team === 'them' && ls >= 2 && (lv[0] * (q.x - p.x) + lv[1] * (q.y - p.y)) / (ls * (Math.hypot(q.x - p.x, q.y - p.y) || 1)) < -.4) { p.rv = 0; p.rA = 13; } }
     this.sim.go(p.id, q.x, q.y, 4.5);
   },
   // Facing well away from where he will play the ball (more than about 60°), he first turns with it (a cut, a hook or
