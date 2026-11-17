@@ -393,7 +393,7 @@ export class Sim {
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.
-          const ms = Math.hypot(a.mom[0], a.mom[1]), back = ms > .8 && (a.mom[0] * dx + a.mom[1] * dy) / (ms * d) < -.17;
+          const ms = Math.hypot(a.mom[0], a.mom[1]), back = ms > 1.5 && (a.mom[0] * dx + a.mom[1] * dy) / (ms * d) < -.17; // (at a run: from a walk he just turns)
           if (!a.ease && !back && !a.momBack) a.mom = null;
           else { a.momBack = !a.ease; if (!this.momentum(a, dx / d * v, dy / d * v, dt, d, !a.ease)) continue; }
         } // (still coming round from the way he was going)

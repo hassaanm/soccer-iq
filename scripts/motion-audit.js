@@ -185,14 +185,14 @@ function after(r, sc) {
     //            1.3 m of where he was) and steps off it
     //   man      a defender whose own man turned (his own player running to the ring he tapped) goes with him
     const opt = w.opt || r.o || '', ownRun = /^(spot|then|turn):/.test(opt) || /^drib:(back|bl|br|left|right)/.test(opt) || /^push:/.test(opt);
-    const side = c => (c == null ? null : c === 'hero' || c[0] === 'm' || c === 'k1' ? 'us' : 'them'), s0 = side(e.carrier), later = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 1.2);
+    const side = c => (c == null ? null : c === 'hero' || c[0] === 'm' || c === 'k1' ? 'us' : 'them'), s0 = side(e.carrier), later = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 1.2), far = r.rec.findLast(x => x.wi === wi && x.t > e.t && x.t <= e.t + 2);
     const lost = post.some(x => x.carrier && s0 && side(x.carrier) !== s0);
     for (const id of Object.keys(e.at)) {
       if (id[0] === 'k') continue;
       const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], v1 = [(b1.at[id][0] - e.at[id][0]) / T1, (b1.at[id][1] - e.at[id][1]) / T1], s0v = Math.hypot(...v0), s1 = Math.hypot(...v1); if (s0v < .5 || s1 < .5) continue;
       const ang = Math.acos(Math.max(-1, Math.min(1, (v0[0] * v1[0] + v0[1] * v1[1]) / (s0v * s1)))) * 180 / Math.PI;
       if (ang <= LIM.afterTurn) continue;
-      const toBall = [b1.ball, later.at(-1)?.ball || b1.ball].some(bp => { const dx = bp[0] - e.at[id][0], dy = bp[1] - e.at[id][1], l = Math.hypot(dx, dy) || 1; return (v1[0] * dx + v1[1] * dy) / (s1 * l) > .5; });
+      const toBall = [b1.ball, later.at(-1)?.ball || b1.ball, far?.ball || b1.ball].some(bp => { const dx = bp[0] - e.at[id][0], dy = bp[1] - e.at[id][1], l = Math.hypot(dx, dy) || 1; return (v1[0] * dx + v1[1] * dy) / (s1 * l) > .4; }); // (at the ball, or at where it is in the next second or two)
       const fly = post.find(x => x.bstate === 'flying'), bd = fly && [b1.ball[0] - e.ball[0], b1.ball[1] - e.ball[1]], played = !!bd && Math.hypot(...bd) > 1.5 && (v1[0] * bd[0] + v1[1] * bd[1]) / (s1 * Math.hypot(...bd)) > .2;
       const hv = [(b1.at.hero[0] - e.at.hero[0]) / T1, (b1.at.hero[1] - e.at.hero[1]) / T1], hs = Math.hypot(...hv), hd = [b1.at.hero[0] - e.at[id][0], b1.at.hero[1] - e.at[id][1]], man = id[0] === 'o' && ownRun && hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5);
       const fl = later.filter(x => x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();

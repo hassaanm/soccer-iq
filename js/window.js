@@ -419,6 +419,7 @@ function planHold0(sc, st, opts, kind) {
     const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
     return c.sort((a, b) => b.r - a.r)[0].d;
   };
+  const shotOn = kind === 'goal' && !!sc.shot;
   const own = {}, comer = id => id === th || id === second;
   for (const id of out) {
     if (id === holder || keep[id] || comer(id)) continue;
@@ -439,6 +440,7 @@ function planHold0(sc, st, opts, kind) {
       if (a.gk) v = dead && id === holder ? [0, 0] : keeperV(id);
       else if (keep[id]) v = [...keep[id]];
       else if (id === holder) v = dead ? [0, 0] : D;
+      else if (id === 'hero' && shotOn) v = mul(own[id] || [0, 0], .25 * k); // (a friend about to shoot: the race for the rebound is run from where he is, so he only shifts his feet, ready to go)
       else { v = add(D, own[id] || [0, 0], wmag); const s = len(v); if (s < MOVE && (k > 0 || sp > 0)) v = s > .05 ? mul(v, MOVE / s) : mul(own[id] || line, MOVE); // (never still: at least a slow walk)
         if (id === 'hero' && !dead && k > 0 && len(v) < .85) v = mul(U(v), .85); } // (his own player: a walk at the least)
       const v0 = live ? [a.vx || 0, a.vy || 0] : [...v]; let v1 = v;
@@ -473,7 +475,7 @@ function planHold0(sc, st, opts, kind) {
   let best = null;
   // (a friend about to shoot: the race for the rebound is close and is run on the grass as it lies, so the play does not
   // drift: he lines his shot up, and everyone only makes his own small move)
-  const shotOn = kind === 'goal' && !!sc.shot, speeds = dead || shotOn ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
+  const speeds = dead || shotOn ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
   search: for (const sp of speeds) for (const k of shotOn ? [.5, .25, 0] : [1, .5, 0]) for (const frac of fracs) {
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
     if (opts.debug) console.log('try', sp, k, frac, 'bad', b.bad, 'offp', b.offp, 'ok', b.ok.map(x => +x).join(''), JSON.stringify(b.first));
