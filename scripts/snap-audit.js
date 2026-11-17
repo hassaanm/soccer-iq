@@ -21,9 +21,10 @@ for (const size of sizes) {
       const w = tr.filter(x => x.t >= tEnd - .3 && x.t <= tEnd + .8);
       for (const id of Object.keys(w[0]?.at || {})) { let worst = 0, at = null; const v = [];
         for (let i = 1; i < w.length; i++) { const dt = w[i].t - w[i - 1].t; if (dt < 1e-4) continue; v.push({ t: w[i].t, x: (w[i].at[id][0] - w[i - 1].at[id][0]) / dt, y: (w[i].at[id][1] - w[i - 1].at[id][1]) / dt }); }
-        for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length && v[j].t - v[i].t <= .15; j++) { const a = v[i], b = v[j], sa = Math.hypot(a.x, a.y), sb = Math.hypot(b.x, b.y); if (sa < 2 || sb < 2 || a.t - tEnd < -.02) continue;
+        for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length && v[j].t - v[i].t <= .15; j++) { const a = v[i], b = v[j], sa = Math.hypot(a.x, a.y), sb = Math.hypot(b.x, b.y); if (sa < 1 || sb < 1) continue;
           const ang = Math.acos(Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / sa / sb))) * 180 / Math.PI; if (ang > worst) { worst = ang; at = [sa.toFixed(1), sb.toFixed(1), (a.t - tEnd).toFixed(2)]; } }
-        if (worst > 120) rows.push(`${sk.id} ${sc.id} ${opt}: ${id} turns ${Math.round(worst)}° (${at[0]} then ${at[1]} m/s, ${at[2]} s after the tap)`); }
+        // (as the verifier counts them: his sharpest turn in that time, when it is over 120°, after the tap and at 2 m/s or more both ways)
+        if (worst > 120 && +at[0] >= 2 && +at[1] >= 2 && +at[2] >= -.02) rows.push(`${sk.id} ${sc.id} ${opt}: ${id} turns ${Math.round(worst)}° (${at[0]} then ${at[1]} m/s, ${at[2]} s after the tap)`); }
     }
   }
   total += rows.length; console.log(`${size}: ${plays} plays tapped late, snap turns: ${rows.length}`); for (const r of rows) console.log('   ' + r);
