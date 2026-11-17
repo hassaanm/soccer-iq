@@ -458,14 +458,14 @@ function planHold0(sc, st, opts, kind) {
   function build(sp, k, tP, G, ks = null) { // (ks: { id: k } for players whose own part is bigger or smaller than the rest's)
     // (round 5) A dead ball: nobody tackles, but everyone is alive: friends make runs across to find space (up to 2 m, at a
     // jog), their markers go with them, the others shuffle.
-    const D = mul(line, sp), paths = {}, wmag = (dead ? Math.min(.85, 1.75 / G) : Math.min(.6, STEP_OWN / G)) * k;
+    const D = mul(line, sp), paths = {}, wbase = dead ? Math.min(.85, 1.75 / G) : Math.min(.6, STEP_OWN / G), wmag = wbase * k;
     for (const id of ids) {
       if (comer(id)) continue;
       const a = at[id]; let v;
       if (a.gk) v = dead && id === holder ? [0, 0] : keeperV(id);
       else if (keep[id]) v = [...keep[id]];
       else if (id === holder) v = dead ? [0, 0] : D;
-      else { v = add(D, own[id] || [0, 0], k > 0 && ks ? wmag * ((ks[id] ?? ks[mark[id]] ?? k) / k) : wmag); const s = len(v); if (s < MOVE && (k > 0 || sp > 0)) v = s > .05 ? mul(v, MOVE / s) : mul(own[id] || line, MOVE); // (never still: at least a slow walk)
+      else { const e = ks ? ks[id] ?? ks[mark[id]] : null, kk = e ? e.k : k, ow = e?.a ? rotv(own[id] || own[mark[id]] || [0, 0], e.a) : own[id] || [0, 0]; v = add(D, ow, wbase * kk); const s = len(v); if (s < MOVE && (kk > 0 || sp > 0)) v = s > .05 ? mul(v, MOVE / s) : mul(own[id] || line, MOVE); // (never still: at least a slow walk)
         if (id === 'hero' && !dead && k > 0 && len(v) < .85) v = mul(U(v), .85); } // (his own player: a walk at the least)
       const v0 = live ? [a.vx || 0, a.vy || 0] : [...v]; let v1 = v;
       if (live) { const s0 = len(v0), s1 = len(v1); if (s0 > .4 && s1 > .1 && (v0[0] * v1[0] + v0[1] * v1[1]) / (s0 * s1) < -.3) v1 = add(mul(v0, .35), v1, .3); } // (one going the other way slows and bends his way: he does not turn straight back)
@@ -506,9 +506,11 @@ function planHold0(sc, st, opts, kind) {
     // as long as it is no shorter than the window's floor needs)
     if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6) { const c = score(build(sp, k, Gs, Gs)); if (!c.bad) { best = c; best.cost = cost; G = Gs; fixedG = true; break search; } } }
   }
-  // (round 5) A dead ball whose runs had to be made smaller to keep the picture: each friend whose own run can be its
-  // full size without spoiling anything gets it back, one by one, so the play stays alive.
-  if (dead && !best.bad && best.k > 0 && best.k < 1) { const ks = {}; for (const id of Object.keys(own)) { if (mark[id] || at[id].team !== ballTeam) continue; const b = score(build(best.sp, best.k, best.tP, best.G, { ...ks, [id]: 1 })); if (!b.bad) { ks[id] = 1; b.cost = best.cost; best = b; } } }
+  // (round 5) A dead ball whose runs had to be made smaller to keep the picture: each player whose own run can be
+  // bigger (its full size, or half, the way he would go or another way) without spoiling anything gets it, one by one.
+  if (dead && !best.bad && best.k < 1) { const ks = {};
+    for (const id of Object.keys(own)) { if (mark[id]) continue; let done = false;
+      for (const lv of [1, .5, .3]) { if (lv <= best.k || done) break; for (const a of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) { const b = score(build(best.sp, best.k, best.tP, best.G, { ...ks, [id]: { k: lv, a } })); if (!b.bad) { ks[id] = { k: lv, a }; b.cost = best.cost; best = b; done = true; break; } } } } }
   // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
   // the picture itself may then lie just outside it, and play is as near it as it ever is)
   if (best.bad && !live && !fixedG) for (let m = 0; m < 3 && best.bad; m++) {

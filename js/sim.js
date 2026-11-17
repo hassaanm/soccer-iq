@@ -339,7 +339,7 @@ export class Sim {
   // (v66) He comes off his planned way with the velocity he has (a.mom, for MOM_T s at most): whatever moves him next, he
   // goes into it from that velocity, changing it no faster than a child can (EASE), so nobody turns round on the spot
   // as the window closes. The player with the ball turns with a real move instead (startTurn).
-  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; const vx = (a.tx - a.x) * 2, vy = (a.ty - a.y) * 2; a.tx = a.x + vx; a.ty = a.y + vy; const v0 = Math.hypot(vx, vy); if (!a.gk && v0 > .3) { a.mom = [vx, vy]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * v0) / .18)); a.momBack = false; } else a.mom = null; }
+  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; const vx = (a.tx - a.x) * 2, vy = (a.ty - a.y) * 2; a.tx = a.x + vx; a.ty = a.y + vy; const v0 = Math.hypot(vx, vy); if (!a.gk && v0 > .3) { a.mom = [vx, vy]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.15 + .6 * v0) / .18)); a.momBack = false; } else a.mom = null; }
   // One step of a player coming round from the velocity he had (a.mom) to the one he wants (wx, wy). Returns true when he
   // is there (the usual way of moving takes over), false while he is still coming round (he has been moved).
   momentum(a, wx, wy, dt, d = 9, once = false) {
@@ -389,7 +389,7 @@ export class Sim {
         } else a.va = null;
         // (v66) One the team's shape moves never turns on the spot at speed: sent more than 60° off the way he is going
         // (a new job, a new place), he comes round from the velocity he has, like anyone coming off a planned way.
-        if (a.ease && !a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]); if (ls > .8 && ls < 6 && (a.lv[0] * dx + a.lv[1] * dy) / (ls * d) < -.17) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)); a.momBack = false; } }
+        if (a.ease && !a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]); if (ls > .8 && ls < 6 && (a.lv[0] * dx + a.lv[1] * dy) / (ls * d) < -.17) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.15 + .6 * ls) / .18)); a.momBack = false; } }
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.

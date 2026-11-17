@@ -172,6 +172,7 @@ function views(r, sc, st, step = null) {
   if (f.some(x => !on(screen(x.cam, [...x.at.hero, .9])))) flags.push(['view', `${tag}his player off the screen for ${f.filter(x => !on(screen(x.cam, [...x.at.hero, .9]))).length} frame(s) at ${VW}x${VH}`]);
   // the timer ring whole on the screen (its eight compass points, at the size it is drawn)
   const cut = late.filter(x => x.left != null && [0, 1, 2, 3, 4, 5, 6, 7].some(i => { const R = .86 * (x.wide ? 1.45 : 1), p = screen(x.cam, [x.at.hero[0] + Math.cos(i * Math.PI / 4) * R, x.at.hero[1] + Math.sin(i * Math.PI / 4) * R, 0]); return !on(p, 3); })).length;
+  if (process.env.RINGDBG && cut) { for (const x of late.filter((_, i) => i % 25 === 0)) console.error('RING', sc.id, VW, (x.real - a.real).toFixed(2), 'wide', x.wide, 'hero', x.at.hero.map(n => n.toFixed(1)).join(','), [0, 1, 2, 3, 4, 5, 6, 7].map(i => { const R = .86 * (x.wide ? 1.45 : 1), p = screen(x.cam, [x.at.hero[0] + Math.cos(i * Math.PI / 4) * R, x.at.hero[1] + Math.sin(i * Math.PI / 4) * R, 0]); return p ? p.map(Math.round).join('/') : 'null'; }).join(' ')); }
   if (cut > late.length * .05) flags.push(['ring', `${tag}the timer ring is cut by the screen's edge in ${cut} of ${late.length} frames at ${VW}x${VH}`]);
   // nobody between the camera and him: another player's body over his middle, nearer the camera, for more than COVER of the window
   const cov = late.filter(x => { const hm = screen(x.cam, [...x.at.hero, .9]), dh = Math.hypot(x.at.hero[0] - x.cam.eye[0], x.at.hero[1] - x.cam.eye[1]); if (!hm) return false;
