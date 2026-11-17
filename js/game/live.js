@@ -41,13 +41,13 @@ function liveScenario(s, skill, pushAllowed, near = null, back = null) { // back
 // (round 6) The jobs his friends take once he has chosen (id: 'home' or 'chase': he goes to the ball; one of theirs:
 // he guards that player): { friendId: { job: 'press' | their player's id, to: [x, y] } }. If he goes, nobody else does:
 // each friend takes the nearest of theirs that nobody has, goal-side. If he guards, the friend nearest the ball goes to
-// it and the rest guard. A friend with nobody left (or whose place would be more than 7 m off) stays as he is.
+// it and the rest guard. A friend with nobody left stays as he is.
 export function teamJobs(s, c, others, fr, id) {
   const P = a => [a.x, a.y], jobs = {}, goes = id === 'home' || id === 'chase', left = new Set(fr.map(m => m.id)), taken = new Set(goes ? [] : [id]);
   if (!goes && fr.length) { const m = [...fr].sort((p, q) => dist(p, c) - dist(q, c))[0]; jobs[m.id] = { job: 'press', to: goalSide(P(c), 2.2) }; left.delete(m.id); }
   // (their players nearest our goal first: the most dangerous is guarded first)
   for (const o of [...others].sort((p, q) => p.x - q.x)) { if (taken.has(o.id)) continue; const to = goalSide(P(o), 1.2), m = fr.filter(m => left.has(m.id)).sort((p, q) => Math.hypot(p.x - to[0], p.y - to[1]) - Math.hypot(q.x - to[0], q.y - to[1]))[0];
-    if (!m || Math.hypot(m.x - to[0], m.y - to[1]) > 7) continue; jobs[m.id] = { job: o.id, to }; left.delete(m.id); taken.add(o.id); }
+    if (!m || Math.hypot(m.x - to[0], m.y - to[1]) > 14) continue; jobs[m.id] = { job: o.id, to }; left.delete(m.id); taken.add(o.id); }
   return jobs;
 }
 // A defending decision built from wherever play is right now (after we lose the ball in a match). Spots: get in
@@ -72,7 +72,7 @@ function liveDefense(s, guard = true) {
   // ball is the best answer only when his player is our nearest to it by a clear metre; when a friend is nearer by a
   // metre it never is (at most okay: "Your friend was closer. You guard!"); when it is close, both are fine.
   const fr = MATES.filter(id => s.a(id)).map(id => s.a(id)), dH = dist(h, c), nm = [...fr].sort((p, q) => dist(p, c) - dist(q, c))[0], dM = nm ? dist(nm, c) : 99;
-  const heroNearest = dH < dM - 1, mateNearest = dM < dH - 1, go = id => id === 'home' || id === 'chase';
+  const heroNearest = dH < dM - .6, mateNearest = dM < dH - .6, /* (round 7: .6, not 1: the players move a step before the window opens, and what he sees then must never contradict the answer by a metre) */ go = id => id === 'home' || id === 'chase';
   sc.jobs = Object.fromEntries(spots.map(sp => [sp.id, teamJobs(s, c, others, fr, sp.id)]));
   sc.exploits = Object.fromEntries(spots.map(sp => [sp.id, exploit({ ...sc, mates: fr.map(m => sc.jobs[sp.id][m.id]?.to || P(m)) }, sp.id)]));
   sc.nearest = heroNearest ? 'hero' : mateNearest ? nm.id : 'close';
