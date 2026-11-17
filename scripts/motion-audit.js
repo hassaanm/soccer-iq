@@ -19,6 +19,8 @@
 //   friends  (share 95% of friends) no friend ends more than 1.5 m farther from the ball than he started, or leaves the
 //            view he was in
 //   pace     the world never goes slower than 0.12x, and the window lasts until its ring is empty
+//   seen     (share 90%) the one who comes is on the screen as the window opens (the view is raised or turned a little
+//            for it before the run-up)
 //   closes   (share 90%) with the ball at his feet, the threat closes at least 2.5 m in the window
 //   speed    nobody moves faster than a child sprints (window.js SPEED) or speeds up or slows down faster than ACC
 //   turn     nobody's way turns by more than 120° in the window
@@ -39,11 +41,14 @@ const sizes = args[0] && !args[0].startsWith('--') ? [args[0]] : Object.keys(SIZ
 const nGen = +(flag('--gen') || 0), scene = flag('--scene'), base = flag('--base') ? JSON.parse(readFileSync(flag('--base'), 'utf8')) : null, only = flag('--only'), taps = args.includes('--notaps') ? [] : [.05, .5, .95];
 export const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, near: 3.5, away: .3, awayRate: .25, markGrow: 1, after: .6, afterTurn: 120, reach: .8, touch: .3,
   px: { 844: 60, 667: 48 }, pull: 1.3, pullT: .3, friendFar: 1.5, closes: 2.5 };
-export const SHARE = { comes: .95, arrive: .95, grade: .97, size: .98, friends: .95, closes: .9 };
+export const SHARE = { comes: .95, arrive: .95, grade: .97, size: .98, friends: .95, closes: .9, seen: .9 };
 // Exemptions: [check, test(sc, row), reason]. Each use is counted and printed.
 export const EXEMPT = [
   ['arrive', sc => kindOf(sc) === 'receive', 'a pass on its way to him: the window ends as the ball gets to him, with the defender behind at his place in the picture and still coming; he takes it a moment later'],
   ['arrive', sc => sc.pattern === 'keeper-out', 'the keeper who rushed out smothers the ball at his feet (he goes down on it; no touch away)'],
+  ['seen', sc => kindOf(sc) === 'receive', 'a pass to him with his back to their goal: the idea is the defender behind him that he cannot see until he peeks'],
+  ['seen', sc => sc.intro === 'won', 'won it: they are all behind him by the idea; the one who comes sets off from where the picture has him, 8 m or more back, and runs into view'],
+  ['still', sc => sc.pattern === 'go-shot', 'a friend about to shoot sets himself over the ball, and the play holds still for the rebound race'],
   ['comes', sc => sc.intro === 'won', 'won it: the player he just took it from is stumbling past behind him, and is not the one who comes'],
 ];
 const exempt = (check, sc, row) => EXEMPT.find(e => e[0] === check && e[1](sc, row));
@@ -54,7 +59,7 @@ const KIND = { 'GOAL!': 'kept', 'Kept the ball!': 'kept', 'Stolen!': 'lost', 'Th
 const endOf = banners => { const k = banners.map(b => KIND[b]).filter(Boolean); return k.at(-1) || 'none'; };
 const sameEnd = (a, b) => a === b || (a === 'kept' && b === 'kept');
 
-let VW = 844, VH = 390;
+let VW = 844, VH = 390; const USED = new Map();
 // Where a point is on the screen through the game's own camera (as world.js draws it), or null behind it.
 function screen(cam, [x, y, z = .9]) {
   if (!cam) return null;
@@ -100,7 +105,7 @@ async function play(sc, opt, u) {
   await drive(g, g.outcome(o, good), { onFrame, maxSec: 60 });
   if (step2 && g.result === 'passed') { await drive(g, g.toStep2(), { onFrame }); const o2 = await decideAt(step2); await drive(g, g.outcome(o2, g.isGood(o2)), { onFrame, maxSec: 60 }); }
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
-  return { g, rec, wins, flags, banners, o, info };
+  return { g, rec, wins, flags, banners, o, info, used: e => USED.set(e, (USED.get(e) || 0) + 1) };
 }
 
 const ourBall = sc => !['defense', 'tackle', 'follow'].includes(kindOf(sc)) && !sc.restart;
@@ -131,6 +136,9 @@ function shape(r, sc, st) {
       const marker = (w.role?.[id] || '').startsWith('marker:');
       if (worst > LIM.away + 1e-9 && (!marker || d(e, id) - d(a, id) > LIM.markGrow)) flags.push(['away', `${id} (${w.role?.[id] || '?'}) within ${LIM.near} m of the ball gets ${grew.toFixed(1)} m farther from it over ${worst.toFixed(1)} s`]);
     }
+    // seen: the one who comes is on the screen as it opens (within the first 0.3 s)
+    if (th && a.cam) { const ex = exempt('seen', sc); st.seen.n++; const early = f.filter(x => x.real - a.real <= .3), vis = early.some(x => on(screen(x.cam, [...x.at[th], .9]), 8));
+      if (vis) st.seen.ok++; else if (ex) { st.seen.ok++; st.use(ex); } else st.seen.miss.push(`${st.size} ${sc.id} (${kindOf(sc)}): ${th} starts ${d(a, th).toFixed(1)} m from the ball, off the screen at ${VW}x${VH}`); }
     // closes: with the ball at his feet
     if (th && a.carrier === 'hero' && kindOf(sc) !== 'receive') { st.closes.n++; const c = d(a, th) - d(e, th); if (c >= LIM.closes) st.closes.ok++; else st.closes.miss.push(`${st.size} ${sc.id}: ${th} closes ${c.toFixed(1)} m (from ${d(a, th).toFixed(1)} m; ${w.cls}, in the picture ${w.rP?.toFixed(1)} m)`); }
     // friends: never away from the ball, never out of the view they were in
@@ -194,10 +202,10 @@ function motionIn(r, sc, inWin) {
     for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) if (sp[i] > .4 && sp[j] > .4) {
       const c = (v[i][0] * v[j][0] + v[i][1] * v[j][1]) / (sp[i] * sp[j]); if (c < Math.cos(LIM.turn * Math.PI / 180)) { flags.push(['turn', `${id} turned ${Math.round(Math.acos(Math.max(-1, c)) * 180 / Math.PI)}° in the window`]); i = v.length; break; }
     }
-    if (!gk(id) && max < LIM.still && g.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) flags.push(['still', `${id} still through the window`]); // (a restart's taker stands over the dead ball)
+    if (!gk(id) && max < LIM.still && g.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) { const ex = exempt('still', sc); if (ex) r.used?.(ex); else flags.push(['still', `${id} still through the window`]); } // (a restart's taker stands over the dead ball)
   }
   // the player on the ball keeps it moving
-  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart && !gk(c0)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
+  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart && !gk(c0) && !exempt('still', sc)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
   for (const f of inWin) { const at = Object.entries(f.at); for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) { const d = Math.hypot(at[i][1][0] - at[j][1][0], at[i][1][1] - at[j][1][1]); if (d < LIM.gap) { flags.push(['gap', `${at[i][0]}–${at[j][0]} ${d.toFixed(2)} m`]); return flags; } } }
   return flags;
 }
@@ -222,11 +230,11 @@ function timeout(r, sc, st) {
   return flags;
 }
 
-const all = [], counts = {}, mis = [], used = new Map(), stats = {};
+const all = [], counts = {}, mis = [], used = USED, stats = {};
 const mkShare = () => ({ n: 0, ok: 0, miss: [] });
 for (const size of sizes) {
   setSize(size);
-  const st = stats[size] = { size, comes: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {},
+  const st = stats[size] = { size, comes: mkShare(), seen: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {},
     use: e => used.set(e, (used.get(e) || 0) + 1) };
   for (const sk of PATH.filter(s => s.ready && (!only || s.id === only))) {
     const scs = [...allScenarios(sk.id), ...Array.from({ length: nGen }, (_, i) => generate(sk.id, 5001 + i, { even: true })).filter(Boolean).map(s => ({ ...s, id: s.id + 'e' }))];
@@ -262,7 +270,7 @@ for (const [size, st] of Object.entries(stats)) {
   console.log('  windows by kind and class (full: a run-in of 2.5 m or more; short: less, where the pitch, the other players or the picture allow no more; calm: the play drifts at under a walk; dead: a dead ball; no-threat: their dribbler comes on):');
   for (const [k, v] of Object.entries(st.cls)) console.log(`    ${k.padEnd(20)} ${v.length}${v.length < 7 ? '  ' + v.join(' ') : ''}`);
   const rows = [['comes', st.comes, 'the one who comes is the nearest free defender as it opens'], ['arrive', st.arrive, 'within 0.8 m as the ring empties, touch within 0.3 s'], ['grade', st.grade, 'the picture agrees with the grade at the tap'],
-    ['size', st.size_[844], 'his player 60 px at 844x390'], ['size', st.size_[667], 'his player 48 px at 667x375'], ['friends', st.friends, 'friends neither go away from the ball nor leave the view'], ['closes', st.closes, 'the threat closes 2.5 m with the ball at his feet']];
+    ['size', st.size_[844], 'his player 60 px at 844x390'], ['size', st.size_[667], 'his player 48 px at 667x375'], ['friends', st.friends, 'friends neither go away from the ball nor leave the view'], ['closes', st.closes, 'the threat closes 2.5 m with the ball at his feet'], ['seen', st.seen, 'the one who comes is on the screen as the window opens']];
   for (const [k, s, what] of rows) {
     const ok = !s.n || s.ok / s.n >= SHARE[k] - 1e-9; if (!ok) { fails++; counts[`${size} ${k}-share`] = 1; }
     console.log(`  ${ok ? 'ok  ' : 'MISS'} ${k.padEnd(8)} ${String(s.ok).padStart(4)}/${String(s.n).padEnd(4)} ${pct(s).padStart(6)} (needs ${SHARE[k] * 100}%)  ${what}${s.all ? `; smallest ${Math.round(Math.min(...s.all))} px, median ${Math.round([...s.all].sort((a, b) => a - b)[s.all.length >> 1])} px` : ''}`);
@@ -276,6 +284,6 @@ if (used.size) { console.log('exemptions used:'); for (const [e, n] of used) con
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
 if (mis.length > 80) console.log(`  … ${mis.length - 80} more`);
-if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify({ all, stats: Object.fromEntries(Object.entries(stats).map(([k, s]) => [k, { comes: s.comes, arrive: s.arrive, closes: s.closes, friends: s.friends, grade: s.grade, size: s.size_, f: s.f, G: s.G }])), mis }));
+if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify({ all, stats: Object.fromEntries(Object.entries(stats).map(([k, s]) => [k, { comes: s.comes, seen: s.seen, arrive: s.arrive, closes: s.closes, friends: s.friends, grade: s.grade, size: s.size_, f: s.f, G: s.G }])), mis }));
 console.log(`\n${mis.length} flag(s), ${fails} share(s) missed`);
 process.exitCode = mis.length || fails ? 1 : 0;

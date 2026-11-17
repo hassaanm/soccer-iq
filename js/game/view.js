@@ -235,7 +235,7 @@ export const view = {
     const C = (this.step === 'turn' && this.phase === 'decide') || (this.phase === 'pre' && this.sc?.kind === 'receive' && this.mode !== 'demo') ? TURN_CAM : HEAD_DOWN; // (v66: from the run-up on, so the view does not change as the pass is played)
     // (round 3) A threat coming from behind him: while he chooses, the view is higher and farther back, so he is seen coming.
     // (v66: from the start of the run-up, so the view does not pull back as the choice opens)
-    const wide = (this.phase === 'decide' && this.win?.plan?.wide) || (this.phase === 'pre' && this.wplan?.sc === this.sc && this.wplan.wide) ? 1 : 0;
+    const wp = this.phase === 'decide' ? this.win?.plan : this.phase === 'pre' && this.wplan?.sc === this.sc ? this.wplan : null, wide = wp ? lerp(wp.wideK ?? (wp.wide ? 1 : 0), Math.min(wp.wideK ?? (wp.wide ? 1 : 0), 1.2), k) : 0; // (head up: no farther back than keeps him easy to find)
     const [bx, by] = rot(-lerp(C[0], 5.2, k) - 3.5 * wide, lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.
@@ -245,6 +245,28 @@ export const view = {
     if (b.state === 'carried' && b.carrier === 'hero' && !b.move) { const [ax, ay] = rot(.45, 0, this.yaw); dx = h.x + ax; dy = h.y + ay; }
     if (facesBall(this.sc)) { const [ax, ay] = rot(C[3], 0, this.yaw); dx = lerp(h.x + ax, b.x, C[4]); dy = lerp(h.y + ay, b.y, C[4]); }
     return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k) + 2.2 * wide], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
+  },
+  // (v66) The player view in which the one who comes is seen as the window opens: the head-down view, raised and drawn
+  // back (k, as `wide` in camSpec) and turned (off, radians added to the way he looks) as little as shows the threat
+  // where he starts, clear of the buttons, with his own player never under the size floor. { k, off, seen }.
+  threatFit(plan) {
+    const none = { k: plan?.wide ? 1 : 0, off: 0, seen: false }, v = this.viewSize(), th = plan?.threat?.id, tp = th && plan.paths[th], hp = plan?.paths.hero;
+    if (!tp || !hp || !v.w || this.sc?.kind === 'receive') return none;
+    const h = pathAt(hp, 0, {}), t = pathAt(tp, 0, {}), C = HEAD_DOWN, F = Math.max(v.h * C[6], v.w * C[7]), floor = HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 1;
+    const fit = (k, off) => {
+      const yaw = this.yaw + off, [bx, by] = rot(-C[0] - 3.5 * k, C[1], yaw), [ax, ay] = rot(.45, 0, yaw), eye = [h.x + bx, h.y + by, C[2] + 2.2 * k], tgt = [h.x + ax, h.y + ay, C[5]];
+      const f = [tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]], fl = Math.hypot(...f); f[0] /= fl; f[1] /= fl; f[2] /= fl; const rl = Math.hypot(f[0], f[1]) || 1, r = [f[1] / rl, -f[0] / rl, 0], up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+      const proj = (x, y, z) => { const d = [x - eye[0], y - eye[1], z - eye[2]], zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; return zz < .5 ? null : [v.w / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, v.h / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz]; };
+      const a = proj(h.x, h.y, 0), b = proj(h.x, h.y, 1.65); if (!a || !b || a[1] - b[1] < floor) return false;
+      // (in the picture: clear of the edges, the top row, LOOK UP in the bottom left and the buttons in the bottom right)
+      const on = q => !!q && q[0] > 26 && q[0] < v.w - 26 && q[1] > 62 && q[1] < v.h - 10, free = q => !(q[0] < 168 && q[1] > v.h - 156) && !(q[0] > v.w - 215 && q[1] > v.h - 262);
+      const q0 = proj(t.x, t.y, .1), q1 = proj(t.x, t.y, 1.5), qm = proj(t.x, t.y, .9); // (his whole body in the picture; his middle not under a button)
+      return on(q0) && on(q1) && free(qm);
+    };
+    const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
+    tries.sort((p, q) => p.cost - q.cost);
+    for (const c of tries) if (fit(c.k, c.off)) return { k: c.k, off: c.off, seen: true };
+    return none;
   },
   // The spot view before the choice opens: in a lesson's run-up to a choice of spots (its plan is made: game/window.js
   // plannedRunUp), and through the shot before "follow your shot".
@@ -271,7 +293,8 @@ export const view = {
     if (this.glide > 0) this.glide -= dt;
     // (When the camera sets off for a new view, or for the skill camera, its speed builds up over a moment, so it never
     // starts with a jerk.)
-    const k = 1 - Math.exp(-dt * lerp(this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4, 12, sw) * smooth((this.clock - Math.max(this.skView?.t0 ?? -9, this.camT0 ?? -9)) / .35)), c = this.cam;
+    if (this.camSlow > 0) this.camSlow -= dt;
+    const k = 1 - Math.exp(-dt * lerp(this.camSlow > 0 ? 1.4 : this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4, 12, sw) * smooth((this.clock - Math.max(this.skView?.t0 ?? -9, this.camT0 ?? -9)) / .35)), c = this.cam;
     // The point looked at slides over; the eye goes round it (way round, how high, how far), so on the way from
     // one view to another the camera always looks at the play. Sliding the eye and the point each on its own
     // straight line made them cross when the new view looks the other way (behind him facing the passer, to the

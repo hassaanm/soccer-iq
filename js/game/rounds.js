@@ -22,7 +22,7 @@ export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! C
 // The words for a time-out in this scene.
 export const timeoutWords = sc => (sc?.restart ? TIMEOUT.restart : sc?.kind === 'defense' ? TIMEOUT.defense : sc?.kind === 'receive' ? TIMEOUT.receive : sc?.run === 'follow' || sc?.shot ? TIMEOUT.follow : sc?.kind === 'support' ? TIMEOUT.off : TIMEOUT);
 import { pickFoot } from './outcomes.js';
-import { arrAt, pathAt } from '../window.js';
+import { arrAt, pathAt, planHold } from '../window.js';
 
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
@@ -57,6 +57,7 @@ export const rounds = {
     const plan = this.wplan = this.plan(false, { never: ['o1'] });
     if (!plan) return this.wonIntroOld();
     plan.sc = sc; plan.openAt = s.time + T2;
+    { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; if (tv.off) this.yaw += tv.off; } // (the view shows the one who comes, if any view can: they are all behind him)
     const meetH = pathAt(plan.paths.hero, -lead), o0 = pathAt(plan.paths.o1, 0); // where he is as he wins it; their player's place as the choice opens
     const side = Math.sign(o0.y - meetH.y) || 1, meet = { x: meetH.x + 1, y: meetH.y + side * .45 }; // (a little to the side he stumbles past on)
     Object.assign(o1, { x: meetH.x + 3.6, y: meetH.y + side * .2, tx: meetH.x + 3.6, ty: meetH.y + side * .2, face: [-1, 0] });
@@ -235,13 +236,29 @@ export const rounds = {
   cue() { return this.named(this.sc.cue); },
 
   // Give-and-go, step 2: the friend has the ball; the defender who was on him turns to press the friend.
+  // (v66) The second choice is planned as a scene of its own: its picture is where everyone stands now, with their two
+  // players where the scene has them for this step. In the moment before it opens everyone moves over to how the window
+  // has him move, and the one who comes (the defender turning to press the friend) sets off from where he is.
   async toStep2() {
-    const s = this.sim, base = this.sc, t = base.then;
+    const s = this.sim, base = this.sc, t = base.then, T = .8;
     this.sc = { ...t, spots: t.spots.map(sp => ({ ...sp })), skill: base.skill, id: base.id + '-2', pattern: base.pattern }; // (its own rings: they move in the window)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
-    s.stopAll(); s.go('o1', ...t.move.o1, 3.2); s.go('o2', ...t.move.o2, 2.6);
+    this.spot0Of = null; this.spotsReset();
+    s.stopAll();
     this.yaw = this.frameYaw(this.sc, { x: base.heroTo[0], y: base.heroTo[1] }, s.a('m1'));
-    await this.delay(.8); // (v64: and play goes on into his choice)
+    const st = this.liveState(), P = { at: Object.fromEntries(Object.entries(st.at).map(([id, a]) => [id, { ...a, vx: 0, vy: 0 }])) };
+    for (const id of ['o1', 'o2']) if (P.at[id] && t.move?.[id]) { P.at[id].x = t.move[id][0]; P.at[id].y = t.move[id][1]; }
+    let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), from: st.at, lead: T, yaw: this.yaw }); } catch (e) { console.error(e); }
+    if (!plan) { s.go('o1', ...t.move.o1, 3.2); s.go('o2', ...t.move.o2, 2.6); await this.delay(T); return; } // (as before v66: the choice opens from play going on)
+    plan.sc = this.sc; plan.live = false; plan.openAt = s.time + T; this.wplan = plan;
+    for (const [id, p] of Object.entries(plan.paths)) {
+      const a = s.a(id); if (!a) continue;
+      if (p.run && p.shift) { a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: true }; continue; } // (the one who comes: already on his run)
+      const e = pathAt(p, 0), go = { herm: true, S: [a.x, a.y], V0: [0, 0], E: [e.x, e.y], V1: [e.vx, e.vy], T };
+      a.track = { at: tt => (tt < T ? pathAt(go, tt) : pathAt(p, tt - T)), t0: s.time, watch: plan.watch.has(id) };
+    }
+    await this.delay(T);
+    plan.ready = true;
   },
 
   // Plays one scenario until he gets it. Wrong choices show why, replay the better way, then retry.

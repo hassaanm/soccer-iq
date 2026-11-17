@@ -69,11 +69,15 @@ export const moving = {
   // (RUNUP s before it opens, less if someone would start well off the pitch): the play drifting on, the threat coming
   // at a jog and speeding up. `extra.during(T)`: what the scene's script does meanwhile (a pass played to him).
   async plannedRunUp(extra = {}) {
-    const s = this.sim, sc = this.sc, plan = this.wplan = this.plan(false, extra);
+    const s = this.sim, sc = this.sc;
+    // (v66) The view he chooses in is set now, before the run-up: raised and turned as little as shows the one who comes
+    // as he sets off. If no view that keeps his own player big enough shows him from that far, he sets off from nearer.
+    let plan = null, tv = null;
+    for (const rCap of kindOf(sc) === 'attack' ? [0, 5.2, 4.2, 3.4] : [0]) { const p = this.plan(false, rCap ? { ...extra, rCap } : extra); if (!p) break; const t = kindOf(sc) === 'attack' ? this.threatFit(p) : null; if (!plan || t?.seen) { plan = p; tv = t; } if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break; }
+    this.wplan = plan;
     if (!plan) return;
     plan.sc = sc;
     {
-      if (plan.look != null) this.yaw = plan.look; // (the view turns to where the threat comes from: window.js planArrival)
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       plan.openAt = s.time + T; // (when the choice opens: the view is set for it from now on, view.js spotView)
@@ -87,6 +91,7 @@ export const moving = {
       }
       const c = s.a(s.ball.carrier);
       if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }
+      if (tv) { plan.wideK = tv.k; plan.seen = tv.seen; if (tv.off) this.yaw += tv.off; }
       extra.frame?.(id => pathAt(plan.paths[id] || { x: s.a(id).x, y: s.a(id).y, v0: [0, 0], v1: [0, 0] }, 0)); // (the way he looks as the choice opens, set now: the view is fitted for it before the run-up)
       await Promise.all([this.delay(T), extra.during?.(T)]);
       plan.ready = true;
@@ -139,6 +144,8 @@ export const moving = {
       const T = Math.max(.2, (1 - b.t) * b.dur), dx = b.tx - b.fx, dy = b.ty - b.fy, l = Math.hypot(dx, dy) || 1, E = [b.tx + dx / l * .45, b.ty + dy / l * .45], q = pathAt(plan.paths.hero, 0);
       if (Math.hypot(E[0] - h.x, E[1] - h.y) < 2.5) plan.paths.hero = { herm: true, S: [h.x, h.y], V0: [q.vx, q.vy], E, V1: [0, 0], T };
     }
+    // (a window from play going on, a match: its view is fitted now, and the camera goes over to it slowly: no lurch)
+    if (plan.live && plan.hold && !plan.viewSet) { plan.viewSet = true; if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)

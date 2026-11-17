@@ -305,6 +305,7 @@ const onPitch = (x, y, m = .5) => x > m && x < PITCH.L - m && y > m && y < PITCH
 // The threat's run: from S along u, at v0 as the window opens, up to v1 over ta s, then on at v1 (also past the window's
 // end). Before it opens (the run-up) he was coming at a jog and speeding up (vPre).
 export function runAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
+  t += p.shift || 0; // (a run that set off before the window opened: a give-and-go's second step)
   const a = p.ta > 0 ? (p.v1 - p.v0) / p.ta : 0; let s, v;
   if (t >= p.ta) { s = (p.v0 + p.v1) / 2 * p.ta + p.v1 * (t - p.ta); v = p.v1; }
   else if (t >= 0) { s = p.v0 * t + .5 * a * t * t; v = p.v0 + a * t; }
@@ -375,7 +376,7 @@ export function agreeAt(sc, plan, pos, t, opts = {}) {
 const cache = new WeakMap();
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
-  const key = opts.live ? null : JSON.stringify([opts.R, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
+  const key = opts.live ? null : JSON.stringify([opts.R, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
   if (key) { const hit = cache.get(sc)?.[key]; if (hit) return clonePlan(hit); }
   const p = planHold0(sc, st, opts, kind);
   if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return clonePlan(p); }
@@ -403,10 +404,11 @@ function planHold0(sc, st, opts, kind) {
   const toP = kind === 'receive'; // (a pass on its way to him: the threat is at his place in the picture as it gets there, still coming)
   const rP = th ? dd(P(th), B) : 0, bear0 = th ? U([at[th].x - B[0], at[th].y - B[1]]) : [1, 0], bearA = Math.atan2(bear0[1], bear0[0]);
   const frees = ro.free.filter(id => id !== th && !at[id].gk && !never.includes(id) && !keep[id]);
-  const second = th && !live && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
+  const second = th && !live && !opts.from && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
   // (he is the nearest free defender from the first moment: never farther out than another free one)
   const cap = th ? Math.min(9e9, ...frees.filter(id => id !== second).map(id => dd(P(id), B) - .4 - (second ? d2 - rP + .4 : 0))) : 0;
-  const rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, RUNIN)) : Math.max(rP, RUNIN);
+  // (opts.rCap: no farther out than this, unless the picture itself has him farther: for a view that shows him as he sets off)
+  const runin = Math.min(RUNIN, opts.rCap || RUNIN), rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, runin)) : Math.max(rP, runin);
   const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
   const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
   const Gpace = PACE * (R * RETRY - .1) + .1 + .01; // (the play a window of R s, and of its first longer retry, needs at PACE)
@@ -469,8 +471,10 @@ function planHold0(sc, st, opts, kind) {
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
   }
   let best = null;
-  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0];
-  search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
+  // (a friend about to shoot: the race for the rebound is close and is run on the grass as it lies, so the play does not
+  // drift: he lines his shot up, and everyone only makes his own small move)
+  const shotOn = kind === 'goal' && !!sc.shot, speeds = dead || shotOn ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
+  search: for (const sp of speeds) for (const k of shotOn ? [.5, .25, 0] : [1, .5, 0]) for (const frac of fracs) {
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
     if (opts.debug) console.log('try', sp, k, frac, 'bad', b.bad, 'offp', b.offp, 'ok', b.ok.map(x => +x).join(''), JSON.stringify(b.first));
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
@@ -489,10 +493,10 @@ function planHold0(sc, st, opts, kind) {
     const tmp = {};
     const tryRun = (b, G, r, sh) => {
       const hp0 = pathAt(b.paths[holder], 0), hp1 = pathAt(b.paths[holder], G), B0 = ballOf(sc, kind, holder, hp0), B1 = ballOf(sc, kind, holder, hp1), u = [Math.cos(bearA + sh), Math.sin(bearA + sh)];
-      const S = live ? [at[th].x, at[th].y] : [B0.x + u[0] * r, B0.y + u[1] * r];
-      if (!live && !onPitch(S[0], S[1], .8)) return null;
+      const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + u[0] * r, B0.y + u[1] * r]; // (cur: he sets off from where he is now, `lead` s before it opens)
+      if (!live && !cur && !onPitch(S[0], S[1], .8)) return null;
       // (as it opens he is plainly coming for the ball, not standing by one of ours: 2.7 m or more from every friend off the ball)
-      if (!live && ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S[0], q.y - S[1]) < 2.7; })) return null;
+      if (!live && !cur && ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S[0], q.y - S[1]) < 2.7; })) return null;
       let E;
       if (toP) { const v = virtAt(b, G); E = [v.x, v.y]; }
       else { // the nearest point to where he starts, CONTACT m from the ball, that is not on top of the player on it
@@ -502,6 +506,7 @@ function planHold0(sc, st, opts, kind) {
       }
       const L = dd(S, E); if (L < .2) return null;
       const va = live ? clamp((at[th].vx || 0) * (E[0] - S[0]) / L + (at[th].vy || 0) * (E[1] - S[1]) / L, .6, Math.min(3, L / G)) : null; let path = mkRun(S, E, G, va);
+      if (cur) { const T = opts.lead || 0; path = mkRun(S, E, G + T, .8); path.shift = T; }
       if (path.v1 > 4.45) return null;
       if (live) { // from how he moves now, smoothly, when that is a way a child could run (no harder than 3.5 m/s², never back on himself)
         const uu = U([E[0] - S[0], E[1] - S[1]]), hp = { herm: true, S, V0: [at[th].vx || 0, at[th].vy || 0], E, V1: mul(uu, clamp(L / G, 1.2, 4.2)), T: G, L }; let ok = true, prev = null, v0 = null;
@@ -528,8 +533,8 @@ function planHold0(sc, st, opts, kind) {
     };
     const pick = (b, G, fixed) => {
       let got = null, fall = null;
-      const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || !rs.length) { rs.length = 0; rs.push(live ? rP : rLow); }
-      outer: for (const r of rs) for (const sh of live ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
+      const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || opts.from?.[th] || !rs.length) { rs.length = 0; rs.push(live || opts.from?.[th] ? rP : rLow); }
+      outer: for (const r of rs) for (const sh of live || opts.from?.[th] ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
         const t = tryRun(b, G, r, sh); if (!t) continue;
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
