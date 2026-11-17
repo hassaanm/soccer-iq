@@ -77,6 +77,11 @@ export const outcomes = {
     if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
   // A friend whose job in this defending play is one of their other players (team.js defend, this.teamJob): he is on his way off the ball.
   leaving(d) { return d.team === 'us' && d.id !== 'hero' && !!this.teamJob?.[d.id] && this.teamJob[d.id].job !== 'press' && this.teamJob[d.id].job !== this.sim.ball.carrier; }, // (round 7: unless the player he guards is the one who has it now: then the ball is his job)
+  // (round 7) Sent back on himself at a run by the play (to a pass he is to cut out, to a dribbler he ran past): he comes
+  // round, hard but round (sim.js momentum, 16 m/s²), in a third of a second: nobody flips on the spot at speed.
+  comeRound(id, x, y, v) { const s = this.sim, a = s.a(id), lv = a?.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0, dx = x - a.x, dy = y - a.y, d = Math.hypot(dx, dy) || 1;
+    if (ls >= 2 && ls < 7 && (lv[0] * dx + lv[1] * dy) / (ls * d) < -.4 && s.ball.carrier !== id) { a.mom = [lv[0], lv[1]]; a.momT = s.time + .6; a.momA = 16; a.momBack = false; a.momOff = 0; }
+    s.go(id, x, y, v); },
   // The nearest of theirs within a step and a half of him who has not just been beaten.
   onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && !this.leaving(o) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
@@ -255,7 +260,7 @@ export const outcomes = {
       // (v66) One already running in whom the dribble comes toward (its end is behind where he is heading) keeps coming and
       // meets it: he goes at the dribbler, he does not hop back to where the dribble would have ended.
       const meets = new Set(opps.filter(o => o.lv && Math.hypot(o.lv[0], o.lv[1]) > 2 && o.lv[0] * (end.x - o.x) + o.lv[1] * (end.y - o.y) < 0).map(o => o.id));
-      for (const o of opps) { this.scripted.add(o.id); if (meets.has(o.id)) s.go(o.id, h.x, h.y, 5); else s.go(o.id, end.x, end.y, 5); }
+      for (const o of opps) { this.scripted.add(o.id); if (meets.has(o.id)) this.comeRound(o.id, h.x, h.y, 5); else this.comeRound(o.id, end.x, end.y, 5); }
       // Taking a pass with a turn into him: the turn is seen first (the defender takes it as the touch ends), so the
       // picture shows the turn he picked, then what it cost.
       const turning = () => this.sc.kind === 'receive' && s.ball.carrier === 'hero' && s.ball.move;
@@ -506,7 +511,7 @@ export const outcomes = {
       yield () => { s.go(o.id, h.x, h.y, 5.2); return dist(o, h) < .9 || s.time - t1 > 4; };
       yield* this.steal(o); return;
     }
-    s.go(cut.opp.id, cut.x, cut.y, 4);
+    this.comeRound(cut.opp.id, cut.x, cut.y, 4);
     yield* this.passFrom(c, cut.x, cut.y, { speed: 11, arc: .1 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(cut.opp, this.sc.even ? 'cut' : 'stolen'); // (he never had it: "Cut out!")
@@ -954,7 +959,7 @@ export const outcomes = {
     }
     if (!sp.crowd && spotId !== 'stay') { // beside a defender: m1 passes, and the defender steps across and cuts it out
       const cut = s.team('them').map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((p, q) => p.d - q.d)[0];
-      s.go(cut.opp.id, cut.x, cut.y, 4);
+      this.comeRound(cut.opp.id, cut.x, cut.y, 4);
       yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
       yield () => s.ball.state === 'loose';
       yield* this.steal(cut.opp, 'cut'); return;
@@ -1000,7 +1005,7 @@ export const outcomes = {
       yield* this.finish('m1'); return;
     }
     // He only sees where it is going once it is on its way: he runs on a moment, then pulls up.
-    if (chaser && spotId === 'feet') s.go(chaser.id, sp.x, sp.y, 5);
+    if (chaser && spotId === 'feet') this.comeRound(chaser.id, sp.x, sp.y, 5);
     const deep = s.a('o3'); if (spotId === 'far') s.go(deep.id, sp.x, sp.y, DEF_RUN);
     yield .25; s.go('m1', m.x + dx * .8, m.y + dy * .8, 2.4);
     if (chaser && spotId === 'far') { const k = Math.max(0, (m.x - chaser.x) * dx + (m.y - chaser.y) * dy - .4); s.go(chaser.id, chaser.x + dx * k, chaser.y + dy * k, 2.4); } // he pulls up a step behind him
