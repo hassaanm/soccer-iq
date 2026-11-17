@@ -241,6 +241,16 @@ export const moving = {
   // The threat's reach (v64 research 2d): a soft patch on the grass in front of him, toward what he is going for, that
   // reaches it as the window ends; world.js also spreads warm segments round his own ring from the threat's side (u: how
   // far the window has run). null when no window is open.
+  // (round 3) The time left in the window, for the timer ring round his own player (world.js): full as it opens, empty
+  // as it ends (the threat gets there at that very moment). `wide`: a ring he could tap lies at his feet, so the timer goes
+  // round outside it.
+  timerUi() {
+    const w = this.win; if (!w || this.phase !== 'decide') return null;
+    const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
+    out.left = clamp(1 - (w.u || 0), 0, 1);
+    out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
+    return out;
+  },
   reachUi() {
     const w = this.win; if (!w || this.phase !== 'decide' || !w.threat || this.sc?.restart) return null; // (a restart: nobody comes for the ball; his ring alone shows the time)
     const s = this.sim, o = s.a(w.threat.id); if (!o) return null;

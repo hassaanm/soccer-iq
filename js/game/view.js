@@ -346,7 +346,7 @@ export const view = {
     if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;
     ui.turnArrows = deciding && this.step === 'turn' ? this.turnArcs() : NONE;
     ui.lines = deciding && (this.sc?.kind === 'lead' || this.sc?.dribbling) ? this.runArrow() : this.lines; ui.heroRing = this.camMode === 'player' || (this.phase === 'feedback' && !!this.markHero); ui.heroRingRed = this.phase === 'feedback' && !!this.markRed;
-    ui.reach = this.reachUi?.() || null; // (v64: the threat's reach on the grass while he chooses)
+    ui.reach = null; ui.timer = this.timerUi?.() || null; // (round 3: one draining ring round his player shows the time left; no patch on the grass)
     ui.ballGlow = this.sc?.kind === 'tackle' && ((this.step === 'tackle' && this.hint) || (this.phase === 'outcome' && !this.result)) && this.tackleState() === 'good';
   },
 };

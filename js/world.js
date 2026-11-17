@@ -407,6 +407,15 @@ export class World {
     const segMat = new THREE.MeshBasicMaterial({ color: 0xff7a2e, transparent: true, opacity: .95, depthWrite: false, toneMapped: false });
     for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(.47, .61, 3, 1, i * Math.PI / 12 + .02, Math.PI / 12 - .04), segMat); m.visible = false; this.pressRing.add(m); this.pressSegs.push(m); }
     this.pressRing.visible = false; this.scene.add(this.pressRing);
+    // (round 3) The time he has: one ring round his own gold ring, full as the window opens and draining clockwise from
+    // the far side (as a clock's hand goes) to nothing as it ends. Calm green with plenty left, warm orange near the end.
+    // Drawn over everything (the grass, his feet, the ball), so no part of it is ever hidden.
+    this.timerRing = new THREE.Group(); this.timerSegs = []; this.timerN = 48;
+    const tMat = new THREE.MeshBasicMaterial({ color: 0x5fe08a, transparent: true, opacity: .95, depthWrite: false, depthTest: false, toneMapped: false });
+    const tBack = new THREE.MeshBasicMaterial({ color: 0x24193a, transparent: true, opacity: .35, depthWrite: false, depthTest: false, toneMapped: false });
+    const back = new THREE.Mesh(new THREE.RingGeometry(.6, .86, 64), tBack); back.renderOrder = 6; this.timerRing.add(back);
+    for (let i = 0; i < this.timerN; i++) { const a = i * 2 * Math.PI / this.timerN, m = new THREE.Mesh(new THREE.RingGeometry(.63, .83, 2, 1, a, 2 * Math.PI / this.timerN + .004), tMat); m.renderOrder = 7; m.userData.a = a + Math.PI / this.timerN; this.timerRing.add(m); this.timerSegs.push(m); }
+    this.timerMat = tMat; this.timerRing.visible = false; this.scene.add(this.timerRing);
     // Defense: spots he can run to, drawn as pulsing gold rings with a soft glow.
     this.stayBadge = new THREE.Sprite(new THREE.SpriteMaterial({ map: stayTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
     this.stayBadge.center.set(.5, 0); this.stayBadge.renderOrder = 5; this.stayBadge.visible = false; this.scene.add(this.stayBadge);
@@ -594,11 +603,18 @@ export class World {
       if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, BALL_R + (b.z || 0)); // a hard shot leaves a trail
       bp.x = b.x; bp.y = b.y;
     } else this.ballPrev = { x: b.x, y: b.y };
-    const pr = ui.reach && ui.heroRing && h; this.pressRing.visible = !!pr; // (the segments: centred on the threat's side, as many as the window has run)
+    const tm = ui.timer && h; this.timerRing.visible = !!tm;
+    if (tm) {
+      const left = ui.timer.left, top = Math.atan2(c.position.y - h.y, c.position.x - h.x) + Math.PI; // the ring's far side from the camera: where it starts and ends
+      this.timerRing.position.set(h.x, h.y, .03); this.timerRing.scale.setScalar(ui.timer.wide ? 1.45 : 1);
+      for (const m of this.timerSegs) { const o = (((top - m.userData.a) / (2 * Math.PI)) % 1 + 1) % 1; m.visible = o >= 1 - left; } // (clockwise from the far side: the part already gone is the first stretch after it)
+      this.timerMat.color.setHex(left > .5 ? 0x5fe08a : left > .25 ? 0xffd23f : 0xff7a2e);
+    }
+    const pr = false && ui.reach && ui.heroRing && h; this.pressRing.visible = !!pr; // (the segments: centred on the threat's side, as many as the window has run)
     if (pr) { const rc = ui.reach, a = Math.atan2(rc.y - h.y, rc.x - h.x), n = Math.round(rc.u * 24), c = Math.round(a / (Math.PI / 12));
       this.pressRing.position.set(h.x, h.y, .025); this.pressRing.scale.copy(this.heroRing.scale);
       this.pressSegs.forEach((m, i) => { const d = ((i - c) % 24 + 36) % 24 - 12; m.visible = Math.abs(d) * 2 < n || (n >= 24); }); }
-    const rc = ui.reach; this.reachMesh.visible = !!rc; // the threat's reach, from his feet to as far as it goes (a little behind him, so it starts under him)
+    const rc = null; this.reachMesh.visible = false; // (round 3: no patch on the grass) // the threat's reach, from his feet to as far as it goes (a little behind him, so it starts under him)
     if (rc) { const back = .3; this.reachMesh.position.set(rc.x - rc.dx * back, rc.y - rc.dy * back, .022); this.reachMesh.rotation.z = Math.atan2(rc.dy, rc.dx); this.reachMesh.scale.set(rc.len + back + .12, 1.05, 1); }
     this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
     this.ball.position.set(b.x, b.y, BALL_R + (b.z || 0)); this.ball.visible = this.ballBlob.visible = !b.hidden; // (hidden: out of play, see outcomes.js missedShot)
