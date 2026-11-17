@@ -652,7 +652,7 @@ function planHold0(sc, st, opts, kind) {
       // (where the lunge ends: CONTACT from the ball, on his side of it, not on top of the player on it)
       const fa = Math.atan2(line[1], line[0]), da = Math.atan2(Math.sin(a0 - fa), Math.cos(a0 - fa)), ea = fa + clamp(da, -1.4, 1.4), bc = [hG.x + line[0] * .45 - BG.x, hG.y + line[1] * .45 - BG.y];
       const f = jockPace(Gj, Math.min(R, JOCK.R, (Gj - .1) / PACE + .1));
-      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, rT: Math.min(rJ, JOCK.rT), amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
+      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, rT: clamp(rJ - .3, 1.05, JOCK.rT), amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
       r0 = rS; jock = true;
     }
   }

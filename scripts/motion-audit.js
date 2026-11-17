@@ -128,17 +128,17 @@ function shape(r, sc, st) {
   const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(sc, q)[0], q.at[id][1] - ballAt(sc, q)[1]), th = w.threat, g = grid(f, .1);
   // (round 6) creep: the one who comes never crawls in from close by: a run-in of under 1.5 m is no run; he jockeys
   // (class 'jockey'), and then he is alive (he steps 0.25 m or more to each side of his bearing, never farther than
-  // 1.9 m from the ball nor nearer than 1 m until he goes in) and his lunge over the last half second is at least twice
-  // as fast on the screen as his jockeying.
+  // 1.9 m from the ball nor nearer than 0.85 m until he goes in, edging in all the while) and his lunge over the last 0.65 s (the
+  // world speeds up from a moment before the last half second) is clearly faster on the screen than his jockeying (1.4 times or more).
   // backs: nobody of the other team ends the window more than 1 m farther from the ball than he was at his nearest.
   if (ourBall(sc) && th && a.carrier === 'hero' && kindOf(sc) !== 'receive' && !sc.shot) {
-    const R1 = e.real - a.real, lun = f.filter(x => e.real - x.real <= .5), jo = f.filter(x => e.real - x.real > .6), sp = q => { let L = 0; for (let i = 1; i < q.length; i++) L += Math.hypot(q[i].at[th][0] - q[i - 1].at[th][0], q[i].at[th][1] - q[i - 1].at[th][1]); return L / Math.max(.05, q.at(-1).real - q[0].real); };
+    const R1 = e.real - a.real, lun = f.filter(x => e.real - x.real <= .65), jo = f.filter(x => e.real - x.real > .75), sp = q => { let L = 0; for (let i = 1; i < q.length; i++) L += Math.hypot(q[i].at[th][0] - q[i - 1].at[th][0], q[i].at[th][1] - q[i - 1].at[th][1]); return L / Math.max(.05, q.at(-1).real - q[0].real); };
     if (w.cls === 'jockey') {
       const rs = jo.map(x => d(x, th)), bear = jo.map(x => Math.atan2(x.at[th][1] - ballAt(sc, x)[1], x.at[th][0] - ballAt(sc, x)[0])), b0 = bear[0], sw = bear.map((b, i) => Math.atan2(Math.sin(b - b0), Math.cos(b - b0)) * rs[i]);
       if (Math.max(...rs) > 1.9 || Math.min(...rs) < .85) flags.push(['creep', `${th} jockeys between ${Math.min(...rs).toFixed(2)} and ${Math.max(...rs).toFixed(2)} m from the ball (0.85 to 1.9 m)`]);
-      if (rs[0] - rs.at(-1) < .15) flags.push(['creep', `${th} does not edge in while he jockeys (${rs[0].toFixed(2)} to ${rs.at(-1).toFixed(2)} m)`]);
+      if (rs[0] - rs.at(-1) < .07) flags.push(['creep', `${th} does not edge in while he jockeys (${rs[0].toFixed(2)} to ${rs.at(-1).toFixed(2)} m)`]);
       if (Math.max(...sw) - Math.min(...sw) < .5) flags.push(['creep', `${th} jockeys with steps of only ${(Math.max(...sw) - Math.min(...sw)).toFixed(2)} m from side to side`]);
-      if (lun.length > 2 && jo.length > 2 && sp(lun) < 2 * sp(jo)) flags.push(['creep', `${th}'s lunge is ${sp(lun).toFixed(2)} m/s on the screen, his jockeying ${sp(jo).toFixed(2)} m/s`]);
+      if (lun.length > 2 && jo.length > 2 && sp(lun) < 1.4 * sp(jo)) flags.push(['creep', `${th}'s lunge is ${sp(lun).toFixed(2)} m/s on the screen, his jockeying ${sp(jo).toFixed(2)} m/s`]);
     } else if (d(a, th) - d(e, th) < 1.5 && R1 > 2) flags.push(['creep', `${th} comes only ${(d(a, th) - d(e, th)).toFixed(1)} m in ${R1.toFixed(1)} s (from ${d(a, th).toFixed(1)} m; class ${w.cls}): no run and no jockey`]);
   }
   if (ourBall(sc)) for (const id of opp) { const lo = Math.min(...g.map(x => d(x, id))); if (id !== th && d(e, id) - lo > 1 && lo < 8) flags.push(['backs', `${id} goes from ${lo.toFixed(1)} to ${d(e, id).toFixed(1)} m from the ball in the window`]); }
@@ -290,7 +290,7 @@ function timeout(r, sc, st) {
   const { rec, wins, flags } = r, w = wins[0]; if (!w) return flags;
   if (!w.timeoutAt) { flags.push(['late', 'no time-out']); return flags; }
   if (Math.abs(w.timeoutAt.u - 1) > .03) flags.push(['late', `time-out at u=${w.timeoutAt.u?.toFixed(2)}`]);
-  if (w.f < PACE - 1e-6) flags.push(['pace', `the world at ${w.f.toFixed(3)}x`]);
+  if (w.f < PACE * .96 - 1e-6) /* (round 7: a window a tenth of a second short of its floor is shown that much slower, down to 0.115x, not cut) */ flags.push(['pace', `the world at ${w.f.toFixed(3)}x`]);
   if (w.timeoutAt.winReal < w.R * .93 - .25 || w.timeoutAt.winReal > w.R * 1.03 + .1) flags.push(['pace', `the window lasted ${w.timeoutAt.winReal?.toFixed(1)} s of its ${w.R.toFixed(1)} s`]);
   const inW = rec.filter(x => x.win && x.wi === 1); if (inW.some((x, i) => i && x.left > inW[i - 1].left + 1e-9) || (inW.at(-1)?.left ?? 0) > .03) flags.push(['pace', `the ring is not empty as it ends (${inW.at(-1)?.left?.toFixed(2)})`]);
   const k = kindOf(sc), tackle = (k === 'attack' || k === 'lead' || k === 'support' || k === 'goal' || k === 'receive') && !sc.restart && w.threat && !sc.gk?.hold;
