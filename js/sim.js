@@ -5,7 +5,9 @@ import { MOVE_W } from './flair.js';
 
 const SPACE = .75; // meters between two players' centers
 const EASE = 3.5;   // m/s² a child speeds up or slows down at (v64 research Q1; window.js ACC)
-const MOM_T = 1.4, MOM_A = 3; // (v66) how long a player carries his velocity on out of a planned way, and how fast it changes (m/s²)
+// From a walk he changes it at MOM_A; the faster he is going, the harder he can push off (up to MOM_MAX), but never so
+// hard that he is going back the way he came within the first 0.6 s: over that time his net way is still the old one.
+const MOM_T = 1.4, MOM_A = 3, MOM_MAX = 7.7; // (v66) how long a player carries his velocity on out of a planned way, and how fast it changes (m/s²)
 const TURN = 9;            // radians per second a player can turn
 // Turn a player's facing toward (fx, fy) at a limited speed, so direction changes look like real turns.
 function turnToward(a, fx, fy, dt) {
@@ -337,11 +339,11 @@ export class Sim {
   // (v66) He comes off his planned way with the velocity he has (a.mom, for MOM_T s at most): whatever moves him next, he
   // goes into it from that velocity, changing it no faster than a child can (EASE), so nobody turns round on the spot
   // as the window closes. The player with the ball turns with a real move instead (startTurn).
-  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; const vx = (a.tx - a.x) * 2, vy = (a.ty - a.y) * 2; a.tx = a.x + vx; a.ty = a.y + vy; if (!a.gk && Math.hypot(vx, vy) > .3) { a.mom = [vx, vy]; a.momT = this.time + MOM_T; } else a.mom = null; }
+  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; const vx = (a.tx - a.x) * 2, vy = (a.ty - a.y) * 2; a.tx = a.x + vx; a.ty = a.y + vy; const v0 = Math.hypot(vx, vy); if (!a.gk && v0 > .3) { a.mom = [vx, vy]; a.momT = this.time + MOM_T; a.momA = Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * v0) / .18)); } else a.mom = null; }
   // One step of a player coming round from the velocity he had (a.mom) to the one he wants (wx, wy). Returns true when he
   // is there (the usual way of moving takes over), false while he is still coming round (he has been moved).
   momentum(a, wx, wy, dt) {
-    const m = a.mom, ex = wx - m[0], ey = wy - m[1], el = Math.hypot(ex, ey), st = (a.ease ? MOM_A : MOM_A * 2.2) * dt; // (one the play's script sends reacts at once and hard; one the team's shape moves comes round as a child does)
+    const m = a.mom, ex = wx - m[0], ey = wy - m[1], el = Math.hypot(ex, ey), st = (a.momA || MOM_A) * dt;
     if (el <= st || this.time > a.momT) { a.mom = null; a.va = Math.hypot(wx, wy); return true; }
     m[0] += ex / el * st; m[1] += ey / el * st;
     const sp = Math.hypot(m[0], m[1]); a.x += m[0] * dt; a.y += m[1] * dt; a.dist += sp * dt; a.sp = sp; a.va = sp;

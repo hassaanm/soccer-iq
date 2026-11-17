@@ -409,8 +409,9 @@ function planHold0(sc, st, opts, kind) {
   const rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, RUNIN)) : Math.max(rP, RUNIN);
   const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
   const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
-  const Gfor = L => { let G = Math.max(L / V_RUN.pref, PACE * R * RETRY); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
-  let G = opts.G || (th ? Gfor(lenOf(rMax)) : clamp(PACE * R * RETRY, 1.6, 2.6)), fixedG = !!opts.G;
+  const Gpace = PACE * (R * RETRY - .1) + .1 + .01; // (the play a window of R s, and of its first longer retry, needs at PACE)
+  const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
+  let G = opts.G || (th ? Gfor(lenOf(rMax)) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G;
   // ---- everyone else: the drift, and his own small part ----
   const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
     const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
@@ -459,8 +460,9 @@ function planHold0(sc, st, opts, kind) {
   // Which moments of the window agree (ok[i]: at i·STEP_T), and whether everyone stays on the pitch.
   function score(b) {
     const tmp = {}, ok = [], vd = [], onp = Object.keys(b.paths).filter(id => !at[id].gk && onPitch(at[id].x, at[id].y, .4)); let bad = 0, first = null;
-    for (let i = 0; i * STEP_T <= b.G + 1e-6; i++) {
-      const t = i * STEP_T, d = disagree(sc, posOf(b, t, null, tmp), t, o2), off = onp.some(id => { const q = pathAt(b.paths[id], t, tmp[id] ||= {}); return !onPitch(q.x, q.y, .4); });
+    const n = Math.max(1, Math.ceil(b.G / STEP_T - 1e-6)), dtS = b.G / n; b.dtS = dtS;
+    for (let i = 0; i <= n; i++) {
+      const t = i * dtS, d = disagree(sc, posOf(b, t, null, tmp), t, o2), off = onp.some(id => { const q = pathAt(b.paths[id], t, tmp[id] ||= {}); return !onPitch(q.x, q.y, .4); });
       ok.push(!d.length && !off); vd.push(d); if (d.length || off) { bad++; first ||= d.length ? d : ['off the pitch']; }
     }
     let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
@@ -477,9 +479,9 @@ function planHold0(sc, st, opts, kind) {
   // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
   // the picture itself may then lie just outside it, and play is as near it as it ever is)
   if (best.bad && !live && !fixedG) for (let m = 0; m < 3 && best.bad; m++) {
-    const [i0, i1] = best.runOk, a0 = i0 + (m && i0 > 0 ? 1 : 0), a1 = i1 - (m && i1 < best.ok.length - 1 ? 1 : 0), Gs = (a1 - a0) * STEP_T; // (a step in from the edge of what agrees, if the first cut does not)
+    const [i0, i1] = best.runOk, a0 = i0 + (m && i0 > 0 ? 1 : 0), a1 = i1 - (m && i1 < best.ok.length - 1 ? 1 : 0), Gs = (a1 - a0) * best.dtS; // (a step in from the edge of what agrees, if the first cut does not)
     if (Gs < .6 - 1e-6) break;
-    const b = score(build(best.sp, best.k, best.tP - a0 * STEP_T, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
+    const b = score(build(best.sp, best.k, best.tP - a0 * best.dtS, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
   }
   // ---- the runs in ----
   let r0 = 0, shift = 0, tviol = 0, tclash = 0; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
@@ -517,8 +519,8 @@ function planHold0(sc, st, opts, kind) {
         if (!p2) return null; real[second] = p2;
       }
       let viol = 0, clash = near(path, th, .55) + (second ? near(real[second], second, .9) : 0);
-      for (let i = 0; i * STEP_T <= G + 1e-6; i++) {
-        const t = i * STEP_T, q = pathAt(path, t, tmp.th ||= {});
+      for (let i = 0; i < (b.vd?.length || 0); i++) {
+        const t = i * b.dtS, q = pathAt(path, t, tmp.th ||= {});
         const Bt = ballOf(sc, kind, holder, pathAt(b.paths[holder], t, tmp.h ||= {})), r1 = Math.hypot(q.x - Bt.x, q.y - Bt.y);
         if (r1 > rP + .3) { const rd = disagree(sc, posOf(b, t, real, {}), t, o2), virt = b.vd?.[i] || []; for (const o of rd) if (!virt.includes(o) && ratedAs(sc, o, kind, g0) !== 'bad') viol++; }
       }
@@ -563,7 +565,11 @@ function planHold0(sc, st, opts, kind) {
   if (th && at[th].gk) watch.add(th);
   const role = {}; for (const id of out) role[id] = id === holder ? 'ball' : id === th ? 'threat' : id === second ? 'second' : mark[id] ? 'marker:' + mark[id] : at[id].team === defTeam ? 'cover' : id === 'hero' ? 'hero' : 'friend';
   const Rmax = (G - .1) / PACE + .1, closes = th ? r0 - (toP ? rP : CONTACT) : 0;
-  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax), tP: best.tP, Gpre: clamp(best.tP, 0, G), Gpost: G - clamp(best.tP, 0, G), a: 0, D: best.D, paths: best.paths, holder,
+  // When play is at the scene's own picture with the threat in it too: the moment he is as far from the ball as the
+  // picture has him (the tests and the audits choose there when they want the picture whole).
+  let tPic = clamp(best.tP, 0, G);
+  if (run?.run && !toP) { tPic = G; for (let i = 0; i <= 40; i++) { const t = G * i / 40, q = pathAt(run, t, {}), Bt = ballOf(sc, kind, holder, pathAt(best.paths[holder], t, {})); if (Math.hypot(q.x - Bt.x, q.y - Bt.y) <= rP + .05) { tPic = t; break; } } }
+  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax), tP: best.tP, Gpre: tPic, Gpost: G - tPic, a: 0, D: best.D, paths: best.paths, holder,
     threat: th ? { id: th } : kind === 'defense' ? { id: holder, to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : null, second,
     comers: [th, second].filter(Boolean).map(id => ({ id, x: at[id].x, y: at[id].y })), virt: th ? { x: at[th].x, y: at[th].y } : null, bear: bearA, rP, r0, shift, watch, role, look, wide,
     at0: Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }])), dis: best.bad ? best.first || ['?'] : [], disN: best.bad, k: best.k, sp: best.sp,

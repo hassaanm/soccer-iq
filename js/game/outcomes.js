@@ -149,7 +149,7 @@ export const outcomes = {
     }
     // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
     this.scripted.add(id); s.go(id, lerp(m.x, s.ball.x, .3), lerp(m.y, s.ball.y, .3), 4.2);
-    this.scripted.add(ic.opp.id); s.go(ic.opp.id, ic.x, ic.y, 6);
+    this.scripted.add(ic.opp.id); ic.opp.mom = null; s.go(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once)
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
     const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
@@ -210,7 +210,7 @@ export const outcomes = {
     // A bad push straight at a defender is his ball: he stops it where it reaches him.
     const inLane = !good && firstInLane(opps, s.ball, end, .05, 1);
     if (inLane) {
-      const o = inLane.opp; this.scripted.add(o.id); s.go(o.id, inLane.x, inLane.y, 4);
+      const o = inLane.opp; this.scripted.add(o.id); o.mom = null; s.go(o.id, inLane.x, inLane.y, 4);
       yield* this.strike('hero', inLane.x, inLane.y, { speed: 8.5, arc: .1 });
       yield () => s.ball.state === 'loose';
       const t0 = s.time; yield () => dist(o, s.ball) < .7 || s.time - t0 > .8;
@@ -435,7 +435,7 @@ export const outcomes = {
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
     if (sh) { this.rebound = sh; yield* this.shotOut(sh); this.hud.caption('Blocked!'); this.say('Blocked!'); this.scripted.add(block.opp.id); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
-    this.scripted.add(block.opp.id); s.go(block.opp.id, block.x, block.y, 5);
+    this.scripted.add(block.opp.id); block.opp.mom = null; s.go(block.opp.id, block.x, block.y, 5); // (he steps into its line at once)
     yield* this.strike('hero', block.x, block.y, { speed: 15, arc: .2 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);

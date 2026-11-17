@@ -7,7 +7,9 @@ import { Sim } from '../js/sim.js';
 import { TEAMS } from '../js/teams.js';
 import { MOVE_NAME, MOVE_W } from '../js/flair.js';
 import { allScenarios } from '../js/skills.js';
-import { optionsFor } from './harness.js';
+import { optionsFor, pictureU } from './harness.js';
+// Opens the choice and lets play go on (nothing tapped) until it is at the scene's own picture.
+const toPicture = g => { g.decide(); const w = g.win; if (!w) return; const u = pictureU(w); for (let i = 0; i < 6000 && g.win && (g.win.u ?? 0) < u; i++) g.tick(1 / 60, 0); };
 
 // A game as the real one runs (skillTaps), with a stub renderer; `tap` decides, every frame of an offer, whether to tap.
 function makeGame(tap = () => false) {
@@ -30,7 +32,7 @@ async function play(sc, opt, tap) {
   const { g, events } = makeGame(tap), log = [];
   const offer = g.skillOffer; g.skillOffer = function (kind, k, n) { log.push({ kind, k, phase: this.phase }); return offer.call(this, kind, k, n); };
   g.mode = 'lesson'; g.load(sc); await frames(g, g.pre());
-  for (let i = 0; i < 60; i++) g.tick(1 / 60, 0);
+  toPicture(g); // (v66: he chooses in the window, when play is at the scene's own picture: the defender has come as near as the scene has him)
   await frames(g, g.outcome(opt, g.isGood(opt)));
   const s = g.sim, end = [...s.agents.values()].map(a => [a.id, a.x.toFixed(6), a.y.toFixed(6)].join(' ')).join('|');
   return { result: g.result, banners: events.filter(e => e[0] === 'banner').map(e => e[1]), end, offers: log, moved: events.some(e => e[0] === 'skillName'), names: events.filter(e => e[0] === 'skillName').length, g };
@@ -42,7 +44,7 @@ test('every move has a name a child sees', () => {
 
 test('a tap or none: the play ends the same, with everyone in the same place; one offer at most, never while he decides', async () => {
   let offers = 0, turns = 0, runs = 0;
-  for (const sc of allScenarios('take-him-on').slice(0, 6)) for (const opt of optionsFor(sc)) {
+  for (const sc of [...allScenarios('take-him-on').slice(0, 6), ...allScenarios('dribble-to-space').slice(0, 4)]) for (const opt of optionsFor(sc)) { // (v66: both dribbling lessons: the defender comes running now, so a chance to run at him is rarer)
     const none = await play(sc, opt, () => false), tapped = await play(sc, opt, g => { if (g.clock - g.sk.t0 > .3) { g.skillTap(); return true; } return false; }); // (two taps: the second does nothing)
     assert.equal(tapped.result, none.result, `${sc.id} ${opt}`);
     assert.deepEqual(tapped.banners, none.banners, `${sc.id} ${opt}`);
@@ -67,7 +69,7 @@ test('a tap after the window, or a second tap, does nothing', async () => {
   // taps just after it closed: nothing
   const { g, events: ev } = makeGame(() => false), watch = g.skillWatch;
   g.skillWatch = function (dt) { const was = this.sk?.phase; watch.call(this, dt); if (was === 'offer' && this.sk?.phase !== 'offer') { this.skillTap(); this.skillTap(); } };
-  g.mode = 'lesson'; g.load(sc); await frames(g, g.pre()); for (let i = 0; i < 60; i++) g.tick(1 / 60, 0);
+  g.mode = 'lesson'; g.load(sc); await frames(g, g.pre()); toPicture(g);
   await frames(g, g.outcome(opt, g.isGood(opt)));
   assert.ok(ev.some(e => e[0] === 'skill' && e[1]), 'it was offered');
   assert.ok(!ev.some(e => e[0] === 'skillName'), 'a late tap makes no move');

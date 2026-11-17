@@ -64,7 +64,8 @@ export const view = {
     // one who comes, their near players, where things end); 2: only him, the ball and the rings as it opens).
     const even = !!(sc.run || sc.even), stay = this.stayOffered(), goalAll = [], goalNear = [];
     const ring = (out, sp) => { if (!even) for (let a = 0; a < 8; a++) out.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); else out.push([sp.x, sp.y, 0]); };
-    const base = [[h.x, h.y, .9], [h.x, h.y, 0], [ball.x, ball.y, 0]]; for (const sp of sp0) ring(base, sp);
+    const base = [[h.x, h.y, 1.9], [h.x, h.y, 0], [ball.x, ball.y, 0]]; for (const sp of sp0) ring(base, sp);
+    for (let a = 0; a < 6; a++) base.push([h.x + Math.cos(a * Math.PI / 3) * .9, h.y + Math.sin(a * Math.PI / 3) * .9, 0]); // (his timer ring whole, and his head)
     if (!hold && !P0) { const hn = s.a('hero'); if (far(hn, h)) base.push([hn.x, hn.y, .9]); }
     const heroAt = [h, he]; if (P0) { const hn = s.a('hero'), q = { x: hn.x, y: hn.y }; heroAt.push(q); base.push([q.x, q.y, .9], [q.x, q.y, 0]); }
     const mid = [...base], extra = [];
@@ -332,6 +333,18 @@ export const view = {
   },
   // Run-to rounds with a friend on the ball where staying put is one of the choices (not the shot rounds' "watch").
   stayOffered() { const sc = this.sc; return sc?.kind === 'support' && !!sc.even && !!sc.spots?.some(sp => sp.id === 'stay'); },
+  // (v66) What the head-down blur must leave sharp: his own player, wherever he is on the screen (in the views that are
+  // not centred on him), and the one who is coming (the window's threat), in the run-up and while he chooses.
+  clearUi() {
+    if (this.look > .97 || (this.phase !== 'pre' && this.phase !== 'decide')) return null;
+    const v = this.viewSize(), s = this.sim, h = s.a('hero'), out = (this.ui.clear ||= { at: null, hole: null, a: [50, 64], q: [0, 0, 0] });
+    const spot = (this.step === 'spot' && this.phase === 'decide') || this.spotPre();
+    out.at = null; out.hole = null;
+    if (spot && h && v.w) { const p = this.world.project(h.x, h.y, .7); if (p) { out.a[0] = clamp(p[0] / v.w * 100, 8, 92); out.a[1] = clamp(p[1] / v.h * 100, 12, 90); out.at = out.a; } }
+    const plan = this.win?.plan || (this.phase === 'pre' && this.wplan?.sc === this.sc ? this.wplan : null), t = plan?.threat && s.a(plan.threat.id);
+    if (t && this.sc?.kind !== 'receive') { const p = this.world.project(t.x, t.y, .8), f = this.world.project(t.x, t.y, 0), k = this.world.project(t.x, t.y, 1.7); if (p && f && k) { out.q[0] = p[0]; out.q[1] = p[1]; out.q[2] = clamp(Math.abs(f[1] - k[1]) * .75, 26, 90); out.hole = out.q; } }
+    return out;
+  },
   updateHud() {
     const hud = this.hud, s = this.sim;
     let prompt = '';
@@ -351,7 +364,7 @@ export const view = {
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.
     const nudge = this.canAct && !this.lookUp && (this.locked || (!this.seen.size && (this.realTime || 0) - (this.decideReal || 0) > 5)) ? 'look' : null;
-    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: (this.canAct || this.showing) && this.canShoot, showing: !!this.showing });
+    hud.state({ phase: this.phase, step: this.step, mode: this.mode, prompt, nudge, lookUp: this.lookUp, look: this.look, locked: this.locked, kind: this.sc?.kind || 'attack', touchPick: !!this.pendingDir, canShoot: (this.canAct || this.showing) && this.canShoot, showing: !!this.showing, clear: this.clearUi() });
     // The teaching hand follows its target (a spot on the field moves on screen as the camera moves). The HUD
     // hears about it only when the hand shows, hides, moves or taps.
     const at = this.handAt, last = this.handLast, tap = at ? this.handTap : null;

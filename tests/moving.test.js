@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeGame, drive } from './harness.js';
 import { PATH, allScenarios } from '../js/skills.js';
-import { windowSeconds, planWindow, pathAt, kindOf, SPEED, ACC, WINDOW, THINK, RETRY } from '../js/window.js';
+import { windowSeconds, planHold, agreeAt, rolesOf, attackOptions, pathAt, kindOf, SPEED, WINDOW, THINK, RETRY, PACE } from '../js/window.js';
 import { logChoice, today } from '../js/progress.js';
 
 test('the window: one table, by level, with the grown-ups\' Thinking time and longer after running out of time', () => {
@@ -16,26 +16,52 @@ test('the window: one table, by level, with the grown-ups\' Thinking time and lo
   assert.equal(windowSeconds({ level: 2, retry: 1 }), WINDOW[2] * RETRY);
 });
 
-// Where everyone is in a scene's own picture, as the game plans before the run-up (game/window.js sceneState).
+// Where everyone is in a scene's own picture, as the game plans before the run-up (game/window.js sceneState), and the
+// plan's options as the game gives them (rounds.js).
 const stateOf = sc => {
   const at = {}, put = (id, p, team, gk = false) => { if (p) at[id] = { x: p[0], y: p[1], vx: 0, vy: 0, team, gk }; };
-  put('hero', sc.heroTo, 'us'); (sc.matesTo || sc.mates).forEach((p, i) => put('m' + (i + 1), p, 'us')); (sc.oppsTo || sc.opps).forEach((p, i) => put('o' + (i + 1), p, 'them'));
-  if (sc.gk?.us) put('k1', sc.gk.us, 'us', true); if (sc.gk?.them) put('k2', sc.gk.them, 'them', true);
+  put('hero', sc.heroTo, 'us'); (sc.matesTo || sc.mates).forEach((p, i) => put('m' + (i + 1), sc.kind === 'lead' && i === 0 ? sc.moves.m1.at : p, 'us')); (sc.oppsTo || sc.opps).forEach((p, i) => put('o' + (i + 1), p, 'them'));
+  if (sc.gk?.us) put('k1', sc.gk.us, 'us', true); if (sc.gk?.them) { put('k2', sc.gk.them, 'them', true); if (sc.gk.out) at.k2.rush = true; }
   return { at };
 };
-test('every lesson scene gets a window in which every choice keeps its grade, at child speeds, with nobody turning back', () => {
-  for (const sk of PATH) for (const sc of allScenarios(sk.id).slice(0, 3)) {
-    if (kindOf(sc) === 'tackle' || kindOf(sc) === 'receive' || kindOf(sc) === 'lead' || kindOf(sc) === 'follow' || sc.restart) continue; // (restarts: a dead ball, round 2's planner only) // (these open from play going on: the motion audit plays them)
-    const p = planWindow(sc, stateOf(sc), { fixed: true });
+const planOf = (sc, R = 8) => {
+  const kind = kindOf(sc), opts = { R, options: kind === 'attack' ? attackOptions(sc) : undefined };
+  if (kind === 'lead') { const d = sc.dir, mv = sc.moves; opts.keep = { m1: [d[0] * mv.m1.speed, d[1] * mv.m1.speed], ...(mv.o2 ? { o2: [d[0] * mv.o2.speed, d[1] * mv.o2.speed] } : {}) }; }
+  if (kind === 'receive') { opts.skip = ['m1']; opts.G = Math.max(.25, Math.hypot(sc.heroTo[0] - .45 - (sc.mates[0][0] + .4), sc.heroTo[1] - sc.mates[0][1]) / 5); }
+  if (sc.intro === 'won') opts.never = ['o1'];
+  return { p: planHold(sc, stateOf(sc), opts), opts, st: stateOf(sc) };
+};
+// (v66) The design: the picture holds for the whole window, and one defender comes.
+test('every lesson scene: the shape holds all through the window, nobody strays from his place in the picture, and the one who comes runs straight in', () => {
+  let n = 0, threats = 0;
+  for (const sk of PATH) for (const sc of allScenarios(sk.id)) {
+    const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') continue; // (a 1v1 has no window; after a shot it opens from play going on: the motion audit plays it)
+    const { p, opts, st } = planOf(sc); n++;
     assert.deepEqual(p.dis, [], `${sc.id}: ${p.dis}`);
-    assert.ok(p.G >= .9 && p.G <= 2, `${sc.id}: ${p.G} s of play`);
-    for (const [id, path] of Object.entries(p.paths)) {
-      const v0 = pathAt(path, 0), v1 = pathAt(path, p.G), s0 = Math.hypot(v0.vx, v0.vy), s1 = Math.hypot(v1.vx, v1.vy);
-      assert.ok(Math.max(s0, s1) <= SPEED.sprint[1], `${sc.id} ${id}: ${s1.toFixed(1)} m/s`);
-      if (s0 > .4 && s1 > .4) assert.ok((v0.vx * v1.vx + v0.vy * v1.vy) / (s0 * s1) > -.5, `${sc.id} ${id} turns back`);
-      if (!path.tau) assert.ok(true); else assert.ok(Math.hypot(path.v1[0] - path.v0[0], path.v1[1] - path.v0[1]) * 1.5 / path.tau <= ACC + 1e-6, `${sc.id} ${id} speeds up too fast`);
+    assert.ok(p.G >= .6 - 1e-9 && p.G <= 4.6, `${sc.id}: ${p.G} s of play`);
+    assert.ok((p.G - .1) / (p.R - .1) >= PACE - 1e-6, `${sc.id}: the world at ${((p.G - .1) / (p.R - .1)).toFixed(3)}x`);
+    const ids = Object.keys(st.at).filter(id => !st.at[id].gk), comers = new Set(p.comers.map(c => c.id)), tP = p.tP;
+    for (const t of [0, p.G / 2, p.G]) {
+      const pos = id => (p.paths[id] ? pathAt(p.paths[id], t) : st.at[id]); // (one the scene's own script moves, the passer: where the scene has him)
+      // every relation that does not hang on the one who comes, as the scene grades it; and he spoils nothing he should not
+      const a = agreeAt(sc, p, pos, t, { options: opts.options, ids });
+      assert.deepEqual(a.dis, [], `${sc.id} at ${t.toFixed(2)} s: ${a.dis}`);
+      if (!p.tviol) assert.deepEqual(a.threat, [], `${sc.id} at ${t.toFixed(2)} s: the threat spoils ${a.threat}`);
+      // nobody more than 1.5 m from his place in the picture, moved on with the play (the scene's own runners apart)
+      for (const id of ids) { if (comers.has(id) || opts.keep?.[id] || !p.paths[id]) continue; const q = pos(id), d = Math.hypot(q.x - st.at[id].x - p.D[0] * (t - tP), q.y - st.at[id].y - p.D[1] * (t - tP)); assert.ok(d <= 1.5, `${sc.id} ${id}: ${d.toFixed(2)} m off his place at ${t.toFixed(2)} s`); }
+    }
+    for (const [id, path] of Object.entries(p.paths)) for (const t of [0, p.G / 2, p.G]) { const q = pathAt(path, t), v = Math.hypot(q.vx, q.vy); assert.ok(v <= SPEED.sprint[1] + .05, `${sc.id} ${id}: ${v.toFixed(1)} m/s`); }
+    const th = p.threat?.id;
+    if (th && p.paths[th].run) { // straight in, never slowing, to the ball as the window ends
+      threats++; const run = p.paths[th], a = pathAt(run, 0), m = pathAt(run, p.G / 2), e = pathAt(run, p.G), h = pathAt(p.paths[p.holder], p.G);
+      assert.ok(Math.hypot(m.vx, m.vy) >= Math.hypot(a.vx, a.vy) - 1e-6 && Math.hypot(e.vx, e.vy) >= Math.hypot(m.vx, m.vy) - 1e-6, `${sc.id}: ${th} slows down on his way in`);
+      if (kind !== 'receive') assert.ok(Math.hypot(e.x - h.x, e.y - h.y) < 1.5, `${sc.id}: ${th} ends ${Math.hypot(e.x - h.x, e.y - h.y).toFixed(2)} m from the player on the ball`);
+      // and he is the nearest free defender as it opens
+      const at0 = Object.fromEntries(Object.entries(p.paths).map(([id, q]) => { const r = pathAt(q, 0); return [id, { ...st.at[id], x: r.x, y: r.y }]; })), ro = rolesOf(sc, at0, { never: opts.never });
+      if (!st.at[th].gk) assert.ok(ro.free[0] === th || ro.free.filter(id => !(opts.never || []).includes(id) && !opts.keep?.[id])[0] === th, `${sc.id}: ${th} comes, but ${ro.free[0]} is the nearest free defender as it opens`);
     }
   }
+  assert.ok(n > 100 && threats > 60, `${n} scenes, ${threats} with someone coming`);
 });
 
 test('in a window play goes on, slowly; at its end the defender takes the ball, and the round is tried again with more time', async () => {
@@ -47,7 +73,7 @@ test('in a window play goes on, slowly; at its end the defender takes the ball, 
   assert.equal(r.firstTry, false, 'running out of time is not right on the first try');
   assert.ok(events.some(e => e[0] === 'banner' && e[2] === 'soft'), 'kind words, no harsh card');
   assert.ok(wins.length >= 2 && Math.abs(wins[1].R / wins[0].R - RETRY) < .01, `the retry has a longer window (${wins.map(w => w.R).join(', ')})`);
-  assert.ok(wins[0].f < .4 && wins[0].f > .03, `slow motion (${wins[0].f})`);
+  assert.ok(wins[0].f < .5 && wins[0].f >= PACE - 1e-6, `slow motion, never under ${PACE}x (${wins[0].f})`);
   assert.equal(log[0]?.timeout, true, 'the time-out goes in the decision log');
 });
 
@@ -72,21 +98,21 @@ test('in a match the time-out hands them the ball and play goes on', async () =>
   } finally { Math.random = real; }
 });
 
-// Round 2: the scene's own picture is the end of the window. The threat runs in from well out, on a child's run, and is
-// where the scene has him as it ends; whoever is still in the picture moves.
-test('round 2: the threat arrives at the scene\'s own picture as the window ends, from at least 2.5 m further out', async () => {
+// (v66) In the game: the threat runs in from well out and is at the ball as the ring empties; he takes it at once.
+test('the one who comes closes at least 2.5 m and is within 0.8 m of the ball as the window ends; nobody else leaves his place', async () => {
   let n = 0;
   for (const id of ['look-up', 'take-him-on', 'pass-to-open', 'see-the-trap']) for (const sc of allScenarios(id).slice(0, 3)) {
     const { g } = makeGame(); g.mode = 'lesson'; g.load(sc); await drive(g, g.pre());
-    const p = g.decide(), w = g.win, th = w.threat.id, a = g.sim.a(th), start = { x: a.x, y: a.y };
-    if (w.plan.Gpost) { g.choose(sc.best); await p; continue; } // (one getting back from far runs on past his place)
-    let last = null; await drive(g, p, { pick: gm => { if (gm.win) last = { x: a.x, y: a.y }; return null; } });
-    const want = sc.oppsTo[+th.slice(1) - 1], end = Math.hypot(last.x - want[0], last.y - want[1]), ran = Math.hypot(last.x - start.x, last.y - start.y);
-    assert.ok(end < .4, `${sc.id}: ${th} ends ${end.toFixed(2)} m from his place in the scene`);
-    assert.ok(ran >= 2.5, `${sc.id}: ${th} ran only ${ran.toFixed(2)} m in the window`);
+    const p = g.decide(), w = g.win, th = w.threat.id, a = g.sim.a(th), b = g.sim.ball, d0 = Math.hypot(a.x - b.x, a.y - b.y);
+    const start = Object.fromEntries([...g.sim.agents.values()].map(q => [q.id, { x: q.x, y: q.y }]));
+    let last = null; await drive(g, p, { pick: gm => { if (gm.win) last = { d: Math.hypot(a.x - b.x, a.y - b.y), at: Object.fromEntries([...gm.sim.agents.values()].map(q => [q.id, { x: q.x, y: q.y }])) }; return null; } });
+    assert.ok(last.d < .8, `${sc.id}: ${th} is ${last.d.toFixed(2)} m from the ball as the window ends`);
+    if (w.plan.cls === 'full') assert.ok(d0 - last.d >= 2.5, `${sc.id}: ${th} closed only ${(d0 - last.d).toFixed(2)} m`);
+    const hm = [last.at.hero.x - start.hero.x, last.at.hero.y - start.hero.y];
+    for (const q of g.sim.agents.values()) { if (q.id === th || q.id === w.plan.second || q.gk) continue; const dx = last.at[q.id].x - start[q.id].x - hm[0], dy = last.at[q.id].y - start[q.id].y - hm[1]; assert.ok(Math.hypot(dx, dy) <= 1.5, `${sc.id} ${q.id}: ${Math.hypot(dx, dy).toFixed(2)} m against the play`); }
     n++;
   }
-  assert.ok(n >= 6, `only ${n} scenes checked`);
+  assert.ok(n >= 10, `only ${n} scenes checked`);
 });
 
 test('round 2: after three time-outs in a row the next window is Relaxed, until he chooses in time again', () => {

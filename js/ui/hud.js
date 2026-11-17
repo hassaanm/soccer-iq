@@ -20,7 +20,7 @@ let scoreNow = null; // the score on the scoreboard
 export const tunnelNow = () => shown.tunnel || 0;
 
 export const hud = {
-  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot, showing }) {
+  state({ phase, step, mode, prompt, nudge, lookUp, look, locked, kind, touchPick, canShoot, showing, clear }) {
     const d = hudEl.dataset, cl = hudEl.classList;
     step = step || 'none'; lookUp = !!lookUp; locked = !!locked;
     if (changed('showing', !!showing)) cl.toggle('showing', !!showing);
@@ -42,6 +42,13 @@ export const hud = {
     const playerView = (mode === 'lesson' || mode === 'match' || mode === 'demo' || mode === 'free') && (phase === 'pre' || phase === 'decide') && step !== 'dribble' && step !== 'aim' && step !== 'foot'; // (aiming a shot: he has his head up at the goal)
     const o = playerView ? Math.round((1 - look) * 95) / 100 : 0;
     if (changed('tunnel', o)) { ui.tunnel.style.opacity = o; ui.tunnel.classList.toggle('on', o > 0); }
+    // (v66) What must stay sharp while his head is down: his own player (the clear middle goes to where he is on screen)
+    // and the one who is coming (a clear patch over him). clear: { at: [x %, y %] | null, hole: [x px, y px, r px] | null }.
+    if (o > 0) {
+      const at = clear?.at, hole = clear?.hole, ka = at ? `${Math.round(at[0])} ${Math.round(at[1])}` : '', kh = hole ? `${Math.round(hole[0] / 3)} ${Math.round(hole[1] / 3)} ${Math.round(hole[2] / 4)}` : '';
+      if (changed('clearAt', ka)) { ui.tunnel.style.setProperty('--tx', at ? Math.round(at[0]) + '%' : '50%'); ui.tunnel.style.setProperty('--ty', at ? Math.round(at[1]) + '%' : '64%'); }
+      if (changed('clearHole', kh)) { ui.tunnel.style.setProperty('--hx', hole ? Math.round(hole[0]) + 'px' : '-999px'); ui.tunnel.style.setProperty('--hy', hole ? Math.round(hole[1]) + 'px' : '-999px'); ui.tunnel.style.setProperty('--hr', hole ? Math.round(hole[2]) + 'px' : '1px'); }
+    }
   },
   // The big moment. The outcome ("GOAL!", "Stole it!"…) lands in huge letters the moment it happens.
   // In lessons (`rated` = { stars, text, watch }) the big letters then shrink and move up, and the result card comes

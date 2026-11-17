@@ -127,11 +127,15 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #flash.go{animation:flash .55s ease-out}
 @keyframes flash{from{opacity:.6}}
 
-/* Head-down tunnel vision: blurred, darker edges that clear when he looks up. Off (not just clear) when unused:
+/* Head-down tunnel vision: blurred, darker edges that clear when he looks up. The clear middle sits on his own player
+   (--tx, --ty) and a second clear patch on the one who is coming (--hx, --hy, --hr): neither is ever blurred (v66). Off (not just clear) when unused:
    blurring the whole moving picture is the most costly thing on the screen. */
 #tunnel{position:fixed;inset:0;pointer-events:none;opacity:0;display:none;
   backdrop-filter:blur(7px) saturate(.75) brightness(.8);-webkit-backdrop-filter:blur(7px) saturate(.75) brightness(.8);
-  -webkit-mask:radial-gradient(ellipse 46% 52% at 50% 64%,transparent 55%,#000 100%);mask:radial-gradient(ellipse 46% 52% at 50% 64%,transparent 55%,#000 100%)}
+  --tx:50%;--ty:64%;--hx:-999px;--hy:-999px;--hr:1px;
+  -webkit-mask:radial-gradient(ellipse 46% 52% at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+  mask:radial-gradient(ellipse 46% 52% at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+  -webkit-mask-composite:source-in;mask-composite:intersect}
 #tunnel.on{display:block}
 
 /* ---------- game buttons ---------- */

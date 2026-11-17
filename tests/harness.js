@@ -91,7 +91,8 @@ export async function playOption(sc, opt) {
       m.frames++; const gdt = s.time - tPrev; tPrev = s.time;
       const list = [...s.agents.values()];
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) m.minGap = Math.min(m.minGap, dist(list[i], list[j]));
-      if (mate && s.ball.state === 'flying') { m.flight += gdt; m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); }
+      if (mate && s.ball.state === 'flying') { m.flight += gdt; m.flown = s.time; }
+      if (mate && (s.ball.state === 'flying' || (m.flown && s.time - m.flown < .6))) m.mateClosest = Math.min(m.mateClosest, dist(mate, start.ball)); // (v66: he comes round from the way he was going, as a child does: through the pass and the moment after it)
       if (s.time - t0 < 1.5) m.defClosest = Math.min(m.defClosest, dist(nearestDef, ballNow())); // (v64: players speed up and turn as children do, so a defender who was going the other way needs a moment)
       // A low ball in flight must not pass through anyone except where it's going.
       if (s.ball.state === 'flying' && s.ball.z < .9 && s.ball.t * s.ball.dur > .08) for (const a of list) if (a.id !== kicker && dist(a, s.ball) < .4 && dist(a, aimAt || { x: s.ball.tx, y: s.ball.ty }) > 1) m.through = a.id; // (not in its first moment, still at the kicker's feet beside a defender on him)
