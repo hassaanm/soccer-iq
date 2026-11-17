@@ -411,8 +411,8 @@ export class World {
     // the far side (as a clock's hand goes) to nothing as it ends. Calm green with plenty left, warm orange near the end.
     // Drawn over everything (the grass, his feet, the ball), so no part of it is ever hidden.
     this.timerRing = new THREE.Group(); this.timerSegs = []; this.timerN = 48;
-    const tMat = new THREE.MeshBasicMaterial({ color: 0x5fe08a, transparent: true, opacity: .95, depthWrite: false, depthTest: false, toneMapped: false });
-    const tBack = new THREE.MeshBasicMaterial({ color: 0x24193a, transparent: true, opacity: .35, depthWrite: false, depthTest: false, toneMapped: false });
+    const tMat = new THREE.MeshBasicMaterial({ color: 0x5fe08a, transparent: true, opacity: .95, depthWrite: false, depthTest: true, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false });
+    const tBack = new THREE.MeshBasicMaterial({ color: 0x24193a, transparent: true, opacity: .35, depthWrite: false, depthTest: true, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false });
     const back = new THREE.Mesh(new THREE.RingGeometry(.6, .86, 64), tBack); back.renderOrder = 6; this.timerRing.add(back);
     for (let i = 0; i < this.timerN; i++) { const a = i * 2 * Math.PI / this.timerN, m = new THREE.Mesh(new THREE.RingGeometry(.63, .83, 2, 1, a, 2 * Math.PI / this.timerN + .004), tMat); m.renderOrder = 7; m.userData.a = a + Math.PI / this.timerN; this.timerRing.add(m); this.timerSegs.push(m); }
     this.timerMat = tMat; this.timerRing.visible = false; this.scene.add(this.timerRing);
