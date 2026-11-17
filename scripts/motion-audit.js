@@ -119,9 +119,11 @@ function roles(r, sc) {
   const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(q)[0], q.at[id][1] - ballAt(q)[1]);
   const a = f[0], th = w.threat;
   // (free: not marking one of ours; a marker stays nearer his man than the ball, within ROLE.mark m of him, start and end)
-  const e0 = f.at(-1), marks = (q, id) => ours.filter(m => m !== 'hero').some(m => { const dm = Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]); return dm < ROLE.mark && dm < d(q, id); });
+  const e0 = f.at(-1), marks = (q, id) => ours.filter(m => m !== q.carrier && m !== sc.carrier && !(m === 'hero' && a.carrier === 'hero')).some(m => { const dm = Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]); return dm < ROLE.mark && dm < d(q, id); });
   const won = sc.intro === 'won', freeOf = id => !(marks(a, id) && marks(e0, id)) && !(won && id === 'o1'); // (won it: the one he took it from stumbles on past him by the idea)
-  if (th && th[0] === 'o' && kindOf(sc) !== 'follow') { /* (a rebound: the one who gets to it first comes, outcomes.js raceForIt, not the nearest) */ const near = opp.filter(id => id !== th && freeOf(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
+  // (one nearer who comes for it too, closing a metre or more, is a second presser: somebody comes, which is the point)
+  const comes = id => d(a, id) - d(e0, id) > 1;
+  if (th && th[0] === 'o' && kindOf(sc) !== 'follow') { /* (a rebound: the one who gets to it first comes, outcomes.js raceForIt, not the nearest) */ const near = opp.filter(id => id !== th && freeOf(id) && !comes(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && !comes(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
   // (b) and (c), on a 0.1 s grid
   const g = []; for (let t = a.t, k = 0; t <= f.at(-1).t + 1e-9; t += .1) { while (k + 1 < f.length && f[k + 1].t <= t) k++; g.push(f[k]); }
   let grow = 0, best = null; const away = Object.fromEntries(opp.map(id => [id, 0]));

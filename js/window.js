@@ -628,7 +628,7 @@ export function planArrival(sc, st, opts = {}) {
   if (!dead && kind !== 'defense') for (const id of out) {
     if (id === th || paths[id] || fixedPaths[id] || at[id].team !== defTeam) continue;
     const p = P(id), rel = (p[0] - H[0]) * line[0] + (p[1] - H[1]) * line[1];
-    if (rel < -.5 && d2(p, H) < 5) { const hp = paths[holder]; paths[id] = arr(p, line, [Math.min(4, (hp?.vRun || 1.8) + .7), Math.min(3, (hp?.vEnd || 1.1) + .5), .6]); role[id] = 'chaser'; }
+    if (rel < -.5 && d2(p, H) < 5) { const hp = paths[holder]; paths[id] = arr(p, line, [Math.min(4, (hp?.vRun || 1.8) + .7), Math.min(3, (hp?.vEnd || 1.1) + .5), .9]); role[id] = 'chaser'; }
   }
   // Markers: of the defending team, the nearest to one of the attackers (within 2.6 m, and nearer him than any of his own team).
   for (const id of out) {
@@ -783,7 +783,7 @@ export function clash(paths, ids, from, to) {
     const m = arrAt(p.man, t, q), k = Math.min(1, Math.max(0, (t + p.T) / p.T)), sm = k * k * (3 - 2 * k); q.x = m.x + p.o0[0] + (p.o1[0] - p.o0[0]) * sm; q.y = m.y + p.o0[1] + (p.o1[1] - p.o0[1]) * sm; return q; };
   for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
     const a = paths[ids[i]], b = paths[ids[j]]; if (!a || !b || !(a.arr || a.rel) || !(b.arr || b.rel)) continue;
-    for (let t = from; t <= to + 1e-6; t += .05) { const p = at(a, t, q1), q = at(b, t, q2); if (p && q && Math.hypot(p.x - q.x, p.y - q.y) < .6) return [ids[i], ids[j]]; }
+    for (let t = from; t <= to + 1e-6; t += .05) { const p = at(a, t, q1), q = at(b, t, q2); if (p && q && Math.hypot(p.x - q.x, p.y - q.y) < .7) return [ids[i], ids[j]]; }
   }
   return null;
 }
