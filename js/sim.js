@@ -292,7 +292,7 @@ export class Sim {
     // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
     // for that, at this one
     // (round 6: the nearest of them in his way, not the first one found)
-    const near = ahead => { let best = null, bf = 9; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1.6 && f < 6 && Math.abs(l) < 2.5 && f < bf) { bf = f; best = l; } } return best; };
+    const near = ahead => { let best = null, bf = 9; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > (tap && ahead < 2 ? .5 : 1.6) && f < 6 && Math.abs(l) < 2.5 && f < bf) { bf = f; best = l; } } return best; }; // (round 7: his own player, one touch ahead: a defender close in front counts too: the fake is made right at him)
     let fl = near(ahead), n = n0 + ahead / 1.4; if (fl == null && !tap) { fl = near(0); n = n0; } // n: the touch the move starts at
     if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too, if he is ahead of him (round 6: not one level with him or behind: a fake at nobody)
       const f = (o.x - a.x) * ch + (o.y - a.y) * sh - (ahead - 1.4), l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1 && Math.abs(l) < f + 1 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + ahead / 1.4; break; }
@@ -359,7 +359,7 @@ export class Sim {
   momentum(a, wx, wy, dt, d = 9, once = false) {
     const m = a.mom, acc = a.momA || MOM_A, sp0 = Math.hypot(m[0], m[1]);
     // (near where he is going he is let down onto it: the usual way takes over, at the speed he has)
-    if (this.time > a.momT || (d < 9 && d < Math.max(.2, sp0 * .15))) { a.mom = null; a.va = sp0; return true; }
+    if (this.time > a.momT || (d < 9 && d < Math.max(.2, sp0 * .15) && m[0] * wx + m[1] * wy >= 0)) { a.mom = null; a.va = sp0; return true; } // (round 7: not when it is behind him: then he comes round to it)
     const w = Math.hypot(wx, wy), k = w > 1e-6 && d < 9 ? Math.min(1, Math.sqrt(2 * acc * d) / w) : 1; wx *= k; wy *= k; // (he slows into it)
     const ex = wx - m[0], ey = wy - m[1], el = Math.hypot(ex, ey), st = acc * dt;
     if (el <= st) { if (once) { a.mom = null; a.momBack = false; a.va = Math.hypot(wx, wy); return true; } m[0] = wx; m[1] = wy; } else { m[0] += ex / el * st; m[1] += ey / el * st; } // (once: he has come round, and goes on as the play says)
@@ -410,7 +410,7 @@ export class Sim {
         // (a new job, a new place), he comes round from the velocity he has, like anyone coming off a planned way.
         // (round 6: and nobody, whoever moves him, snaps round at a run: sent more than 120° off his way at 2 m/s or more, he comes round too)
         // (round 7: whoever sends him, and whatever for: nobody flips at a run)
-        if (!a.mom && !has && !m && !a.gk && a.lv && (!a.ease || !(a.momOff > this.time))) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + (a.ease ? MOM_T : .4); a.momA = a.ease ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : 20; a.momBack = false; } } // (one the play's script sends: round hard, in under half a second, so he is where the play needs him)
+        if (!a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + (a.ease ? MOM_T : .4); a.momA = a.ease ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : 20; a.momBack = false; } } // (one the play's script sends: round hard, in under half a second, so he is where the play needs him)
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.
@@ -420,7 +420,7 @@ export class Sim {
         } // (still coming round from the way he was going)
         // (round 7) One the play's script sends sets off as a body can, not at full speed from the first step: 20 m/s² (a quarter of a second to a sprint).
         if (!a.ease && (!has || (a.id !== 'hero' && !m)) && !a.gk) { if (a.rd && a.rv > 1 && d > .6 && (a.rd[0] * dx + a.rd[1] * dy) / d < -.3) a.rv = 0; (a.rd ||= [0, 0])[0] = dx / d; a.rd[1] = dy / d; // (sent back the other way: he sets off anew)
-          if (d > .3) v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v;
+          if (d > .3) v = Math.min(v, (a.rv || 0) + (a.rA || 20) * dt); a.rv = v;
           if (a.hop) v = Math.min(v, .8 + d * 5); } else a.rv = v; // (a hop of a step or less, to a place he was not already going to: at a step's pace, not a sprint's)
         const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
@@ -430,7 +430,7 @@ export class Sim {
         }
         if (!m) a.sp = lerp(a.sp, sp, ease(dt, 8));
       } else if (a.mom && !has) { if (Math.hypot(a.mom[0], a.mom[1]) < .15) a.mom = null; else if (!this.momentum(a, 0, 0, dt)) { a.tx = a.x; a.ty = a.y; } } // (told to stop: he slows to a stop over a step or two)
-      else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; a.rv = 0; if (has) a.mom = null; }
+      else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; a.rv = 0; a.rA = 0; if (has) a.mom = null; }
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.

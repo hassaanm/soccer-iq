@@ -141,7 +141,7 @@ export const outcomes = {
   // A player near the path of a kick stops; one right in it steps out of the way, to the side he is already on.
   giveWay(p, from, to, low = true) {
     const c = closestOnLane(p, from, to, 0);
-    if (c.d < 1.1) p.mom = null; p.momOff = this.sim.time + 1.5; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
+    if (c.d < 1.1) p.mom = null; p.momOff = this.sim.time + .6; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
     let nx = l > .05 ? dx / l : -(to.y - from.y), ny = l > .05 ? dy / l : to.x - from.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
@@ -149,6 +149,8 @@ export const outcomes = {
     const at = k => ({ x: clamp(c.x + nx * 1.3 * k, .5, L - .5), y: clamp(c.y + ny * 1.3 * k, .5, W - .5) });
     const shut = q => [...this.sim.agents.values()].some(o => { if (o === p) return false; const k = closestOnLane(o, p, q, 0); return k.d < .8 && k.t > .15; }); // (on his way there, not merely beside him)
     const q = shut(at(1)) && !shut(at(-1)) ? at(-1) : at(1);
+    // (round 7: running the other way, he sets off for it from a stop, a little softer: off the line in time, without flipping at a run)
+    { const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0; if (ls >= 2 && (lv[0] * (q.x - p.x) + lv[1] * (q.y - p.y)) / (ls * (Math.hypot(q.x - p.x, q.y - p.y) || 1)) < -.4) { p.rv = 0; p.rA = 13; } }
     this.sim.go(p.id, q.x, q.y, 4.5);
   },
   // Facing well away from where he will play the ball (more than about 60°), he first turns with it (a cut, a hook or
@@ -218,8 +220,12 @@ export const outcomes = {
     if ((ic.d > .9 && dist(marker, m) < 1.8) || late) { // lane was open but a defender was right on him: he gets the ball and loses it straight away
       this.scripted.add(id); this.scripted.add(marker.id);
       const meet = { x: lerp(m.x, s.ball.x, .2), y: lerp(m.y, s.ball.y, .2) }; s.go(id, meet.x, meet.y, 3.5); // he comes to meet it
+      // (round 7: his marker, running the other way, comes round first: the pass is struck as he has turned, and he closes as it goes)
+      { const lv = marker.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0; if (ls >= 2 && (lv[0] * (meet.x - marker.x) + lv[1] * (meet.y - marker.y)) / (ls * (dist(marker, meet) || 1)) < -.4) { this.comeRound(marker.id, marker.x + (meet.x - marker.x) * .3, marker.y + (meet.y - marker.y) * .3, 3); const t9 = s.time; yield () => !marker.mom || s.time - t9 > .45; } }
+      // (and one who is in the ball's way to that place gets round to its far side before it is played)
+      { const bl = dist(s.ball, meet) || 1, far = { x: meet.x + (meet.x - s.ball.x) / bl * .6, y: meet.y + (meet.y - s.ball.y) / bl * .6 }; if (closestOnLane(marker, s.ball, meet, .1).d < .75 && dist(marker, far) > .7) { s.go(marker.id, far.x, far.y, 4.5); const t9 = s.time; yield () => dist(marker, far) < .5 || closestOnLane(marker, s.ball, meet, .1).d > .8 || s.time - t9 > .6; } }
       yield* this.strike('hero', meet.x, meet.y, { speed: 13, arc: .2 });
-      s.go(marker.id, meet.x, meet.y, 4.5);
+      { const bl = dist(s.ball, meet) || 1; s.go(marker.id, meet.x + (meet.x - s.ball.x) / bl * .6, meet.y + (meet.y - s.ball.y) / bl * .6, 4.5); } // (round 7: to the far side of where it comes to: he is on the receiver, never in the ball's way)
       yield () => s.ball.state === 'loose';
       // He controls it, but the defender is right there: the steal only happens once the defender reaches him.
       s.give(id); s.stop(id);
@@ -229,6 +235,7 @@ export const outcomes = {
     // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
     this.scripted.add(id); s.go(id, lerp(m.x, s.ball.x, .3), lerp(m.y, s.ball.y, .3), 4.2);
     this.scripted.add(ic.opp.id); ic.opp.mom = null; this.comeRound(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once; round 7: coming round, not flipping, when he was running the other way)
+    if (ic.opp.mom) { const t9 = s.time; yield () => !ic.opp.mom || s.time - t9 > .45; } // (coming round: the pass is struck as he has turned, so he is there for it)
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
     const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
@@ -516,6 +523,7 @@ export const outcomes = {
       yield* this.steal(o); return;
     }
     this.comeRound(cut.opp.id, cut.x, cut.y, 4);
+    if (cut.opp.mom) { const t9 = s.time; yield () => !cut.opp.mom || s.time - t9 > .45; }
     yield* this.passFrom(c, cut.x, cut.y, { speed: 11, arc: .1 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(cut.opp, this.sc.even ? 'cut' : 'stolen'); // (he never had it: "Cut out!")
@@ -560,7 +568,7 @@ export const outcomes = {
     // In a match, once he has "Follow your shot!": the block sends it loose, if he could get there first (live.js toRebound).
     const sh = this.reboundOK && this.reboundFrom(block.opp);
     if (sh) { this.rebound = sh; yield* this.shotOut(sh); this.hud.caption('Blocked!'); this.say('Blocked!'); this.scripted.add(block.opp.id); yield () => s.ball.state === 'loose'; this.result = 'rebound'; return; }
-    this.scripted.add(block.opp.id); block.opp.mom = null; block.opp.momOff = this.sim.time + 1.5; s.go(block.opp.id, block.x, block.y, 5); // (he steps into its line at once)
+    this.scripted.add(block.opp.id); block.opp.mom = null; block.opp.momOff = this.sim.time + .6; s.go(block.opp.id, block.x, block.y, 5); // (he steps into its line at once)
     yield* this.strike('hero', block.x, block.y, { speed: 15, arc: .2 });
     yield () => s.ball.state === 'loose';
     yield* this.steal(block.opp);
@@ -967,6 +975,7 @@ export const outcomes = {
     if (!sp.crowd && spotId !== 'stay') { // beside a defender: m1 passes, and the defender steps across and cuts it out
       const cut = s.team('them').map(o => ({ opp: o, ...closestOnLane(o, s.ball, h, .05) })).sort((p, q) => p.d - q.d)[0];
       this.comeRound(cut.opp.id, cut.x, cut.y, 4);
+      if (cut.opp.mom) { const t9 = s.time; yield () => !cut.opp.mom || s.time - t9 > .45; }
       yield* this.strike('m1', cut.x, cut.y, { speed: 11, arc: .1 });
       yield () => s.ball.state === 'loose';
       yield* this.steal(cut.opp, 'cut'); return;
