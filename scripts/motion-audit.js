@@ -49,7 +49,6 @@ export const EXEMPT = [
   ['arrive', sc => sc.pattern === 'keeper-out', 'the keeper who rushed out smothers the ball at his feet (he goes down on it; no touch away)'],
   ['seen', sc => kindOf(sc) === 'receive', 'a pass to him with his back to their goal: the idea is the defender behind him that he cannot see until he peeks'],
   ['seen', sc => sc.intro === 'won', 'won it: they are all behind him by the idea; the one who comes sets off from where the picture has him, 8 m or more back, and runs into view'],
-  ['still', sc => sc.pattern === 'go-shot', 'a friend about to shoot sets himself over the ball, and the play holds still for the rebound race'],
   ['comes', sc => sc.intro === 'won', 'won it: the player he just took it from is stumbling past behind him, and is not the one who comes'],
 ];
 const exempt = (check, sc, row) => EXEMPT.find(e => e[0] === check && e[1](sc, row));
@@ -237,6 +236,8 @@ function timeout(r, sc, st) {
   if (w.timeoutAt.winReal < w.R * .93 - .25 || w.timeoutAt.winReal > w.R * 1.03 + .1) flags.push(['pace', `the window lasted ${w.timeoutAt.winReal?.toFixed(1)} s of its ${w.R.toFixed(1)} s`]);
   const inW = rec.filter(x => x.win && x.wi === 1); if (inW.some((x, i) => i && x.left > inW[i - 1].left + 1e-9) || (inW.at(-1)?.left ?? 0) > .03) flags.push(['pace', `the ring is not empty as it ends (${inW.at(-1)?.left?.toFixed(2)})`]);
   const k = kindOf(sc), tackle = (k === 'attack' || k === 'lead' || k === 'support' || k === 'goal' || k === 'receive') && !sc.restart && w.threat && !sc.gk?.hold;
+  // (a friend about to shoot: the window ends with his strike, not a tackle: it comes as the ring empties)
+  if (k === 'goal' && sc.shot) { const out = rec.filter(f => f.out), kick = out.find(f => f.bstate === 'flying'), gap = kick ? kick.real - w.timeoutAt.real : 9; if (gap > 1) flags.push(['late', `his friend's shot comes ${gap === 9 ? 'never' : gap.toFixed(1) + ' s'} after the ring empties`]); return flags; }
   if (!tackle) return flags;
   const ex = exempt('arrive', sc); st.arrive.n++;
   if (ex) { st.arrive.ok++; st.use(ex); return flags; }

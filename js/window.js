@@ -282,7 +282,7 @@ function whyHolds(why, c, q, opps, goal, sc = null, h = null) {
   if (why === 'narrow') return lane >= 1 - k && lane <= 1.2 + k && open && ahead;
   if ((why === 'late' || why === 'slow') && sc?.shot && h) { // a run to the goal with a shot on: the race for the rebound (generate.js goalRun own)
     const r = race(sc, c, q, opps, h), kt = .1;
-    return why === 'late' ? r.t > r.tH + .35 - kt && r.t < r.tO - .3 : r.t > r.tO + .45 - kt; // (still first, with a little to spare: the race is close)
+    return why === 'late' ? r.t > r.tH + .35 - kt && r.t < r.tO - .25 + kt : r.t > r.tO + .45 - kt; // (as generate.js goalRun `own` draws them, with a tenth of a second of slack) // (still first, with a little to spare: the race is close)
   }
   return true;
 }
@@ -350,8 +350,8 @@ export function rolesOf(sc, at, { skip = [], never = [] } = {}) {
   for (const id of defs) { const m = atk.map(j => ({ j, d: d(at[j], at[id]) })).sort((a, b) => a.d - b.d)[0]; if (m && m.d < 2.6 && m.d < d(at[id], B)) mark[id] = m.j; }
   const free = defs.filter(id => !mark[id]).sort((a, b) => d(at[a], B) - d(at[b], B));
   let th = null;
-  // (nobody comes: defending (their dribbler comes on), a dead ball, and a friend about to shoot: he shoots as the ring empties)
-  if (kind !== 'defense' && !sc.restart && kind !== 'tackle' && !(kind === 'goal' && sc.shot)) {
+  // (nobody comes: defending (their dribbler comes on), and a dead ball)
+  if (kind !== 'defense' && !sc.restart && kind !== 'tackle') {
     const rush = ids.find(id => at[id].gk && at[id].rush && at[id].team === defTeam);
     th = rush || free.find(id => !never.includes(id)) || defs.filter(id => !never.includes(id)).sort((a, b) => d(at[a], B) - d(at[b], B))[0] || null;
   }
@@ -415,14 +415,18 @@ function planHold0(sc, st, opts, kind) {
   // ---- who comes ----
   // The threat; and, where the picture has a second free defender on the ball too (a trap, two pressing him), that one
   // comes in with him, a step behind, to his own place in the picture: two close him down, the nearer one tackles.
-  const toP = kind === 'receive'; // (a pass on its way to him: the threat is at his place in the picture as it gets there, still coming)
+  // (round 5) A friend about to shoot: the picture is the moment he strikes it, the window's end. He carries the ball
+  // up to it with their defender closing on him from behind, everyone jogs toward goal with the play, and he strikes as
+  // the ring empties (the time-out's play). The rebound is raced on the grass as it lies, from wherever he taps.
+  const shotOn = kind === 'goal' && !!sc.shot;
+  const toP = kind === 'receive' || shotOn; // (the threat is at his place in the picture as the window ends, still coming: a pass on its way to him gets there; the friend strikes)
   const rP = th ? dd(P(th), B) : 0, bear0 = th ? U([at[th].x - B[0], at[th].y - B[1]]) : [1, 0], bearA = Math.atan2(bear0[1], bear0[0]);
   const frees = ro.free.filter(id => id !== th && !at[id].gk && !never.includes(id) && !keep[id]);
   const second = th && !live && !opts.from && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
   // (he is the nearest free defender from the first moment: never farther out than another free one)
   const cap = th ? Math.min(9e9, ...frees.filter(id => id !== second).map(id => dd(P(id), B) - .4 - (second ? d2 - rP + .4 : 0))) : 0;
   // (opts.rCap: no farther out than this, unless the picture itself has him farther: for a view that shows him as he sets off)
-  const runin = Math.min(RUNIN, opts.rCap || RUNIN), rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, runin)) : Math.max(rP, runin);
+  const runin = Math.min(RUNIN, opts.rCap || RUNIN), rWant = !th ? 0 : live ? rP : shotOn ? rP + 2 : toP ? Math.min(rP + 4, Math.max(rP + 1.5, runin)) : Math.max(rP, runin);
   const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
   const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
   const Gpace = PACE * (R * RETRY - .1) + .1 + .01; // (the play a window of R s, and of its first longer retry, needs at PACE)
@@ -436,7 +440,6 @@ function planHold0(sc, st, opts, kind) {
     const p = P(id), c = [1, -1].map(sg => { const d = mul(perp(u), sg), q = add(p, d, 2); return { d, r: onPitch(q[0], q[1], 1.2) ? Math.min(9, ...out.filter(j => j !== id && mark[j] !== id).map(j => dd(P(j), q))) : -1 }; });
     return c.sort((a, b) => b.r - a.r)[0].d;
   };
-  const shotOn = kind === 'goal' && !!sc.shot;
   const own = {}, comer = id => id === th || id === second;
   for (const id of out) {
     if (id === holder || keep[id] || comer(id)) continue;
@@ -457,7 +460,6 @@ function planHold0(sc, st, opts, kind) {
       if (a.gk) v = dead && id === holder ? [0, 0] : keeperV(id);
       else if (keep[id]) v = [...keep[id]];
       else if (id === holder) v = dead ? [0, 0] : D;
-      else if (id === 'hero' && shotOn) v = mul(own[id] || [0, 0], .25 * k); // (a friend about to shoot: the race for the rebound is run from where he is, so he only shifts his feet, ready to go)
       else { v = add(D, own[id] || [0, 0], wmag); const s = len(v); if (s < MOVE && (k > 0 || sp > 0)) v = s > .05 ? mul(v, MOVE / s) : mul(own[id] || line, MOVE); // (never still: at least a slow walk)
         if (id === 'hero' && !dead && k > 0 && len(v) < .85) v = mul(U(v), .85); } // (his own player: a walk at the least)
       const v0 = live ? [a.vx || 0, a.vy || 0] : [...v]; let v1 = v;
@@ -490,13 +492,14 @@ function planHold0(sc, st, opts, kind) {
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
   }
   let best = null;
-  // (a friend about to shoot: the race for the rebound is close and is run on the grass as it lies, so the play does not
-  // drift: he lines his shot up, and everyone only makes his own small move)
-  const speeds = dead || shotOn ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
-  search: for (const sp of speeds) for (const k of shotOn ? [.5, .25, 0] : [1, .5, 0]) for (const frac of fracs) {
+  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
+  search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
     if (!b.bad && !b.offp) break search;
+    // (a friend about to shoot: rather than a slower play, a shorter stretch of this one, the last of it up to his strike,
+    // as long as it is no shorter than the window's floor needs)
+    if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6) { const c = score(build(sp, k, Gs, Gs)); if (!c.bad) { best = c; best.cost = cost; G = Gs; fixedG = true; break search; } } }
   }
   // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
   // the picture itself may then lie just outside it, and play is as near it as it ever is)

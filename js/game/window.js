@@ -189,9 +189,6 @@ export const moving = {
       this.sc.spots.forEach((sp, i) => { if (now[i]) { sp.x = now[i].x; sp.y = now[i].y; } });
     }
     w.u = (s.time - w.t0) / w.G;
-    // (v66) A friend about to shoot: nobody comes for the ball, but something is plainly about to happen: as the ring runs
-    // out he draws his foot back, and strikes it as it empties (the time-out's play).
-    if (w.kind === 'goal' && this.sc.shot && !w.wound && w.u > .78 && w.u < 1 && this.mode !== 'demo') { w.wound = true; const c = s.a(this.sc.carrier || 'm1'); if (c && s.ball.carrier === c.id) s.windup(c.id, 'shot'); }
     if (w.u >= 1 && !w.out) { w.out = true; if (this.mode !== 'demo' && !this.showing) { this.choose('timeout'); this.woke = true; } } // (the frame steps no further: the play that follows goes on from this very step)
   },
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.

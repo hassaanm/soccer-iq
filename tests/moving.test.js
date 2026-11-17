@@ -57,10 +57,10 @@ test('every lesson scene: the shape holds all through the window, nobody strays 
       // fast, then set: he never slows before his last metre, and is still over half his run speed half a metre out
       const sp = q => Math.hypot(q.vx, q.vy), tBrake = run.ta + run.tc - (run.shift || 0), vm = sp(pathAt(run, Math.max(0, tBrake - .02)));
       assert.ok(sp(m) >= sp(a) - 1e-6 || p.G / 2 > tBrake, `${sc.id}: ${th} slows down before his last metre`);
-      if (kind !== 'receive') { let half = null; for (let t = p.G; t >= 0 && !half; t -= .01) { const q = pathAt(run, t); if (Math.hypot(q.x - e.x, q.y - e.y) >= .5) half = q; }
+      if (kind !== 'receive' && !sc.shot) { let half = null; for (let t = p.G; t >= 0 && !half; t -= .01) { const q = pathAt(run, t); if (Math.hypot(q.x - e.x, q.y - e.y) >= .5) half = q; }
         assert.ok(!half || sp(half) >= vm * .5 - .05, `${sc.id}: ${th} crawls (${sp(half).toFixed(1)} of ${vm.toFixed(1)} m/s half a metre out)`);
         assert.ok(sp(e) >= 1 - 1e-6 || vm < 1.3, `${sc.id}: ${th} stops before the ball (${sp(e).toFixed(2)} m/s)`); }
-      if (kind !== 'receive') assert.ok(Math.hypot(e.x - h.x, e.y - h.y) < 1.5, `${sc.id}: ${th} ends ${Math.hypot(e.x - h.x, e.y - h.y).toFixed(2)} m from the player on the ball`);
+      if (kind !== 'receive' && !sc.shot) assert.ok(Math.hypot(e.x - h.x, e.y - h.y) < 1.5, `${sc.id}: ${th} ends ${Math.hypot(e.x - h.x, e.y - h.y).toFixed(2)} m from the player on the ball`);
       // and he is the nearest free defender as it opens
       const at0 = Object.fromEntries(Object.entries(p.paths).map(([id, q]) => { const r = pathAt(q, 0); return [id, { ...st.at[id], x: r.x, y: r.y }]; })), ro = rolesOf(sc, at0, { never: opts.never });
       if (!st.at[th].gk) assert.ok(ro.free[0] === th || ro.free.filter(id => !(opts.never || []).includes(id) && !opts.keep?.[id])[0] === th, `${sc.id}: ${th} comes, but ${ro.free[0]} is the nearest free defender as it opens`);
