@@ -1,54 +1,95 @@
-// The motion audit (v64): plays every lesson scene (and, with --gen N, N fresh scenes per lesson) at every size, through
-// the decision window, tapping each choice early (5% of the window), in the middle and late (95%), and once tapping
-// nothing (the time-out). It checks what the owner and the research ask of play that goes on while he chooses:
-//   grade   what he sees when he taps agrees with how the choice is graded (window.js disagree)
-//   result  the play ends the same kind of way as the frozen play did (with --base: a file of v63's results)
-//   speed   nobody moves faster than a child sprints (window.js SPEED) or speeds up or slows down faster than ACC
-//   turn    nobody's way turns by more than 120° in the window (toward, away, toward again), or sharply on the spot
-//   still   nobody outfield stands still through the window; the player on the ball is never still
-//   jump    nobody's speed jumps as the window opens (the run-up brings him to it)
-//   gap     two players closer than 0.5 m
-//   threat  on a time-out the one who gets the ball is the threat the window showed, and he is within reach of it
-//   late    the time-out happens when the reach on the grass says (u = 1), and the steal follows soon after (real s)
-// Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--json out.json]
+// The motion audit (v66): plays every lesson scene (and, with --gen N, N fresh scenes per lesson) at every size, through
+// the decision window: every choice tapped early (5% of the window), in the middle and late (95%), and once nothing
+// tapped (the time-out). The design it checks: the scene's picture holds for the whole window and one defender comes
+// (window.js planHold). Checks marked "share" pass when the share of windows that meet them is at least the number
+// given; every window that misses is listed. The others allow none.
+//   comes    (share 95%) with our ball in open play, the one who comes is the nearest defender who is not marking a man
+//            as the window opens
+//   away     no defender within 3.5 m of the ball gets farther from it for more than 0.3 s of play (a marker going with
+//            his man: only if he ends more than 1 m farther from it)
+//   after    nobody turns more than 120° in the 0.6 s after the window closes (a tap, or the time-out)
+//   arrive   (share 95%) on a time-out where the threat tackles, he is within 0.8 m of the ball as the ring empties and
+//            touches it within 0.3 s of real time
+//   grade    (share 97% of taps) what he sees when he taps agrees with how the choice is graded: every relation that does
+//            not hang on the threat as it is; the threat by his bearing and his coming (window.js agreeAt)
+//   result   the play ends the same kind of way as the frozen play did (with --base: a file of v63's results)
+//   size     (share 98%) his own player is at least 60 px tall at 844x390 and 48 px at 667x375 after the first 0.3 s
+//   view     he never leaves the screen; the view never pulls back by more than 1.3x within 0.3 s
+//   friends  (share 95% of friends) no friend ends more than 1.5 m farther from the ball than he started, or leaves the
+//            view he was in
+//   pace     the world never goes slower than 0.12x, and the window lasts until its ring is empty
+//   closes   (share 90%) with the ball at his feet, the threat closes at least 2.5 m in the window
+//   speed    nobody moves faster than a child sprints (window.js SPEED) or speeds up or slows down faster than ACC
+//   turn     nobody's way turns by more than 120° in the window
+//   still    nobody outfield stands still through the window; the player on the ball is never still (a dead ball apart)
+//   gap      two players closer than 0.5 m
+//   late     the time-out happens when the ring is empty (u = 1)
+// An exemption names a pattern and a reason (EXEMPT, below), and every use of one is counted in the output.
+// Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--scene id] [--json out.json] [--notaps]
 import { PATH, allScenarios } from '../js/skills.js';
-import { SIZES, setSize, TEAM, PITCH } from '../js/geom.js';
+import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
-import { disagree, kindOf, SPEED, ACC } from '../js/window.js';
+import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
 import { readFileSync, writeFileSync } from 'fs';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const sizes = args[0] && !args[0].startsWith('--') ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer);
-const nGen = +(flag('--gen') || 0), scene = flag('--scene'), base = flag('--base') ? JSON.parse(readFileSync(flag('--base'), 'utf8')) : null, only = flag('--only'), taps = [.05, .5, .95];
-const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, late: 1.25, lateFar: 2, reach: .9 };
+const nGen = +(flag('--gen') || 0), scene = flag('--scene'), base = flag('--base') ? JSON.parse(readFileSync(flag('--base'), 'utf8')) : null, only = flag('--only'), taps = args.includes('--notaps') ? [] : [.05, .5, .95];
+export const LIM = { speed: SPEED.sprint[1] + .05, acc: ACC + .5, turn: 120, still: SPEED.stand, gap: .5, near: 3.5, away: .3, awayRate: .25, markGrow: 1, after: .6, afterTurn: 120, reach: .8, touch: .3,
+  px: { 844: 60, 667: 48 }, pull: 1.3, pullT: .3, friendFar: 1.5, closes: 2.5 };
+export const SHARE = { comes: .95, arrive: .95, grade: .97, size: .98, friends: .95, closes: .9 };
+// Exemptions: [check, test(sc, row), reason]. Each use is counted and printed.
+export const EXEMPT = [
+  ['arrive', sc => kindOf(sc) === 'receive', 'a pass on its way to him: the window ends as the ball gets to him, with the defender behind at his place in the picture and still coming; he takes it a moment later'],
+  ['arrive', sc => sc.pattern === 'go-shot', 'his friend shoots as the defender gets to him: the time-out is the rebound they get to first'],
+  ['arrive', sc => sc.pattern === 'keeper-out', 'the keeper who rushed out smothers the ball at his feet (he goes down on it; no touch away)'],
+  ['comes', sc => sc.intro === 'won', 'won it: the player he just took it from is stumbling past behind him, and is not the one who comes'],
+];
+const exempt = (check, sc, row) => EXEMPT.find(e => e[0] === check && e[1](sc, row));
 
 // What kind of end a play had (its banners), for comparing with the frozen play.
 const KIND = { 'GOAL!': 'kept', 'Kept the ball!': 'kept', 'Stolen!': 'lost', 'They got it!': 'lost', 'Cut out!': 'lost', 'Stole it!': 'stopped', 'Stopped him!': 'stopped', 'They scored': 'conceded',
-  'Saved!': 'saved', 'Over the bar!': 'over', 'Wide!': 'wide', 'Cleared!': 'cleared', 'He got there!': 'timeout', 'Great save!': 'kept' };
+  'Saved!': 'saved', 'Over the bar!': 'over', 'Wide!': 'wide', 'Cleared!': 'cleared', 'He got there!': 'timeout', 'He got past!': 'timeout', 'Too late!': 'timeout', 'Ball played!': 'timeout', 'Great save!': 'kept' };
 const endOf = banners => { const k = banners.map(b => KIND[b]).filter(Boolean); return k.at(-1) || 'none'; };
 const sameEnd = (a, b) => a === b || (a === 'kept' && b === 'kept');
 
+let VW = 844, VH = 390;
+// Where a point is on the screen through the game's own camera (as world.js draws it), or null behind it.
+function screen(cam, [x, y, z = .9]) {
+  if (!cam) return null;
+  const f = [cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1], cam.tgt[2] - cam.eye[2]], fl = Math.hypot(...f); f.forEach((v, i) => { f[i] = v / fl; });
+  let r = [f[1], -f[0], 0]; const rl = Math.hypot(...r) || 1; r = r.map(v => v / rl);
+  const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [x - cam.eye[0], y - cam.eye[1], z - cam.eye[2]];
+  const zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (zz < .3) return null;
+  const F = Math.max(VH * cam.Ff, VW * (cam.Fw || 0));
+  return [VW / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, VH / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz];
+}
+const on = (p, m = 0) => !!p && p[0] >= m && p[0] <= VW - m && p[1] >= m && p[1] <= VH - m;
+const heroPx = q => { const a = screen(q.cam, [...q.at.hero, 0]), b = screen(q.cam, [...q.at.hero, 1.65]); return a && b ? a[1] - b[1] : 0; };
+
 // One play: the run-up, the window (tap `opt` at fraction `u` of it, or nothing), the play after. Records everyone's
-// way in game time through the window and the time-out play.
+// way through the run-up's end, the window and the play that follows.
 async function play(sc, opt, u) {
   const { g, events } = makeGame(); g.world.canvas = { clientWidth: VW, clientHeight: VH }; g.mode = 'lesson'; g.load(sc);
   const s = g.sim, rec = [], wins = [], flags = [], info = {};
   const snap = () => { const at = {}; for (const a of s.agents.values()) at[a.id] = [a.x, a.y]; return at; };
-  const onFrame = gm => { if (gm.win || gm.phase === 'outcome') rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, cam: gm.cam && { eye: [...gm.cam.eye], tgt: [...gm.cam.tgt], Ff: gm.cam.Ff, Fw: gm.cam.Fw }, yaw: gm.yaw, spot: gm.step === 'spot' }); };
+  const onFrame = gm => { rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', pre: gm.phase === 'pre', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, bstate: s.ball.state,
+    cam: gm.cam && { eye: [...gm.cam.eye], tgt: [...gm.cam.tgt], Ff: gm.cam.Ff, Fw: gm.cam.Fw }, left: gm.ui.timer?.left, u: gm.win?.u }); };
   await drive(g, g.pre(), { onFrame });
   const decideAt = async want => {
-    const p = g.decide(), w = g.win; if (w) wins.push({ G: w.G, R: w.R, f: w.f, t0: w.t0, threat: w.threat?.id, kind: w.kind, k: w.plan.k, a: w.plan.a, cls: w.plan.cls || 'co-moving', at0: { ...w.at0 } });
+    const p = g.decide(), w = g.win; if (w) wins.push({ G: w.G, R: w.R, f: w.f, t0: w.t0, threat: w.threat?.id, second: w.plan.second, kind: w.kind, k: w.plan.k, sp: w.plan.sp, cls: w.plan.cls || '?', role: w.plan.role, r0: w.plan.r0, rP: w.plan.rP, dis: w.plan.dis });
     let tapped = null;
     const pick = gm => { if (want === 'timeout') return null; if (!gm.win) return want; if (gm.win.u >= u) { tapped = { u: gm.win.u, at: snap(), t: s.time }; return want; } return null; };
-    const o = await drive(g, p, { pick, onFrame, maxSec: 60 });
-    if (tapped && w && want !== 'timeout') { // what he sees when he taps
-      const pos = id => ({ x: tapped.at[id][0], y: tapped.at[id][1] }), at0 = id => w.at0[id] || pos(id);
+    const o = await drive(g, p, { pick, onFrame, maxSec: 90 });
+    if (tapped && w && want !== 'timeout' && w.plan.hold) { // what he sees when he taps
+      const pos = id => ({ x: tapped.at[id][0], y: tapped.at[id][1] });
       const own = g.spot0 && g.sc.spots ? { ...g.sc, spots: g.spot0.map(sp => ({ ...sp })) } : g.sc; // (the rings as the scene put them: disagree moves them itself)
-      const d = disagree(own, pos, tapped.t - w.t0, { at0, options: g.offerList(), ids: Object.keys(tapped.at).filter(id => !s.a(id)?.gk), ball: s.ball });
-      if (d.length) info.grade = (info.grade || 0) + 1; // (round 2: the early picture is not the graded one; the result decides, below)
+      const a = agreeAt(own, w.plan, pos, tapped.t - w.t0, { options: g.offerList(), ids: Object.keys(tapped.at).filter(id => !s.a(id)?.gk), ball: s.ball });
+      info.taps = (info.taps || 0) + 1;
+      if (a.dis.length || a.threat.length) (info.grade ||= []).push(`${a.dis.length ? 'shape: ' + a.dis.join(',') : ''}${a.threat.length ? ' threat: ' + a.threat.join(',') : ''}`.trim());
     }
-    if (o === 'timeout' && wins.length) wins.at(-1).timeoutAt = { u: (s.time - w.t0) / w.G, real: g.realTime };
+    if (wins.length) { const x = wins.at(-1); x.closeAt = { t: s.time, real: g.realTime, u: g.lastWin?.u, winReal: g.lastWin?.real }; if (o === 'timeout') x.timeoutAt = x.closeAt; }
     return o;
   };
   let step2 = null, first = opt;
@@ -61,124 +102,91 @@ async function play(sc, opt, u) {
   const banners = events.filter(e => e[0] === 'banner').map(e => e[1]);
   return { g, rec, wins, flags, banners, o, info };
 }
-// Where a point is on a 844x390 screen through the game's own camera (as world.js draws it), or null behind it.
-const VW = 844, VH = 390;
-function screen(cam, [x, y, z = .9]) {
-  if (!cam) return null;
-  const f = [cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1], cam.tgt[2] - cam.eye[2]], fl = Math.hypot(...f); f.forEach((v, i) => { f[i] = v / fl; });
-  let r = [f[1], -f[0], 0]; const rl = Math.hypot(...r) || 1; r = r.map(v => v / rl);
-  const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [x - cam.eye[0], y - cam.eye[1], z - cam.eye[2]];
-  const zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (zz < .3) return null;
-  const F = Math.max(VH * cam.Ff, VW * (cam.Fw || 0));
-  return [VW / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, VH / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz];
-}
-// Round 2's floor: in a whole window (the time-out play), how far the threat closes on the ball (m; defending, how far
-// their dribbler gets on toward our goal), how far he moves on the screen (px at 844x390), how far his own player
-// travels, whether anyone moves at all, and whether the threat is in view as it opens. The screen is the one he looks
-// for the threat in: head up (the player view looking out, view.js camSpec), or the fitted view when he picks a spot.
-const headUp = (h, yaw) => { const c = Math.cos(yaw), s = Math.sin(yaw); return { eye: [h[0] - 5.2 * c - .3 * s, h[1] - 5.2 * s + .3 * c, 2.8], tgt: [h[0] + 9 * c, h[1] + 9 * s, .5], Ff: .9, Fw: .52 }; };
-const camOf = q => q.spot ? q.cam : headUp(q.at.hero, q.yaw);
-const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
-const clampS = p => p && [Math.max(0, Math.min(VW, p[0])), Math.max(0, Math.min(VH, p[1]))];
-function floor(r, sc) {
-  const w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3 || !w.threat) return null;
-  const a = f[0], b = f.at(-1), th = w.threat, kind = kindOf(sc), our = [0, PITCH.W / 2];
-  const d = q => kind === 'follow' ? Math.hypot(q.at[th][0] - sc.shot.loose[0], q.at[th][1] - sc.shot.loose[1]) : kind === 'defense' ? Math.hypot(q.at[th][0] - our[0], q.at[th][1] - our[1]) : Math.hypot(q.at[th][0] - q.ball[0], q.at[th][1] - q.ball[1]);
-  const pa = screen(camOf(a), a.at[th]), pb = screen(camOf(b), b.at[th]), on = p => p && p[0] >= 0 && p[0] <= VW && p[1] >= 0 && p[1] <= VH;
-  const moved = Object.keys(a.at).filter(id => id[0] !== 'k').map(id => Math.hypot(b.at[id][0] - a.at[id][0], b.at[id][1] - a.at[id][1]));
-  // in view at the start, or within the first third (the view swings to the play as it opens)
-  const third = f.filter(x => x.t - a.t <= (b.t - a.t) / 3), seen = third.some(x => on(screen(camOf(x), x.at[th])));
-  // How far he moves on the screen: in the view the game shows (head down, by default) and in the head-up view, the
-  // larger; across the screen (from where he comes into it) or in size as he comes at the camera.
-  const pxIn = cam => { const f0 = screen(cam(a), [...a.at[th], 0]), f1 = screen(cam(b), [...b.at[th], 0]), h0 = screen(cam(a), [...a.at[th], 1.3]), h1 = screen(cam(b), [...b.at[th], 1.3]);
-    if (!on(f1) && !on(h1)) return 0; const c0 = clampS(f0), c1 = clampS(f1); return Math.max(c0 && c1 ? Math.hypot(c1[0] - c0[0], c1[1] - c0[1]) : 0, f0 && f1 && h0 && h1 ? Math.abs((f1[1] - h1[1]) - (f0[1] - h0[1])) : 0); };
-  const px = Math.max(pxIn(q => q.cam), pxIn(camOf));
-  const ca = clampS(pa), cb = clampS(pb), h = b.at.hero, e = b.at[th], ang = Math.abs(wrapA(Math.atan2(e[1] - h[1], e[0] - h[0]) - a.yaw)), behind = ang > 2.1 && (Math.hypot(e[0] - h[0], e[1] - h[1]) < 2.8 || sc.intro === 'won'); // (won it: the idea is that they are behind him)
-  void ca; void cb;
-  return { close: d(a) - d(b), px, hero: Math.hypot(b.at.hero[0] - a.at.hero[0], b.at.hero[1] - a.at.hero[1]), most: Math.max(...moved), seen, kind,
-    th, from: a.at[th].map(v => +v.toFixed(1)), to: b.at[th].map(v => +v.toFixed(1)), ball: a.ball.map(v => +v.toFixed(1)), yaw: +a.yaw?.toFixed(2), scr: pa?.map(Math.round), spot: a.spot, behind, restart: !!sc.restart };
-}
 
-// (round 3) Defending that makes common sense, over the whole window of the time-out play, when his team has the ball
-// in open play: (a) the presser (the window's threat) is the nearest of their outfield players to the ball as it opens;
-// (b) the nearest of them never gets farther from the ball for long; (c) nobody goes away from the ball for more than
-// ROLE.away s, except the presser jockeying close to it or a marker going with his man; (d) never two of them within
-// ROLE.pile m of one of ours as it ends, unless the pattern puts two on him by its idea (PILE); (e) a friend his pass
-// to is graded right has nobody within OPEN m as it ends, and at most one other friend is left free (none within 4 m).
-export const ROLE = { tol: .5, grow: .4, away: .4, pile: 2.5, open: 1.6, free: 4, mark: 3 };
-// Patterns whose idea is two of theirs on one of ours: the trap (two close him down), the wall pass (two press him,
-// the friend beside him is free), a cut-out on the pass (one presses the passer, one waits on the lane).
-// one-open: the other friend is marked by both, so the one open is plainly the pass; foot-close, keeper-friend,
-// aim-open: both mark his friends by the goal, so the shot is the answer.
-export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass', 'one-open', 'foot-close', 'keeper-friend', 'aim-open', 'keeper-out']);
-const ourBall = sc => !['defense', 'tackle'].includes(kindOf(sc)) && !sc.restart;
-function roles(r, sc) {
-  const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3 || !ourBall(sc)) return flags;
-  const opp = Object.keys(f[0].at).filter(id => id[0] === 'o'), ours = Object.keys(f[0].at).filter(id => id === 'hero' || id[0] === 'm');
-  const ballAt = q => kindOf(sc) === 'receive' ? q.at.hero : kindOf(sc) === 'follow' ? sc.shot.loose : q.ball;
-  const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(q)[0], q.at[id][1] - ballAt(q)[1]);
-  const a = f[0], th = w.threat;
-  // (free: not marking one of ours; a marker stays nearer his man than the ball, within ROLE.mark m of him, start and end)
-  const e0 = f.at(-1), marks = (q, id) => ours.filter(m => m !== q.carrier && m !== sc.carrier && !(m === 'hero' && a.carrier === 'hero')).some(m => { const dm = Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]); return dm < ROLE.mark && dm < d(q, id); });
-  const won = sc.intro === 'won', freeOf = id => !(marks(a, id) && marks(e0, id)) && !(won && id === 'o1'); // (won it: the one he took it from stumbles on past him by the idea)
-  // (one nearer who comes for it too, closing a metre or more, is a second presser: somebody comes, which is the point)
-  const comes = id => d(a, id) - d(e0, id) > 1;
-  if (th && th[0] === 'o' && kindOf(sc) !== 'follow') { /* (a rebound: the one who gets to it first comes, outcomes.js raceForIt, not the nearest) */ const near = opp.filter(id => id !== th && freeOf(id) && !comes(id)).map(id => d(a, id)), mine = d(a, th); if (near.length && mine > Math.min(...near) + ROLE.tol) flags.push(['role', `(a) presser ${th} ${mine.toFixed(1)} m from the ball, ${opp.find(id => id !== th && freeOf(id) && !comes(id) && d(a, id) === Math.min(...near))} nearer (${Math.min(...near).toFixed(1)} m)`]); }
-  // (b) and (c), on a 0.1 s grid
-  const g = []; for (let t = a.t, k = 0; t <= f.at(-1).t + 1e-9; t += .1) { while (k + 1 < f.length && f[k + 1].t <= t) k++; g.push(f[k]); }
-  let grow = 0, best = null; const away = Object.fromEntries(opp.map(id => [id, 0]));
-  for (let i = 1; i < g.length; i++) {
-    const q0 = g[i - 1], q = g[i], dt = q.t - q0.t || .1, n = opp.filter(freeOf).sort((x, y) => d(q, x) - d(q, y))[0];
-    if (n === best && d(q, n) > d(q0, n) + .005) { grow += dt; if (grow > ROLE.grow) { flags.push(['role', `(b) ${n}, the nearest, gets farther from the ball for ${grow.toFixed(1)} s`]); grow = -1e9; } } else if (grow >= 0) grow = 0;
-    best = n;
+const ourBall = sc => !['defense', 'tackle', 'follow'].includes(kindOf(sc)) && !sc.restart;
+const ballAt = (sc, q) => (kindOf(sc) === 'receive' ? q.at.hero : kindOf(sc) === 'follow' ? sc.shot.loose : q.ball);
+const grid = (f, dt) => { const g = []; for (let t = f[0].t, k = 0; t <= f.at(-1).t + 1e-9; t += dt) { while (k + 1 < f.length && f[k + 1].t <= t) k++; g.push(f[k]); } return g; };
+
+// The whole window of the time-out play: who comes, who goes away, the friends, the threat's run.
+function shape(r, sc, st) {
+  const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3) return flags;
+  const a = f[0], e = f.at(-1), ids = Object.keys(a.at), opp = ids.filter(id => id[0] === 'o'), ours = ids.filter(id => id === 'hero' || id[0] === 'm');
+  const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(sc, q)[0], q.at[id][1] - ballAt(sc, q)[1]), th = w.threat, g = grid(f, .1);
+  if (ourBall(sc)) {
+    // comes: the threat is the nearest defender not marking a man as it opens (marking: nearer one of ours off the ball than the ball, within 2.6 m)
+    const off = ours.filter(m => m !== a.carrier && m !== (sc.carrier || (kindOf(sc) === 'receive' ? null : 'hero')));
+    const marking = id => off.some(m => { const dm = Math.hypot(a.at[m][0] - a.at[id][0], a.at[m][1] - a.at[id][1]); return dm < 2.6 && dm < d(a, id); });
+    if (th && th[0] === 'o') {
+      const free = opp.filter(id => !marking(id)).sort((x, y) => d(a, x) - d(a, y)), ex = exempt('comes', sc);
+      st.comes.n++;
+      if (free[0] === th || (free[0] && Math.abs(d(a, free[0]) - d(a, th)) < .15)) st.comes.ok++;
+      else if (ex) { st.comes.ok++; st.use(ex); }
+      else st.comes.miss.push(`${st.size} ${sc.id}: ${th} comes from ${d(a, th).toFixed(1)} m; ${free[0] || 'nobody free'} is the nearest free one (${free[0] ? d(a, free[0]).toFixed(1) : '-'} m, ${w.role?.[free[0]] || '?'}); the threat is ${marking(th) ? 'marking by the measure' : 'free'} (${w.cls})`);
+    }
+    // away: a defender near the ball getting farther from it
     for (const id of opp) {
-      const vx = (q.at[id][0] - q0.at[id][0]) / dt, vy = (q.at[id][1] - q0.at[id][1]) / dt, v = Math.hypot(vx, vy), b = ballAt(q), bx = b[0] - q.at[id][0], by = b[1] - q.at[id][1], bl = Math.hypot(bx, by) || 1;
-      const off = v > .5 && (vx * bx + vy * by) / (v * bl) < -.25;
-      const jockey = id === th && bl < 3.5;
-      const tracking = ours.some(m => Math.hypot(q.at[m][0] - q.at[id][0], q.at[m][1] - q.at[id][1]) < 3.5 && Math.hypot((q.at[m][0] - q0.at[m][0]) / dt - vx, (q.at[m][1] - q0.at[m][1]) / dt - vy) < 1); // (going with one of ours: marking him)
-      away[id] = off && !jockey && !tracking && !(won && id === 'o1') ? away[id] + dt : 0;
-      if (away[id] > ROLE.away + 1e-9) { flags.push(['role', `(c) ${id} goes away from the ball for over ${ROLE.away} s`]); away[id] = -1e9; }
+      let run = 0, from = 0, worst = 0, grew = 0;
+      for (let i = 1; i < g.length; i++) { const dt = g[i].t - g[i - 1].t || .1, d0 = d(g[i - 1], id), d1 = d(g[i], id);
+        if (d0 < LIM.near && (d1 - d0) / dt > LIM.awayRate) { if (!run) from = d0; run += dt; if (run > worst) { worst = run; grew = d1 - from; } } else run = 0; }
+      const marker = (w.role?.[id] || '').startsWith('marker:');
+      if (worst > LIM.away + 1e-9 && (!marker || d(e, id) - d(a, id) > LIM.markGrow)) flags.push(['away', `${id} (${w.role?.[id] || '?'}) within ${LIM.near} m of the ball gets ${grew.toFixed(1)} m farther from it over ${worst.toFixed(1)} s`]);
+    }
+    // closes: with the ball at his feet
+    if (th && a.carrier === 'hero' && kindOf(sc) !== 'receive') { st.closes.n++; const c = d(a, th) - d(e, th); if (c >= LIM.closes) st.closes.ok++; else st.closes.miss.push(`${st.size} ${sc.id}: ${th} closes ${c.toFixed(1)} m (from ${d(a, th).toFixed(1)} m; ${w.cls}, in the picture ${w.rP?.toFixed(1)} m)`); }
+    // friends: never away from the ball, never out of the view they were in
+    for (const m of ours.filter(m => m !== 'hero' && m !== a.carrier)) {
+      st.friends.n++;
+      const far = d(e, m) - d(a, m), early = f.filter(x => x.real - a.real <= .3), was = early.every(x => on(screen(x.cam, [...x.at[m], .9]))), left = was && f.some(x => !on(screen(x.cam, [...x.at[m], .9])));
+      if (far > LIM.friendFar) st.friends.miss.push(`${st.size} ${sc.id}: ${m} ends ${far.toFixed(1)} m farther from the ball`);
+      else if (left) st.friends.miss.push(`${st.size} ${sc.id}: ${m} leaves the view`);
+      else st.friends.ok++;
     }
   }
-  // (d) and (e), as it ends
-  const e = f.at(-1);
-  if (!PILE.has(sc.pattern)) for (const m of ours.filter(m => m !== e.carrier && m !== sc.carrier))  { /* (two on the friend with the ball is pressure on the ball, not a pile-up) */ const on = opp.filter(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]) < ROLE.pile); if (on.length > 1) flags.push(['role', `(d) ${on.join('+')} both on ${m}`]); }
-  const grades = sc.grades || {}, openIds = Object.keys(grades).filter(o => o.startsWith('pass:') && ['best', 'good', 'ok'].includes(grades[o]) || o === sc.best && o.startsWith('pass:')).map(o => 'm' + (+o.slice(5) + 1));
-  for (const m of new Set(openIds)) if (e.at[m]) { const dd = Math.min(...opp.map(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]))); if (dd < ROLE.open) flags.push(['role', `(e) ${m}, graded open, has one of theirs ${dd.toFixed(1)} m from him`]); }
-  // (left free: a friend up the field from the ball (nearer their goal), nobody within ROLE.free m; one behind the ball
-  // is no danger to them, and defenders rightly guard the way to goal first)
-  const gx = PITCH.L, bx = ballAt(e)[0];
-  const free = ours.filter(m => m !== 'hero' && !openIds.includes(m) && e.at[m][0] > bx + 1 && Math.min(...opp.map(id => Math.hypot(e.at[id][0] - e.at[m][0], e.at[id][1] - e.at[m][1]))) > ROLE.free); void gx;
-  if (free.length > 1) flags.push(['role', `(e) ${free.join(', ')} left free`]);
   return flags;
 }
-// (round 3) His own player never stands and waits: with the ball he carries it at least HERO.carry m through the window
-// (not at a dead ball), and he is never under walking pace for more than HERO.slow s of game time.
-export const HERO = { carry: 1.5, walk: .8, slow: .5 };
-function heroMoves(r, sc) {
-  const flags = [], f = r.rec.filter(x => x.win && x.wi === 1); if (f.length < 3 || sc.restart || kindOf(sc) === 'tackle') return flags;
-  const a = f[0], e = f.at(-1), trav = Math.hypot(e.at.hero[0] - a.at.hero[0], e.at.hero[1] - a.at.hero[1]);
-  if (a.carrier === 'hero' && kindOf(sc) !== 'follow' && trav < HERO.carry) flags.push(['hero', `carries it only ${trav.toFixed(1)} m in the window`]);
-  let slow = 0;
-  for (let i = 1; i < f.length; i++) { const dt = f[i].t - f[i - 1].t; if (!(dt > 0)) continue; const v = Math.hypot(f[i].at.hero[0] - f[i - 1].at.hero[0], f[i].at.hero[1] - f[i - 1].at.hero[1]) / dt;
-    slow = v < HERO.walk ? slow + dt : 0; if (slow > HERO.slow + 1e-9 && !(kindOf(sc) === 'receive' && f.at(-1).t - f[i].t < .4)) { flags.push(['hero', `under walking pace for over ${HERO.slow} s`]); break; } }
+// His own player on the screen, from the last moments of the run-up through the window (at the size VW x VH).
+function views(r, sc, st) {
+  const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1 && x.cam); if (!w || f.length < 3) return flags;
+  const a = f[0], late = f.filter(x => x.real - a.real >= .3), px = late.map(heroPx), min = Math.min(...px), need = LIM.px[VW];
+  const S = st.size_[VW]; S.n++; if (min >= need) S.ok++; else S.miss.push(`${st.size} ${sc.id} (${kindOf(sc)}): his player ${Math.round(min)} px at ${VW}x${VH} (needs ${need})`);
+  S.all.push(min);
+  if (f.some(x => !on(screen(x.cam, [...x.at.hero, .9])))) flags.push(['view', `his player off the screen for ${f.filter(x => !on(screen(x.cam, [...x.at.hero, .9]))).length} frame(s) at ${VW}x${VH}`]);
+  // pull-back: his size against 0.3 s earlier, from 0.3 s before it opens to its end
+  const seq = r.rec.filter(x => x.cam && x.wi <= 1 && !x.out && x.real >= a.real - .3 && x.real <= f.at(-1).real); let worst = 1;
+  for (let i = 0, j = 0; i < seq.length; i++) { while (seq[i].real - seq[j].real > LIM.pullT) j++; const p0 = heroPx(seq[j]), p1 = heroPx(seq[i]); if (p0 > 0 && p1 > 0) worst = Math.max(worst, p0 / p1); }
+  if (worst > LIM.pull + .005) flags.push(['view', `the view pulls back ${worst.toFixed(2)}x within ${LIM.pullT} s at ${VW}x${VH}`]);
   return flags;
 }
-
-// The checks on the recorded ways.
+// After the window closes (a tap or the time-out): nobody turns round. His own player does what was tapped (a turn
+// with the ball is his choice), and a keeper sets himself: neither counts.
+function after(r, sc) {
+  const flags = [];
+  for (let wi = 1; wi <= r.wins.length; wi++) {
+    const w = r.wins[wi - 1], inW = r.rec.filter(x => x.win && x.wi === wi), post = r.rec.filter(x => !x.win && x.wi === wi && x.t > (inW.at(-1)?.t ?? 1e9) && x.t <= inW.at(-1).t + LIM.after + 1e-9);
+    if (inW.length < 4 || post.length < 3) continue;
+    const e = inW.at(-1), b0 = inW.findLast(x => x.t <= e.t - .15) || inW[0], T0 = e.t - b0.t; if (T0 < .05) continue;
+    for (const id of Object.keys(e.at)) {
+      if (id === 'hero' || id[0] === 'k') continue;
+      const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], s0 = Math.hypot(...v0); if (s0 < .5) continue;
+      let worst = 0;
+      for (let i = 3; i < post.length; i++) { const p = post[i - 3], q = post[i], T = q.t - p.t; if (T < .03) continue; const v = [(q.at[id][0] - p.at[id][0]) / T, (q.at[id][1] - p.at[id][1]) / T], s1 = Math.hypot(...v); if (s1 < .5) continue;
+        worst = Math.max(worst, Math.acos(Math.max(-1, Math.min(1, (v0[0] * v[0] + v0[1] * v[1]) / (s0 * s1)))) * 180 / Math.PI); }
+      if (worst > LIM.afterTurn) flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(worst)}° within ${LIM.after} s of the window closing`]);
+    }
+  }
+  return flags;
+}
+// The checks on the recorded ways inside each window.
 function motion(r, sc) {
   for (let i = 1; i <= r.wins.length; i++) motionIn(r, sc, r.rec.filter(f => f.win && f.wi === i));
   return r.flags;
 }
 function motionIn(r, sc, inWin) {
-  const { rec, flags } = r;
+  const { flags } = r;
   if (inWin.length < 3) return flags;
-  // resample every 0.05 s of game time
-  const grid = [], dt = .05; let k = 0;
-  for (let t = inWin[0].t; t <= inWin.at(-1).t + 1e-9; t += dt) { while (k + 1 < inWin.length && inWin[k + 1].t <= t) k++; grid.push(inWin[k]); }
-  const ids = Object.keys(inWin[0].at), gk = id => id[0] === 'k';
+  const g = grid(inWin, .05), dt = .05, ids = Object.keys(inWin[0].at), gk = id => id[0] === 'k';
   for (const id of ids) {
-    const v = []; for (let i = 1; i < grid.length; i++) { const a = grid[i - 1].at[id], b = grid[i].at[id], T = grid[i].t - grid[i - 1].t || dt; v.push([(b[0] - a[0]) / T, (b[1] - a[1]) / T]); }
+    const v = []; for (let i = 1; i < g.length; i++) { const a = g[i - 1].at[id], b = g[i].at[id], T = g[i].t - g[i - 1].t || dt; v.push([(b[0] - a[0]) / T, (b[1] - a[1]) / T]); }
     if (!v.length) continue;
     const sp = v.map(q => Math.hypot(...q)), max = Math.max(...sp);
     if (max > LIM.speed) flags.push(['speed', `${id} ${max.toFixed(1)} m/s`]);
@@ -186,100 +194,88 @@ function motionIn(r, sc, inWin) {
     for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) if (sp[i] > .4 && sp[j] > .4) {
       const c = (v[i][0] * v[j][0] + v[i][1] * v[j][1]) / (sp[i] * sp[j]); if (c < Math.cos(LIM.turn * Math.PI / 180)) { flags.push(['turn', `${id} turned ${Math.round(Math.acos(Math.max(-1, c)) * 180 / Math.PI)}° in the window`]); i = v.length; break; }
     }
-    if (!gk(id) && max < LIM.still && grid.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) flags.push(['still', `${id} still through the window`]); // (a restart's taker stands over the dead ball)
+    if (!gk(id) && max < LIM.still && g.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) flags.push(['still', `${id} still through the window`]); // (a restart's taker stands over the dead ball)
   }
   // the player on the ball keeps it moving
-  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart) { /* (a restart's taker: a dead ball) */ const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
-  // nobody's speed jumps as the window opens (compare the last frame before with the first two inside)
-  const before = rec.filter(f => !f.win && !f.out).at(-1);
-  // players too close
+  const c0 = inWin[0].carrier; if (c0 && ids.includes(c0) && !sc.restart && !gk(c0)) { const a = inWin[0].at[c0], b = inWin.at(-1).at[c0], T = inWin.at(-1).t - inWin[0].t; if (T > .2 && Math.hypot(b[0] - a[0], b[1] - a[1]) / T < .2) flags.push(['still', `${c0} on the ball nearly still`]); }
   for (const f of inWin) { const at = Object.entries(f.at); for (let i = 0; i < at.length; i++) for (let j = i + 1; j < at.length; j++) { const d = Math.hypot(at[i][1][0] - at[j][1][0], at[i][1][1] - at[j][1][1]); if (d < LIM.gap) { flags.push(['gap', `${at[i][0]}–${at[j][0]} ${d.toFixed(2)} m`]); return flags; } } }
-  void before; void sc;
   return flags;
 }
-// After a time-out: who took the ball, and when, against what the window showed.
-function timeout(r, sc) {
+// The time-out: when it comes, how long the window was, and the threat getting to the ball.
+function timeout(r, sc, st) {
   const { rec, wins, flags } = r, w = wins[0]; if (!w) return flags;
   if (!w.timeoutAt) { flags.push(['late', 'no time-out']); return flags; }
-  if (Math.abs(w.timeoutAt.u - 1) > .05) flags.push(['late', `time-out at u=${w.timeoutAt.u.toFixed(2)}`]);
-  if (sc.restart) return flags; // (a restart: nobody tackles; the taker plays it to where he stands, outcomes.js timeoutGen)
-  const out = rec.filter(f => f.out), first = out.find(f => f.carrier && f.carrier !== out[0]?.carrier && !['hero', 'm1', 'm2', 'm3', 'k1'].includes(f.carrier) || (kindOf(sc) === 'defense' && f.carrier && f.carrier[0] === 'o'));
-  if (kindOf(sc) === 'defense' || kindOf(sc) === 'follow' || kindOf(sc) === 'goal') return flags; // (the attackers go on; they got there first)
-  if (kindOf(sc) === 'receive' && !first && r.banners.includes('He got there!')) return flags; // (nobody near him: they got back in front of him instead)
-  if (!first) { flags.push(['threat', 'nobody took the ball']); return flags; }
-  const poke = out.find(f => f.at[w.threat] && Math.hypot(f.at[w.threat][0] - f.ball[0], f.at[w.threat][1] - f.ball[1]) < .65);
-  if (!poke) flags.push(['threat', `${w.threat} never reached the ball (${first.carrier} took it)`]);
-  else {
-    // A threat still far from the ball as the window ends (more than PRESS m: he was not pressing, he was getting back)
-    // needs his run to get there: explained, and allowed up to LIM.lateFar; one pressing must be there at once.
-    const at = rec.find(f => f.out) || rec.at(-1), far = at && Math.hypot(at.at[w.threat][0] - at.ball[0], at.at[w.threat][1] - at.ball[1]) > 3.4, gap = poke.real - w.timeoutAt.real;
-    if (gap > (far ? LIM.lateFar : LIM.late)) flags.push(['late', `steal ${gap.toFixed(1)} s after the reach touched the ball${far ? ' (from far)' : ''}`]);
-    r.gap = gap; r.far = far;
-  }
+  if (Math.abs(w.timeoutAt.u - 1) > .03) flags.push(['late', `time-out at u=${w.timeoutAt.u?.toFixed(2)}`]);
+  if (w.f < PACE - 1e-6) flags.push(['pace', `the world at ${w.f.toFixed(3)}x`]);
+  if (w.timeoutAt.winReal < w.R * .93 - .25 || w.timeoutAt.winReal > w.R * 1.03 + .1) flags.push(['pace', `the window lasted ${w.timeoutAt.winReal?.toFixed(1)} s of its ${w.R.toFixed(1)} s`]);
+  const inW = rec.filter(x => x.win && x.wi === 1); if (inW.some((x, i) => i && x.left > inW[i - 1].left + 1e-9) || (inW.at(-1)?.left ?? 0) > .03) flags.push(['pace', `the ring is not empty as it ends (${inW.at(-1)?.left?.toFixed(2)})`]);
+  const k = kindOf(sc), tackle = (k === 'attack' || k === 'lead' || k === 'support' || k === 'goal' || k === 'receive') && !sc.restart && w.threat && !sc.gk?.hold;
+  if (!tackle) return flags;
+  const ex = exempt('arrive', sc); st.arrive.n++;
+  if (ex) { st.arrive.ok++; st.use(ex); return flags; }
+  const e = inW.at(-1), dE = Math.hypot(e.at[w.threat][0] - e.ball[0], e.at[w.threat][1] - e.ball[1]), out = rec.filter(f => f.out);
+  // (he touches it: within reach of it, or it is on its way off his foot, or his)
+  const touch = out.find(f => f.at[w.threat] && (Math.hypot(f.at[w.threat][0] - f.ball[0], f.at[w.threat][1] - f.ball[1]) < .65 || f.carrier === w.threat || (f.bstate === 'flying' && f.carrier == null))), gap = touch ? touch.real - w.timeoutAt.real : 9;
+  r.gap = gap; r.dEnd = dE;
+  if (dE <= LIM.reach + 1e-6 && gap <= LIM.touch + 1e-6) st.arrive.ok++;
+  else st.arrive.miss.push(`${st.size} ${sc.id} (${k}, ${w.cls}): ${w.threat} is ${dE.toFixed(2)} m from the ball as the ring empties and touches it ${gap === 9 ? 'never' : gap.toFixed(2) + ' s later'}`);
   return flags;
 }
 
-const all = [], counts = {}, mis = [], explained = [];
+const all = [], counts = {}, mis = [], used = new Map(), stats = {};
+const mkShare = () => ({ n: 0, ok: 0, miss: [] });
 for (const size of sizes) {
   setSize(size);
+  const st = stats[size] = { size, comes: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {},
+    use: e => used.set(e, (used.get(e) || 0) + 1) };
   for (const sk of PATH.filter(s => s.ready && (!only || s.id === only))) {
     const scs = [...allScenarios(sk.id), ...Array.from({ length: nGen }, (_, i) => generate(sk.id, 5001 + i, { even: true })).filter(Boolean).map(s => ({ ...s, id: s.id + 'e' }))];
     for (const sc of scs) {
       if (kindOf(sc) === 'tackle' || (scene && sc.id !== scene)) continue;
       const row = { size, skill: sk.id, sc: sc.id, kind: kindOf(sc), plays: [] };
-      for (const opt of optionsFor(sc)) for (const u of taps) {
+      for (const opt of taps.length ? optionsFor(sc) : []) for (const u of taps) {
         const r = await play(sc, opt, u), fl = motion(r, sc), end = endOf(r.banners), want = base?.[`${size}|${sk.id}|${sc.id}|${opt}`];
-        // (keeper-out: tapped before the keeper is out, a shot goes in that the scene, with him out, has saved: the true
-        // result of an early shot, said so here rather than hidden by a shorter window)
-        if (want && !sameEnd(end, endOf(want))) { if (sc.pattern === 'keeper-out' && end === 'kept' && endOf(want) === 'saved' && u < .9) explained.push(`${size} ${sc.id} ${opt}@${u}: scores before the keeper is out (the scene, with him out: saved)`); else fl.push(['result', `${end} (frozen: ${endOf(want)})`]); }
-        row.plays.push({ opt, u, end, flags: fl, win: r.wins[0] });
+        for (const x of after(r, sc)) fl.push(x);
+        st.grade.n += r.info.taps || 0; st.grade.ok += (r.info.taps || 0) - (r.info.grade?.length || 0); for (const m of r.info.grade || []) st.grade.miss.push(`${size} ${sc.id} ${opt}@${u}: ${m}`);
+        if (want && !sameEnd(end, endOf(want))) fl.push(['result', `${end} (frozen: ${endOf(want)})`]);
+        row.plays.push({ opt, u, end, flags: fl });
       }
-      const r = await play(sc, null, 1), fl = timeout(r, sc); motion(r, sc).forEach(f => fl.push(f));
-      const fo = floor(r, sc);
-      for (const f of roles(r, sc)) fl.push(f); for (const f of heroMoves(r, sc)) fl.push(f);
-      if (fo && fo.most < .5) fl.push(['floor', `nobody moves .5 m in the window (most ${fo.most.toFixed(2)} m)`]);
-      // (explained: a chaser the scene's own picture has at his back, close; he cannot be seen coming, only felt)
-      if (fo && !fo.seen && fo.kind !== 'receive') { if (fo.behind) explained.push(`${size} ${sc.id}: ${r.wins[0].threat} comes from behind him (at his back in the scene)`); else fl.push(['unseen', `${r.wins[0].threat} not in view as it opens`]); }
-      row.plays.push({ opt: 'timeout', u: 1, end: endOf(r.banners), flags: fl, win: r.wins[0], gap: r.gap, far: r.far });
-      row.win = r.wins[0] && { G: r.wins[0].G, f: +r.wins[0].f.toFixed(3), threat: r.wins[0].threat, k: r.wins[0].k, a: r.wins[0].a, cls: r.wins[0].cls };
-      row.floor = fo;
+      VW = 844; VH = 390;
+      const r = await play(sc, null, 1), fl = timeout(r, sc, st); motion(r, sc);
+      for (const x of [...shape(r, sc, st), ...views(r, sc, st), ...after(r, sc)]) fl.push(x);
+      VW = 667; VH = 375; { const r2 = await play(sc, null, 1); for (const x of views(r2, sc, st)) fl.push(x); } VW = 844; VH = 390;
+      const w = r.wins[0];
+      row.plays.push({ opt: 'timeout', u: 1, end: endOf(r.banners), flags: fl, gap: r.gap, dEnd: r.dEnd });
+      if (w) { row.win = { G: +w.G.toFixed(2), R: +w.R.toFixed(1), f: +w.f.toFixed(3), threat: w.threat, second: w.second, k: w.k, sp: w.sp, cls: w.cls, r0: w.r0, rP: w.rP, dis: w.dis }; st.f.push(w.f); st.G.push(w.G); (st.cls[`${row.kind} ${w.cls}`] ||= []).push(sc.id); if (w.dis?.length) fl.push(['plan', `the shape does not hold all through: ${w.dis.join(',')}`]); }
       for (const p of row.plays) for (const [k2, m] of p.flags) { counts[`${size} ${k2}`] = (counts[`${size} ${k2}`] || 0) + 1; mis.push(`${size} ${sc.id} ${p.opt}@${p.u}: ${k2}: ${m}`); }
       all.push(row);
     }
     process.stderr.write(`${size} ${sk.id} done\n`);
   }
 }
-// Summary: the window lengths and slow motion by kind, and every flag.
-const byKind = {}; for (const r of all) if (r.win) (byKind[`${r.size} ${r.kind}`] ||= []).push(r.win);
-console.log('window (game s) and world speed, by kind:');
-for (const [k, v] of Object.entries(byKind)) { const G = v.map(x => x.G).sort((a, b) => a - b), f = v.map(x => x.f).sort((a, b) => a - b); console.log(`  ${k.padEnd(14)} n ${String(v.length).padStart(3)}  G ${G[0]}–${G.at(-1)} (median ${G[G.length >> 1]})  speed ${f[0]}–${f.at(-1)}×`); }
-const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null).map(p => p.gap)).sort((a, b) => a - b);
-if (gaps.length) console.log(`steal after the reach touched the ball: median ${gaps[gaps.length >> 1].toFixed(2)} s, max ${gaps.at(-1).toFixed(2)} s (real)`);
-for (const far of [false, true]) {
-  const g = all.flatMap(r => r.plays.filter(p => p.gap != null && !!p.far === far).map(p => p.gap)).sort((a, b) => a - b);
-  const what = far ? `getting back from far (over 3.4 m away as it ends; allowed ${LIM.lateFar} s)` : `pressing (allowed ${LIM.late} s)`;
-  if (g.length) console.log(`  threat ${what}: ${g.length} time-outs, median ${g[g.length >> 1].toFixed(2)} s, max ${g.at(-1).toFixed(2)} s`);
+// ---- the summary ----
+const pct = s => (s.n ? (100 * s.ok / s.n).toFixed(1) + '%' : '-'), q = v => { v = [...v].sort((a, b) => a - b); return v.length ? `${v[0].toFixed(2)}–${v.at(-1).toFixed(2)} (median ${v[v.length >> 1].toFixed(2)})` : '-'; };
+let fails = 0;
+for (const [size, st] of Object.entries(stats)) {
+  console.log(`\n== ${size}: ${all.filter(r => r.size === size).length} scenes`);
+  console.log(`  world speed ${q(st.f)}x; play in a window ${q(st.G)} s`);
+  console.log('  windows by kind and class (full: a run-in of 2.5 m or more; short: less, where the pitch, the other players or the picture allow no more; calm: the play drifts at under a walk; dead: a dead ball; no-threat: their dribbler comes on):');
+  for (const [k, v] of Object.entries(st.cls)) console.log(`    ${k.padEnd(20)} ${v.length}${v.length < 7 ? '  ' + v.join(' ') : ''}`);
+  const rows = [['comes', st.comes, 'the one who comes is the nearest free defender as it opens'], ['arrive', st.arrive, 'within 0.8 m as the ring empties, touch within 0.3 s'], ['grade', st.grade, 'the picture agrees with the grade at the tap'],
+    ['size', st.size_[844], 'his player 60 px at 844x390'], ['size', st.size_[667], 'his player 48 px at 667x375'], ['friends', st.friends, 'friends neither go away from the ball nor leave the view'], ['closes', st.closes, 'the threat closes 2.5 m with the ball at his feet']];
+  for (const [k, s, what] of rows) {
+    const ok = !s.n || s.ok / s.n >= SHARE[k] - 1e-9; if (!ok) { fails++; counts[`${size} ${k}-share`] = 1; }
+    console.log(`  ${ok ? 'ok  ' : 'MISS'} ${k.padEnd(8)} ${String(s.ok).padStart(4)}/${String(s.n).padEnd(4)} ${pct(s).padStart(6)} (needs ${SHARE[k] * 100}%)  ${what}${s.all ? `; smallest ${Math.round(Math.min(...s.all))} px, median ${Math.round([...s.all].sort((a, b) => a - b)[s.all.length >> 1])} px` : ''}`);
+    for (const m of s.miss.slice(0, 40)) console.log('         ' + m);
+    if (s.miss.length > 40) console.log(`         … ${s.miss.length - 40} more`);
+  }
 }
-// The scenes by how their window comes about (round 2), and the floor on visible change.
-const cls = {}; for (const r of all) if (r.win) { const k = `${r.size} ${r.win.cls}`; (cls[k] ||= []).push(r.sc); }
-console.log('windows by class (full: the whole lead-in; short: a shorter one, where a run would start off the pitch or through someone; last-resort: shortened by pattern, window.js SHORT_LEAD; live: from play going on; co-moving: the round-1 plan):');
-for (const [k, v] of Object.entries(cls)) console.log(`  ${k.padEnd(18)} ${v.length}${v.length < 12 ? '  ' + v.join(' ') : ''}`);
-// (Windows whose threat is behind him by the scene's idea, or is the one the shot hit, cannot move on his screen: they
-// are counted apart.)
-const apart = r => r.floor.restart || r.floor.behind || (r.kind === 'receive' && !r.floor.seen) || (r.kind === 'follow' && r.floor.th === 'o1' && r.sc.includes('block'));
-const fl2 = {}, apartN = {}; for (const r of all) if (r.floor) { if (apart(r)) { apartN[r.size] = (apartN[r.size] || 0) + 1; (fl2[`${r.size} ${r.skill}`] ||= []); continue; } (fl2[`${r.size} ${r.skill}`] ||= []).push(r.floor); }
-console.log('floor per lesson (threat closes ≥ 2.5 m and moves ≥ 80 px on screen; his player travels):');
-const share = {}; for (const [k, v] of Object.entries(fl2)) { if (!v.length) { console.log(`  ${k.padEnd(26)} (all apart)`); continue; }
-  const ok = v.filter(x => x.close >= 2.5 && x.px >= 80).length, c = v.map(x => x.close).sort((a, b) => a - b), px = v.map(x => x.px).sort((a, b) => a - b), h = v.map(x => x.hero).sort((a, b) => a - b), sz = k.split(' ')[0];
-  (share[sz] ||= [0, 0]); share[sz][0] += ok; share[sz][1] += v.length;
-  console.log(`  ${k.padEnd(26)} ${ok}/${v.length}  close ${c[0].toFixed(1)}–${c.at(-1).toFixed(1)} m (median ${c[c.length >> 1].toFixed(1)})  px ${Math.round(px[0])}–${Math.round(px.at(-1))} (median ${Math.round(px[px.length >> 1])})  his player ${h[0].toFixed(1)}–${h.at(-1).toFixed(1)} m`);
-}
-for (const [sz, [ok, n]] of Object.entries(share)) { console.log(`  ${sz}: ${ok}/${n} windows meet the floor (${Math.round(100 * ok / n)}%), and ${apartN[sz] || 0} apart (the threat behind him by the idea, the one the shot hit, or a restart's dead ball)`); if (ok < .9 * n) { counts[`${sz} floor-share`] = 1; mis.push(`${sz} floor met in only ${ok}/${n} windows`); } }
-if (explained.length) { console.log(`explained (${explained.length}):`); for (const m of explained) console.log('  ' + m); }
+const gaps = all.flatMap(r => r.plays.filter(p => p.gap != null && p.gap < 9).map(p => p.gap)).sort((a, b) => a - b), dEnds = all.flatMap(r => r.plays.filter(p => p.dEnd != null).map(p => p.dEnd)).sort((a, b) => a - b);
+if (gaps.length) console.log(`\nthe threat as the ring empties: ${dEnds[0].toFixed(2)}–${dEnds.at(-1).toFixed(2)} m from the ball (median ${dEnds[dEnds.length >> 1].toFixed(2)}); he touches it ${gaps[0].toFixed(2)}–${gaps.at(-1).toFixed(2)} s later (median ${gaps[gaps.length >> 1].toFixed(2)}, real)`);
+if (used.size) { console.log('exemptions used:'); for (const [e, n] of used) console.log(`  ${e[0]}: ${n} window(s): ${e[2]}`); }
 console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
 if (mis.length > 80) console.log(`  … ${mis.length - 80} more`);
-if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify(all));
-console.log(`\n${mis.length} flag(s)`);
-process.exitCode = mis.length ? 1 : 0;
-void TEAM;
+if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify({ all, stats: Object.fromEntries(Object.entries(stats).map(([k, s]) => [k, { comes: s.comes, arrive: s.arrive, closes: s.closes, friends: s.friends, grade: s.grade, size: s.size_, f: s.f, G: s.G }])), mis }));
+console.log(`\n${mis.length} flag(s), ${fails} share(s) missed`);
+process.exitCode = mis.length || fails ? 1 : 0;

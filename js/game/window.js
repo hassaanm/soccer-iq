@@ -76,6 +76,7 @@ export const moving = {
       if (plan.look != null) this.yaw = plan.look; // (the view turns to where the threat comes from: window.js planArrival)
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
+      plan.openAt = s.time + T; // (when the choice opens: the view is set for it from now on, view.js spotView)
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
         const q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy);
@@ -86,6 +87,7 @@ export const moving = {
       }
       const c = s.a(s.ball.carrier);
       if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }
+      extra.frame?.(id => pathAt(plan.paths[id] || { x: s.a(id).x, y: s.a(id).y, v0: [0, 0], v1: [0, 0] }, 0)); // (the way he looks as the choice opens, set now: the view is fitted for it before the run-up)
       await Promise.all([this.delay(T), extra.during?.(T)]);
       plan.ready = true;
     }

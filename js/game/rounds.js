@@ -31,40 +31,46 @@ export const rounds = {
     }
     if (sc.gk?.hold) { const k = s.a(sc.carrier); Object.assign(s.ball, { state: 'held', carrier: k.id, move: null, reach: null }); k.gkm = { k: 'hold', t0: s.time, low: false }; } // (v64: the keeper's ball, in his hands)
     // (v64) Everyone else comes into the choice on his planned way, still moving as it opens (game/window.js).
-    await this.plannedRunUp();
-    if (sc.run === 'goal') { const h = s.a('hero'), m = s.a('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(h); }
-    // Getting open (v60): he looks out over where he could go (the rings and his friend on the ball), not only at the
-    // ball, so the place nearest the camera is not always the same kind of place.
-    else if (sc.even && !sc.run) { const h = s.a('hero'), c = s.a(sc.carrier), pts = [...sc.spots, c]; this.yaw = this.frameYaw(sc, h, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); this.faceYaw(h); }
+    await this.plannedRunUp({ frame: at => {
+      const h = at('hero'), hh = s.a('hero');
+      if (sc.run === 'goal') { const m = at('m1'); this.yaw = this.frameYaw(sc, h, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); this.faceYaw(hh); }
+      // Getting open (v60): he looks out over where he could go (the rings and his friend on the ball), not only at the
+      // ball, so the place nearest the camera is not always the same kind of place.
+      else if (sc.even && !sc.run) { const c = at(sc.carrier), pts = [...sc.spots, c]; this.yaw = this.frameYaw(sc, h, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); this.faceYaw(hh); }
+    } });
   },
   // "Won it? Go!": their player dribbles straight at him, he steps in and pokes the ball off him, and their player
   // stumbles on past him (around him, on the camera's side) and ends up behind him.
-  // (v66) The choice opens the moment he wins it (WON.poke s in). The scene's picture holds from then on: everyone is
-  // already moving as the window has him move (planned before the intro, so nobody changes his way as it opens), he
-  // carries the ball on, and the player he took it from stumbles on to his place behind him (WON.lead s).
+  // (v66) He wins it (WON.poke s in), their player stumbles on past him to his place behind him (WON.lead s more), and
+  // then the choice opens, with the scene's picture as it is graded. All through, everyone else is already moving as
+  // the window has him move (planned before the intro, so nobody changes his way as it opens), and he carries the ball on.
   async wonIntro() {
-    const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), T = WON.poke;
+    const sc = this.sc, s = this.sim, o1 = s.a('o1'), T = WON.poke, lead = WON.lead, T2 = T + lead;
     const plan = this.wplan = this.plan(false, { never: ['o1'] });
     if (!plan) return this.wonIntroOld();
-    plan.sc = sc;
-    const meetH = pathAt(plan.paths.hero, 0), op = plan.paths.o1, o0 = pathAt(op, WON.lead); // where he is as he wins it; where their player has stumbled to
+    plan.sc = sc; plan.openAt = s.time + T2;
+    const meetH = pathAt(plan.paths.hero, -lead), o0 = pathAt(plan.paths.o1, 0); // where he is as he wins it; their player's place as the choice opens
     const side = Math.sign(o0.y - meetH.y) || 1, meet = { x: meetH.x + 1, y: meetH.y + side * .45 }; // (a little to the side he stumbles past on)
     Object.assign(o1, { x: meetH.x + 3.6, y: meetH.y + side * .2, tx: meetH.x + 3.6, ty: meetH.y + side * .2, face: [-1, 0] });
     Object.assign(s.ball, { x: o1.x - .45, y: o1.y }); s.give('o1'); // the ball at his feet first, so it is his straight away
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a || id === 'o1') continue;
-      const q = pathAt(p, -T); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
+      // (one who would start off the pitch waits at its edge until his way comes onto it)
+      let t0 = -T2; while (t0 < 0 && !a.gk) { const q = pathAt(p, t0); if (q.x > .3 && q.x < L - .3 && q.y > .3 && q.y < W - .3) break; t0 += .1; }
+      const q = pathAt(p, t0); Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
       const v = Math.hypot(q.vx, q.vy); if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
-      a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: plan.watch.has(id) && id !== 'hero' };
+      a.track = { at: tt => pathAt(p, Math.max(t0, tt - T2)), t0: s.time, watch: plan.watch.has(id) && id !== 'hero' };
     }
     s.go('o1', meet.x, meet.y, Math.hypot(meet.x - o1.x, meet.y - o1.y) / T);
     await this.delay(T);
     s.give('hero'); this.sfx('tap'); this.say('You won the ball!');
     // The player he took it from stumbles on, braking as a child does, to his place behind him (a smooth way from how
     // he moves now, round the camera's side of him: past him, not through him), and then goes on with the play.
-    const ov = { x: (meet.x - (meetH.x + 3.6)) / T, y: (meet.y - (meetH.y + side * .2)) / T };
-    plan.paths.o1 = { herm: true, S: [o1.x, o1.y], V0: [ov.x, ov.y], E: [o0.x, o0.y], V1: [o0.vx, o0.vy], T: WON.lead };
-    plan.ready = true;
+    const ov = [(meet.x - (meetH.x + 3.6)) / T, (meet.y - (meetH.y + side * .2)) / T], S = [o1.x, o1.y], op = plan.paths.o1, t1 = s.time;
+    const st = { herm: true, S, V0: ov, E: [o0.x, o0.y], V1: [o0.vx, o0.vy], T: lead };
+    o1.track = { at: tt => pathAt(st, tt), t0: t1, watch: true };
+    await this.delay(lead);
+    void op; plan.ready = true;
   },
   async wonIntroOld() {
     const sc = this.sc, s = this.sim, h = s.a('hero'), o1 = s.a('o1'), [hx, hy] = sc.heroTo, meet = { x: hx + 1, y: hy };

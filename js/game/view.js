@@ -1,13 +1,14 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
 import { lerp, smooth, rot, clamp, closestOnLane } from '../geom.js';
-import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap } from './shared.js';
+import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap, spotKind } from './shared.js';
+import { pathAt, spotsNow } from '../window.js';
 import { spaces } from '../shot.js';
 
 // Where the eye is seen from the point it looks at: the way round, how high (radians) and how far.
 const orbit = (e, t) => { const x = e[0] - t[0], y = e[1] - t[1], z = e[2] - t[2], r = Math.hypot(x, y, z) || 1e-6; return [Math.atan2(y, x), Math.asin(clamp(z / r, -1, 1)), r]; };
 // The head-down player view: back, to the side, height (m), target ahead of him (m) and how far toward the ball
 // (part), target height, then focal lengths (see World.render). TURN_CAM: the same while choosing a turn.
-const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5, 5.2, 3, .2, .4, .68, .35];
+const HEAD_DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], TURN_CAM = [4.6, .5, 5.2, 3, .2, .4, .8, .41]; // (v66: a longer lens for the turn: his player 60 px or more)
 // The skill camera (see game/skill.js): metres behind him, to the side, eye height, how far ahead of him it looks
 // (with nobody to beat), how high, and the focal lengths. Low and close enough that his feet, the ball and the
 // defender fill the picture, far enough that nobody fills the screen.
@@ -19,6 +20,9 @@ const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
 // held sideways; if that cannot be had, a little less), so a child finds him at once (v60).
 const HERO_MIN = .2;
+// (v66) And never under this, in any view he chooses in: px tall (feet to 1.65 m) on a 667 px wide screen and on one 844 px
+// wide or more (between them, in proportion).
+export const HERO_FLOOR = [48, 60];
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
 const BACK_SCALE = [2];
@@ -38,41 +42,50 @@ export const view = {
   // The camera for picking a spot: it looks the way he faces (this.yaw, so a drag still turns it), from behind and
   // above, at the middle of him, the ball and the spots, and comes only as close as keeps every spot ring whole inside
   // the part of the screen nothing covers (under the prompt, clear of the button in the corner, in from the sides).
-  // Tried from a steep look down to a flatter one, the nearest view that fits wins. Kept until the view's size, the
-  // round or his facing changes.
+  // Tried from a steep look down to a flatter one, the nearest view that fits wins.
+  // (v66) The fit is made once, for the moment the window opens, from the window's plan, before the run-up: the view is
+  // there as the run-up starts (the camera eases to it) and does not change as the window opens. Play drifts on in the
+  // window, everyone together, so the view goes with the drift: what was fitted stays fitted. What moves against the
+  // drift (the one who comes, a runner and his rings) is fitted where it starts and where it ends. His own player is
+  // never smaller than HERO_FLOOR: that comes before fitting every far-away thing (the tiers below give those up first).
   spotView() {
-    const v = this.viewSize(), s = this.sim, h = s.a('hero'), sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, win = this.win, key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length} ${win ? Math.round(win.t0 * 1e3) : 0}`;
-    if (this.spotFit?.key === key) return this.spotFit.spec;
-    const pts = [[h.x, h.y, .9], [h.x, h.y, 0], [s.ball.x, s.ball.y, 0]];
-    // (v64) Play goes on while he chooses: the view takes in where he and the rings will be as the window ends too, so it
-    // never has to move to keep them in (one fit for the whole window).
-    // (Only what moves a metre or more: the rest is in the picture already, and every extra point costs his size.)
-    const far = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) >= 1, end = win ? (this.spotsEnd() || []).filter((e, i) => far(e, sc.spots[i])) : null;
-    if (win) { const e = this.windowEnd('hero'); if (far(e, h)) pts.push([e.x, e.y, .9], [e.x, e.y, 0]); }
-    { const t = win?.threat && s.a(win.threat.id); if (t && sc.kind !== 'receive' && sc.kind !== 'defense') pts.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // (round 2: the threat in the picture as he comes)
-    if (win && sc.run === 'follow' && sc.shot) pts.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (round 2: it opens as he shoots: where it hits, and where it comes out to)
-    // Runs to the goal, after a shot, and getting open (`even`): the friend with the ball and their nearest players are in
-    // the picture too, and (running to the goal) the goal, clear of the prompt. A ring far from the eye is drawn bigger
-    // and one near it smaller (World: ui.spotScale), so the nearest ring is not the biggest thing on screen. And his own
-    // player is big enough to find (v60): that comes first. If it cannot all be had, the view gives up first the far
-    // post (the near post and the goal mouth's middle stay), then a little on the ring sizes, then the goal.
-    const even = !!(sc.run || sc.even), stay = this.stayOffered();
-    const rings = [...sc.spots, ...(end || [])];
-    if (!even) for (const sp of rings) for (let a = 0; a < 8; a++) pts.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); // the whole ring (and its pulse)
-    else for (const sp of rings) pts.push([sp.x, sp.y, 0]);
-    let scales = null;
-    const goalAll = [], goalNear = [];
+    const v = this.viewSize(), s = this.sim, sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, win = this.win;
+    const plan = win?.plan || (this.wplan?.sc === sc ? this.wplan : null), hold = plan?.hold ? plan : null, D = hold ? hold.D : [0, 0], G = plan?.G || 0;
+    const tw = hold ? s.time - (win ? win.t0 : plan.openAt ?? s.time) : 0, shift = spec => (D[0] || D[1] ? { eye: [spec.eye[0] + D[0] * tw, spec.eye[1] + D[1] * tw, spec.eye[2]], tgt: [spec.tgt[0] + D[0] * tw, spec.tgt[1] + D[1] * tw, spec.tgt[2]], Ff: spec.Ff, Fw: spec.Fw } : spec);
+    const key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length} ${hold ? (hold.vid ||= ++this.vids) : sc.run === 'follow' ? 'f' : win ? Math.round(win.t0 * 1e3) : 0}`;
+    if (this.spotFit?.key === key) return shift(this.spotFit.spec);
+    // Where everything is as the window opens (o) and, against the drift, as it ends (e).
+    const P0 = !plan && sc.run === 'follow' ? this.sceneState(sc).at : null; // (after a shot: the scene's own places, where everyone is as the rebound stops)
+    const o = id => (hold?.paths[id] ? pathAt(hold.paths[id], 0, {}) : P0?.[id] || s.a(id)), e = id => { if (!hold?.paths[id]) return o(id); const q = pathAt(hold.paths[id], G, {}); return { x: q.x - D[0] * G, y: q.y - D[1] * G }; };
+    const far = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) >= 1, h = o('hero'), he = e('hero'), c = s.a(s.ball.carrier) ? o(s.ball.carrier) : null, ball = c ? { x: c.x + (s.ball.carrier === 'hero' ? .5 : 0), y: c.y } : s.ball;
+    const spots0 = this.spot0 || sc.spots, at0 = id => plan?.at0?.[id] || o(id);
+    const sp0 = hold ? spotsNow({ ...sc, spots: spots0 }, o, at0) : P0 ? spots0 : sc.spots, sp1 = hold ? spotsNow({ ...sc, spots: spots0 }, id => { const q = hold.paths[id] ? pathAt(hold.paths[id], G, {}) : o(id); return q; }, at0).map(q => ({ ...q, x: q.x - D[0] * G, y: q.y - D[1] * G })).filter((q, i) => far(q, sp0[i])) : [];
+    // The points to keep in the picture, by how much may be given up (level 0: all; 1: without the far-away extras (the
+    // one who comes, their near players, where things end); 2: only him, the ball and the rings as it opens).
+    const even = !!(sc.run || sc.even), stay = this.stayOffered(), goalAll = [], goalNear = [];
+    const ring = (out, sp) => { if (!even) for (let a = 0; a < 8; a++) out.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); else out.push([sp.x, sp.y, 0]); };
+    const base = [[h.x, h.y, .9], [h.x, h.y, 0], [ball.x, ball.y, 0]]; for (const sp of sp0) ring(base, sp);
+    if (!hold && !P0) { const hn = s.a('hero'); if (far(hn, h)) base.push([hn.x, hn.y, .9]); }
+    if (P0) { const hn = s.a('hero'); base.push([hn.x, hn.y, .9], [hn.x, hn.y, 0]); }
+    const mid = [...base], extra = [];
+    if (far(he, h)) mid.push([he.x, he.y, .9], [he.x, he.y, 0]);
+    for (const sp of sp1) ring(mid, sp);
+    if (sc.run === 'follow' && sc.shot) mid.push([sc.shot.hit[0], sc.shot.hit[1], 0], [sc.shot.loose[0], sc.shot.loose[1], 0]); // (it opens as he shoots: where it hits, and where it comes out to)
     if (even) {
-      const c = s.a(sc.carrier), near = s.team('them').filter(p => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) < 10).sort((p, q) => Math.hypot(p.x - s.ball.x, p.y - s.ball.y) - Math.hypot(q.x - s.ball.x, q.y - s.ball.y)).slice(0, sc.run ? 1 : 2); // (v64: not their players far off, as at a goal kick)
-      for (const a of [c, ...near]) if (a && a.id !== 'hero') { pts.push([a.x, a.y, 0], [a.x, a.y, 1.5]); if (win) { const e = this.windowEnd(a.id); if (far(e, a)) pts.push([e.x, e.y, 0], [e.x, e.y, 1.5]); } }
-      if (stay) pts.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
+      const cid = sc.carrier, near = s.team('them').map(p => ({ id: p.id, q: o(p.id) })).filter(p => Math.hypot(p.q.x - ball.x, p.q.y - ball.y) < 10).sort((p, q) => Math.hypot(p.q.x - ball.x, p.q.y - ball.y) - Math.hypot(q.q.x - ball.x, q.q.y - ball.y)).slice(0, sc.run ? 1 : 2);
+      if (cid && cid !== 'hero' && s.a(cid)) { const a = o(cid); mid.push([a.x, a.y, 0], [a.x, a.y, 1.5]); }
+      for (const p of near) { extra.push([p.q.x, p.q.y, 0], [p.q.x, p.q.y, 1.5]); const q = e(p.id); if (far(q, p.q) && p.id !== plan?.threat?.id) extra.push([q.x, q.y, 0]); }
+      if (stay) mid.push([h.x, h.y, STAY_Z + 1.1]); // the "stay here" badge over his head
       if (sc.run) {
         const ny = Math.abs(h.y - gy0) < Math.abs(h.y - gy1) ? gy0 : gy1;
         for (const y of [gy0, gy1]) goalAll.push([L, y, 0, 1], [L, y, 1.6, 1]); // the posts (1.6 m high; 1: may sit beside the prompt, see inside)
         goalNear.push([L, ny, 0, 1], [L, ny, 1.6, 1], [L, (gy0 + gy1) / 2, 0, 1]);
       }
     }
-    let mx = 0, my = 0; for (const p of [...pts, ...goalAll]) { mx += p[0]; my += p[1]; } mx /= pts.length + goalAll.length; my /= pts.length + goalAll.length;
+    { const t = plan?.threat && sc.kind !== 'receive' && sc.kind !== 'defense' && s.a(plan.threat.id) && o(plan.threat.id); if (t) extra.push([t.x, t.y, 0], [t.x, t.y, 1.5]); } // the one who comes, as he sets off
+    const levels = [[...mid, ...extra], mid, base];
+    let pts = levels[0], scales = null;
+    let mx = 0, my = 0; for (const p of [...levels[1], ...goalAll]) { mx += p[0]; my += p[1]; } mx /= levels[1].length + goalAll.length; my /= levels[1].length + goalAll.length;
     let cx = mx, cy = my; // where the camera looks: the middle of it all, or (for a closer view) a little toward him
     // The free part of the screen: under the prompt, in from the edges, and not where LOOK UP / HEAD DOWN sits (bottom
     // left; nothing else shows while he picks a spot).
@@ -83,7 +96,7 @@ export const view = {
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
       const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
-      if (heroMin) { const a = proj(h.x, h.y, 0), b = proj(h.x, h.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall
+      if (heroMin) for (const q of [h, he]) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
       // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
       // under them, nor under the buttons in the top corners.)
       const inside = (px, py, pz, side = 0) => {
@@ -93,20 +106,20 @@ export const view = {
       };
       for (const [px, py, pz, side] of [...pts, ...(goal === 'all' ? goalAll : goal === 'near' ? goalNear : [])]) if (!inside(px, py, pz, side)) return false;
       if (even) { // each ring at the size it will be drawn
-        const z = sc.spots.map(sp => (sp.x - ex) * fwd[0] + (sp.y - ey) * fwd[1] - ez * fwd[2]), near = Math.min(...z); // depth: the size on screen goes as 1 / depth
+        const z = sp0.map(sp => (sp.x - ex) * fwd[0] + (sp.y - ey) * fwd[1] - ez * fwd[2]), near = Math.min(...z); // depth: the size on screen goes as 1 / depth
         // A ring far off is drawn bigger and one close by smaller (down to RING_SHRINK), but never so big that it would
         // touch its nearest neighbour ring (each takes half the gap).
-        const mid = Math.sqrt(near * Math.max(...z));
-        scales = z.map((k, i) => Math.max(RING_SHRINK, Math.min(RING_GROW, k / mid, ...sc.spots.filter((_, j) => j !== i).map(b => (Math.hypot(b.x - sc.spots[i].x, b.y - sc.spots[i].y) - .15) / 1.6))));
+        const mid2 = Math.sqrt(near * Math.max(...z));
+        scales = z.map((k, i) => Math.max(RING_SHRINK, Math.min(RING_GROW, k / mid2, ...sp0.filter((_, j) => j !== i).map(b => (Math.hypot(b.x - sp0[i].x, b.y - sp0[i].y) - .15) / 1.6))));
         const size = scales.map((k, i) => k / z[i]); if (Math.max(...size) > ratio * Math.min(...size)) return false;
-        for (const [i, sp] of sc.spots.entries()) for (let a = 0; a < 8; a++) if (!inside(sp.x + Math.cos(a * Math.PI / 4) * .85 * scales[i], sp.y + Math.sin(a * Math.PI / 4) * .85 * scales[i], 0)) return false;
+        for (const [i, sp] of sp0.entries()) for (let a = 0; a < 8; a++) if (!inside(sp.x + Math.cos(a * Math.PI / 4) * .85 * scales[i], sp.y + Math.sin(a * Math.PI / 4) * .85 * scales[i], 0)) return false;
       }
       return true;
     };
     // The way he faces first; turned a little either way only if that lets it come nearer (or fit at all).
     const search = rule => {
-      let best = null;
-      for (const lean of even ? [0, .3, .55, .8] : [0]) {
+      let best = null; pts = levels[rule.drop || 0];
+      for (const lean of even || rule.drop ? [0, .3, .55, .8] : [0]) {
         cx = lerp(mx, h.x, lean); cy = lerp(my, h.y, lean);
         for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75]) {
           fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
@@ -115,16 +128,20 @@ export const view = {
       }
       return best;
     };
-    // Tried in this order: the whole goal, then only its near post and the middle of its mouth, then rings a little less
-    // even, then his player a little smaller, and only then (never running to the goal unless nothing else fits) no goal.
-    const hm = HERO_MIN * F, tiers = !even ? [...[1, .88, .78, .7].map(k => ({ goal: 'all', ratio: RING_RATIO, heroMin: hm * k })), { goal: 'all', ratio: RING_RATIO }] : [ // (v62: defending and lead passes too: his player big enough to find, first){ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm },
-      ...[1, .88, .78, .66].map(k => ({ goal: 'near', ratio: RING_RATIO_MAX, heroMin: hm * k })), { goal: 'none', ratio: RING_RATIO_MAX, heroMin: hm * .78 },
-      { goal: 'none', ratio: 3, heroMin: hm * .6 }, { goal: 'all', ratio: RING_RATIO }];
+    // Tried in this order: everything; then (running to the goal) only the goal's near post and the middle of its mouth;
+    // rings a little less even; his player a little smaller, but never under the floor; then without the far-away
+    // extras, then without where things end, then no goal: his player's size is given up last, and never below the floor.
+    const floor = (HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 2) * 1.85 / 1.65, hm = Math.max(HERO_MIN * F, floor), hk = k => Math.max(hm * k, floor);
+    const tiers = !even ? [...[1, .88, .78, .7].map(k => ({ goal: 'all', ratio: RING_RATIO, heroMin: hk(k) })), { goal: 'all', ratio: RING_RATIO, heroMin: floor, drop: 1 }, { goal: 'all', ratio: RING_RATIO, heroMin: floor, drop: 2 }]
+      : [{ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm }, ...[1, .88, .78, .66].map(k => ({ goal: 'near', ratio: RING_RATIO_MAX, heroMin: hk(k) })), { goal: 'none', ratio: RING_RATIO_MAX, heroMin: hk(.78) },
+        { goal: 'near', ratio: RING_RATIO_MAX, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 2 }, { goal: 'none', ratio: 9, heroMin: floor, drop: 2 }];
     let best = null, rule = null; for (const t of tiers) if ((best = search(t))) { rule = t; break; }
-    const { pitch, d, off } = best || { pitch: 1.35, d: 22, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? mx; cy = best?.cy ?? my;
+    // (nothing fits with him that size: a view of him and the rings' middle from as far as keeps him at the floor)
+    const dFloor = 1.85 * F / floor * .93;
+    const { pitch, d, off } = best || { pitch: 1.0, d: dFloor, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? lerp(mx, h.x, .7); cy = best?.cy ?? lerp(my, h.y, .7);
     const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
     this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null, rule };
-    return this.spotFit.spec;
+    return shift(this.spotFit.spec);
   },
 
   // The aim view (v64): he picks one of six targets, so the goal must be big (each target at least 44 px), and he must still
@@ -165,6 +182,9 @@ export const view = {
     if (this.camMode === 'orbit') { const a = time * .08; return { eye: [L / 2 + Math.cos(a) * 24, W / 2 + Math.sin(a) * 24, 10], tgt: [L / 2, W / 2, 0], Ff: .9, Fw: .4 }; }
     // A shot in front of him (follow your shot): from behind him and a little above, looking past him at where it hits,
     // so the shooter, the shot, the goal and the bounce are all in the picture.
+    // Choosing where to run (or pass to a running friend): every spot whole on screen, clear of the buttons (see spotView),
+    // from the start of the run-up into it (v66): the view is there before the choice opens.
+    if (this.spotPre()) return this.spotView();
     if (this.camMode === 'shot' && this.aimAt) {
       const p = this.aimAt, l = Math.hypot(p.x - h.x, p.y - h.y) || 1, ux = (p.x - h.x) / l, uy = (p.y - h.y) / l;
       return { eye: [clamp(h.x - ux * 5, .5, L - .5), clamp(h.y - uy * 5, .5, W - .5), 3.6], tgt: [lerp(h.x, p.x, .5), lerp(h.y, p.y, .5), .4], Ff: .85, Fw: .44 };
@@ -211,9 +231,10 @@ export const view = {
     const k = smooth(this.look);
     // Choosing a turn as the pass comes (head down): a little higher and farther back, so both curved arrows round
     // his feet, the ball and the passer are all on screen. Head up is the same as everywhere.
-    const C = this.step === 'turn' && this.phase === 'decide' ? TURN_CAM : HEAD_DOWN;
+    const C = (this.step === 'turn' && this.phase === 'decide') || (this.phase === 'pre' && this.sc?.kind === 'receive' && this.mode !== 'demo') ? TURN_CAM : HEAD_DOWN; // (v66: from the run-up on, so the view does not change as the pass is played)
     // (round 3) A threat coming from behind him: while he chooses, the view is higher and farther back, so he is seen coming.
-    const wide = this.phase === 'decide' && this.win?.plan?.wide ? 1 : 0;
+    // (v66: from the start of the run-up, so the view does not pull back as the choice opens)
+    const wide = (this.phase === 'decide' && this.win?.plan?.wide) || (this.phase === 'pre' && this.wplan?.sc === this.sc && this.wplan.wide) ? 1 : 0;
     const [bx, by] = rot(-lerp(C[0], 5.2, k) - 3.5 * wide, lerp(C[1], .3, k), this.yaw), [fx, fy] = rot(9, 0, this.yaw);
     // On attack, head down looks at the ball at his feet. On defense the ball is away from him, so head down
     // looks a few meters ahead of him toward the ball, keeping him in view.
@@ -223,6 +244,13 @@ export const view = {
     if (b.state === 'carried' && b.carrier === 'hero' && !b.move) { const [ax, ay] = rot(.45, 0, this.yaw); dx = h.x + ax; dy = h.y + ay; }
     if (facesBall(this.sc)) { const [ax, ay] = rot(C[3], 0, this.yaw); dx = lerp(h.x + ax, b.x, C[4]); dy = lerp(h.y + ay, b.y, C[4]); }
     return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k) + 2.2 * wide], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
+  },
+  // The spot view before the choice opens: in a lesson's run-up to a choice of spots (its plan is made: game/window.js
+  // plannedRunUp), and through the shot before "follow your shot".
+  spotPre() {
+    const sc = this.sc; if (!sc?.spots?.length || !spotKind(sc) || this.camMode === 'overview' || this.camMode === 'follow' || this.camMode === 'orbit') return false;
+    if (this.phase === 'pre') return this.wplan?.sc === sc || (sc.run === 'follow' && !sc.live);
+    return this.phase === 'shot' && sc.run === 'follow' && !sc.live;
   },
   updateCamera(dt, time) {
     const f = this.follow, b = this.sim.ball;

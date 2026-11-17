@@ -374,14 +374,14 @@ export function agreeAt(sc, plan, pos, t, opts = {}) {
 const cache = new WeakMap();
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
-  const key = opts.live ? null : JSON.stringify([opts.R, opts.skip, opts.never, opts.G, opts.keep, opts.options, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
+  const key = opts.live ? null : JSON.stringify([opts.R, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
   if (key) { const hit = cache.get(sc)?.[key]; if (hit) return clonePlan(hit); }
   const p = planHold0(sc, st, opts, kind);
   if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return clonePlan(p); }
   return p;
 }
 const clonePlan = p => ({ ...p, paths: Object.fromEntries(Object.entries(p.paths).map(([id, q]) => [id, { ...q }])), watch: new Set(p.watch), threat: p.threat && { ...p.threat } });
-const SPEEDS = { attack: [1.3, 1, .8, .5, .25], lead: [1.2, 1, .8, .5, .25], defense: [1.8, 1.4, 1, .8, .5, .25], support: [.9, .7, .5, .25], goal: [1.6, 1.3, 1, .8, .5, .25], receive: [0], dead: [0] };
+const SPEEDS = { attack: [1.3, 1, .8, .5, .25], lead: [1.2, 1, .8, .5, .25], defense: [1.8, 1.4, 1, .8, .5, .25], support: [.9, .7, .5, .25], goal: [1.6, 1.3, 1, .8, .5, .25], receive: [.9, .6, .4], dead: [0] };
 function planHold0(sc, st, opts, kind) {
   const live = !!opts.live, at = st.at, R = opts.R || 8, never = opts.never || [], keep = opts.keep || {};
   const ro = rolesOf(sc, at, { skip: opts.skip, never: [...never, ...Object.keys(keep)] }), { holder, ballTeam, defTeam, out, ids, mark } = ro;
@@ -395,13 +395,14 @@ function planHold0(sc, st, opts, kind) {
   else if (live) { const v = [at[holder].vx || 0, at[holder].vy || 0]; if (len(v) > .4) line = U(v); }
   else if (holder === 'hero' && sc.hero && sc.heroTo && dd(sc.hero, sc.heroTo) > .3) line = U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]);
   const passer = kind === 'receive' ? at[sc.carrier || 'm1'] || st.ball : null;
+  if (passer && Math.hypot(passer.x - H[0], passer.y - H[1]) > .5) line = U([passer.x - H[0], passer.y - H[1]]); // (a pass on its way to him: he steps to meet it, and the play shifts that way with him)
   // ---- who comes ----
   // The threat; and, where the picture has a second free defender on the ball too (a trap, two pressing him), that one
   // comes in with him, a step behind, to his own place in the picture: two close him down, the nearer one tackles.
   const toP = kind === 'receive'; // (a pass on its way to him: the threat is at his place in the picture as it gets there, still coming)
   const rP = th ? dd(P(th), B) : 0, bear0 = th ? U([at[th].x - B[0], at[th].y - B[1]]) : [1, 0], bearA = Math.atan2(bear0[1], bear0[0]);
   const frees = ro.free.filter(id => id !== th && !at[id].gk && !never.includes(id) && !keep[id]);
-  const second = th && !live && !toP && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
+  const second = th && !live && !at[th].gk ? frees.find(id => dd(P(id), B) < Math.max(3, rP + 1.2)) || null : null, d2 = second ? dd(P(second), B) : 0, bear2 = second ? Math.atan2(at[second].y - B[1], at[second].x - B[0]) : 0;
   // (he is the nearest free defender from the first moment: never farther out than another free one)
   const cap = th ? Math.min(9e9, ...frees.filter(id => id !== second).map(id => dd(P(id), B) - .4 - (second ? d2 - rP + .4 : 0))) : 0;
   const rWant = !th ? 0 : live ? rP : toP ? Math.min(rP + 4, Math.max(rP + 1.5, RUNIN)) : Math.max(rP, RUNIN);
@@ -425,7 +426,6 @@ function planHold0(sc, st, opts, kind) {
     }
   }
   for (const id of out) if (mark[id] && !comer(id) && own[mark[id]] && !keep[id]) own[id] = [...own[mark[id]]]; // a marker mirrors his man
-  if (toP && passer) own.hero = mul(U([passer.x - at.hero.x, passer.y - at.hero.y]), 2); // he steps to meet the pass
   const keeperV = id => { if (sc.shots || at[id].rush || sc.gk?.hold || sc.gk?.out || sc.shot) return [0, 0]; const dy = B[1] - at[id].y; return [0, Math.abs(dy) > .3 ? Math.sign(dy) * .22 : 0]; };
   function build(sp, k, tP, G) {
     const D = mul(line, sp), paths = {}, wmag = Math.min(.6, STEP_OWN / G) * k;
@@ -464,7 +464,7 @@ function planHold0(sc, st, opts, kind) {
     return Object.assign(b, { bad, first, offp, ok, vd, runOk: [r0, r1] });
   }
   let best = null;
-  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live ? [0] : toP ? [1] : [.5, 1, 0];
+  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0];
   search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
     const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
     if (opts.debug) console.log('try', sp, k, frac, 'bad', b.bad, 'offp', b.offp, 'ok', b.ok.map(x => +x).join(''), JSON.stringify(b.first));
@@ -485,10 +485,12 @@ function planHold0(sc, st, opts, kind) {
       const hp0 = pathAt(b.paths[holder], 0), hp1 = pathAt(b.paths[holder], G), B0 = ballOf(sc, kind, holder, hp0), B1 = ballOf(sc, kind, holder, hp1), u = [Math.cos(bearA + sh), Math.sin(bearA + sh)];
       const S = live ? [at[th].x, at[th].y] : [B0.x + u[0] * r, B0.y + u[1] * r];
       if (!live && !onPitch(S[0], S[1], .8)) return null;
+      // (as it opens he is plainly coming for the ball, not standing by one of ours: 2.7 m or more from every friend off the ball)
+      if (!live && ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S[0], q.y - S[1]) < 2.7; })) return null;
       let E;
       if (toP) { const v = virtAt(b, G); E = [v.x, v.y]; }
       else { // the nearest point to where he starts, CONTACT m from the ball, that is not on top of the player on it
-        const mv = len(b.D) > .1, bc = mv ? [hp1.x + line[0] * .5, hp1.y + line[1] * .5] : [B1.x, B1.y], fa = mv ? Math.atan2(line[1], line[0]) : null, wa = Math.atan2(S[1] - bc[1], S[0] - bc[0]);
+        const mv = !at[holder].gk, bc = mv ? [hp1.x + line[0] * .45, hp1.y + line[1] * .45] : [B1.x, B1.y], fa = mv ? Math.atan2(line[1], line[0]) : null, wa = Math.atan2(S[1] - bc[1], S[0] - bc[0]);
         let a = wa; if (fa != null) { const da = Math.atan2(Math.sin(wa - fa), Math.cos(wa - fa)); a = fa + clamp(da, -1.4, 1.4); }
         const rr = fa != null ? CONTACT : Math.max(CONTACT, .9); E = [bc[0] + Math.cos(a) * rr, bc[1] + Math.sin(a) * rr];
       }
@@ -506,7 +508,8 @@ function planHold0(sc, st, opts, kind) {
       if (second) { // the second one: from as much farther out as he is in the picture (and a step more), to his place in it
         let p2 = null, c2 = 1e9;
         for (const s2 of [0, .12, -.12, .25, -.25, .4, -.4, .55, -.55]) { const u2 = [Math.cos(bear2 + s2), Math.sin(bear2 + s2)], S2 = [B0.x + u2[0] * (r + d2 - rP + .4), B0.y + u2[1] * (r + d2 - rP + .4)], v = virtAt(b, G, second);
-          if (!onPitch(S2[0], S2[1], .8) || dd(S2, [v.x, v.y]) < .3) continue; const c = mkRun(S2, [v.x, v.y], G); if (c.v1 > 4.45) continue; const n = near(c, second, .9); if (n < c2) { c2 = n; p2 = c; } if (!n) break; }
+          if (!onPitch(S2[0], S2[1], .8) || dd(S2, [v.x, v.y]) < .3) continue;
+          if (ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S2[0], q.y - S2[1]) < 2.7; })) continue; const c = mkRun(S2, [v.x, v.y], G); if (c.v1 > 4.45) continue; const n = near(c, second, .9); if (n < c2) { c2 = n; p2 = c; } if (!n) break; }
         if (!p2) return null; real[second] = p2;
       }
       let viol = 0, clash = near(path, th, .55) + (second ? near(real[second], second, .9) : 0);
@@ -525,6 +528,7 @@ function planHold0(sc, st, opts, kind) {
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
       }
+      if (opts.debug) console.log('pick G', G.toFixed(2), 'fixed', fixed, 'rs', rs.map(r => r.toFixed(1)).join(','), '->', got ? `clean r ${got.r.toFixed(2)} sh ${got.sh}` : fall ? `fall r ${fall.r.toFixed(2)} sh ${fall.sh} viol ${fall.viol} clash ${fall.clash}` : 'none');
       return got || fall;
     };
     let got = pick(best, G, fixedG);
@@ -534,6 +538,8 @@ function planHold0(sc, st, opts, kind) {
       const b = score(build(best.sp, best.k, best.tP * G2 / G, G2)); if (b.bad > best.bad) break;
       best = b; G = G2; const g2 = pick(best, G, true); if (!g2) break; got = g2;
     }
+    // (and never shorter than his run needs at a jog: a short run-in is walked through at its own pace, not rushed)
+    if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = score(build(best.sp, best.k, best.tP * Gf / G, Gf)); if (b.bad <= best.bad) { const g2 = tryRun(b, Gf, got.r, got.sh); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
     if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
     else for (const id of [th, second].filter(Boolean)) { const a = at[id]; best.paths[id] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; }
   }
