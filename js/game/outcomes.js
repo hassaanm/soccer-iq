@@ -194,7 +194,11 @@ export const outcomes = {
     if (cut?.good) { const f = cut.foe; this.scripted.add(f.id); s.go(f.id, lerp(f.x, h.x, .5), lerp(f.y, h.y, .5), 3); yield .45; this.scripted.delete(f.id); }
     if (good) {
       const th = this.lastThreat && s.a(this.lastThreat); if (th && th.team === 'them' && !th.gk && dist(th, h) < 4.5 && !cut?.good) this.chaser = { id: th.id, t: s.time, turn: .5 }; // (round 5: the one who was coming turns (half a second) and chases)
-      yield () => dist(h, end) < (aim ? 1.2 : .3) || s.time - t0 > 2.5; // (after a turn: on toward goal once he is nearly there, not a last steer onto the exact point)
+      // (round 5) One of theirs who stays within reach of him as he goes (he was on him as he set off, and is not left
+      // behind) challenges: nobody jogs alongside. He puts his body between and keeps it: the right choice's result.
+      let on = null, met = false;
+      yield () => { if (s.team('them').some(o => dist(o, h) < 1.15)) { on ??= s.time; if (s.time - on > .4 && s.time - t0 > .5) met = true; } else on = null; return met || dist(h, end) < (aim ? 1.2 : .3) || s.time - t0 > 2.5; }; // (after a turn: on toward goal once he is nearly there, not a last steer onto the exact point)
+      if (met) { s.stop('hero'); if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; } yield* this.end('kept', 1.1); return; }
       if (BACKWARD.has(dir) || this.keepOnly) { s.stop('hero'); yield* this.end('kept', 1.1); return; }
       yield* this.finish('hero');
     } else {

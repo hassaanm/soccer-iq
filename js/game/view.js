@@ -103,7 +103,7 @@ export const view = {
       const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
       // (round 5) Nobody stands on the line from the camera to his player (as the window opens, or where he will be as it
       // ends): he and his ring are never behind somebody's back.
-      for (const q of blockers) { const lx = h.x - ex, ly = h.y - ey, l2 = lx * lx + ly * ly || 1, t = ((q.x - ex) * lx + (q.y - ey) * ly) / l2; if (t > .12 && t < .94 && Math.hypot(q.x - ex - lx * t, q.y - ey - ly * t) < .75 && ez * (1 - t) + .5 * t < 2) return false; }
+      for (const q of blockers) { const lx = h.x - ex, ly = h.y - ey, l2 = lx * lx + ly * ly || 1, t = ((q.x - ex) * lx + (q.y - ey) * ly) / l2; if (t > .12 && t < .94 && Math.hypot(q.x - ex - lx * t, q.y - ey - ly * t) < 1.2 && ez * (1 - t) + .5 * t < 2) return false; } // (1.2 m clear to each side: his ring too)
       if (heroMin) for (const q of heroAt) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
       // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
       // under them, nor under the buttons in the top corners.)
