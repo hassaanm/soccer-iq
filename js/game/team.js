@@ -79,6 +79,22 @@ export const team = {
     if (!lag) s.go(a.id, x, y, speed);
   },
 
+  // (round 6) The rule of live play, whatever moves the players (the team's shape, a play's script, the moments before
+  // a choice): nobody stays within a step and a half of the other team's player on the ball. One who has been there for
+  // a third of a second without going in for it goes in now: he lunges at the ball, misses as it is moved on, and is
+  // carried past, off balance (a.tk, a.beat). Not while a choice is open (there the one who is already there jockeys,
+  // by the window's plan), not his own player (his plays' scripts and his own choices do it), not keepers.
+  noHover(dt) {
+    const s = this.sim, c = s.ball.carrier && s.ball.state !== 'flying' ? s.a(s.ball.carrier) : null;
+    if (!c || c.gk || this.win || (this.mode !== 'match' && this.mode !== 'free') || this.phase === 'feedback' || this.sc?.kind === 'tackle') { for (const a of s.agents.values()) a.hov = 0; return; }
+    for (const d of s.agents.values()) {
+      if (d.gk || d.team === c.team || d.id === 'hero' || d.beat > s.time || d.tk > s.time - .5 || dist(d, c) >= 1.5) { d.hov = 0; continue; }
+      d.hov = (d.hov || 0) + dt; if (d.hov < .3) continue;
+      const b = s.ball, dx = b.x - d.x, dy = b.y - d.y, l = Math.hypot(dx, dy) || 1, sd = Math.sign(dx * (c.ty - c.y) - dy * (c.tx - c.x)) || 1; // (past it on the side the player on it is not going to)
+      d.hov = 0; d.tk = s.time; d.beat = s.time + 1; d.mom = null; d.aic = null; d.track = null;
+      s.go(d.id, clamp(b.x + dx / l * 1.3 + dy / l * sd * .5, .5, L - .5), clamp(b.y + dy / l * 1.3 - dx / l * sd * .5, .5, W - .5), 5);
+    }
+  },
   // A team on defense does what the lessons teach: only one player (the nearest who is free) pressures the ball, and
   // everyone else guards an attacker, standing goal-side of him: nobody leaves his player to chase, and no attacker is
   // left to two while another stands free. One with nobody left to guard drops back and covers.

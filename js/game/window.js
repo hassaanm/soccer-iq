@@ -77,7 +77,8 @@ export const moving = {
     if (c.id === 'hero') { const o = s.team('them').sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0], d = o ? Math.hypot(o.x - c.x, o.y - c.y) : 9;
       if (d < 3.2) { // (away from him and across, toward the side with more room: he stays goal-side, a step or two farther off)
         const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
-        if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9); } }
+        if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9);
+        { const k = 3.4 * .25 + 1.2 * (T - .25), ex = c.x + dir[0] * k - o.x, ey = c.y + dir[1] * k - o.y; if (Math.hypot(ex, ey) < 1.9) dir = [bx, by]; } } } // (round 6: never a touch that takes him past that player's shoulder: then straight away from him)
     const D = [dir[0] * v, dir[1] * v];
     // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
     // these moments (to two and a half metres off it, no nearer: from there the window brings him in), never standing.

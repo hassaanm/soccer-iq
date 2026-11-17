@@ -178,6 +178,7 @@ export class Game {
     }
     if (this.kicked && this.sim.ball.state !== 'flying') { for (const id of this.frozen) this.scripted.delete(id); this.frozen = []; this.kicked = false; }
     if (this.ai) this.teamAI();
+    this.noHover(dt); // (round 6: game/team.js)
     for (const a of this.sim.agents.values()) if (a.ease && (!this.ai || this.scripted.has(a.id))) a.ease = false; // (v64: the team AI's easing is only for the players it moves)
     if (this.keepersOn) this.keepers(dt); // (5v5: game/keeper.js)
     // The red and green lines of a missed choice are drawn over the moment he chose, held still (a coach pausing the

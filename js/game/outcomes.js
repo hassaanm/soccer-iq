@@ -8,7 +8,7 @@ import { placedAim, rightFoot, shotResult, zone, zoneGrade, bestZone, stream, DU
 
 const GUESS_PLACED = .1; // (see guessWrong)
 import { seeded, OUR_SAVE } from './keeper.js';
-import { kindOf, ACC, SPEED, goAt } from '../window.js';
+import { kindOf, ACC, SPEED, goAt, PACE } from '../window.js';
 
 const TIMEOUT_TITLE = 'He got there!'; // (v64: the defender got to the ball before he chose; rounds.js TIMEOUT)
 const FINISH_RUN = 4.65; // (round 5) his run at goal with the ball: a child's sprint with a ball at his feet, no faster than a defender chasing him
@@ -68,6 +68,10 @@ export const outcomes = {
     yield .45;
     this.scripted.delete(o.id);
   },
+  // Everyone of the other team within a step and a half of the player on the ball steps in at it, now (to a short step
+  // off it), as it is played away from him: too late, and off balance for a moment.
+  stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; for (const d of s.team(c.team === 'us' ? 'them' : 'us')) { if (d.gk || dist(d, c) >= r || d.beat > s.time) continue; const l = dist(d, b) || 1; d.tk = s.time; d.beat = s.time + .9;
+    if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
   // The nearest of theirs within a step and a half of him who has not just been beaten.
   onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
@@ -315,9 +319,9 @@ export const outcomes = {
       this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.4);
       const t0 = s.time;
       yield () => defenders().some(d => ((d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2.4) || (!d.gk && dist(d, c) < 1.8)) || s.time - t0 > 2.5;
-      s.stop(c.id); this.spice(null); yield .3;
+      s.stop(c.id); this.spice(null); this.stepIn(c); yield .3;
       // (round 6) One of ours within a step and a half of him steps in for it as he gets rid of it: nobody stands at his shoulder.
-      for (const d of defenders()) if (!d.gk && dist(d, c) < 1.6) { const l = dist(d, s.ball) || 1; d.tk = s.time; d.beat = s.time + .8; if (l > .9) { this.scripted.add(d.id); s.go(d.id, s.ball.x + (d.x - s.ball.x) / l * .8, s.ball.y + (d.y - s.ball.y) / l * .8, 3.4); } }
+      this.stepIn(c);
       yield .1;
       const mates = s.team('them').filter(o => o.id !== c.id), us = s.team('us');
       const lane = o => Math.min(...us.map(d => closestOnLane(d, s.ball, o, .05).d));
@@ -365,7 +369,8 @@ export const outcomes = {
     let shooter = c;
     this.ai = false; for (const d of s.team('us')) if (d.id !== 'hero') s.stop(d.id);
     if (plan.kind === 'pass') {
-      const t1 = s.time; yield () => dist(h, sp) < .4 || s.time - t1 > 1;
+      const t1 = s.time; yield () => dist(h, sp) < .4 || s.time - t1 > 1 || (s.time - t1 > .3 && dist(h, c) < 1.5);
+      this.stepIn(c); // (round 6: one of ours at his shoulder goes in for it as he plays it past him)
       const free = s.a(plan.who);
       this.scripted.add(c.id); this.scripted.add(free.id); s.stop(free.id);
       yield* this.strike(c.id, free.x, free.y, { speed: 11, arc: .2 });
@@ -441,7 +446,7 @@ export const outcomes = {
     if (alive) { const tp = s.time; yield () => { alive(); return s.time - tp > .25; }; } else yield .25;
     if (good) {
       // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
-      if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { const k = .3 / (dist(c, h) || 1); yield* this.strike(c.id, h.x + (c.x - h.x) * k, h.y + (c.y - h.y) * k, { speed: 8, arc: .05 }); this.result = 'incoming'; return; } // to his feet on the side the pass comes from, so it comes straight at him
+      if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { const k = .3 / (dist(c, h) || 1); yield* this.strike(c.id, h.x + (c.x - h.x) * k, h.y + (c.y - h.y) * k, { speed: clamp(dist(c, h) / (PACE * (this.windowMin() - .1) + .2), 4.5, 8), arc: .05 }); this.result = 'incoming'; return; } // to his feet on the side the pass comes from, so it comes straight at him
       s.open('hero', L - 3.5, W / 2); // he opens his body toward goal as the pass comes, and turns with his first touch
       yield* this.passFrom(c, h.x, h.y, { speed: 11, arc: .15 });
       yield () => s.ball.state === 'loose' || dist(h, s.ball) < .5;

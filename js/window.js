@@ -436,7 +436,7 @@ function planHold0(sc, st, opts, kind) {
   // (round 5) Before a window is cut, the one who comes slows to an honest pace: a jog (V_RUN.min), a brisk walk for a
   // short run-in (V_RUN.tight), and for the window's floor (opts.Rfloor) a walk (V_RUN.slow): still a defender closing in.
   const Gfloor = PACE * (Math.min(R, opts.Rfloor || 0) - .1) + .1 + .01;
-  const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, Math.min(Gfloor, L / V_RUN.slow), L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
+  const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, Math.min(Gfloor, L / V_RUN.slow), L / V_RUN.max, .6, live ? Gfloor : 0); }; // (round 6: from live play too, the window is never under its floor) // (a very short run-in: he steps in; never under .6 s of play)
   let G = opts.G || (th ? Gfor(lenOf(rMax)) : dead ? clamp(Gpace, 2.4, 2.8) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G; // (a dead ball: a longer stretch of play, so the runs to find space are seen)
   // ---- everyone else: the drift, and his own small part ----
   const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
