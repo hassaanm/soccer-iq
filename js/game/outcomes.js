@@ -50,7 +50,8 @@ export const outcomes = {
     if (c && !c.gk) for (const f of s.team(c.team === 'us' ? 'them' : 'us')) { const d = dist(f, c); if (f.gk || d > 1.8 || !(f.tk > s.time - 2)) continue;
       const ux = (c.x - f.x) / (d || 1), uy = (c.y - f.y) / (d || 1), sd = Math.sign(ux * (f.ty - f.y) - uy * (f.tx - f.x)) || 1;
       f.beat = s.time + 1.3; f.bx = clamp(f.x + ux * (d + .9) - uy * sd * 1.3, .5, L - .5); f.by = clamp(f.y + uy * (d + .9) + ux * sd * 1.3, .5, W - .5); }
-    this.result = result; this.ai = false; const live = this.mode === 'match' || this.mode === 'free'; s.stopAll(); if (live) for (const a of s.agents.values()) if (a.beat > s.time && a.bx != null) s.go(a.id, a.bx, a.by, 2.6); this.emit(result); yield this.hold(result, wait); },
+    this.result = result; this.ai = false; const live = this.mode === 'match' || this.mode === 'free', goOn = live && c ? [...s.agents.values()].filter(a => this.leaving(a) && dist(a, c) < 2.2).map(a => [a.id, a.tx, a.ty]) : []; s.stopAll(); for (const [id, x, y] of goOn) s.go(id, x, y, 3); // (a friend on his way round the ball to his player goes on: he does not stop at its shoulder)
+     if (live) for (const a of s.agents.values()) if (a.beat > s.time && a.bx != null) s.go(a.id, a.bx, a.by, 2.6); this.emit(result); yield this.hold(result, wait); },
   // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
   // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
   hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
@@ -71,10 +72,12 @@ export const outcomes = {
   },
   // Everyone of the other team within a step and a half of the player on the ball steps in at it, now (to a short step
   // off it), as it is played away from him: too late, and off balance for a moment.
-  stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; for (const d of s.team(c.team === 'us' ? 'them' : 'us')) { if (d.gk || dist(d, c) >= r || d.beat > s.time) continue; const l = dist(d, b) || 1; d.tk = s.time; d.beat = s.time + .9;
+  stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; for (const d of s.team(c.team === 'us' ? 'them' : 'us')) { if (d.gk || dist(d, c) >= r || d.beat > s.time || this.leaving(d)) continue; const l = dist(d, b) || 1; d.tk = s.time; d.beat = s.time + .9;
     if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
+  // A friend whose job in this defending play is one of their other players (team.js defend, this.teamJob): he is on his way off the ball.
+  leaving(d) { return d.team === 'us' && d.id !== 'hero' && !!this.teamJob?.[d.id] && this.teamJob[d.id].job !== 'press'; },
   // The nearest of theirs within a step and a half of him who has not just been beaten.
-  onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
+  onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && !this.leaving(o) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
@@ -173,7 +176,7 @@ export const outcomes = {
     const s = this.sim; this.spice(null);
     // He has to actually reach the ball before it's his.
     const t0 = s.time; yield () => { s.go(opp.id, s.ball.x, s.ball.y, 5); return dist(opp, s.ball) < .75 || s.time - t0 > .7; };
-    { const c0 = s.ball.carrier && s.a(s.ball.carrier); if (c0 && c0.team !== opp.team) c0.beat = s.time + 1.2; } // (round 6: the one it is taken from is beaten: off balance for a moment)
+    { const c0 = s.ball.carrier && s.a(s.ball.carrier); if (c0 && c0.team !== opp.team) c0.beat = s.time + .6; } // (round 6: the one it is taken from is beaten: off balance for a moment)
     opp.tk = s.time; s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
     this.scripted.add(opp.id);
     const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;
@@ -310,6 +313,8 @@ export const outcomes = {
   *defendGen(spotId, good) {
     const s = this.sim, sc = this.sc, sp = sc.spots.find(x => x.id === spotId), c = s.a(sc.carrier || 'o1'), h = s.a('hero');
     this.scripted.add('hero'); s.go('hero', sp.x, sp.y, 5.2);
+    // (round 6) His friends take the other jobs (team.js defend): he goes to the ball, they stay with their players; he guards, the nearest of them goes.
+    this.teamJob = { hero: spotId === 'home' || spotId === 'chase' ? 'press' : s.a(spotId) ? spotId : null, ...(sc.jobs?.[spotId] || {}) }; this.roles = null;
     const defenders = () => s.team('us');
     yield .55;
     const toGoal = (a) => { const dx = 0 - a.x, dy = W / 2 - a.y, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
@@ -319,7 +324,7 @@ export const outcomes = {
       this.spice('held', [c.id], .8); // running at him he may try a skill (it gets him nowhere: he is in the way)
       this.scripted.add(c.id); s.go(c.id, c.x + gx * 3, c.y + gy * 3, 2.4);
       const t0 = s.time;
-      yield () => defenders().some(d => ((d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2.4) || (!d.gk && dist(d, c) < 1.8)) || s.time - t0 > 2.5;
+      yield () => defenders().some(d => ((d.x - c.x) * gx + (d.y - c.y) * gy > .3 && dist(d, c) < 2.4) || (!d.gk && !this.leaving(d) && dist(d, c) < 1.8)) || s.time - t0 > 2.5;
       s.stop(c.id); this.spice(null); this.stepIn(c); yield .3;
       // (round 6) One of ours within a step and a half of him steps in for it as he gets rid of it: nobody stands at his shoulder.
       this.stepIn(c);
@@ -424,9 +429,33 @@ export const outcomes = {
   },
   // Getting open: he runs to his spot while his defender follows a step behind. Open space: his friend passes
   // and he plays on. Behind a defender: the pass gets cut out. Next to the ball: both defenders close in and win it.
+  // (round 6) What a sensible player does with the ball his player has just passed him, in this order: shoot, with a
+  // clear shot from scoring range; carry it on, with open space ahead; pass forward to a friend who is open and nearer
+  // the goal than both of them; and only then give it back. { act: 'shoot' | 'carry' | 'forward' | 'back', to }
+  friendPlan(c, h, sp) {
+    const s = this.sim, opps = s.team('them'), outs = opps.filter(o => !o.gk), aim = { x: L, y: clamp(c.y, gy0 + .8, gy1 - .8) };
+    const shot = dist(c, aim) < 9 && shotClear(s.ball, aim, opps) && !outs.some(o => dist(o, c) < 1.7);
+    const g = { x: L - 3.5, y: W / 2 }, gl = dist(c, g) || 1, ahead = { x: c.x + (g.x - c.x) / gl * 5, y: c.y + (g.y - c.y) / gl * 5 };
+    const space = gl > 2.5 && outs.every(o => closestOnLane(o, c, ahead, 0).d > 2.4);
+    const fwd = s.team('us').filter(m => m !== c && m.id !== 'hero' && !m.gk && m.x > c.x + 2 && m.x > Math.max(h.x, sp?.x ?? 0) + 1 && interceptor(s.ball, m, outs).d > 1.1 && !outs.some(o => dist(o, m) < 1.8)).sort((p, q) => q.x - p.x)[0] || null;
+    return { act: shot ? 'shoot' : space ? 'carry' : fwd ? 'forward' : 'back', to: fwd, shot, space };
+  },
   *supportGen(spotId, good) {
     const s = this.sim, sp = this.sc.spots.find(x => x.id === spotId), h = s.a('hero'), c = s.a(this.sc.carrier || 'm1');
     const o1 = s.a(this.sc.pressId || 'o1'), o2 = s.a(this.sc.markId || 'o2'), o2id = o2.id;
+    // (round 6) In a match the friend does the sensible thing with it (friendPlan) while his player makes his run: he
+    // shoots, carries it on or plays it forward when he can, and gives it back only when that is what is left, and at
+    // most once in a move (this.returns): no passing it back and forth. A lesson's scene plays as it was written.
+    if (this.sc.live && !this.sc.restart && (this.mode === 'match' || this.mode === 'free') && c.id !== 'hero' && s.ball.carrier === c.id && !c.gk) {
+      const fp = this.friendPlan(c, h, sp), back = fp.act === 'back' && !(this.returns >= 1);
+      (this.friendLog ||= []).push({ act: back ? 'back' : fp.act === 'back' ? 'carry' : fp.act, shot: fp.shot, space: fp.space, good, returns: this.returns || 0 });
+      if (!back) {
+        this.scripted = new Set(['hero', c.id]); s.go('hero', sp.x, sp.y, 5); this.ai = true;
+        if (fp.act === 'forward') { const m = fp.to; this.scripted.add(m.id); s.stop(m.id); yield* this.strike(c.id, m.x, m.y, { speed: 11, arc: .15 }); yield () => s.ball.state === 'loose' || dist(m, s.ball) < .5; s.give(m.id); this.scripted = new Set(['hero', m.id]); this.ai = true; yield* this.finish(m.id); return; }
+        yield* this.finish(c.id); return;
+      }
+      if (good) this.returns = (this.returns || 0) + 1;
+    }
     this.ai = false; s.stopAll(); for (const a of s.agents.values()) this.scripted.add(a.id);
     s.go('hero', sp.x, sp.y, 5);
     const t0 = s.time, alive = this.sc.even && !this.sc.restart ? this.underPressure(c, o1) : null; // (a restart: the ball stays still on its line)
@@ -1034,7 +1063,7 @@ export const outcomes = {
     this.keepOnly = good && (opt.startsWith('drib:') || opt.startsWith('push:')) && this.sc.kind !== 'receive' && this.rating(opt) === 'safe';
     const aimed = opt.startsWith('shoot:') && !!this.sim.keeper('them') && (this.step === 'aim' || this.step === 'foot'); // (he aimed in the aim view: his shot is seen from there, view.js aimView)
     if (aimed) this.aimFrom = { x: h.x, y: h.y };
-    Object.assign(this, { roles: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    Object.assign(this, { roles: null, teamJob: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     // (round 6) One of theirs within a step and a half of him as he plays the right thing goes in for it, now, and is
     // too late: he steps in at the ball (to a short step off it) as it is played, and is left off balance. (A dribble

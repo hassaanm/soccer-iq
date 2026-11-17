@@ -35,6 +35,18 @@ function liveScenario(s, skill, pushAllowed, near = null) {
     : sc.best.startsWith('push:') ? 'Lots of space! Push it and go!' : 'There was space to run into!';
   return sc;
 }
+// (round 6) The jobs his friends take once he has chosen (id: 'home' or 'chase': he goes to the ball; one of theirs:
+// he guards that player): { friendId: { job: 'press' | their player's id, to: [x, y] } }. If he goes, nobody else does:
+// each friend takes the nearest of theirs that nobody has, goal-side. If he guards, the friend nearest the ball goes to
+// it and the rest guard. A friend with nobody left (or whose place would be more than 7 m off) stays as he is.
+export function teamJobs(s, c, others, fr, id) {
+  const P = a => [a.x, a.y], jobs = {}, goes = id === 'home' || id === 'chase', left = new Set(fr.map(m => m.id)), taken = new Set(goes ? [] : [id]);
+  if (!goes && fr.length) { const m = [...fr].sort((p, q) => dist(p, c) - dist(q, c))[0]; jobs[m.id] = { job: 'press', to: goalSide(P(c), 2.2) }; left.delete(m.id); }
+  // (their players nearest our goal first: the most dangerous is guarded first)
+  for (const o of [...others].sort((p, q) => p.x - q.x)) { if (taken.has(o.id)) continue; const to = goalSide(P(o), 1.2), m = fr.filter(m => left.has(m.id)).sort((p, q) => Math.hypot(p.x - to[0], p.y - to[1]) - Math.hypot(q.x - to[0], q.y - to[1]))[0];
+    if (!m || Math.hypot(m.x - to[0], m.y - to[1]) > 7) continue; jobs[m.id] = { job: o.id, to }; left.delete(m.id); taken.add(o.id); }
+  return jobs;
+}
 // A defending decision built from wherever play is right now (after we lose the ball in a match). Spots: get in
 // front of the ball, guard each attacker, or chase from behind. A spot is right when it leaves the attackers no
 // open run or pass (the same check the defense lessons use). null when no spot can stop them.
@@ -51,13 +63,24 @@ function liveDefense(s, guard = true) {
   const sc = { id: `live-def-${Math.round(c.x * 10)}-${Math.round(c.y * 10)}`, kind: 'defense', live: true, carrier: c.id, oppIds: [c.id, ...others.map(o => o.id)],
     hero: P(h), heroTo: P(h), mates, opps: [P(c), ...others.map(P)], spots, ok: [] };
   sc.oppsTo = sc.opps;
-  sc.exploits = Object.fromEntries(spots.map(sp => [sp.id, exploit(sc, sp.id)]));
-  const goods = spots.filter(sp => !sc.exploits[sp.id]).map(sp => sp.id);
-
-  if (spots.length < 2 || !goods.length || goods.length === spots.length) return null;
-  const onBall = near(goalSide(P(c), 1.2), 2.2), best = goods.includes('home') && !onBall ? 'home' : goods.find(g => g !== 'home' && g !== 'chase') || goods[0];
+  // (round 6) "One goes, one guards", as the lesson teaches it. Whoever of ours is nearest the ball goes to it; the
+  // others each take a player or cover. So a spot is judged with his friends doing the other jobs (teamJobs): if he
+  // goes to the ball, they stay with their players; if he guards, the friend nearest the ball goes. And going to the
+  // ball is the best answer only when his player is our nearest to it by a clear metre; when a friend is nearer by a
+  // metre it never is (at most okay: "Your friend was closer. You guard!"); when it is close, both are fine.
+  const fr = MATES.filter(id => s.a(id)).map(id => s.a(id)), dH = dist(h, c), nm = [...fr].sort((p, q) => dist(p, c) - dist(q, c))[0], dM = nm ? dist(nm, c) : 99;
+  const heroNearest = dH < dM - 1, mateNearest = dM < dH - 1, go = id => id === 'home' || id === 'chase';
+  sc.jobs = Object.fromEntries(spots.map(sp => [sp.id, teamJobs(s, c, others, fr, sp.id)]));
+  sc.exploits = Object.fromEntries(spots.map(sp => [sp.id, exploit({ ...sc, mates: fr.map(m => sc.jobs[sp.id][m.id]?.to || P(m)) }, sp.id)]));
+  sc.nearest = heroNearest ? 'hero' : mateNearest ? nm.id : 'close';
+  const goods = spots.filter(sp => !sc.exploits[sp.id]).map(sp => sp.id), guards = goods.filter(g => !go(g));
+  // (a guard spot by a player nobody of ours is on comes before helping a friend guard)
+  const open = id => { const o = s.a(id); return o ? Math.min(99, ...fr.map(m => dist(m, o))) : 0; }; guards.sort((p, q) => open(q) - open(p));
+  if (spots.length < 2 || !goods.length) return null;
+  const best = mateNearest ? guards[0] || goods.find(g => g === 'chase') || goods[0] : goods.includes('home') ? 'home' : guards[0] || goods[0];
+  if (goods.length === spots.length && !mateNearest && !heroNearest) return null; // (every spot stops them and nobody is plainly the nearest: no real choice)
   sc.best = 'spot:' + best; sc.ok = goods.filter(g => g !== best).map(g => 'spot:' + g);
-  sc.cue = best === 'home' ? 'Nobody was in front of the ball. Get in front!' : best === 'chase' ? 'Your friends had it covered. Stay close!' : 'A friend was on the ball. Guard the open player!';
+  sc.cue = mateNearest ? (go(best) ? 'Your friends had it covered. Stay close!' : 'Your friend was closer to the ball. You guard!') : best === 'home' ? (heroNearest ? 'You were the closest to the ball. You go!' : 'Nobody was in front of the ball. Get in front!') : best === 'chase' ? 'Your friends had it covered. Stay close!' : 'A friend was on the ball. Guard the open player!';
   return sc;
 }
 
@@ -98,6 +121,7 @@ export const live = {
   // If no spot could stop them, the play just runs on and the geometry decides what happens.
   async continueDefense() {
     const s = this.sim, c = s.a(s.ball.carrier);
+    this.returns = 0; // (their ball: the move is over)
     const choose = this.has('get-goal-side'), guard = this.has('one-goes'); // (saves that had "Guard the open player" have "One goes, one guards": progress.js MERGED)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, roles: null, ai: true, scripted: new Set(['hero', c.id]), ballTeam: 'them' });
     const h = s.a('hero');

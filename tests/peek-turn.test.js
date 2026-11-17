@@ -106,7 +106,7 @@ test('in a match, a pass back to him is turned the way the tapped arrow goes too
       } });
     }
   } finally { Math.random = real; }
-  assert.ok(done.length >= 20, `only ${done.length} passes back to him`);
+  assert.ok(done.length >= 12, `only ${done.length} passes back to him`); // (round 6: 12, was 20: the friend now shoots, carries or plays forward first, so he gives it back less often)
   for (const r of done) {
     assert.equal(Math.sign(r.rot), r.want, `${r.at}: the body turned ${(r.rot * deg).toFixed(0)}°`);
     assert.ok(r.want > 0 ? r.lo > -.27 : r.hi < .27 /* (in a match he steps to meet the pass with his eyes on it: up to about 15° of following the ball is not a swing) */, `${r.at}: swung ${((r.want > 0 ? r.lo : r.hi) * deg).toFixed(0)}° the other way first`);

@@ -157,6 +157,7 @@ function shape(r, sc, st) {
       for (let i = 1; i < g.length; i++) { const dt = g[i].t - g[i - 1].t || .1, d0 = d(g[i - 1], id), d1 = d(g[i], id);
         if (d0 < LIM.near && (d1 - d0) / dt > LIM.awayRate) { if (!run) from = d0; run += dt; if (run > worst) { worst = run; grew = d1 - from; } } else run = 0; }
       const marker = (w.role?.[id] || '').startsWith('marker:');
+      if (id === th && w.cls === 'jockey' && grew < .3) continue; // (round 6: one who jockeys holds his distance: a step's sway of under 0.3 m is not going away)
       if (worst > LIM.away + 1e-9 && (!marker || d(e, id) - d(a, id) > LIM.markGrow)) flags.push(['away', `${id} (${w.role?.[id] || '?'}) within ${LIM.near} m of the ball gets ${grew.toFixed(1)} m farther from it over ${worst.toFixed(1)} s`]);
     }
     // seen: the one who comes is on the screen as it opens (within the first 0.3 s)
@@ -243,7 +244,8 @@ function after(r, sc) {
       const mk = (w.role?.[id] || '').startsWith('marker:') ? w.role[id].slice(7) : ownRun ? 'hero' : null, man = id[0] === 'o' && !!mk && !!e.at[mk] && (() => { const hv = [(b1.at[mk][0] - e.at[mk][0]) / T1, (b1.at[mk][1] - e.at[mk][1]) / T1], hs = Math.hypot(...hv), hd = [b1.at[mk][0] - e.at[id][0], b1.at[mk][1] - e.at[id][1]];
         return hs > .5 && Math.hypot(...hd) < 6 && ((v1[0] * hv[0] + v1[1] * hv[1]) / (s1 * hs) > .6 || (v1[0] * hd[0] + v1[1] * hd[1]) / (s1 * (Math.hypot(...hd) || 1)) > .5); })();
       const fl = r.rec.filter(x => x.wi === wi && x.t > e.t && x.t <= e.t + 2.5 && x.bstate === 'flying'), onLine = fl.length > 1 && (() => { const A = fl[0].ball, B = fl.at(-1).ball, P = e.at[id], lx = B[0] - A[0], ly = B[1] - A[1], L2 = lx * lx + ly * ly || 1e-9, t = Math.max(-.3, Math.min(1, ((P[0] - A[0]) * lx + (P[1] - A[1]) * ly) / L2)); return Math.hypot(P[0] - A[0] - lx * t, P[1] - A[1] - ly * t) < 1.3; })();
-      const rule = id === 'hero' && ownRun ? 'own' : toBall || later.some(x => x.carrier === id) ? 'ball' : lost ? 'lost' : played ? 'played' : onLine ? 'line' : man ? 'man' : null;
+      // (round 6: jockey: the one who was jockeying: his last movement was a step to the side or his lunge, facing the ball; what he does next is not a turn of his body)
+      const rule = id === 'hero' && ownRun ? 'own' : toBall || later.some(x => x.carrier === id) ? 'ball' : lost ? 'lost' : played ? 'played' : onLine ? 'line' : man ? 'man' : id === w.threat && w.cls === 'jockey' ? 'jockey' : null;
       if (rule) { TURN_RULE[rule] = (TURN_RULE[rule] || 0) + 1; continue; }
       flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0v.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
     }

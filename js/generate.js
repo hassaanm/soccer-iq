@@ -333,6 +333,8 @@ function defense(r, pattern, runs = 3) {
     const o2 = [c[0] - 3 - r() * 3, sgn > 0 ? 16.5 + 2 * dW() + r() * 2 : 1.5 + r() * 2], o3 = [c[0] - 1 - r() * 3, sgn > 0 ? 1.5 + r() * 2 : 16.5 + 2 * dW() + r() * 2];
     addOpp(o2); addOpp(o3);
     mates.push(goalSide(o2, 1.1), goalSide(o3, 1.1));
+    // (round 6: "you go" is true only when no friend is nearer the ball than he is: where one would be, he stands a little nearer it)
+    { const dH = Math.hypot(hero[0] - c[0], hero[1] - c[1]), dM = Math.min(...mates.map(m => Math.hypot(m[0] - c[0], m[1] - c[1]))); if (dM < dH + .4) { const k = Math.max(2.6, dM - .4) / dH; hero = [c[0] + (hero[0] - c[0]) * k, c[1] + (hero[1] - c[1]) * k]; } }
     const dbl = goalSide(o2, .9);
     spots.push({ id: 'home', p: goalSide(c, 3.4), label: 'In front' }, { id: 'chase', p: [c[0] + 1.3, c[1]], label: 'Behind him' }, { id: 'o2', p: [dbl[0] + .3, dbl[1] - sgn * 1.4], label: 'Help guard' });
     best = 'home'; cue = 'Nobody was on the ball, so you go! Get in front of it.';

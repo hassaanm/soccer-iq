@@ -58,14 +58,14 @@ const jockPos = (p, t, o) => {
   const h = pathAt(p.hp, t, o), bx = h.x + p.bo[0], by = h.y + p.bo[1], tt = Math.max(0, t);
   const a = p.a0 + (p.amp / p.rJ) * Math.sin(2 * Math.PI * t / p.per), r = p.rJ + (p.rS - p.rJ) * Math.exp(-tt / .35);
   let x = bx + Math.cos(a) * r, y = by + Math.sin(a) * r;
-  if (t > p.tL) { const q = Math.min(1, (t - p.tL) / Math.max(.01, p.G - p.tL)), w = q * q; x += (bx + p.E[0] - x) * w; y += (by + p.E[1] - y) * w; }
+  if (t > p.tL) { const q = Math.min(1, (t - p.tL) / Math.max(.01, p.G - p.tL)), w = Math.pow(q, 1.5); x += (bx + p.E[0] - x) * w; y += (by + p.E[1] - y) * w; }
   o.x = x; o.y = y; return o;
 };
 export function jockAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   const a = jockPos(p, t - .01, {}), b = jockPos(p, t + .01, {}), c = jockPos(p, t, {});
   out.x = c.x; out.y = c.y; out.vx = (b.x - a.x) / .02; out.vy = (b.y - a.y) / .02; return out;
 }
-export const JOCK = { L: 1.5, r: [1.2, 1.6], amp: .32, per: 1.4, real: .5, F1: .9 }; // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
+export const JOCK = { L: 1.5, r: [1.15, 1.4], amp: .32, per: 1.4, real: .5, F1: .9 }; // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
 // The game time of a jockey window's last JOCK.real s (the world speeds up from its pace f to F1 as he goes in), and
 // the pace f that makes a window of G s of play last R real seconds with it.
 export const jockPace = (G, R) => Math.max(PACE, (G - JOCK.real * JOCK.F1 / 3) / (R - JOCK.real / 3));
