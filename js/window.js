@@ -666,7 +666,14 @@ export function planArrival(sc, st, opts = {}) {
     for (const id of out) { const p = paths[id]; if (!p?.arr || p === paths[th] || id === holder || fixedPaths[id]) continue; let k = 0; while (!inside(arrAt(p, -Gpre), .4) && k++ < 6) { p.vRun *= .7; p.vEnd = Math.min(p.vEnd, p.vRun); } }
     for (let n = 0; n < 6; n++) {
       const c = clash(paths, out, -Gpre, Gpost); if (!c) return true;
-      const id = c.find(i => i !== th && i !== holder && !fixedPaths[i] && paths[i]?.arr); if (!id) return false;
+      const id = c.find(i => i !== th && i !== holder && !fixedPaths[i] && paths[i]?.arr);
+      if (!id) { // (the other is a marker going with his man, or the player on the ball: the threat's line bends round him)
+        if (!c.includes(th) || !paths[th]?.arr) return false;
+        const q = paths[th], w0 = [...q.u], in0 = inside(arrAt(q, -Gpre)); let ok2 = false;
+        for (let k = 1; k <= 10 && !ok2; k++) for (const sgn of [1, -1]) { const a = sgn * k * .08; q.u = [w0[0] * Math.cos(a) - w0[1] * Math.sin(a), w0[0] * Math.sin(a) + w0[1] * Math.cos(a)]; const c2 = clash(paths, out, -Gpre, Gpost); if ((inside(arrAt(q, -Gpre)) || !in0) && (!c2 || !c2.includes(th))) { ok2 = true; break; } }
+        if (!ok2) { q.u = w0; return false; }
+        continue;
+      }
       const p = paths[id], u0 = [...p.u]; let ok = false;
       for (let k = 1; k <= 12 && !ok; k++) for (const sgn of [1, -1]) {
         const a = sgn * k * .15; p.u = [u0[0] * Math.cos(a) - u0[1] * Math.sin(a), u0[0] * Math.sin(a) + u0[1] * Math.cos(a)];
