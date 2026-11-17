@@ -7,7 +7,8 @@
 //            as the window opens
 //   away     no defender within 3.5 m of the ball gets farther from it for more than 0.3 s of play (a marker going with
 //            his man: only if he ends more than 1 m farther from it)
-//   after    nobody turns more than 120° in the 0.6 s after the window closes (a tap, or the time-out)
+//   after    nobody turns more than 120° in the 0.6 s after the window closes (a tap, or the time-out): his velocity as it
+//            closes against his net way over the 0.6 s after, both over 0.5 m/s
 //   arrive   (share 95%) on a time-out where the threat tackles, he is within 0.8 m of the ball as the ring empties and
 //            touches it within 0.3 s of real time
 //   grade    (share 97% of taps) what he sees when he taps agrees with how the choice is graded: every relation that does
@@ -42,7 +43,6 @@ export const SHARE = { comes: .95, arrive: .95, grade: .97, size: .98, friends: 
 // Exemptions: [check, test(sc, row), reason]. Each use is counted and printed.
 export const EXEMPT = [
   ['arrive', sc => kindOf(sc) === 'receive', 'a pass on its way to him: the window ends as the ball gets to him, with the defender behind at his place in the picture and still coming; he takes it a moment later'],
-  ['arrive', sc => sc.pattern === 'go-shot', 'his friend shoots as the defender gets to him: the time-out is the rebound they get to first'],
   ['arrive', sc => sc.pattern === 'keeper-out', 'the keeper who rushed out smothers the ball at his feet (he goes down on it; no touch away)'],
   ['comes', sc => sc.intro === 'won', 'won it: the player he just took it from is stumbling past behind him, and is not the one who comes'],
 ];
@@ -164,14 +164,14 @@ function after(r, sc) {
   for (let wi = 1; wi <= r.wins.length; wi++) {
     const w = r.wins[wi - 1], inW = r.rec.filter(x => x.win && x.wi === wi), post = r.rec.filter(x => !x.win && x.wi === wi && x.t > (inW.at(-1)?.t ?? 1e9) && x.t <= inW.at(-1).t + LIM.after + 1e-9);
     if (inW.length < 4 || post.length < 3) continue;
-    const e = inW.at(-1), b0 = inW.findLast(x => x.t <= e.t - .15) || inW[0], T0 = e.t - b0.t; if (T0 < .05) continue;
+    // (as the review measured it: his velocity over the last moments of the window against his net way over the 0.6 s after)
+    const e = inW.at(-1), b0 = inW[Math.max(0, inW.length - 6)], T0 = e.t - b0.t, b1 = post.at(-1), T1 = b1.t - e.t; if (T0 < .01 || T1 < LIM.after * .8) continue;
+    const turnsBack = /^drib:(back|bl|br)/.test(r.o || '') || /^turn:/.test(r.o || ''); // (his own choice to turn with the ball)
     for (const id of Object.keys(e.at)) {
-      if (id === 'hero' || id[0] === 'k') continue;
-      const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], s0 = Math.hypot(...v0); if (s0 < .5) continue;
-      let worst = 0;
-      for (let i = 3; i < post.length; i++) { const p = post[i - 3], q = post[i], T = q.t - p.t; if (T < .03) continue; const v = [(q.at[id][0] - p.at[id][0]) / T, (q.at[id][1] - p.at[id][1]) / T], s1 = Math.hypot(...v); if (s1 < .5) continue;
-        worst = Math.max(worst, Math.acos(Math.max(-1, Math.min(1, (v0[0] * v[0] + v0[1] * v[1]) / (s0 * s1)))) * 180 / Math.PI); }
-      if (worst > LIM.afterTurn) flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(worst)}° within ${LIM.after} s of the window closing`]);
+      if (id[0] === 'k' || (id === 'hero' && turnsBack)) continue;
+      const v0 = [(e.at[id][0] - b0.at[id][0]) / T0, (e.at[id][1] - b0.at[id][1]) / T0], v1 = [(b1.at[id][0] - e.at[id][0]) / T1, (b1.at[id][1] - e.at[id][1]) / T1], s0 = Math.hypot(...v0), s1 = Math.hypot(...v1); if (s0 < .5 || s1 < .5) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (v0[0] * v1[0] + v0[1] * v1[1]) / (s0 * s1)))) * 180 / Math.PI;
+      if (ang > LIM.afterTurn) flags.push(['after', `${id} (${w.role?.[id] || '?'}) turns ${Math.round(ang)}° within ${LIM.after} s of the window closing (${s0.toFixed(1)} then ${s1.toFixed(1)} m/s)`]);
     }
   }
   return flags;

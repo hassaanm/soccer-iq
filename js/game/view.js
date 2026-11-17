@@ -66,7 +66,7 @@ export const view = {
     const ring = (out, sp) => { if (!even) for (let a = 0; a < 8; a++) out.push([sp.x + Math.cos(a * Math.PI / 4) * .85, sp.y + Math.sin(a * Math.PI / 4) * .85, 0]); else out.push([sp.x, sp.y, 0]); };
     const base = [[h.x, h.y, .9], [h.x, h.y, 0], [ball.x, ball.y, 0]]; for (const sp of sp0) ring(base, sp);
     if (!hold && !P0) { const hn = s.a('hero'); if (far(hn, h)) base.push([hn.x, hn.y, .9]); }
-    if (P0) { const hn = s.a('hero'); base.push([hn.x, hn.y, .9], [hn.x, hn.y, 0]); }
+    const heroAt = [h, he]; if (P0) { const hn = s.a('hero'), q = { x: hn.x, y: hn.y }; heroAt.push(q); base.push([q.x, q.y, .9], [q.x, q.y, 0]); }
     const mid = [...base], extra = [];
     if (far(he, h)) mid.push([he.x, he.y, .9], [he.x, he.y, 0]);
     for (const sp of sp1) ring(mid, sp);
@@ -96,7 +96,7 @@ export const view = {
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
       const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
-      if (heroMin) for (const q of [h, he]) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
+      if (heroMin) for (const q of heroAt) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
       // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
       // under them, nor under the buttons in the top corners.)
       const inside = (px, py, pz, side = 0) => {

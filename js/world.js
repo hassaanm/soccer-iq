@@ -499,6 +499,7 @@ export class World {
     const P = this.particles;
     if (ev === 'kick') { P.puff(b.x, b.y, v >= 15 ? 14 : 5, v >= 15 ? TURF_BITS : undefined); if (v >= 15) { this.shake = Math.max(this.shake, .5); P.sparks(b.x, b.y, .2, 6, ['#ffffff', '#fff3b0']); } }
     else if (ev === 'touch') P.puff(b.x, b.y, 2);
+    else if (ev === 'goalQuiet') { const net = this.nets[b.x > CX ? 0 : 1]; Object.assign(net, { t: 0, y: clamp(b.y, gy0 + .3, gy1 - .3) - CY, z: clamp(BALL_R + (b.z || 0), .2, gh - .2) - gh / 2 }); } // (a time-out they score from: the net only)
     else if (ev === 'goal' || ev === 'goalAgainst') {
       const net = this.nets[b.x > CX ? 0 : 1], team = ev === 'goal' ? 'us' : 'them', colors = this.confetti?.[team] || ['#ffd23f', '#ffffff'];
       Object.assign(net, { t: 0, y: clamp(b.y, gy0 + .3, gy1 - .3) - CY, z: clamp(BALL_R + (b.z || 0), .2, gh - .2) - gh / 2 });

@@ -5,6 +5,7 @@ import { MOVE_W } from './flair.js';
 
 const SPACE = .75; // meters between two players' centers
 const EASE = 3.5;   // m/s² a child speeds up or slows down at (v64 research Q1; window.js ACC)
+const MOM_T = 1.4, MOM_A = 3; // (v66) how long a player carries his velocity on out of a planned way, and how fast it changes (m/s²)
 const TURN = 9;            // radians per second a player can turn
 // Turn a player's facing toward (fx, fy) at a limited speed, so direction changes look like real turns.
 function turnToward(a, fx, fy, dt) {
@@ -333,7 +334,20 @@ export class Sim {
       if (dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); a.tL = 1.4; if (v > .05) b.h = ang(q.vx, q.vy); this.on('touch'); }
     }
   }
-  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; a.tx = a.x + (a.tx - a.x) * 2; a.ty = a.y + (a.ty - a.y) * 2; }
+  // (v66) He comes off his planned way with the velocity he has (a.mom, for MOM_T s at most): whatever moves him next, he
+  // goes into it from that velocity, changing it no faster than a child can (EASE), so nobody turns round on the spot
+  // as the window closes. The player with the ball turns with a real move instead (startTurn).
+  untrack(id) { const a = this.a(id); if (!a?.track) return; a.track = null; const vx = (a.tx - a.x) * 2, vy = (a.ty - a.y) * 2; a.tx = a.x + vx; a.ty = a.y + vy; if (!a.gk && Math.hypot(vx, vy) > .3) { a.mom = [vx, vy]; a.momT = this.time + MOM_T; } else a.mom = null; }
+  // One step of a player coming round from the velocity he had (a.mom) to the one he wants (wx, wy). Returns true when he
+  // is there (the usual way of moving takes over), false while he is still coming round (he has been moved).
+  momentum(a, wx, wy, dt) {
+    const m = a.mom, ex = wx - m[0], ey = wy - m[1], el = Math.hypot(ex, ey), st = (a.ease ? MOM_A : MOM_A * 2.2) * dt; // (one the play's script sends reacts at once and hard; one the team's shape moves comes round as a child does)
+    if (el <= st || this.time > a.momT) { a.mom = null; a.va = Math.hypot(wx, wy); return true; }
+    m[0] += ex / el * st; m[1] += ey / el * st;
+    const sp = Math.hypot(m[0], m[1]); a.x += m[0] * dt; a.y += m[1] * dt; a.dist += sp * dt; a.sp = sp; a.va = sp;
+    const w = Math.hypot(wx, wy); if (w > .3) turnToward(a, wx / w, wy / w, dt * .6); // his body comes round to where he is going
+    return false;
+  }
   untrackAll() { for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
 
   step(dt) {
@@ -367,6 +381,7 @@ export class Sim {
         if (a.ease && !m) { // (v64) a player the team AI moves speeds up and slows down as a child does, and slows into where he is going
           const want = Math.min(sp, Math.sqrt(2 * EASE * d)); a.va = (a.va ?? a.sp) + Math.max(-EASE * dt, Math.min(EASE * dt, want - (a.va ?? a.sp))); v = a.va;
         } else a.va = null;
+        if (a.mom && !has && !this.momentum(a, dx / d * v, dy / d * v, dt)) continue; // (still coming round from the way he was going)
         const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');
@@ -374,7 +389,8 @@ export class Sim {
           a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); this.on('touch'); b.h = ang(dx, dy); if (!a.skill) this.dribbleSkill(a); a.tL = touchLen(this, a);
         }
         if (!m) a.sp = lerp(a.sp, sp, ease(dt, 8));
-      } else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; }
+      } else if (a.mom && !has) { if (!this.momentum(a, 0, 0, dt)) { a.tx = a.x; a.ty = a.y; } } // (told to stop: he slows to a stop over a step or two)
+      else { a.sp = lerp(a.sp, 0, ease(dt, 8)); a.va = 0; if (has) a.mom = null; }
       if (m) { const f = m.f0 + m.fd * sm((u - m.face[0]) / (m.face[1] - m.face[0])); a.face[0] = Math.cos(f); a.face[1] = Math.sin(f); } // the body turns with the move
     }
     // Bodies take up space: nudge apart any two players closer than SPACE so nobody walks through anyone.

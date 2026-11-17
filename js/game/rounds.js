@@ -12,7 +12,15 @@ const WON = { poke: 1.1, lead: 1.7 };
 // lesson, more about what to do.
 export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! Choose before he gets there.', again: 'Choose a bit quicker!',
   // (round 2) A restart: nobody comes for the ball; the taker plays it, and he was not in his place yet.
-  restart: { title: 'Ball played!', first: 'Find your place before the ball is played!', again: 'Find your place a bit quicker!' } };
+  restart: { title: 'Ball played!', first: 'Find your place before the ball is played!', again: 'Find your place a bit quicker!' },
+  // (v66) Each kind of choice says what really happened: defending, their dribbler got through; off the ball, his friend
+  // could wait no longer; a pass to him, it got to him before he had picked his turn; after a shot, they got to it first.
+  defense: { title: 'He got past!', first: 'Pick your spot sooner.', again: 'Pick your spot a bit quicker!' },
+  off: { title: 'Too late!', first: 'Find your space sooner.', again: 'Find your space a bit quicker!' },
+  receive: { title: 'Too late!', first: 'Pick your turn before the ball comes.', again: 'Pick your turn a bit quicker!' },
+  follow: { title: 'Too late!', first: 'Run in for the ball sooner.', again: 'Run in a bit quicker!' } };
+// The words for a time-out in this scene.
+export const timeoutWords = sc => (sc?.restart ? TIMEOUT.restart : sc?.kind === 'defense' ? TIMEOUT.defense : sc?.kind === 'receive' ? TIMEOUT.receive : sc?.run === 'follow' || sc?.shot ? TIMEOUT.follow : sc?.kind === 'support' ? TIMEOUT.off : TIMEOUT);
 import { pickFoot } from './outcomes.js';
 import { arrAt, pathAt } from '../window.js';
 
@@ -123,6 +131,8 @@ export const rounds = {
     this.phase = 'shot'; this.camMode = 'shot'; this.aimAt = { x: sh.hit[0], y: sh.hit[1] }; // (see view.js camSpec)
     const at = sh.by === 'hero' ? { x: sh.hit[0], y: sh.hit[1] } : { x: lerp(by.x, sh.hit[0], .6), y: lerp(by.y, sh.hit[1], .6) };
     this.yaw = Math.atan2(at.y - h.y, at.x - h.x); this.faceYaw(h);
+    // (v66) The view is the one he chooses in, from the start: fitted for where the scene has everyone as it comes out (view.js spotView).
+    const yawD = this.frameYaw(sc, { x: sc.heroTo[0], y: sc.heroTo[1] }, { x: sh.loose[0], y: sh.loose[1] }); this.yaw = yawD;
     const flyT = Math.hypot(sh.hit[0] - sh.from[0], sh.hit[1] - sh.from[1]) / SHOT.speed * 1.3, outT = Math.hypot(sh.loose[0] - sh.hit[0], sh.loose[1] - sh.hit[1]) / SHOT.out;
     const runT = Math.min(1.2, Math.hypot(sh.from[0] - by.x, sh.from[1] - by.y) / 3.2) + .2, total = runT + flyT + outT; // (to the strike, then the window: the shot's flight and the rebound's roll)
     const to = (id, p, sec) => { const a = s.a(id), d = Math.hypot(p[0] - a.x, p[1] - a.y); if (d > .05) s.go(id, p[0], p[1], Math.max(.8, d / sec)); };
@@ -154,7 +164,7 @@ export const rounds = {
     // on game time (a job, so his tap's play does not cut them off).
     await this.play(this.shotOut(sh, { x: end[0], y: end[1], speed: Math.max(1.2, Math.hypot(end[0] - by.x, end[1] - by.y) / (.2 + flyT + outT * SHOT.freeze)) }, true));
     this.scripted = new Set(); this.phase = 'pre'; this.camMode = 'player'; this.aimAt = null;
-    this.yaw = this.frameYaw(sc, h, { x: sh.loose[0], y: sh.loose[1] }); if (b.carrier !== 'hero') this.faceYaw(h); // (he may still be winding up to shoot: his body stays on the shot)
+    this.yaw = yawD; if (b.carrier !== 'hero') this.faceYaw(h); // (he may still be winding up to shoot: his body stays on the shot)
   },
   // The shot's flight on from the strike and its bounce off the post, the keeper or the leg, as a job on game time.
   shotBounce(sh, from) {
@@ -310,14 +320,14 @@ export const rounds = {
   async timedOut(restart) {
     const first = !this.lessonTimeouts;
     this.lessonTimeouts = (this.lessonTimeouts || 0) + 1; this.timeouts = (this.timeouts || 0) + 1;
-    const T = this.sc?.restart ? TIMEOUT.restart : TIMEOUT, line = first ? T.first : T.again;
+    const T = timeoutWords(this.sc), line = first ? T.first : T.again;
     this.rated = { stars: 0, nostars: true, text: line, said: line, soft: true, title: T.title };
     this.card = null;
     await this.outcome('timeout', false);
     await (this.card || this.hud.banner('', 'soft', this.rated)); this.rated = null;
     if (first && this.level1) { // see the defender come once more, at play speed
       restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(this.sc) ? 'spot' : null;
-      this.openWindow(); this.win.f = Math.min(1, this.win.G / 2.2); this.hud.caption(this.sc?.restart ? 'Watch the ball! 👀' : 'Watch him come! 👀');
+      this.openWindow(); this.win.f = Math.min(1, this.win.G / 2.2); this.hud.caption(this.sc?.restart || this.sc?.kind === 'receive' || this.sc?.run === 'follow' ? 'Watch the ball! 👀' : 'Watch him come! 👀');
       await this.until(() => !this.win || this.win.u >= 1); this.closeWindow(); this.showing = false;
       await this.delay(.4); this.hud.caption('');
     }

@@ -335,7 +335,8 @@ export function rolesOf(sc, at, { skip = [], never = [] } = {}) {
   for (const id of defs) { const m = atk.map(j => ({ j, d: d(at[j], at[id]) })).sort((a, b) => a.d - b.d)[0]; if (m && m.d < 2.6 && m.d < d(at[id], B)) mark[id] = m.j; }
   const free = defs.filter(id => !mark[id]).sort((a, b) => d(at[a], B) - d(at[b], B));
   let th = null;
-  if (kind !== 'defense' && !sc.restart && kind !== 'tackle') {
+  // (nobody comes: defending (their dribbler comes on), a dead ball, and a friend about to shoot: he shoots as the ring empties)
+  if (kind !== 'defense' && !sc.restart && kind !== 'tackle' && !(kind === 'goal' && sc.shot)) {
     const rush = ids.find(id => at[id].gk && at[id].rush && at[id].team === defTeam);
     th = rush || free.find(id => !never.includes(id)) || defs.filter(id => !never.includes(id)).sort((a, b) => d(at[a], B) - d(at[b], B))[0] || null;
   }
@@ -457,11 +458,13 @@ function planHold0(sc, st, opts, kind) {
   const o2 = { options: opts.options, ids: ids.filter(id => !at[id].gk), at0: id => at[id], ball: st.ball };
   // Which moments of the window agree (ok[i]: at i·STEP_T), and whether everyone stays on the pitch.
   function score(b) {
-    const tmp = {}, ok = [], vd = []; let bad = 0, first = null;
-    for (let i = 0; i * STEP_T <= b.G + 1e-6; i++) { const d = disagree(sc, posOf(b, i * STEP_T, null, tmp), i * STEP_T, o2); ok.push(!d.length); vd.push(d); if (d.length) { bad++; first ||= d; } }
-    let offp = 0; for (const [id, p] of Object.entries(b.paths)) for (const t of [-.8, 0, b.G]) { const q = pathAt(p, t, tmp[id] ||= {}); if (!at[id].gk && !onPitch(q.x, q.y, .4) && onPitch(at[id].x, at[id].y, .4)) offp++; }
+    const tmp = {}, ok = [], vd = [], onp = Object.keys(b.paths).filter(id => !at[id].gk && onPitch(at[id].x, at[id].y, .4)); let bad = 0, first = null;
+    for (let i = 0; i * STEP_T <= b.G + 1e-6; i++) {
+      const t = i * STEP_T, d = disagree(sc, posOf(b, t, null, tmp), t, o2), off = onp.some(id => { const q = pathAt(b.paths[id], t, tmp[id] ||= {}); return !onPitch(q.x, q.y, .4); });
+      ok.push(!d.length && !off); vd.push(d); if (d.length || off) { bad++; first ||= d.length ? d : ['off the pitch']; }
+    }
     let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
-    return Object.assign(b, { bad, first, offp, ok, vd, runOk: [r0, r1] });
+    return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
   }
   let best = null;
   const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0];
@@ -473,9 +476,10 @@ function planHold0(sc, st, opts, kind) {
   }
   // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
   // the picture itself may then lie just outside it, and play is as near it as it ever is)
-  if (best.bad && !live && !fixedG) {
-    const [i0, i1] = best.runOk, Gs = (i1 - i0) * STEP_T;
-    if (Gs >= .6 - 1e-6) { const b = score(build(best.sp, best.k, best.tP - i0 * STEP_T, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } }
+  if (best.bad && !live && !fixedG) for (let m = 0; m < 3 && best.bad; m++) {
+    const [i0, i1] = best.runOk, a0 = i0 + (m && i0 > 0 ? 1 : 0), a1 = i1 - (m && i1 < best.ok.length - 1 ? 1 : 0), Gs = (a1 - a0) * STEP_T; // (a step in from the edge of what agrees, if the first cut does not)
+    if (Gs < .6 - 1e-6) break;
+    const b = score(build(best.sp, best.k, best.tP - a0 * STEP_T, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
   }
   // ---- the runs in ----
   let r0 = 0, shift = 0, tviol = 0, tclash = 0; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;

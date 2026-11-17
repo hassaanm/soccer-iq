@@ -13,25 +13,16 @@ export const team = {
     const s = this.sim, b = s.ball, carrier = s.a(b.carrier);
     if (carrier) this.ballTeam = carrier.team;
     const atk = this.ballTeam, def = atk === 'us' ? 'them' : 'us';
-    const goalX = def === 'them' ? L : 0, dir = atk === 'us' ? 1 : -1;
+    const dir = atk === 'us' ? 1 : -1;
     // Where the ball is for them: where a pass is going; in a long touch in open space (sim.js touchLen), where a close
     // touch would have it, so pushing it ahead does not pull anyone out of place.
     const lead = carrier && b.state === 'carried' && !b.move && !b.reach ? longLead(carrier.tL || 1.4, touchAt(carrier) % 1) : 0;
     const ball = b.state === 'flying' ? { x: b.tx, y: b.ty } : { x: b.x - Math.cos(b.h) * lead, y: b.y - Math.sin(b.h) * lead };
     const free = a => !this.scripted.has(a.id) && a.id !== b.carrier;
     const attackers = s.team(atk);
-    if (def === 'us') { this.ourDefense(ball, attackers, free); }
-    else {
-    const defenders = s.team(def).filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
-    // (Four a side: the third and fourth each mark one of the attackers, the more dangerous one first.)
-    const dangers = attackers.filter(a => a.id !== b.carrier).sort((p, q) => Math.abs(p.x - goalX) - Math.abs(q.x - goalX));
-    defenders.forEach((d, i) => {
-      if (i === 0) return this.aiGo(d, ball.x + dir * 1.1, ball.y, 3.4, true); // stand goal-side, a step off the ball (he follows the ball: no waiting to change his mind)
-      if (i === 1) return this.aiGo(d, lerp(ball.x, goalX, .4), lerp(ball.y, W / 2, .5), 3.6);
-      const danger = dangers[i - 2] || dangers[0] || ball;
-      this.aiGo(d, lerp(danger.x, goalX, .2), lerp(danger.y, W / 2, .2), 3.6);
-    });
-    }
+    // (v66) Both teams defend by the same common-sense rule: the nearest free defender goes to the ball, each of the
+    // others takes one attacker (goal-side of him), and anyone left over covers behind the ball.
+    this.defend(def, ball, attackers, free);
     // Support shape: spread out. The attacker nearer the goal gives a target ahead and wide; the other is an
     // outlet a little behind, on the other side. Both stay out of the dribbler's path, at least 4.5 m from where
     // he is going, and apart from each other, so nobody runs into him or takes his space (what the AI players do
@@ -80,25 +71,26 @@ export const team = {
     if (!lag) s.go(a.id, x, y, speed);
   },
 
-  // Our team on defense does what the lessons teach: only one player (the closest) pressures the ball,
-  // and everyone else guards an attacker, standing goal-side of him. Nobody leaves his player to chase.
-  ourDefense(ball, attackers, free) {
-    const s = this.sim, ours = s.team('us'), goal = { x: 0, y: W / 2 };
+  // A team on defense does what the lessons teach: only one player (the nearest who is free) pressures the ball, and
+  // everyone else guards an attacker, standing goal-side of him: nobody leaves his player to chase, and no attacker is
+  // left to two while another stands free. One with nobody left to guard drops back and covers.
+  defend(def, ball, attackers, free) {
+    const s = this.sim, mine = s.team(def), goal = { x: def === 'us' ? 0 : L, y: W / 2 };
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
     // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
-    const key = s.ball.carrier || 'loose';
-    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!free(d)) continue; const t = job === 'press' ? ball : s.a(job); const p = gs(t, job === 'press' ? 1 : 1.1); this.aiGo(d, p.x, p.y, job === 'press' ? 3.6 : 3.8, job === 'press'); } return; }
+    const key = def + ':' + (s.ball.carrier || 'loose');
+    if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue; const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job); const p = t ? gs(t, job === 'press' ? 1 : 1.1) : gs(ball, 4); this.aiGo(d, p.x, p.y, job === 'press' ? 3.6 : job === 'cover' ? 3.4 : 3.8, job === 'press'); } return; }
     const jobs = {};
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
-    let pressing = ours.some(d => !free(d) && dist(d, ball) < 2.5);
-    for (const d of ours) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
-    const freeOurs = ours.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
-    for (const d of freeOurs) {
+    let pressing = mine.some(d => !free(d) && dist(d, ball) < 2.5);
+    for (const d of mine) if (!free(d)) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
+    const freeMine = mine.filter(free).sort((p, q) => dist(p, ball) - dist(q, ball));
+    for (const d of freeMine) {
       if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, 1); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
       if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); this.aiGo(d, p.x, p.y, 3.8); }
-      else { const p = gs(ball, 4); this.aiGo(d, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
+      else { jobs[d.id] = 'cover'; const p = gs(ball, 4); this.aiGo(d, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
     }
     this.roles = { key, jobs };
   },

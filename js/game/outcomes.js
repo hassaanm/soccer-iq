@@ -82,6 +82,7 @@ export const outcomes = {
   // A player near the path of a kick stops; one right in it steps out of the way, to the side he is already on.
   giveWay(p, from, to, low = true) {
     const c = closestOnLane(p, from, to, 0);
+    if (c.d < 1.1) p.mom = null; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
     let nx = l > .05 ? dx / l : -(to.y - from.y), ny = l > .05 ? dy / l : to.x - from.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
@@ -616,19 +617,22 @@ export const outcomes = {
     if (!c || !o) { yield* this.end('timeout', 1.1); return; }
     yield* this.pokeAway(o, c);
   },
-  // The defender steps in at a child's pace (from how fast he was going, speeding up at ACC to a run) and pokes the ball
-  // a couple of metres away from the player on it, away from him; the nearest of his team gets it. No crash, no fall.
+  // The defender gets to the ball on his run (v66: he arrives running, as the ring empties; from farther off he speeds
+  // up at ACC to a run) and pokes it on past the player on it: the way he is running, and off to the side away from that
+  // player, so neither the ball nor he goes through him. He runs on after it; the nearest of his team gets it. No crash,
+  // no fall, and nobody turns round: the player who had it goes on a step and pulls up.
   *pokeAway(o, c) {
     const s = this.sim, b = s.ball, t0 = s.time;
     this.scripted.add(o.id); this.scripted.add(c.id); this.spice(null);
-    let v = Math.max(1, Math.min(o.speed || 1, SPEED.jog[1])), last = s.time;
-    const goal = { x: o.team === 'them' ? 0 : L, y: W / 2 };
-    s.go(c.id, c.x + (c.tx - c.x) * .4, c.y + (c.ty - c.y) * .4, Math.min(1, c.speed || .5)); // he slows, shielding it
+    const mv = o.mom ? [...o.mom] : [(o.tx - o.x), (o.ty - o.y)]; o.mom = null; // (he is on the ball: straight in)
+    let v = Math.max(1, Math.min(o.speed || 1, SPEED.sprint[1])), last = s.time;
+    s.go(c.id, c.x + (c.tx - c.x) * .5, c.y + (c.ty - c.y) * .5, Math.min(1.2, c.speed || .5)); // he slows, shielding it
     yield () => { const dt = s.time - last; last = s.time; v = Math.min(SPEED.sprint[1], v + ACC * dt); s.go(o.id, b.x, b.y, v); return dist(o, b) < .62 || s.time - t0 > 2.5; };
     s.windup(o.id, 'touch'); yield .12;
-    const ax = b.x - c.x, ay = b.y - c.y, al = Math.hypot(ax, ay) || 1, gx = goal.x - b.x, gy = goal.y - b.y, gl = Math.hypot(gx, gy) || 1;
-    const to = { x: clamp(b.x + (ax / al * .6 + gx / gl * .8) * 1.6, 1, L - 1), y: clamp(b.y + (ay / al * .6 + gy / gl * .8) * 1.6, 1, W - 1) };
-    s.stop(c.id); s.kick(to.x, to.y, { speed: 3.6, arc: 0, touch: true }); this.kicked = true;
+    let ux = mv[0], uy = mv[1]; const ul = Math.hypot(ux, uy); if (ul > .3) { ux /= ul; uy /= ul; } else { const l = dist(o, b) || 1; ux = (b.x - o.x) / l; uy = (b.y - o.y) / l; }
+    const sd = Math.sign(ux * (b.y - c.y) - uy * (b.x - c.x)) || 1, dx = ux - uy * sd * .9, dy = uy + ux * sd * .9, dl = Math.hypot(dx, dy) || 1;
+    const to = { x: clamp(b.x + dx / dl * 1.9, 1, L - 1), y: clamp(b.y + dy / dl * 1.9, 1, W - 1) };
+    s.kick(to.x, to.y, { speed: 3.6, arc: 0, touch: true }); this.kicked = true;
     s.go(o.id, to.x, to.y, Math.max(2, v * .8));
     yield () => s.ball.state === 'loose' || s.time - t0 > 4;
     const taker = s.team(o.team).sort((p, q) => dist(p, s.ball) - dist(q, s.ball))[0] || o;
@@ -961,8 +965,9 @@ export const outcomes = {
   emit(ev) {
     const [title, kind] = { timeout: [TIMEOUT_TITLE, 'soft'], keeperSave: ['Great save!', 'goal'], saved: ['Saved!', 'bad'], over: ['Over the bar!', 'bad'], wide: ['Wide!', 'bad'], cleared: ['Cleared!', 'bad'], goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'] }[ev];
     if (ev === 'goal') this.sfx('net');
-    this.fx(ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
     const rated = this.rated; this.rated = null;
+    // (v66: out of time and they score: the net moves, and nothing celebrates)
+    this.fx(rated?.soft && ev === 'goalAgainst' ? 'goalQuiet' : ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
     if (rated?.soft) { this.card = this.hud.banner(rated.title || TIMEOUT_TITLE, 'soft', rated); this.say(rated.said); return; } // (v64: out of time: whatever the play did, the card says it kindly)
     // A light result (a lesson round right on the first try, Level 2 and up: rounds.js attempt): the big words, stars
     // over his player and the praise said, then on to the next round with no card.
