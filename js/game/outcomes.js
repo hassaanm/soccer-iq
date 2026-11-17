@@ -68,7 +68,9 @@ export const outcomes = {
     const gk = s.keeper('them'), shot = { x: L + .7, y: gk ? placedAim(s.ball, gk) : clamp(a.y, gy0 + .8, gy1 - .8) }; // (a keeper: the bigger space)
     const foot = pickFoot(a, shot.x, shot.y, 'shot', opps);
     faceTo(a, shot.x, shot.y);
-    for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
+    let inWay = false;
+    for (const p of s.team('us')) if (p.id !== id && closestOnLane(p, s.ball, shot, 0).d < 1.2) { inWay ||= closestOnLane(p, s.ball, shot, 0).d < .7; this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, shot); }
+    if (inWay) yield .25; // (v66: a friend right on the shot's line has a moment to step off it before the wind-up: play moves on while he chooses, so one can be there)
     s.windup(id, 'shot', foot); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
     const wrong = gk && this.guessWrong(gk, shot.y); this.keeperReact(gk, gk && (wrong || shotResult({ from: s.ball, y: shot.y, foot: 'placed', k: gk, force: 'goal' })), s.ball, wrong ? GUESS_T : 0);
@@ -86,7 +88,11 @@ export const outcomes = {
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
     let nx = l > .05 ? dx / l : -(to.y - from.y), ny = l > .05 ? dy / l : to.x - from.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
-    this.sim.go(p.id, clamp(c.x + nx * 1.3, .5, L - .5), clamp(c.y + ny * 1.3, .5, W - .5), 4.5);
+    // (v66) Someone standing on that side, in his way (a defender marking him close): he steps off it to the other side.
+    const at = k => ({ x: clamp(c.x + nx * 1.3 * k, .5, L - .5), y: clamp(c.y + ny * 1.3 * k, .5, W - .5) });
+    const shut = q => [...this.sim.agents.values()].some(o => { if (o === p) return false; const k = closestOnLane(o, p, q, 0); return k.d < .8 && k.t > .15; }); // (on his way there, not merely beside him)
+    const q = shut(at(1)) && !shut(at(-1)) ? at(-1) : at(1);
+    this.sim.go(p.id, q.x, q.y, 4.5);
   },
   // Facing well away from where he will play the ball (more than about 60°), he first turns with it (a cut, a hook or
   // a pull back, see sim.js). Less than that he passes across his body from where the ball is. Players close to him
@@ -103,6 +109,9 @@ export const outcomes = {
     const s = this.sim, a = s.a(id), to = { x, y };
     yield* this.turnTo(id, x, y);
     for (const p of s.agents.values()) if (p.id !== id && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
+    // (v66) One of the other team the play's script has coming at the kicker (the one who was running in) may be on the
+    // ball's line near its start: he too steps off it. (Not one waiting where it is going: he is there to cut it out.)
+    for (const p of s.agents.values()) if (p.id !== id && !p.gk && this.scripted.has(p.id) && !this.frozen.includes(p.id) && dist(p, to) > 1.5 && (p.team === a.team || dist(p, s.ball) < 3) && closestOnLane(p, s.ball, to, .02).d < .9) this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); // (and a friend who has drifted onto it, anywhere along it)
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
     const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, x > L - .5 || x < .5 ? 'shot' : kind, [...s.agents.values()].filter(o => o.team !== a.team)); // (at goal, the side's foot, also for a placed inside-foot shot: v64, he may come to it from any way he was carrying the ball)
