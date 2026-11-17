@@ -408,7 +408,8 @@ export class Sim {
         // (v66) One the team's shape moves never turns on the spot at speed: sent more than 60° off the way he is going
         // (a new job, a new place), he comes round from the velocity he has, like anyone coming off a planned way.
         // (round 6: and nobody, whoever moves him, snaps round at a run: sent more than 120° off his way at 2 m/s or more, he comes round too)
-        if (!a.mom && !has && !m && !a.gk && a.lv && !(a.momOff > this.time)) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5 && !kicking)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + (a.ease ? MOM_T : .45); a.momA = a.ease ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : 12; a.momBack = false; } } // (one the play's script sends: round hard, in under half a second, so he is where the play needs him)
+        // (round 7: whoever sends him, and whatever for: nobody flips at a run)
+        if (!a.mom && !has && !m && !a.gk && a.lv && (!a.ease || !(a.momOff > this.time))) { const ls = Math.hypot(a.lv[0], a.lv[1]), cs = (a.lv[0] * dx + a.lv[1] * dy) / (ls * d || 1); if (ls < 6 && (a.ease ? ls > .8 && cs < -.17 : ls >= 2 && a.speed >= 2 && cs < -.5)) { a.mom = [a.lv[0], a.lv[1]]; a.momT = this.time + (a.ease ? MOM_T : .4); a.momA = a.ease ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : 20; a.momBack = false; } } // (one the play's script sends: round hard, in under half a second, so he is where the play needs him)
         if (a.mom && (!has || fetch) && !m) {
           // One the team's shape moves (a.ease) comes round as a child does. One the play's own script sends goes at once,
           // as before, unless that means turning back on himself at speed: then he too comes round first.
@@ -417,8 +418,8 @@ export class Sim {
           else { a.momBack = !a.ease; if (!this.momentum(a, dx / d * v, dy / d * v, dt, d, !a.ease)) continue; }
         } // (still coming round from the way he was going)
         // (round 7) One the play's script sends sets off as a body can, not at full speed from the first step: 20 m/s² (a quarter of a second to a sprint).
-        if (!a.ease && !has && !a.gk) { if (a.rd && a.rv > 1 && (a.rd[0] * dx + a.rd[1] * dy) / d < -.3) a.rv = 0; (a.rd ||= [0, 0])[0] = dx / d; a.rd[1] = dy / d; // (sent back the other way: he sets off anew)
-          v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v; } else a.rv = v;
+        if (!a.ease && (!has || (a.id !== 'hero' && !m)) && !a.gk) { if (a.rd && a.rv > 1 && d > .6 && (a.rd[0] * dx + a.rd[1] * dy) / d < -.3) a.rv = 0; (a.rd ||= [0, 0])[0] = dx / d; a.rd[1] = dy / d; // (sent back the other way: he sets off anew)
+          if (d > .3) v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v; } else a.rv = v; // (not for the last step onto a place he is following)
         const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');

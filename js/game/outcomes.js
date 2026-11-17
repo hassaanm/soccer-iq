@@ -193,7 +193,8 @@ export const outcomes = {
     for (const a of s.team(opp.team === 'us' ? 'them' : 'us')) if (!a.gk && dist(a, opp) < 1.7 && !(a.beat > s.time + .8)) a.beat = s.time + .9; // (round 7: whoever of the other team is at his shoulder as he takes it has lost the duel: off balance for a moment)
     opp.tk = s.time; s.give(opp.id); s.stop('hero'); this.result = 'stolen'; this.emit(ev);
     this.scripted.add(opp.id);
-    const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = opp.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0;
+    const lv0 = opp.lv ? [opp.lv[0], opp.lv[1]] : null; s.stop(opp.id); yield .2; // (round 7: a touch to take it under control before he goes: he does not arrive, stop and sprint off in one moment)
+    const to = { x: Math.max(2.5, opp.x - 4), y: clamp(lerp(opp.y, W / 2, .4), 1.5, W - 1.5) }, lv = lv0, ls = 0; // (he has stopped on the ball: he sets off from there)
     // (round 5) Running the other way as he wins it (he came in from behind, or was carried past): he takes it on a
     // curve, half a second round, not straight back on himself.
     if (ls > 2 && ls < 6 && (lv[0] * (to.x - opp.x) + lv[1] * (to.y - opp.y)) / (ls * (Math.hypot(to.x - opp.x, to.y - opp.y) || 1)) < .3) { // (round 7: more than about 70° off his way)
@@ -491,6 +492,9 @@ export const outcomes = {
     faceTo(h, c.x, c.y);
     if (alive) { const tp = s.time; yield () => { alive(); return s.time - tp > .25; }; } else yield .25;
     if (good) {
+      // (round 7) The run was right: the pass's line to him is open. One of theirs left trailing on it (his defender, a
+      // step slow behind his run) is off it before the ball is played: he steps to the side he is on.
+      { let moved = false; for (const o of s.team('them')) if (!o.gk && closestOnLane(o, s.ball, h, .05).d < .95 && dist(o, h) > 1.1 && dist(o, s.ball) > 1.2) { this.scripted.add(o.id); this.giveWay(o, s.ball, h); moved = true; } if (moved) yield .35; }
       // He'll peek and turn, but only when the pass comes from behind him (otherwise he already faces the goal).
       if (this.has('peek-and-turn') && Math.abs(Math.atan2(c.y - h.y, c.x - h.x)) > 2) { const k = .3 / (dist(c, h) || 1); yield* this.strike(c.id, h.x + (c.x - h.x) * k, h.y + (c.y - h.y) * k, { speed: clamp(dist(c, h) / (PACE * (this.windowMin() - .1) + .2), 4.5, 8), arc: .05 }); this.result = 'incoming'; return; } // to his feet on the side the pass comes from, so it comes straight at him
       s.open('hero', L - 3.5, W / 2); // he opens his body toward goal as the pass comes, and turns with his first touch

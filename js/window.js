@@ -646,13 +646,13 @@ function planHold0(sc, st, opts, kind) {
       if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = score(build(sp, best.k, live ? 0 : best.tP * want / G, want)); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }
       const hp = b.paths[holder], h0 = pathAt(hp, 0), hG = pathAt(hp, Gj), B0 = ballOf(sc, kind, holder, h0), BG = ballOf(sc, kind, holder, hG), bo = [B0.x - h0.x, B0.y - h0.y];
       const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + Math.cos(bearA + got.sh) * Math.max(rP, JOCK.r[0]), B0.y + Math.sin(bearA + got.sh) * Math.max(rP, JOCK.r[0])];
-      const rS = dd(S, [B0.x, B0.y]), rJ = clamp(rS, JOCK.r[0], JOCK.r[1]); let a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x);
+      const rS = dd(S, [B0.x, B0.y]), rJ = clamp(rS, Math.min(rS, JOCK.r[0]), JOCK.r[1]); let a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x);
       // (round 7: never hidden behind his player: seen from behind him, one dead ahead stands a step to the side, the side he is on already)
-      { const view = opts.yaw ?? Math.atan2(line[1], line[0]), rel = Math.atan2(Math.sin(a0 - view), Math.cos(a0 - view)); if (!live && !cur && Math.abs(rel) < .42) a0 = view + (rel >= 0 ? .42 : -.42); }
+      { const view = opts.yaw ?? Math.atan2(line[1], line[0]), rel = Math.atan2(Math.sin(a0 - view), Math.cos(a0 - view)); if (!live && !cur && Math.abs(rel) < .55) a0 = view + (rel >= 0 ? .55 : -.55); }
       // (where the lunge ends: CONTACT from the ball, on his side of it, not on top of the player on it)
       const fa = Math.atan2(line[1], line[0]), da = Math.atan2(Math.sin(a0 - fa), Math.cos(a0 - fa)), ea = fa + clamp(da, -1.4, 1.4), bc = [hG.x + line[0] * .45 - BG.x, hG.y + line[1] * .45 - BG.y];
       const f = jockPace(Gj, Math.min(R, JOCK.R, (Gj - .1) / PACE + .1));
-      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, rT: clamp(rJ - .3, 1.05, JOCK.rT), amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
+      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, rT: Math.min(rJ, clamp(rJ - .3, 1.05, JOCK.rT)), amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
       r0 = rS; jock = true;
     }
   }

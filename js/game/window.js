@@ -100,7 +100,7 @@ export const moving = {
     // (round 6) Nobody of the other team ends these moments at the shoulder of the player on the ball: one whose way
     // would bring him nearer than two steps holds off (his way bends off the ball as he slows).
     { const ce = pathAt(c.setPath, T); for (const a of s.agents.values()) { if (a.gk || a.team === c.team || !a.setPath) continue; const e = pathAt(a.setPath, T), d = Math.hypot(e.x - ce.x, e.y - ce.y);
-      if (d < 2.2) { const k = (2.2 - d) / (T * .6), l = d || 1; a.setPath.v1 = [a.setPath.v1[0] + (e.x - ce.x) / l * k, a.setPath.v1[1] + (e.y - ce.y) / l * k]; } } }
+      if (d < 2.2) { for (let n = 0; n < 4; n++) { const q = pathAt(a.setPath, T), dq = Math.hypot(q.x - ce.x, q.y - ce.y); if (dq >= 2.1) break; const k = (2.3 - dq) / (T * .6), l = dq || 1; a.setPath.v1 = [a.setPath.v1[0] + (q.x - ce.x) / l * k, a.setPath.v1[1] + (q.y - ce.y) / l * k]; } } } } // (round 7: until it does hold him off)
     await this.delay(T);
   },
   // ---------- the run-up ----------
