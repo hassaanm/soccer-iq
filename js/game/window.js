@@ -5,6 +5,7 @@
 // long he has (ui.timer, drawn by world.js).
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, JOCK } from '../window.js';
 import { L, W, facesBall } from './shared.js';
+const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
 
@@ -168,12 +169,14 @@ export const moving = {
   // time", and longer again on a lesson round he ran out of time in.
   windowReal() {
     const sc = this.sc, id = sc?.live ? this.idea?.() : sc?.skill, lv = this.levelOf?.(id) ?? (this.mode === 'lesson' ? 1 : 3);
-    return windowSeconds({ level: Math.max(1, lv), first: !!this.firstRound, think: (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal', retry: this.timeouts || 0 });
+    const think = (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal', v = windowSeconds({ level: Math.max(1, lv), first: !!this.firstRound, think, retry: this.timeouts || 0 });
+    return sc?.live && sc.kind === 'receive' ? Math.max(v, LIVE_PASS * windowFloor({ level: 3, think }) / 4.5) : v; // (round 7: a pass to him in a match: 5 s at Normal, not the bare floor)
   },
   // The shortest this choice's window may be cut to (window.js windowFloor), with the same level and setting as windowReal.
   windowMin() {
     const sc = this.sc, id = sc?.live ? this.idea?.() : sc?.skill, lv = this.levelOf?.(id) ?? (this.mode === 'lesson' ? 1 : 3);
-    return windowFloor({ level: Math.max(1, lv), first: !!this.firstRound, think: (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal' });
+    const think = (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal', v = windowFloor({ level: Math.max(1, lv), first: !!this.firstRound, think });
+    return sc?.live && sc.kind === 'receive' ? Math.max(v, LIVE_PASS * windowFloor({ level: 3, think }) / 4.5) : v;
   },
   openWindow() {
     const s = this.sim, sc = this.sc;
@@ -183,11 +186,12 @@ export const moving = {
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
-    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, (G - .1) / PACE + .1));
+    const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, Rp = (G - .1) / PACE + .1, Rm = show ? 0 : Math.min(this.windowReal(), this.windowMin()), // (round 7: a stretch of play a tenth of a second short of the window's floor is shown that much slower, not cut under it)
+      R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, Rp < Rm && Rp > Rm - .2 ? Rm : Rp));
     this.spotsReset();
     // (round 6) One who jockeys goes in over the last half second: the world speeds up with him (skill.js skillPace), and
     // the pace before that is the one that makes the whole window last R.
-    this.win = { plan, G, R, f: plan.jock ? jockPace(G, R) : Math.max(PACE, Math.min(1, (G - .1) / Math.max(.5, R - .1))), jock: !!plan.jock, t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
+    this.win = { plan, G, R, f: plan.jock ? jockPace(G, R) : Math.max(PACE * .96, Math.min(1, (G - .1) / Math.max(.5, R - .1))), jock: !!plan.jock, t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
     // (round 2) A pass coming to him from live play: he meets it where it is going, a small step behind where it stops,
     // as it gets there (not on with the play, a metre off it).
     const b = s.ball, h = s.a('hero');

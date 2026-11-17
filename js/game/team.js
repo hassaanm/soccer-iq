@@ -1,6 +1,6 @@
 // Team shape while the ball is live: who presses, covers and marks, and where the attackers without the ball run.
 import { lerp, clamp, dist, closestOnLane } from '../geom.js';
-import { L, W } from './shared.js';
+import { L, W, gy0, gy1 } from './shared.js';
 import { longLead, touchAt } from '../sim.js';
 
 const PRESS_OFF = 1.9; // (round 6) the one on the ball holds him up from two steps off, goal-side: nearer than a step and a half he must go in for it
@@ -103,6 +103,9 @@ export const team = {
   defend(def, ball, attackers, free) {
     const s = this.sim, mine = s.team(def), goal = { x: def === 'us' ? 0 : L, y: W / 2 };
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
+    // (round 7) The one on the ball, within shooting range of his goal, stands on the shot's own line (from the ball to
+    // the part of the goal straight ahead of it): he blocks the shot, not only the way to the middle of the goal.
+    const gsBall = k => { if (Math.abs(goal.x - ball.x) > 12) return gs(ball, k); const ay = clamp(ball.y, gy0 + .8, gy1 - .8), dx = goal.x - ball.x, dy = ay - ball.y, l = Math.hypot(dx, dy) || 1; return { x: ball.x + dx / l * k, y: ball.y + dy / l * k }; };
     const cover = () => ({ x: lerp(ball.x, goal.x, .4), y: lerp(ball.y, W / 2, .5) });
     // (round 6) How far off the ball the one pressing holds: two steps, goal-side (he holds him up; nearer than a step and a half he must go in).
     const standOff = () => PRESS_OFF;
@@ -139,7 +142,7 @@ export const team = {
       // goes to meet it on its way to goal; and with the ball within reach while its carrier runs at goal (this.challenge:
       // outcomes.js finish), he goes for the ball itself: a defender within reach always challenges, he never jogs alongside.
       const reach = false;
-      const p0 = reach ? ball : t ? gs(t, job === 'press' ? (R.across ? Math.min(2.4, dist(d, ball) * .6) : Math.min(standOff(), Math.max(1, dist(d, ball)))) : R.across ? 2 : 1.1) : cover(), p = job === 'press' ? p0 : job === 'cover' ? off2(p0) : round(d, p0); // (never backing off to his stand-off: one already nearer holds where he is)
+      const p0 = reach ? ball : job === 'press' && !R.across ? gsBall(Math.min(standOff(), Math.max(1, dist(d, ball)))) : t ? gs(t, job === 'press' ? Math.min(2.4, dist(d, ball) * .6) : R.across ? 2 : 1.1) : cover(), p = job === 'press' ? p0 : job === 'cover' ? off2(p0) : round(d, p0); // (never backing off to his stand-off: one already nearer holds where he is)
       this.aiGo(d, p.x, p.y, reach ? 4.4 : job === 'press' ? (R.across ? 4.6 : 3.6) : job === 'cover' ? 3.6 : p.now ? 4.4 : 3.8, job === 'press' || !!p.now); } return; }
     // (round 6) His own choice in a defending play comes first, and his friends take the other jobs (live.js teamJobs:
     // this.teamJob): if he goes to the ball nobody else does; if he guards, the friend nearest the ball goes.
@@ -152,14 +155,14 @@ export const team = {
     for (const d of mine) if (!free(d) && !d.gk && !(tj && d.id === 'hero')) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
     if (tj && tj.hero !== 'press' && tj.hero) taken.add(tj.hero);
     if (tj) for (const d of mine) { const j = free(d) && tj[d.id]; if (!j) continue;
-      if (j.job === 'press' && !pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, Math.min(standOff(), Math.max(1, dist(d, ball)))); this.aiGo(d, p.x, p.y, 4.2, true); }
+      if (j.job === 'press' && !pressing) { pressing = true; jobs[d.id] = 'press'; const p = gsBall(Math.min(standOff(), Math.max(1, dist(d, ball)))); this.aiGo(d, p.x, p.y, 4.2, true); }
       else if (j.job !== 'press' && s.a(j.job) && !taken.has(j.job)) { taken.add(j.job); jobs[d.id] = j.job; const p = round(d, gs(s.a(j.job), 1.1)); this.aiGo(d, p.x, p.y, p.now ? 4.4 : 3.8, !!p.now); } }
     // (the ball is past the one who pressed: the nearest of those still between it and their goal goes to it)
     const side = d => (beaten && dist(d, goal) > dist(ball, goal) ? 100 : 0), freeMine = mine.filter(free).sort((p, q) => dist(p, ball) + side(p) - dist(q, ball) - side(q));
     for (const d of freeMine) {
       if (jobs[d.id]) continue;
       if (was && d.id === was) { jobs[d.id] = 'chase'; this.aiGo(d, ball.x, ball.y, 4.5, true); continue; }
-      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gs(ball, Math.min(standOff(), Math.max(1, dist(d, ball)))); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
+      if (!pressing) { pressing = true; jobs[d.id] = 'press'; const p = gsBall(Math.min(standOff(), Math.max(1, dist(d, ball)))); this.aiGo(d, p.x, p.y, 3.6, true); continue; }
       const mark = others.filter(a => !taken.has(a.id)).sort((p, q) => dist(p, d) - dist(q, d))[0];
       // (an attacker behind the ball is no danger yet: rather than stand by him, one defender covers the way to goal)
       const harmless = mark && dist(mark, goal) > dist(ball, goal) - 2.5;
