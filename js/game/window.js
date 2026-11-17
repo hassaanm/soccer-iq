@@ -64,6 +64,28 @@ export const moving = {
     } catch (e) { console.error(e); return null; } // (never a stuck choice: without a plan the choice opens as before v64)
   },
 
+  // (v66) A match's choice opens from play going on. Before its picture is taken, everyone comes over (T s, smoothly,
+  // nobody stopping) to moving with the play: the way the ball is being carried, at a walk or a slow jog. So the picture
+  // the choice is graded from is one that holds: as the window opens, the whole shape is already drifting together.
+  async settle(T = .6) {
+    const s = this.sim, st = this.liveState(), c = s.a(s.ball.carrier); if (!c || c.gk) { await this.delay(T); return; }
+    const cv = st.at[c.id], sp0 = Math.hypot(cv.vx, cv.vy), g = [c.team === 'us' ? L : 0, W / 2], gl = Math.hypot(g[0] - c.x, g[1] - c.y) || 1;
+    let dir = sp0 > .6 ? [cv.vx / sp0, cv.vy / sp0] : [(g[0] - c.x) / gl, (g[1] - c.y) / gl]; const v = c.team === 'us' ? 1.2 : 1.5;
+    // His own first touch with one of theirs right on him takes the ball away from that player (and up the field), a
+    // quick step or two before he settles into his carry: there is pressure, but still room to play.
+    let burst = 0;
+    if (c.id === 'hero') { const o = s.team('them').sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0], d = o ? Math.hypot(o.x - c.x, o.y - c.y) : 9;
+      if (d < 3.2) { // (away from him and across, toward the side with more room: he stays goal-side, a step or two farther off)
+        const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
+        if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9); } }
+    const D = [dir[0] * v, dir[1] * v];
+    for (const a of s.agents.values()) {
+      if (a.gk) continue;
+      const q = st.at[a.id], own = a === c && burst, v0 = own ? [dir[0] * burst, dir[1] * burst] : [q.vx, q.vy], dv = Math.hypot(D[0] - v0[0], D[1] - v0[1]), path = { x: a.x, y: a.y, v0, v1: D, t1: own ? .25 : 0, tau: own ? T - .25 : Math.max(.3, Math.min(T, dv * 1.5 / 3.5 + .1)) };
+      a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team };
+    }
+    await this.delay(T);
+  },
   // ---------- the run-up ----------
   // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window
   // (RUNUP s before it opens, less if someone would start well off the pitch): the play drifting on, the threat coming
@@ -145,7 +167,7 @@ export const moving = {
       if (Math.hypot(E[0] - h.x, E[1] - h.y) < 2.5) plan.paths.hero = { herm: true, S: [h.x, h.y], V0: [q.vx, q.vy], E, V1: [0, 0], T };
     }
     // (a window from play going on, a match: its view is fitted now, and the camera goes over to it slowly: no lurch)
-    if (plan.live && plan.hold && !plan.viewSet) { plan.viewSet = true; if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
+    if ((plan.live || plan.fromLive) && plan.hold && !plan.viewSet) { plan.viewSet = true; if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)

@@ -79,6 +79,10 @@ export const team = {
     const gs = (p, k) => { const dx = goal.x - p.x, dy = goal.y - p.y, l = Math.hypot(dx, dy) || 1; return { x: p.x + dx / l * k, y: p.y + dy / l * k }; };
     // Roles are picked once per possession and kept, so nobody swaps jobs (or leaves his player) mid-play.
     const key = def + ':' + (s.ball.carrier || 'loose');
+    // (v66) Unless the one pressing has been beaten (the ball is past him, on its way to his goal): then the jobs are
+    // picked afresh, so the nearest one left steps across to it and he picks up the player left free: nobody is left to
+    // walk in on goal, and still only one goes to the ball.
+    if (this.roles?.key === key && s.time - this.roles.t > .8) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid); if (pr && free(pr) && dist(ball, goal) < dist(pr, goal) - 1.2 && dist(pr, ball) > 1.8) this.roles = null; }
     if (this.roles?.key === key) { const kept = this.roles.jobs; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue; const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job); const p = t ? gs(t, job === 'press' ? 1 : 1.1) : gs(ball, 4); this.aiGo(d, p.x, p.y, job === 'press' ? 3.6 : job === 'cover' ? 3.4 : 3.8, job === 'press'); } return; }
     const jobs = {};
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
@@ -92,6 +96,6 @@ export const team = {
       if (mark) { taken.add(mark.id); jobs[d.id] = mark.id; const p = gs(mark, 1.1); this.aiGo(d, p.x, p.y, 3.8); }
       else { jobs[d.id] = 'cover'; const p = gs(ball, 4); this.aiGo(d, p.x, p.y, 3.4); } // nobody left to guard: drop back and cover
     }
-    this.roles = { key, jobs };
+    this.roles = { key, jobs, t: s.time };
   },
 };

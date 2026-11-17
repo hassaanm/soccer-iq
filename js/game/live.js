@@ -4,13 +4,16 @@ import { pickRounds, skillById } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
 import { L, W, MATES, wrap } from './shared.js';
+import { planHold, rolesOf } from '../window.js';
 // His friends' and their players' places, m1 m2 (m3) and o1 o2 o3 (o4): as many as the team size has.
 const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y]), foes = s => s.team('them').map(a => [a.x, a.y]);
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
 // moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
-function liveScenario(s, skill, pushAllowed) {
-  const P = a => [a.x, a.y], h = s.a('hero');
+// (v66) `near`: { id, x, y }: the one of theirs who is coming for the ball, taken where he will be when he has closed on
+// it (on the bearing he comes from): a choice is right or wrong by where he comes from, not by how far off he still is.
+function liveScenario(s, skill, pushAllowed, near = null) {
+  const at = a => (near && a.id === near.id ? near : a), P = a => [at(a).x, at(a).y], h = s.a('hero'), foes = s => s.team('them').map(P);
   const sc = { id: 'live', skill, kind: 'attack', live: true, hero: P(h), heroTo: P(h), mates: friends(s),
     opps: foes(s) };
   sc.oppsTo = sc.opps;
@@ -19,7 +22,7 @@ function liveScenario(s, skill, pushAllowed) {
   const g = grade(sc);
   // Passes in live play: open unless a defender is in the lane or really on the receiver. A defender behind the
   // receiver (on his far side from the ball) only counts if he's right on him; the receiver is between him and the ball.
-  const opps = s.team('them');
+  const opps = s.team('them').map(at);
   sc.mates.forEach((m, i) => {
     const mate = s.a('m' + (i + 1)), d = interceptor(s.ball, mate, opps).d;
     const marked = opps.some(o => { const r = dist(o, mate); if (r < 1.2) return true; const behind = (o.x - mate.x) * (s.ball.x - mate.x) + (o.y - mate.y) * (s.ball.y - mate.y) < 0; return r < 1.8 && !behind; });
@@ -76,12 +79,18 @@ export const live = {
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, yaw: 0 });
     h.face = [1, 0];
     if (this.sc?.kind === 'tackle') this.sc = { ...this.sc, kind: 'attack' }; // after winning a 1v1: back to the normal view and buttons
-    // The nearest defender steps up to about 3 m, off to one side, so there's pressure but still room to play.
-    const press = s.team('them').sort((a, b) => dist(a, h) - dist(b, h))[0], side = press.y > h.y ? 1 : -1;
-    // (v62: a little quicker than before, to the same place, so the next choice opens sooner)
-    s.go(press.id, Math.min(L - 1, h.x + 2.2), clamp(h.y + side * 1.8, 1, W - 1), 4.6);
-    await this.delay(.6); // (v64: nobody stops; the choice opens with everyone on the move, game/window.js)
-    this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed);
+    // (v66) Nobody stops and nobody is put anywhere: everyone comes over to moving with the play, and the choice opens
+    // from that picture. The nearest free defender is the one who comes, from wherever he is (game/window.js).
+    await this.settle(.7);
+    // The picture the choice is graded from: where everyone is now, with the one who comes taken where he will have
+    // closed on the ball (2.3 m off it, on the bearing he comes from). He himself runs in from where he is.
+    const st = this.liveState(), P = { at: Object.fromEntries(Object.entries(st.at).map(([id, a]) => [id, { ...a }])), ball: st.ball };
+    let near = null;
+    try { const th = rolesOf({ kind: 'attack' }, st.at).th, t = th && st.at[th], bx = h.x + .5, d = t ? Math.hypot(t.x - bx, t.y - h.y) : 0;
+      if (t && !t.gk && d > 2.5) { near = { id: th, x: bx + (t.x - bx) / d * 2.3, y: h.y + (t.y - h.y) / d * 2.3 }; P.at[th].x = near.x; P.at[th].y = near.y; } } catch (e) { console.error(e); }
+    this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed, near);
+    if (near) { let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), options: this.offerList(), from: st.at, lead: 0, yaw: this.yaw }); } catch (e) { console.error(e); }
+      if (plan && plan.threat?.id === near.id) { plan.sc = this.sc; plan.live = false; plan.fromLive = true; plan.ready = true; this.wplan = plan; } }
   },
 
   // After we lose the ball in a match: our team gets back into shape for a moment, then he decides where to run.
@@ -94,7 +103,7 @@ export const live = {
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };
     this.yaw = Math.atan2(c.y - h.y, c.x - h.x); this.faceYaw(h);
     s.go(c.id, Math.max(7, c.x - 2.5), lerp(c.y, W / 2, .3), 3.3); s.go('hero', h.x - 1.2, h.y, 3.3); // (v62: quicker, same places)
-    await this.delay(.8); this.ai = false; // (v64: nobody stops; the choice opens with everyone on the move)
+    await this.delay(.45); this.ai = false; await this.settle(.5); // (v64: nobody stops; v66: the choice opens with everyone moving on with the play, so its picture holds)
     const sc = choose ? liveDefense(s, guard) : null;
     if (sc) { this.sc = sc; this.yaw = this.frameYaw(sc, h, c); return true; }
     // No fair choice: play it out from where everyone stands.
@@ -223,6 +232,7 @@ export const live = {
   // to the ball. False when there's no fair choice (then he just takes over his friend, as before).
   async toSupport() {
     const s = this.sim, c = s.a(s.ball.carrier), h = s.a('hero'); if (!c || c.team !== 'us' || c.id === 'hero') return false;
+    this.ai = false; await this.settle(.5); // (v66: the picture is taken with everyone moving on with the play)
     const opps = s.team('them'), O = opps.map(o => [o.x, o.y]), C = [c.x, c.y];
     const press = [...opps].sort((a, b) => dist(a, c) - dist(b, c))[0], mark = opps.filter(o => o !== press).sort((a, b) => dist(a, h) - dist(b, h))[0];
     // With "Pass and go!" the run goes past his defender when it can; with "Run to the goal too!", toward the goal, ahead of the ball.
@@ -251,7 +261,6 @@ export const live = {
       best: 'spot:' + best, ok: best === 'space' && stayOpen ? ['spot:stay'] : [], safe: extra.filter(e => OKAY[e.why]).map(e => 'spot:' + e.id), cue: past && space && space[0] > press.x + 1.2 ? 'Pass and go! Run past him into the space.' : goal && space && space[0] > c.x + 1.5 ? 'Run to the goal, so your friend can pass to you!' : 'Move to open space so your friend can pass to you!' };
     this.beginStep({ seen: new Set(), lookUp: false, drag: null });
     this.yaw = this.frameYaw(this.sc, h, c); this.faceYaw(h);
-    await this.delay(.35);
     return true;
   },
   // A friend's pass is on its way to him: the ball waits in the air while he peeks, then he picks a turn. His left

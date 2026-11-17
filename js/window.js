@@ -542,13 +542,18 @@ function planHold0(sc, st, opts, kind) {
       if (opts.debug) console.log('pick G', G.toFixed(2), 'fixed', fixed, 'rs', rs.map(r => r.toFixed(1)).join(','), '->', got ? `clean r ${got.r.toFixed(2)} sh ${got.sh}` : fall ? `fall r ${fall.r.toFixed(2)} sh ${fall.sh} viol ${fall.viol} clash ${fall.clash}` : 'none');
       return got || fall;
     };
-    let got = pick(best, G, fixedG);
-    // (a shorter run than hoped for: the window is as long as that run takes, and the shape is built again for it)
-    for (let n = 0; n < 3 && got && !fixedG; n++) {
-      const G2 = Gfor(got.L); if (Math.abs(G2 - G) <= .05) break;
-      const b = score(build(best.sp, best.k, best.tP * G2 / G, G2)); if (b.bad > best.bad) break;
-      best = b; G = G2; const g2 = pick(best, G, true); if (!g2) break; got = g2;
+    // The window is as long as his run takes (a shorter run than hoped for, or a chase after a ball going away from him:
+    // the shape is built again for that length, a few times over until the two agree).
+    let got = null;
+    for (let n = 0; n < 7; n++) {
+      const g1 = pick(best, G, fixedG || n > 0); if (g1) { got = g1; got.G = G; }
+      if (fixedG) break;
+      const G2 = g1 ? Gfor(g1.L) : Math.min(4.6, G * 1.4);
+      if ((g1 && Math.abs(G2 - G) <= .05) || (!g1 && G >= 4.6 - 1e-6)) break;
+      const b = score(build(best.sp, best.k, live ? 0 : best.tP * G2 / G, G2)); if (!live && b.bad > best.bad) break;
+      b.cost = best.cost; best = b; G = G2; if (!g1) got = null;
     }
+    if (got && Math.abs(got.G - G) > 1e-6) { const g2 = pick(best, G, true) || tryRun(best, G, got.r, got.sh); if (g2) got = { r: got.r, sh: got.sh, ...g2 }; } // (the run for the length it ended at)
     // (and never shorter than his run needs at a jog: a short run-in is walked through at its own pace, not rushed)
     if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = score(build(best.sp, best.k, best.tP * Gf / G, Gf)); if (b.bad <= best.bad) { const g2 = tryRun(b, Gf, got.r, got.sh); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
     if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
