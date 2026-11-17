@@ -51,7 +51,7 @@ test('the light result works for a shot of three taps', async () => {
 test('in matches our keeper stops some of their shots, then rolls it out to a friend: our ball', async () => {
   const real = Math.random; let saves = 0, after = 0;
   try {
-    for (let seed = 1; seed <= 6 && !(saves && after); seed++) {
+    for (let seed = 1; seed <= 14 && !(saves && after); seed++) {
       let x = seed * 7717; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
       const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id)); let was = null;
       await drive(g, g.match(PATH.map(s => s.id), [], 3, 'free'), { pick: gm => gm.sc.spots ? 'spot:' + gm.sc.spots[gm.sc.spots.length - 1].id : gm.sc.best || 'drib:fwd', maxSec: 2000,

@@ -53,7 +53,7 @@ function liveDefense(s, guard = true) {
   sc.oppsTo = sc.opps;
   sc.exploits = Object.fromEntries(spots.map(sp => [sp.id, exploit(sc, sp.id)]));
   const goods = spots.filter(sp => !sc.exploits[sp.id]).map(sp => sp.id);
-  if (globalThis.LDBG) console.log("LD", spots.length, goods.length, spots.map(sp => sp.id + ":" + (sc.exploits[sp.id] ? sc.exploits[sp.id].kind : "ok")).join(" "));
+
   if (spots.length < 2 || !goods.length || goods.length === spots.length) return null;
   const onBall = near(goalSide(P(c), 1.2), 2.2), best = goods.includes('home') && !onBall ? 'home' : goods.find(g => g !== 'home' && g !== 'chase') || goods[0];
   sc.best = 'spot:' + best; sc.ok = goods.filter(g => g !== best).map(g => 'spot:' + g);

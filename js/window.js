@@ -589,7 +589,7 @@ function planHold0(sc, st, opts, kind) {
       let got = null, fall = null;
       const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || opts.from?.[th] || !rs.length) { rs.length = 0; rs.push(live || opts.from?.[th] ? rP : rLow); }
       outer: for (const r of rs) for (const sh of live || opts.from?.[th] ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
-        const t = tryRun(b, G, r, sh); if (globalThis.JDBG) console.log('  try r', r.toFixed(2), 'sh', sh, t ? `viol ${t.viol} clash ${t.clash} L ${t.L.toFixed(2)}` : 'null'); if (!t) continue;
+        const t = tryRun(b, G, r, sh); if (!t) continue;
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
       }
@@ -636,7 +636,6 @@ function planHold0(sc, st, opts, kind) {
     // (round 6) No room for a run-in (the picture has him close, and he cannot start farther back): he does not creep in
     // over the whole window. He is a defender who is already there: he jockeys, and lunges as the ring empties. The
     // window is then as long a stretch of play as one with nobody coming (the world is not slowed to a crawl for him).
-    if (globalThis.JDBG) console.log('JDBG', sc.id, 'got', !!got, got?.L?.toFixed(2), 'toP', toP, 'second', second, 'kind', kind, 'rCap', opts.rCap, 'G', G.toFixed(2), 'fixedG', fixedG);
     if (got && !toP && !at[th].gk && !second && got.L < JOCK.L && kind !== 'defense') {
       let b = best, Gj = G;
       if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = score(build(sp, best.k, live ? 0 : best.tP * want / G, want)); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }

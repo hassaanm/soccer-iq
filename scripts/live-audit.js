@@ -52,6 +52,7 @@ export async function liveAudit(size, N = 4, verbose = false) {
           i = found ? i + 1 : i + 6; } }
     }
   } finally { Math.random = real; }
+  stat.counts = { hover: stat.hover, yoyo: stat.yoyo, short: flags.filter(f => f[0] === 'short').length, noring: flags.filter(f => f[0] === 'noring').length };
   return { flags, stat };
 }
 

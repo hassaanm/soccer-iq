@@ -365,5 +365,13 @@ console.log('flags:', JSON.stringify(counts));
 for (const m of mis.slice(0, 80)) console.log('  ' + m);
 if (mis.length > 80) console.log(`  … ${mis.length - 80} more`);
 if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify({ all, stats: Object.fromEntries(Object.entries(stats).map(([k, s]) => [k, { comes: s.comes, seen: s.seen, arrive: s.arrive, closes: s.closes, friends: s.friends, grade: s.grade, size: s.size_, f: s.f, G: s.G }])), mis }));
-console.log(`\n${mis.length} flag(s), ${fails} share(s) missed`);
-process.exitCode = mis.length || fails ? 1 : 0;
+// (round 6) Live play: whole matches (scripts/live-audit.js), unless one lesson or scene was asked for (or --nolive).
+let liveBad = 0;
+if (!only && !scene && !args.includes('--nolive')) {
+  const { liveAudit } = await import('./live-audit.js');
+  for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(flag('--live') || 8)); liveBad += flags.length;
+    console.log(`${size} live play (${flag('--live') || 8} matches): ${stat.plays} choices, shortest live window ${stat.minWin.toFixed(2)} s; ${Object.entries(stat.counts || {}).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+    for (const [k, m] of flags.slice(0, 30)) console.log(`  ${k}: ${m}`); }
+}
+console.log(`\n${mis.length} flag(s), ${fails} share(s) missed, ${liveBad} live-play flag(s)`);
+process.exitCode = mis.length || fails || liveBad ? 1 : 0;
