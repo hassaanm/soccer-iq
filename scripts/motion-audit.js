@@ -125,6 +125,21 @@ function shape(r, sc, st) {
   const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3) return flags;
   const a = f[0], e = f.at(-1), ids = Object.keys(a.at), opp = ids.filter(id => id[0] === 'o'), ours = ids.filter(id => id === 'hero' || id[0] === 'm');
   const d = (q, id) => Math.hypot(q.at[id][0] - ballAt(sc, q)[0], q.at[id][1] - ballAt(sc, q)[1]), th = w.threat, g = grid(f, .1);
+  // (round 6) creep: the one who comes never crawls in from close by: a run-in of under 1.5 m is no run; he jockeys
+  // (class 'jockey'), and then he is alive (he steps 0.25 m or more to each side of his bearing, never farther than
+  // 1.9 m from the ball nor nearer than 1 m until he goes in) and his lunge over the last half second is at least twice
+  // as fast on the screen as his jockeying.
+  // backs: nobody of the other team ends the window more than 1 m farther from the ball than he was at his nearest.
+  if (ourBall(sc) && th && a.carrier === 'hero' && kindOf(sc) !== 'receive' && !sc.shot) {
+    const R1 = e.real - a.real, lun = f.filter(x => e.real - x.real <= .5), jo = f.filter(x => e.real - x.real > .6), sp = q => { let L = 0; for (let i = 1; i < q.length; i++) L += Math.hypot(q[i].at[th][0] - q[i - 1].at[th][0], q[i].at[th][1] - q[i - 1].at[th][1]); return L / Math.max(.05, q.at(-1).real - q[0].real); };
+    if (w.cls === 'jockey') {
+      const rs = jo.map(x => d(x, th)), bear = jo.map(x => Math.atan2(x.at[th][1] - ballAt(sc, x)[1], x.at[th][0] - ballAt(sc, x)[0])), b0 = bear[0], sw = bear.map((b, i) => Math.atan2(Math.sin(b - b0), Math.cos(b - b0)) * rs[i]);
+      if (Math.max(...rs) > 1.9 || Math.min(...rs) < 1) flags.push(['creep', `${th} jockeys between ${Math.min(...rs).toFixed(2)} and ${Math.max(...rs).toFixed(2)} m from the ball (1 to 1.9 m)`]);
+      if (Math.max(...sw) - Math.min(...sw) < .5) flags.push(['creep', `${th} jockeys with steps of only ${(Math.max(...sw) - Math.min(...sw)).toFixed(2)} m from side to side`]);
+      if (lun.length > 2 && jo.length > 2 && sp(lun) < 2 * sp(jo)) flags.push(['creep', `${th}'s lunge is ${sp(lun).toFixed(2)} m/s on the screen, his jockeying ${sp(jo).toFixed(2)} m/s`]);
+    } else if (d(a, th) - d(e, th) < 1.5 && R1 > 2) flags.push(['creep', `${th} comes only ${(d(a, th) - d(e, th)).toFixed(1)} m in ${R1.toFixed(1)} s (from ${d(a, th).toFixed(1)} m; class ${w.cls}): no run and no jockey`]);
+  }
+  if (ourBall(sc)) for (const id of opp) { const lo = Math.min(...g.map(x => d(x, id))); if (id !== th && d(e, id) - lo > 1 && lo < 8) flags.push(['backs', `${id} goes from ${lo.toFixed(1)} to ${d(e, id).toFixed(1)} m from the ball in the window`]); }
   if (ourBall(sc)) {
     // comes: the threat is the nearest defender not marking a man as it opens (marking: nearer one of ours off the ball than the ball, within 2.6 m)
     const off = ours.filter(m => m !== a.carrier && m !== (sc.carrier || (kindOf(sc) === 'receive' ? null : 'hero')));
@@ -148,7 +163,7 @@ function shape(r, sc, st) {
     if (th && a.cam) { const ex = exempt('seen', sc); st.seen.n++; const early = f.filter(x => x.real - a.real <= .3), vis = early.some(x => on(screen(x.cam, [...x.at[th], .9]), 8));
       if (vis) st.seen.ok++; else if (ex) { st.seen.ok++; st.use(ex); } else st.seen.miss.push(`${st.size} ${sc.id} (${kindOf(sc)}): ${th} starts ${d(a, th).toFixed(1)} m from the ball, off the screen at ${VW}x${VH}`); }
     // closes: with the ball at his feet
-    if (th && a.carrier === 'hero' && kindOf(sc) !== 'receive') { st.closes.n++; const c = d(a, th) - d(e, th); if (c >= LIM.closes) st.closes.ok++; else st.closes.miss.push(`${st.size} ${sc.id}: ${th} closes ${c.toFixed(1)} m (from ${d(a, th).toFixed(1)} m; ${w.cls}, in the picture ${w.rP?.toFixed(1)} m)`); }
+    if (th && a.carrier === 'hero' && kindOf(sc) !== 'receive' && w.cls !== 'jockey') { st.closes.n++; const c = d(a, th) - d(e, th); if (c >= LIM.closes) st.closes.ok++; else st.closes.miss.push(`${st.size} ${sc.id}: ${th} closes ${c.toFixed(1)} m (from ${d(a, th).toFixed(1)} m; ${w.cls}, in the picture ${w.rP?.toFixed(1)} m)`); }
     // friends: never away from the ball, never out of the view they were in
     for (const m of ours.filter(m => m !== 'hero' && m !== a.carrier)) {
       st.friends.n++;
@@ -248,10 +263,13 @@ function motionIn(r, sc, inWin) {
     const v = []; for (let i = 1; i < g.length; i++) { const a = g[i - 1].at[id], b = g[i].at[id], T = g[i].t - g[i - 1].t || dt; v.push([(b[0] - a[0]) / T, (b[1] - a[1]) / T]); }
     if (!v.length) continue;
     const sp = v.map(q => Math.hypot(...q)), max = Math.max(...sp);
-    if (max > LIM.speed) flags.push(['speed', `${id} ${max.toFixed(1)} m/s`]);
+    // (round 6) One who jockeys: his steps from side to side are not turns (he faces the ball all the way: he is side-on,
+    // shuffling), they are quick push-offs (up to 8 m/s²), and his lunge, the window's last 0.3 s of play, is one explosive step (up to 6.5 m/s; not held to a runner's speeding up).
+    const JK = id === THREAT && r.wins[0]?.cls === 'jockey'; if (JK) TURN_RULE.jockey = (TURN_RULE.jockey || 0) + 1;
+    if (max > (JK ? 6.5 : LIM.speed)) flags.push(['speed', `${id} ${max.toFixed(1)} m/s`]);
     // (the one who comes sets himself over his last metre: he brakes harder than he speeds up, as a child does, up to LIM.brake)
-    for (let i = 2; i < v.length; i++) { const a = Math.hypot(v[i][0] - v[i - 2][0], v[i][1] - v[i - 2][1]) / (2 * dt), braking = sp[i] < sp[i - 2] && id === THREAT; if (a > (braking ? LIM.brake : LIM.acc)) { flags.push(['speed', `${id} ${braking ? 'brakes at' : 'accel'} ${a.toFixed(1)} m/s²`]); break; } }
-    for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) if (sp[i] > .4 && sp[j] > .4) {
+    for (let i = 2; i < v.length; i++) { const a = Math.hypot(v[i][0] - v[i - 2][0], v[i][1] - v[i - 2][1]) / (2 * dt), braking = sp[i] < sp[i - 2] && id === THREAT; if (a > (JK ? (r.wins[0].t0 + r.wins[0].G - g[i].t < .32 ? 40 : 8) : braking ? LIM.brake : LIM.acc)) { flags.push(['speed', `${id} ${braking ? 'brakes at' : 'accel'} ${a.toFixed(1)} m/s²`]); break; } }
+    if (!JK) for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) if (sp[i] > .4 && sp[j] > .4) {
       const c = (v[i][0] * v[j][0] + v[i][1] * v[j][1]) / (sp[i] * sp[j]); if (c < Math.cos(LIM.turn * Math.PI / 180)) { flags.push(['turn', `${id} turned ${Math.round(Math.acos(Math.max(-1, c)) * 180 / Math.PI)}° in the window`]); i = v.length; break; }
     }
     if (!gk(id) && max < LIM.still && g.length > 4 && !(sc.restart && id === (sc.carrier || 'hero'))) { const ex = exempt('still', sc); if (ex) r.used?.(ex); else flags.push(['still', `${id} still through the window`]); } // (a restart's taker stands over the dead ball)

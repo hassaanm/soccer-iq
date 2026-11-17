@@ -6,6 +6,7 @@
 // Slow motion only changes how much game time each frame steps; while play waits for a turn the sim is not stepped
 // at all, so the play goes on exactly as it would have.
 import { touchAt, TURN_SKILLS } from '../sim.js';
+import { JOCK } from '../window.js';
 import { MOVE_NAME } from '../flair.js';
 
 const SLOW = .3;   // game speed while a run-at move is offered (about 1.3 real seconds to tap)
@@ -48,7 +49,8 @@ export const skill = {
     else this.skT0 ??= s.time;
     s.offerOK = this.offerAllowed() || (this.sk?.phase === 'offer' && this.sk.kind === 'run' && !!h?.offer);
     const sk = this.sk, waits = sk?.kind === 'turn' && (sk.phase === 'offer' || (sk.phase === 'move' && this.clock < sk.go));
-    const want = this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1) : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW; // (v64: the decision window's slow motion)
+    const wj = this.win?.jock && this.phase === 'decide' ? Math.max(0, 1 - (this.win.R - this.win.real) / JOCK.real) : 0; // (round 6: the last half second of a window whose defender jockeys: he goes in, and the world speeds up with him)
+    const want = wj > 0 ? this.win.f + (JOCK.F1 - this.win.f) * wj * wj : this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1) : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW; // (v64: the decision window's slow motion)
     if (this.win) this.win.real += dt; this.realTime = (this.realTime || 0) + dt;
     if (waits) { this.slow = 0; this.slowV = 0; }
     else { // eased (a critically damped spring, by real time), so the speed never steps

@@ -46,10 +46,11 @@ export const outcomes = {
     const s = this.sim, c = s.ball.carrier && s.ball.state !== 'flying' ? s.a(s.ball.carrier) : null, o = c && !c.gk && (this.mode === 'match' || this.mode === 'free') ? this.onHim(c) : null;
     if (o && result !== 'goal' && result !== 'goalAgainst') { yield* this.challenge(o, c); s.stop(c.id); }
     // (One who went in a moment ago and is still at his shoulder is carried on past him, off balance, and turns: he does not stand there.)
+    for (const a of s.agents.values()) a.bx = null;
     if (c && !c.gk) for (const f of s.team(c.team === 'us' ? 'them' : 'us')) { const d = dist(f, c); if (f.gk || d > 1.8 || !(f.tk > s.time - 2)) continue;
       const ux = (c.x - f.x) / (d || 1), uy = (c.y - f.y) / (d || 1), sd = Math.sign(ux * (f.ty - f.y) - uy * (f.tx - f.x)) || 1;
-      f.beat = s.time + 1.3; s.go(f.id, clamp(f.x + ux * (d + .9) - uy * sd * 1.3, .5, L - .5), clamp(f.y + uy * (d + .9) + ux * sd * 1.3, .5, W - .5), 2.6); }
-    this.result = result; this.ai = false; for (const a of s.agents.values()) if (!(a.beat > s.time)) s.stop(a.id); this.emit(result); yield this.hold(result, wait); },
+      f.beat = s.time + 1.3; f.bx = clamp(f.x + ux * (d + .9) - uy * sd * 1.3, .5, L - .5); f.by = clamp(f.y + uy * (d + .9) + ux * sd * 1.3, .5, W - .5); }
+    this.result = result; this.ai = false; const live = this.mode === 'match' || this.mode === 'free'; s.stopAll(); if (live) for (const a of s.agents.values()) if (a.beat > s.time && a.bx != null) s.go(a.id, a.bx, a.by, 2.6); this.emit(result); yield this.hold(result, wait); },
   // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
   // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
   hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
@@ -64,7 +65,7 @@ export const outcomes = {
     // (on the way he is going, and a step to the side away from the one coming in: his body between him and the ball)
     const v = a.lv && Math.hypot(a.lv[0], a.lv[1]) > .5 ? a.lv : a.face, vl = Math.hypot(v[0], v[1]) || 1, fx = v[0] / vl, fy = v[1] / vl, sd = -Math.sign(fx * (o.y - a.y) - fy * (o.x - a.x)) || 1, nx = -fy * sd, ny = fx * sd;
     // (running, he just goes on: the lunge comes in behind him; nearly still, he takes that step)
-    if (!(a.sp > 1.5)) { this.scripted.add(a.id); s.go(a.id, clamp(a.x + nx * .8 + fx * .6, 1, L - 1), clamp(a.y + ny * .8 + fy * .6, 1, W - 1), 3.2); }
+    if (Math.hypot(a.tx - a.x, a.ty - a.y) < .5) { this.scripted.add(a.id); s.go(a.id, clamp(a.x + nx * .8 + fx * .6, 1, L - 1), clamp(a.y + ny * .8 + fy * .6, 1, W - 1), 3.2); }
     yield .45;
     this.scripted.delete(o.id);
   },

@@ -3,7 +3,7 @@
 // part, and the threat already running in from farther out); then play drops into slow motion and goes on until he
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
-import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE } from '../window.js';
+import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace } from '../window.js';
 import { L, W, facesBall } from './shared.js';
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -173,7 +173,9 @@ export const moving = {
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
     const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, R = Math.max(G, Math.min(show || this.windowReal(), (G - .1) / PACE + .1));
     this.spotsReset();
-    this.win = { plan, G, R, f: Math.max(PACE, Math.min(1, (G - .1) / Math.max(.5, R - .1))), t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
+    // (round 6) One who jockeys goes in over the last half second: the world speeds up with him (skill.js skillPace), and
+    // the pace before that is the one that makes the whole window last R.
+    this.win = { plan, G, R, f: plan.jock ? jockPace(G, R) : Math.max(PACE, Math.min(1, (G - .1) / Math.max(.5, R - .1))), jock: !!plan.jock, t0: s.time, real: 0, threat: plan.threat, kind: kindOf(sc), spots0: this.spot0 || [], at0: {} };
     // (round 2) A pass coming to him from live play: he meets it where it is going, a small step behind where it stops,
     // as it gets there (not on with the play, a metre off it).
     const b = s.ball, h = s.a('hero');
@@ -235,7 +237,7 @@ export const moving = {
   timerUi() {
     const w = this.win; if (!w || this.phase !== 'decide') return null;
     const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
-    out.left = clamp(1 - (w.u || 0), 0, 1);
+    out.left = w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
     out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
     return out;
   },

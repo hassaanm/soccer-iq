@@ -38,6 +38,7 @@ export const SPEED = { stand: .2, walk: [.8, 1.3], jog: [1.8, 2.5], run: [3, 3.5
 export const easeTime = (v0, v1, t1 = 0) => Math.max(.35, Math.hypot(v1[0] - v0[0], v1[1] - v0[1]) * 1.5 / ACC);
 export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   if (p.run) return runAt(p, t, out);
+  if (p.jock) return jockAt(p, t, out);
   if (p.arr) return arrAt(p, t + (p.base || 0), out);
   if (p.go) return goAt(p, t, out);
   if (p.herm) return hermAt(p, t, out);
@@ -48,6 +49,27 @@ export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   return out;
 }
 
+// (round 6) One who is already there, with no room to run in: he jockeys. Low and side-on, he mirrors the ball with
+// small sideways steps at a steady distance (p.rJ, 1.2 to 1.6 m: from it, never nearer and never drifting off), and
+// goes in over the window's last moments (from p.tL: a lunge, speeding up all the way to the ball).
+//   p.hp: the path of the player on the ball; p.bo: the ball from him; p.a0: the bearing he is on; p.amp, p.per: his
+//   steps to each side (m, s); p.rS: how far off he starts (he eases to rJ); p.E: where the lunge ends, from the ball.
+const jockPos = (p, t, o) => {
+  const h = pathAt(p.hp, t, o), bx = h.x + p.bo[0], by = h.y + p.bo[1], tt = Math.max(0, t);
+  const a = p.a0 + (p.amp / p.rJ) * Math.sin(2 * Math.PI * t / p.per), r = p.rJ + (p.rS - p.rJ) * Math.exp(-tt / .35);
+  let x = bx + Math.cos(a) * r, y = by + Math.sin(a) * r;
+  if (t > p.tL) { const q = Math.min(1, (t - p.tL) / Math.max(.01, p.G - p.tL)), w = q * q; x += (bx + p.E[0] - x) * w; y += (by + p.E[1] - y) * w; }
+  o.x = x; o.y = y; return o;
+};
+export function jockAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
+  const a = jockPos(p, t - .01, {}), b = jockPos(p, t + .01, {}), c = jockPos(p, t, {});
+  out.x = c.x; out.y = c.y; out.vx = (b.x - a.x) / .02; out.vy = (b.y - a.y) / .02; return out;
+}
+export const JOCK = { L: 1.5, r: [1.2, 1.6], amp: .32, per: 1.4, real: .5, F1: .9 }; // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
+// The game time of a jockey window's last JOCK.real s (the world speeds up from its pace f to F1 as he goes in), and
+// the pace f that makes a window of G s of play last R real seconds with it.
+export const jockPace = (G, R) => Math.max(PACE, (G - JOCK.real * JOCK.F1 / 3) / (R - JOCK.real / 3));
+export const jockLunge = f => JOCK.real * (f + (JOCK.F1 - f) / 3);
 // An arrival (v64 round 2): a player runs along u at vRun, slows over his last dB metres to vEnd (at a constant pull,
 // as a child brakes), and is at P at time T (seconds from the scene's own moment); after it he goes on at vEnd. `base`:
 // the scene-time at which the game's clock for this path reads 0 (the window's opening, or the run-up's start).
@@ -519,15 +541,16 @@ function planHold0(sc, st, opts, kind) {
     const b = score(build(best.sp, best.k, best.tP - a0 * best.dtS, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
   }
   // ---- the runs in ----
-  let r0 = 0, shift = 0, tviol = 0, tclash = 0; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
+  let r0 = 0, shift = 0, tviol = 0, tclash = 0, jock = false; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
   if (th) {
     const tmp = {};
-    const tryRun = (b, G, r, sh) => {
+    let noSecond = false;
+    const tryRun = (b, G, r, sh, own = false) => { // (own: from his own place in the picture, wherever that is)
       const hp0 = pathAt(b.paths[holder], 0), hp1 = pathAt(b.paths[holder], G), B0 = ballOf(sc, kind, holder, hp0), B1 = ballOf(sc, kind, holder, hp1), u = [Math.cos(bearA + sh), Math.sin(bearA + sh)];
       const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + u[0] * r, B0.y + u[1] * r]; // (cur: he sets off from where he is now, `lead` s before it opens)
       if (!live && !cur && !onPitch(S[0], S[1], .8)) return null;
       // (as it opens he is plainly coming for the ball, not standing by one of ours: 2.7 m or more from every friend off the ball)
-      if (!live && !cur && ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S[0], q.y - S[1]) < 2.7; })) return null;
+      if (!live && !cur && !own && ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S[0], q.y - S[1]) < 2.7; })) return null;
       let E;
       if (toP) { const v = virtAt(b, G); E = [v.x, v.y]; }
       else { // the nearest point to where he starts, CONTACT m from the ball, that is not on top of the player on it
@@ -547,14 +570,14 @@ function planHold0(sc, st, opts, kind) {
       const real = { [th]: path };
       // (how often a run comes too near anyone on his way: bodies, not the player it ends at)
       const near = (pp, skipId, endAt) => { let n = 0; for (let i = 0; i * STEP_T <= G + 1e-6; i++) { const t = i * STEP_T, q = pathAt(pp, t, tmp.n1 ||= {}); for (const id of out) { if (id === skipId) continue; const op = real[id] && real[id] !== pp ? real[id] : b.paths[id]; if (!op || op === pp) continue; const o = pathAt(op, t, tmp.n2 ||= {}), d = Math.hypot(o.x - q.x, o.y - q.y); if (d < (id === holder ? endAt : 1) && !(id === holder && endAt < .6 && t > G - .3)) n++; } } return n; };
-      if (second) { // the second one: from as much farther out as he is in the picture (and a step more), to his place in it
+      if (second && !noSecond) { // the second one: from as much farther out as he is in the picture (and a step more), to his place in it
         let p2 = null, c2 = 1e9;
         for (const s2 of [0, .12, -.12, .25, -.25, .4, -.4, .55, -.55]) { const u2 = [Math.cos(bear2 + s2), Math.sin(bear2 + s2)], S2 = [B0.x + u2[0] * (r + d2 - rP + .4), B0.y + u2[1] * (r + d2 - rP + .4)], v = virtAt(b, G, second);
           if (!onPitch(S2[0], S2[1], .8) || dd(S2, [v.x, v.y]) < .3) continue;
           if (ro.atk.some(m => { const q = b.paths[m] && pathAt(b.paths[m], 0, tmp.m ||= {}); return q && Math.hypot(q.x - S2[0], q.y - S2[1]) < 2.7; })) continue; const c = mkRun(S2, [v.x, v.y], G); if (c.v1 > 4.45) continue; const n = near(c, second, .9); if (n < c2) { c2 = n; p2 = c; } if (!n) break; }
         if (!p2) return null; real[second] = p2;
       }
-      let viol = 0, clash = near(path, th, .55) + (second ? near(real[second], second, .9) : 0);
+      let viol = 0, clash = near(path, th, .55) + (second && !noSecond ? near(real[second], second, .9) : 0);
       for (let i = 0; i < (b.vd?.length || 0); i++) {
         const t = i * b.dtS, q = pathAt(path, t, tmp.th ||= {});
         const Bt = ballOf(sc, kind, holder, pathAt(b.paths[holder], t, tmp.h ||= {})), r1 = Math.hypot(q.x - Bt.x, q.y - Bt.y);
@@ -566,7 +589,7 @@ function planHold0(sc, st, opts, kind) {
       let got = null, fall = null;
       const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || opts.from?.[th] || !rs.length) { rs.length = 0; rs.push(live || opts.from?.[th] ? rP : rLow); }
       outer: for (const r of rs) for (const sh of live || opts.from?.[th] ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
-        const t = tryRun(b, G, r, sh); if (!t) continue;
+        const t = tryRun(b, G, r, sh); if (globalThis.JDBG) console.log('  try r', r.toFixed(2), 'sh', sh, t ? `viol ${t.viol} clash ${t.clash} L ${t.L.toFixed(2)}` : 'null'); if (!t) continue;
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
       }
@@ -598,6 +621,34 @@ function planHold0(sc, st, opts, kind) {
     }
     if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
     else for (const id of [th, second].filter(Boolean)) { const a = at[id]; best.paths[id] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; }
+    // (round 6) Never from nearer than the picture has him (then the picture would not hold, and he would creep the
+    // rest): if no run from farther back works, he runs in from his own place in the picture, and the second free
+    // defender, if he is what stops it, goes on with the play instead of coming too.
+    if (got && !toP && !live && !opts.from?.[th] && got.r < rP - .3 && got.r < 3 && rP < RUNIN) {
+      let t = null, b = best, Gt = G;
+      for (const ns of second ? [false, true] : [false]) { noSecond = ns;
+        for (const g2 of fixedG ? [G] : [G, Gfor(rP + .6), Gfor(rP + .6) + .35, Gfor(rP + .6) + .7].filter(x => x <= 4.2)) { const c = g2 === G ? best : score(build(best.sp, best.k, best.tP * g2 / G, g2)); if (c !== best && c.bad > best.bad) continue; const q = tryRun(c, g2, rP, 0, true); if (q) { t = q; b = c; Gt = g2; break; } }
+        if (t) break; }
+      if (!t) noSecond = false;
+      if (t) { if (b !== best) { b.cost = best.cost; best = b; G = Gt; } got = { ...t, r: rP, sh: 0 }; Object.assign(best.paths, got.real); r0 = rP; shift = 0; tviol = t.viol; tclash = t.clash;
+        if (noSecond) { const a = at[second]; best.paths[second] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; } }
+    }
+    // (round 6) No room for a run-in (the picture has him close, and he cannot start farther back): he does not creep in
+    // over the whole window. He is a defender who is already there: he jockeys, and lunges as the ring empties. The
+    // window is then as long a stretch of play as one with nobody coming (the world is not slowed to a crawl for him).
+    if (globalThis.JDBG) console.log('JDBG', sc.id, 'got', !!got, got?.L?.toFixed(2), 'toP', toP, 'second', second, 'kind', kind, 'rCap', opts.rCap, 'G', G.toFixed(2), 'fixedG', fixedG);
+    if (got && !toP && !at[th].gk && !second && got.L < JOCK.L && kind !== 'defense') {
+      let b = best, Gj = G;
+      if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = score(build(sp, best.k, live ? 0 : best.tP * want / G, want)); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }
+      const hp = b.paths[holder], h0 = pathAt(hp, 0), hG = pathAt(hp, Gj), B0 = ballOf(sc, kind, holder, h0), BG = ballOf(sc, kind, holder, hG), bo = [B0.x - h0.x, B0.y - h0.y];
+      const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + Math.cos(bearA + got.sh) * Math.max(rP, JOCK.r[0]), B0.y + Math.sin(bearA + got.sh) * Math.max(rP, JOCK.r[0])];
+      const rS = dd(S, [B0.x, B0.y]), a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x), rJ = clamp(rS, JOCK.r[0], JOCK.r[1]);
+      // (where the lunge ends: CONTACT from the ball, on his side of it, not on top of the player on it)
+      const fa = Math.atan2(line[1], line[0]), da = Math.atan2(Math.sin(a0 - fa), Math.cos(a0 - fa)), ea = fa + clamp(da, -1.4, 1.4), bc = [hG.x + line[0] * .45 - BG.x, hG.y + line[1] * .45 - BG.y];
+      const f = jockPace(Gj, Math.min(R, (Gj - .1) / PACE + .1));
+      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, amp: JOCK.amp, per: JOCK.per, G, tL: G - jockLunge(f), E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
+      r0 = rS; jock = true;
+    }
   }
   // ---- the view: the threat is seen coming ----
   // (seen: in his head-up view, looking the way the scene has him look; view.js camSpec: from 5.2 m behind him, about
@@ -623,7 +674,7 @@ function planHold0(sc, st, opts, kind) {
     threat: th ? { id: th } : kind === 'defense' ? { id: holder, to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : null, second,
     comers: [th, second].filter(Boolean).map(id => ({ id, x: at[id].x, y: at[id].y })), virt: th ? { x: at[th].x, y: at[th].y } : null, bear: bearA, rP, r0, shift, watch, role, look, wide,
     at0: Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }])), dis: best.bad ? best.first || ['?'] : [], disN: best.bad, k: best.k, sp: best.sp,
-    cls: !th ? (dead ? 'dead' : 'no-threat') : best.bad ? 'disagrees' : best.sp < .8 && !dead && !toP ? 'calm' : closes < 2.5 ? 'short' : 'full', tviol, tclash };
+    jock, cls: !th ? (dead ? 'dead' : 'no-threat') : best.bad ? 'disagrees' : jock ? 'jockey' : best.sp < .8 && !dead && !toP ? 'calm' : closes < 2.5 ? 'short' : 'full', tviol, tclash };
 }
 // From play already going (a rebound, a match): everyone goes from where he is, as he moves, to where the decision's
 // picture has him at its end (`end`), in G seconds; the threat gets there moving in, the rest settling.
