@@ -108,9 +108,9 @@ function floor(r, sc) {
 export const ROLE = { tol: .5, grow: .4, away: .4, pile: 2.5, open: 1.6, free: 4, mark: 3 };
 // Patterns whose idea is two of theirs on one of ours: the trap (two close him down), the wall pass (two press him,
 // the friend beside him is free), a cut-out on the pass (one presses the passer, one waits on the lane).
-// one-open: the other friend is marked by both, so the one open is plainly the pass; foot-close: both mark his friends
-// by the goal, so the shot is the answer.
-export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass', 'one-open', 'foot-close']);
+// one-open: the other friend is marked by both, so the one open is plainly the pass; foot-close, keeper-friend,
+// aim-open: both mark his friends by the goal, so the shot is the answer.
+export const PILE = new Set(['trap', 'trap-one', 'give-go', 'give-go-ahead', 'marked', 'shadow', 'gs-covered', 'peek-turn', 'peek-back', 'counter-pass', 'one-open', 'foot-close', 'keeper-friend', 'aim-open', 'keeper-out']);
 const ourBall = sc => !['defense', 'tackle'].includes(kindOf(sc)) && !sc.restart;
 function roles(r, sc) {
   const flags = [], w = r.wins[0], f = r.rec.filter(x => x.win && x.wi === 1); if (!w || f.length < 3 || !ourBall(sc)) return flags;
@@ -227,7 +227,9 @@ for (const size of sizes) {
       const row = { size, skill: sk.id, sc: sc.id, kind: kindOf(sc), plays: [] };
       for (const opt of optionsFor(sc)) for (const u of taps) {
         const r = await play(sc, opt, u), fl = motion(r, sc), end = endOf(r.banners), want = base?.[`${size}|${sk.id}|${sc.id}|${opt}`];
-        if (want && !sameEnd(end, endOf(want))) fl.push(['result', `${end} (frozen: ${endOf(want)})`]);
+        // (keeper-out: tapped before the keeper is out, a shot goes in that the scene, with him out, has saved: the true
+        // result of an early shot, said so here rather than hidden by a shorter window)
+        if (want && !sameEnd(end, endOf(want))) { if (sc.pattern === 'keeper-out' && end === 'kept' && endOf(want) === 'saved' && u < .9) explained.push(`${size} ${sc.id} ${opt}@${u}: scores before the keeper is out (the scene, with him out: saved)`); else fl.push(['result', `${end} (frozen: ${endOf(want)})`]); }
         row.plays.push({ opt, u, end, flags: fl, win: r.wins[0] });
       }
       const r = await play(sc, null, 1), fl = timeout(r, sc); motion(r, sc).forEach(f => fl.push(f));

@@ -554,9 +554,9 @@ export const G_PRE = [1.5, 1.2, .9, .6], STANCE = 1.7, PRESSING = 2.8;
 // The last resort (round 2): patterns where a tap early in the full lead-in ends another way than the scene's own play
 // (the motion audit plays every choice early, midway and late), with the shorter lead-ins they get instead.
 // 'co-moving': the round-1 plan (play moving together, the scene's picture at the window's start).
-//   keeper-out (5v5): the keeper rushing out is the threat; shot early in his run, before he is out, a shot the scene
-//   has saved goes in. Nothing shorter holds it.
-export const SHORT_LEAD = { 'keeper-out': 'co-moving', 'go-shot': [1.2] };
+//   (round 3: keeper-out (5v5) now comes in full, the keeper seen rushing out: a shot early in his run, before he is out,
+//   goes in, and that is the true result for an early tap; scripts/motion-audit.js says so)
+export const SHORT_LEAD = { 'go-shot': [1.2] };
 //   go-shot (4v4): running to the goal when his friend will shoot: tapped early in a 1.5 s lead-in, the okay run is
 //   still too far back to win the rebound race. 1.2 s holds it.
 // Child speeds for each role's run (m/s; research Q1): vRun, vEnd (as he gets there), dB (the metres he slows over).
@@ -604,7 +604,7 @@ export function planArrival(sc, st, opts = {}) {
   else {
     const cand = ids.filter(id => at[id].team === defTeam && (!at[id].gk || at[id].rush) && !fixedPaths[id]).map(id => {
       const p = P(id), d = d2(p, H);
-      return { id, d, cost: d }; // (round 3: the nearest of them to the ball in the picture is the one who comes for it; one from behind is shown coming by a wider view, view.js)
+      return { id, d, cost: at[id].rush ? -1 : d }; // (a keeper rushing out at him is the one who comes) (round 3: the nearest of them to the ball in the picture is the one who comes for it; one from behind is shown coming by a wider view, view.js)
     }).sort((a, b) => a.cost - b.cost);
     th = cand[0]?.id || null;
   }
@@ -732,7 +732,7 @@ export function planArrival(sc, st, opts = {}) {
     const man = role[id]?.startsWith('marker:') && role[id].slice(7); if (!man || !paths[man]?.arr || !paths[id]?.arr) continue;
     const m0 = arrAt(paths[man], -Gpre), gu = U([theirGoal.x - m0.x, theirGoal.y - m0.y]), S = [m0.x + gu[0] * 1.2, m0.y + gu[1] * 1.2], E = P(id), r = d2(S, E);
     if (r < .3) { paths[id] = arr(E, gu, [.6, .6, 0]); continue; }
-    if (opts.Gpre) { const v = clamp(r / Gpre, .6, 4); paths[id] = arr(E, [E[0] - S[0], E[1] - S[1]], [v, v, 0]); continue; } // (an intro that plans its own lead-in: a straight run)
+    if (opts.Gpre) continue; // (an intro that plans its own lead-in: he goes with his man as before)
     // (the offset changes by no more than a child's pull allows over the lead-in: 6·Δ/T² ≤ 2.5 m/s²)
     const M = P(man), o1 = [E[0] - M[0], E[1] - M[1]], dv = [S[0] - m0.x - o1[0], S[1] - m0.y - o1[1]], dl = Math.hypot(...dv), cap = 2.5 * Gpre * Gpre / 6, k = dl > cap ? cap / dl : 1;
     let o0 = [o1[0] + dv[0] * k, o1[1] + dv[1] * k];
