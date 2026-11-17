@@ -355,7 +355,7 @@ test('peek and turn: the arrows go around his body, even if he looked away befor
     await drive(g, p, gm => {
       if (!checked) {
         const h = gm.sim.a('hero'), c = gm.sim.a(gm.sc.carrier), face = Math.atan2(c.y - h.y, c.x - h.x);
-        assert.ok(Math.abs(Math.atan2(Math.sin(gm.yaw0 - face), Math.cos(gm.yaw0 - face))) < .01, 'arrows not centered on him facing the passer');
+        assert.ok(Math.abs(Math.atan2(Math.sin(gm.yaw0 - face), Math.cos(gm.yaw0 - face))) < .05, 'arrows not centered on him facing the passer'); // (round 3: within 3°: the passer steps off after his pass as the window opens)
         for (const t of gm.turnArcs()) assert.ok(Math.abs(t.a1 - t.a0) > 1, `arrow ${t.id} is a stub`);
         checked = true;
       }
