@@ -286,17 +286,26 @@ export class Sim {
     const ch = Math.cos(b.h), sh = Math.sin(b.h), n0 = a.tN || 0; // (just after a touch: the next is chosen after this, and is 1.4 m if a skill comes)
     // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
     // for that, at this one
-    const near = ahead => { for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > 1.6 && f < 6 && Math.abs(l) < 2.5) return l; } return null; };
+    // (round 6: the nearest of them in his way, not the first one found)
+    const near = ahead => { let best = null, bf = 9; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1.6 && f < 6 && Math.abs(l) < 2.5 && f < bf) { bf = f; best = l; } } return best; };
     let fl = near(ahead), n = n0 + ahead / 1.4; if (fl == null && !tap) { fl = near(0); n = n0; } // n: the touch the move starts at
-    if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too
-      const f = (o.x - a.x) * ch + (o.y - a.y) * sh - (ahead - 1.4), l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && f > -.5 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + ahead / 1.4; break; }
+    if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too, if he is ahead of him (round 6: not one level with him or behind: a fake at nobody)
+      const f = (o.x - a.x) * ch + (o.y - a.y) * sh - (ahead - 1.4), l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1 && Math.abs(l) < f + 1 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + ahead / 1.4; break; }
     }
     if (fl == null) return;
-    const side = Math.sign(SIDE[(n + 1) % 3]);
-    // The fake goes the other way from the touch that takes the ball on; when that touch goes straight on, he fakes to
-    // the side the defender stands (so the defender leans into his own side) and goes straight past.
+    // (round 6) A fake that makes sense: he fakes (or steps over) toward the side he will NOT take, and the ball leaves
+    // on the side he is going. Which side that is comes from the play, in this order: his run bends to one side after
+    // the move (he fakes the other way); the defender in his way stands to one side of his line (he fakes at him and
+    // goes by on the open side); the defender is dead ahead (he fakes to the side with more of their players, the
+    // crowded one). (The ball itself goes exactly as the dribble has it, a hand's width to either side: the fake is his body.)
+    const tb = Math.atan2(a.ty - a.y, a.tx - a.x) - b.h, bend = Math.hypot(a.tx - a.x, a.ty - a.y) > 2 ? Math.atan2(Math.sin(tb), Math.cos(tb)) : 0;
+    let crowd = 0; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 0 && f < 8 && Math.abs(l) > .3) crowd += Math.sign(l) / Math.max(1, Math.hypot(f, l)); }
+    const fake = Math.abs(bend) > .2 ? -Math.sign(bend) : Math.abs(fl) > .35 ? Math.sign(fl) : Math.abs(crowd) > .02 ? Math.sign(crowd) : fl >= 0 ? 1 : -1;
+    // (The touch after the fake takes the ball on, a hand's width to one side or straight: never to the side of the fake.
+    // If this touch's turn in the dribble would, the move waits a touch.)
+    if (Math.sign(SIDE[(n + 1) % 3]) === fake) return;
     const k = this.pickSkill(a, a.sp < 3.3 ? ['stepover', 'feint', 'scissors'] : ['stepover', 'feint'], 'run-at'); // two stepovers in one touch only at a jog
-    if (k) a[tap ? 'offer' : 'skill'] = { k, n, fake: side ? -side : fl > 0 ? 1 : -1, yaw: b.h };
+    if (k) a[tap ? 'offer' : 'skill'] = { k, n, fake, yaw: b.h, why: Math.abs(bend) > .2 ? 'bend' : Math.abs(fl) > .35 ? 'defender' : 'crowd', fl };
   }
   // The child tapped in time: the offered move is his (from the next moment; the picture eases into it). Returns its
   // name, or null when the offer is gone (the window has closed). Nothing in the game moves differently for it.
@@ -365,6 +374,10 @@ export class Sim {
       if (a.skill && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || touchAt(a) - a.skill.n > 1.4)) a.skill = null; // a dribble skill ends a little after its touch, or when anything else starts
       if (a.offer && (!has || b.move || b.reach || (a.kickAt != null && this.time - a.kickAt < .7) || touchAt(a) - a.offer.n > OFFER_END || a.sp < 1.5 || !this.offerOK)) { a.offer = null; this.offerOK = false; } // an offer closes in time for the move to set up (or when he slows down or anything else starts); the game allows the next one
       let dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+      // (round 6) While a skill turn is offered to him (game/skill.js: a.holdTurn) his turn waits: he carries the ball on
+      // the way it is going, at a walk, and the turn starts when the game lets it. Nothing else waits.
+      const hold = a.holdTurn && has && !b.move && !b.reach && d > .02;
+      if (hold) { dx = Math.cos(b.h) * 2; dy = Math.sin(b.h) * 2; d = 2; }
       if (fetch) {
         const bx = b.x - a.x, by = b.y - a.y, bd = Math.hypot(bx, by);
         if (bd < REACH - .1) { // in reach: a foot takes it, onto the way he goes, or (standing) in to his feet
@@ -380,7 +393,7 @@ export class Sim {
         else this.startTurn(a, ang(dx, dy));
       }
       const m = has ? b.move : null, u = m ? (this.time - m.t0) / m.dur : 0, last = m ? m.last ?? m.t[m.t.length - 1][0] : 0;
-      const sp = m ? a.speed * (u < last ? m.slow : m.slow + (1 - m.slow) * sm((u - last) / (1 - last))) : a.speed; // nearly still while a foot turns the ball
+      const sp = m ? a.speed * (u < last ? m.slow : m.slow + (1 - m.slow) * sm((u - last) / (1 - last))) : hold ? Math.min(a.speed, Math.max(.8, Math.min(a.sp, 1.4))) : a.speed; // nearly still while a foot turns the ball
       if (d > 0.02 && a.speed > 0) {
         if (m) a.sp = lerp(a.sp, sp, ease(dt, 10)); // he brakes into the turn and runs out of it
         let v = m ? a.sp : sp;

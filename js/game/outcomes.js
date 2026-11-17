@@ -12,6 +12,7 @@ import { kindOf, ACC, SPEED, goAt, PACE } from '../window.js';
 
 const TIMEOUT_TITLE = 'He got there!'; // (v64: the defender got to the ball before he chose; rounds.js TIMEOUT)
 const FINISH_RUN = 4.65; // (round 5) his run at goal with the ball: a child's sprint with a ball at his feet, no faster than a defender chasing him
+const THEIR_SAVE = .33; // (see finish)
 const MATCH_HOLD = { timeout: .7, kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
 const LOOSE = 1.05, REACH = 2; // steal: the ball is this far from the attacker's feet, and this close to him
 // Whether a well-defended play ends with the attackers stopped (true, about 2 in 3) or losing the ball.
@@ -117,6 +118,13 @@ export const outcomes = {
     if (inWay) yield .25; // (v66: a friend right on the shot's line has a moment to step off it before the wind-up: play moves on while he chooses, so one can be there)
     s.windup(id, 'shot', foot); yield .2;
     if (!shotClear(s.ball, shot, opps)) { yield* this.end('kept', 1.1); return; }
+    // (round 6) A match with keepers: a shot at the end of a run (not one he aimed himself) is now and then struck too
+    // near their keeper, and he holds it (seeded, THEIR_SAVE of them, as our keeper stops theirs): their ball.
+    if (gk && (this.mode === 'match' || this.mode === 'free') && seeded(a.x, a.y, s.time, this.score?.us ?? 0, 5) < THEIR_SAVE) {
+      const at = this.inFront(gk, { x: gk.x, y: gk.y, z: .8 }); s.kick(at.x, at.y, { speed: 15, arc: .15 }); this.kicked = true;
+      yield () => s.ball.state === 'loose';
+      Object.assign(s.ball, { state: 'held', carrier: gk.id }); yield .15; yield* this.savedShot(gk); return;
+    }
     const wrong = gk && this.guessWrong(gk, shot.y); this.keeperReact(gk, gk && (wrong || shotResult({ from: s.ball, y: shot.y, foot: 'placed', k: gk, force: 'goal' })), s.ball, wrong ? GUESS_T : 0);
     if (wrong) yield GUESS_T; // (his lean and step show before the kick)
     s.kick(shot.x, shot.y, { speed: 17, arc: .5 }); this.kicked = true;
@@ -1063,7 +1071,7 @@ export const outcomes = {
     this.keepOnly = good && (opt.startsWith('drib:') || opt.startsWith('push:')) && this.sc.kind !== 'receive' && this.rating(opt) === 'safe';
     const aimed = opt.startsWith('shoot:') && !!this.sim.keeper('them') && (this.step === 'aim' || this.step === 'foot'); // (he aimed in the aim view: his shot is seen from there, view.js aimView)
     if (aimed) this.aimFrom = { x: h.x, y: h.y };
-    Object.assign(this, { roles: null, teamJob: null, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
+    Object.assign(this, { roles: null, teamJob: null, playGood: good, result: null, phase: 'outcome', step: null, pendingDir: null, drag: null, camMode: this.sc?.kind === 'tackle' ? 'player' : aimed ? 'aim' : 'follow', ai: true, scripted: new Set(['hero']), ballTeam: 'us' });
     this.follow = { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     // (round 6) One of theirs within a step and a half of him as he plays the right thing goes in for it, now, and is
     // too late: he steps in at the ball (to a short step off it) as it is played, and is left off balance. (A dribble

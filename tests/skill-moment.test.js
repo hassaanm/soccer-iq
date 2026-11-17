@@ -30,7 +30,8 @@ async function frames(g, promise, n = 3600) {
 // One lesson play as a child plays it: the run-up, a moment to choose, then his choice.
 async function play(sc, opt, tap) {
   const { g, events } = makeGame(tap), log = [];
-  const offer = g.skillOffer; g.skillOffer = function (kind, k, n) { log.push({ kind, k, phase: this.phase }); return offer.call(this, kind, k, n); };
+  const offer = g.skillOffer; g.skillOffer = function (kind, k, n) { const s = this.sim, h = s.a('hero'), b = s.ball; // (round 6: and the picture at the offer, for the direction test)
+    log.push({ kind, k, phase: this.phase, good: this.playGood, fake: h.offer?.fake, h: b.h, at: [h.x, h.y], to: [h.tx, h.ty], opps: s.team('them').filter(o => !o.gk).map(o => [o.x, o.y]) }); return offer.call(this, kind, k, n); };
   g.mode = 'lesson'; g.load(sc); await frames(g, g.pre());
   toPicture(g); // (v66: he chooses in the window, when play is at the scene's own picture: the defender has come as near as the scene has him)
   await frames(g, g.outcome(opt, g.isGood(opt)));
@@ -87,4 +88,26 @@ test('asking ahead for a skill turn changes nothing in the sim', () => {
   s.turnAhead('hero');
   assert.equal(JSON.stringify([...s.agents.values()]) + JSON.stringify(s.ball), before);
   assert.equal(s.take('hero'), null, 'no offer, nothing to take');
+});
+
+// (round 6) A move that makes sense. A fake or a stepover goes toward the side he will not take: at the defender in his
+// way (or, when his run bends, away from the bend), and he goes by on the other side. A turn is offered only when he
+// really changes direction. And no move is offered in a play that is going wrong (a dribble into their players).
+test('a skill move fits the play: the fake goes at the defender and away from where he goes; a turn only with a real change of direction', async () => {
+  let runs = 0, turns = 0;
+  for (const sk of ['take-him-on', 'dribble-to-space', 'look-up']) for (const sc of allScenarios(sk)) for (const opt of optionsFor(sc).filter(o => /^(drib|push):/.test(o))) {
+    const r = await play(sc, opt, () => false);
+    for (const o of r.offers) {
+      assert.notEqual(o.good, false, `${sc.id} ${opt}: a move offered in a play that is going wrong`);
+      const ch = Math.cos(o.h), sh = Math.sin(o.h), rel = ([x, y]) => [(x - o.at[0]) * ch + (y - o.at[1]) * sh, (y - o.at[1]) * ch - (x - o.at[0]) * sh];
+      const tb = Math.atan2(o.to[1] - o.at[1], o.to[0] - o.at[0]) - o.h, bend = Math.atan2(Math.sin(tb), Math.cos(tb));
+      if (o.kind === 'turn') { turns++; assert.ok(Math.abs(bend) >= .3, `${sc.id} ${opt}: a ${o.k} offered for a change of direction of only ${(bend * 57.3).toFixed(0)}°`); continue; }
+      runs++; assert.ok(o.fake === 1 || o.fake === -1, `${sc.id} ${opt}: the fake has a side`);
+      // the nearest of theirs ahead of him and in his way (2.8 m on: where the move starts)
+      const inWay = o.opps.map(rel).filter(([f, l]) => f - 2.8 > 1.6 && f - 2.8 < 6 && Math.abs(l) < 2.5).sort((p, q) => p[0] - q[0])[0];
+      if (Math.abs(bend) > .2) assert.equal(o.fake, -Math.sign(bend), `${sc.id} ${opt}: his run bends ${bend > 0 ? 'left' : 'right'}, and the fake goes the same way`);
+      else if (inWay && Math.abs(inWay[1]) > .35) assert.equal(o.fake, Math.sign(inWay[1]), `${sc.id} ${opt}: the defender in his way is on his ${inWay[1] > 0 ? 'left' : 'right'}, and the fake goes to the open side`);
+    }
+  }
+  assert.ok(runs > 3 && turns > 10, `offers came (run-at ${runs}, turns ${turns})`);
 });

@@ -130,6 +130,18 @@ export const moving = {
     }
   },
 
+  // (round 6) A match: his shot was blocked and the ball lies loose (live.js toRebound). The choice has a window like
+  // any other: everyone goes on as he was going, easing up; their nearest player to the ball comes for it at a jog (and
+  // is still a step and more short of it as the ring empties: then he races for it, outcomes.js raceForIt).
+  reboundPlan() {
+    const s = this.sim, sc = this.sc, st = this.liveState(), lo = { x: sc.shot.loose[0], y: sc.shot.loose[1] };
+    const G = Math.max(.6, PACE * (Math.min(this.windowReal(), this.windowMin()) - .1) + .12);
+    const racer = s.team('them').filter(o => !o.gk).sort((p, q) => Math.hypot(p.x - lo.x, p.y - lo.y) - Math.hypot(q.x - lo.x, q.y - lo.y))[0];
+    const end = Object.fromEntries(Object.entries(st.at).map(([id, a]) => [id, [a.x + (a.vx || 0) * .25, a.y + (a.vy || 0) * .25]]));
+    if (racer) { const a = st.at[racer.id], d = Math.hypot(lo.x - a.x, lo.y - a.y) || 1, k = Math.max(0, Math.min(d - 1.4, 2.4 * G)) / d; end[racer.id] = [a.x + (lo.x - a.x) * k, a.y + (lo.y - a.y) * k]; }
+    const p = planLive(st, end, G, racer?.id); p.live = false; p.threat = racer ? { id: racer.id, to: sc.shot.loose } : null;
+    return p;
+  },
   // After a shot that came back out (round 2): the window is the ball's roll to rest; everyone goes from where he is to
   // where the scene has him as it stops, their player who gets to it first (the threat) on his way to it.
   followPlan() {
@@ -167,7 +179,7 @@ export const moving = {
     const s = this.sim, sc = this.sc;
     this.closeWindow();
     if (kindOf(sc) === 'tackle') return;
-    const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' && !sc.live ? this.followPlan() : this.plan(true);
+    const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' ? (sc.live ? this.reboundPlan() : this.followPlan()) : this.plan(true);
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
