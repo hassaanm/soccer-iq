@@ -89,7 +89,7 @@ export const live = {
     try { const th = rolesOf({ kind: 'attack' }, st.at).th, t = th && st.at[th], bx = h.x + .5, d = t ? Math.hypot(t.x - bx, t.y - h.y) : 0;
       if (t && !t.gk && d > 2.5) { near = { id: th, x: bx + (t.x - bx) / d * 2.3, y: h.y + (t.y - h.y) / d * 2.3 }; P.at[th].x = near.x; P.at[th].y = near.y; } } catch (e) { console.error(e); }
     this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed, near);
-    if (near) { let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), options: this.offerList(), from: st.at, lead: 0, yaw: this.yaw }); } catch (e) { console.error(e); }
+    if (near) { let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), Rfloor: this.windowMin(), options: this.offerList(), from: st.at, lead: 0, yaw: this.yaw }); } catch (e) { console.error(e); }
       if (plan && plan.threat?.id === near.id) { plan.sc = this.sc; plan.live = false; plan.fromLive = true; plan.ready = true; this.wplan = plan; } }
   },
 

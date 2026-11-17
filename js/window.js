@@ -20,6 +20,10 @@ export const WINDOW = { first: 10, 1: 8, 2: 6, 3: 4.5 };
 export const MIN_NORMAL = 4;                                 // never shorter than this at Normal
 export const THINK = { relaxed: 1.5, normal: 1, quick: .7 }; // the grown-ups setting "Thinking time"
 export const RETRY = 1.3;                                    // a lesson round he ran out of time in is tried again with a longer window
+// (round 5) A window is never cut shorter than this (real seconds), whatever the scene: 6 s at Normal in a lesson's first
+// round and at Level 1, 4.5 s anywhere else, scaled by the Thinking time setting; never more than was asked for.
+export const FLOOR = { easy: 6, any: 4.5 };
+export function windowFloor({ level = 1, first = false, think = 'normal' } = {}) { return (first || level <= 1 ? FLOOR.easy : FLOOR.any) * (THINK[think] ?? 1); }
 export function windowSeconds({ level = 1, first = false, think = 'normal', retry = 0 } = {}) {
   const base = Math.max(MIN_NORMAL, first ? WINDOW.first : WINDOW[clamp(Math.round(level) || 1, 1, 3)]);
   return base * (THINK[think] ?? 1) * Math.pow(RETRY, Math.min(3, retry));
@@ -296,7 +300,7 @@ function whyHolds(why, c, q, opps, goal, sc = null, h = null) {
 // far off he still is (agreeAt).
 export const PACE = .12;                       // the slowest the world goes in a window (as a share of real time)
 export const RUNIN = 6.5, CONTACT = .6;        // how far out the threat starts where there is room (m); how near the ball he gets (m)
-export const V_RUN = { min: 1.8, tight: 1.5, pref: 3.3, max: 4.1 }; // his average speed over the run-in (m/s): a jog at the least, a run by choice
+export const V_RUN = { min: 2, tight: 1.3, slow: 1, pref: 3.3, max: 4.1 }; // his average speed over the run-in (m/s): a jog at the least, a run by choice
 const ROOM = .85, STEP_T = .1, MOVE = .45, STEP_OWN = .9, BEAR = .45; // BEAR: how far (rad) his bearing may differ from P's
 const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], mul = (a, k) => [a[0] * k, a[1] * k], len = a => Math.hypot(a[0], a[1]);
 const U = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, perp = u => [-u[1], u[0]], rotv = (u, a) => [u[0] * Math.cos(a) - u[1] * Math.sin(a), u[0] * Math.sin(a) + u[1] * Math.cos(a)];
@@ -386,7 +390,7 @@ export function agreeAt(sc, plan, pos, t, opts = {}) {
 const cache = new WeakMap();
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
-  const key = opts.live ? null : JSON.stringify([opts.R, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
+  const key = opts.live ? null : JSON.stringify([opts.R, opts.Rfloor, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
   if (key) { const hit = cache.get(sc)?.[key]; if (hit) return clonePlan(hit); }
   const p = planHold0(sc, st, opts, kind);
   if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return clonePlan(p); }
@@ -422,7 +426,10 @@ function planHold0(sc, st, opts, kind) {
   const rLow = toP ? rP + 1 : Math.min(rP, 1.6), rMax = !th ? 0 : live ? rP : Math.max(Math.min(rWant, cap), rLow);
   const lenOf = r0 => Math.max(.3, toP ? r0 - rP : r0 - CONTACT);
   const Gpace = PACE * (R * RETRY - .1) + .1 + .01; // (the play a window of R s, and of its first longer retry, needs at PACE)
-  const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
+  // (round 5) Before a window is cut, the one who comes slows to an honest pace: a jog (V_RUN.min), a brisk walk for a
+  // short run-in (V_RUN.tight), and for the window's floor (opts.Rfloor) a walk (V_RUN.slow): still a defender closing in.
+  const Gfloor = PACE * (Math.min(R, opts.Rfloor || 0) - .1) + .1 + .01;
+  const Gfor = L => { let G = Math.max(L / V_RUN.pref, Gpace); G = Math.min(G, L / (L < 2.5 ? V_RUN.tight : V_RUN.min)); return Math.max(G, Math.min(Gfloor, L / V_RUN.slow), L / V_RUN.max, .6); }; // (a very short run-in: he steps in; never under .6 s of play)
   let G = opts.G || (th ? Gfor(lenOf(rMax)) : clamp(Gpace, 1.6, 2.6)), fixedG = !!opts.G;
   // ---- everyone else: the drift, and his own small part ----
   const sideways = (id, u) => { // the side to step across to: the one with more room, on the pitch
@@ -554,18 +561,28 @@ function planHold0(sc, st, opts, kind) {
     };
     // The window is as long as his run takes (a shorter run than hoped for, or a chase after a ball going away from him:
     // the shape is built again for that length, a few times over until the two agree).
-    let got = null;
-    for (let n = 0; n < 7; n++) {
-      const g1 = pick(best, G, fixedG || n > 0); if (g1) { got = g1; got.G = G; }
-      if (fixedG) break;
-      const G2 = g1 ? Gfor(g1.L) : Math.min(4.6, G * 1.4);
-      if ((g1 && Math.abs(G2 - G) <= .05) || (!g1 && G >= 4.6 - 1e-6)) break;
-      const b = score(build(best.sp, best.k, live ? 0 : best.tP * G2 / G, G2)); if (!live && b.bad > best.bad) break;
-      b.cost = best.cost; best = b; G = G2; if (!g1) got = null;
+    const solve = (best, G) => {
+      let got = null;
+      for (let n = 0; n < 7; n++) {
+        const g1 = pick(best, G, fixedG || n > 0); if (g1) { got = g1; got.G = G; }
+        if (fixedG) break;
+        const G2 = g1 ? Gfor(g1.L) : Math.min(4.6, G * 1.4);
+        if ((g1 && Math.abs(G2 - G) <= .05) || (!g1 && G >= 4.6 - 1e-6)) break;
+        const b = score(build(best.sp, best.k, live ? 0 : best.tP * G2 / G, G2)); if (!live && b.bad > best.bad) break;
+        b.cost = best.cost; best = b; G = G2; if (!g1) got = null;
+      }
+      if (got && Math.abs(got.G - G) > 1e-6) { const g2 = pick(best, G, true) || tryRun(best, G, got.r, got.sh); if (g2) got = { r: got.r, sh: got.sh, ...g2 }; } // (the run for the length it ended at)
+      // (and never shorter than his run needs at a jog: a short run-in is walked through at its own pace, not rushed)
+      if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = score(build(best.sp, best.k, best.tP * Gf / G, Gf)); if (b.bad <= best.bad) { const g2 = tryRun(b, Gf, got.r, got.sh); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
+      return { best, G, got };
+    };
+    let { got } = (r => { best = r.best; G = r.G; return r; })(solve(best, G));
+    // (round 5) Still shorter than the window's floor: the play drifts on more slowly (the ball is not carried into the one
+    // who comes), which leaves him a longer way in. The slowest drift that agrees and gives the longest window is taken.
+    if (!fixedG && !live && G < Gfloor - .02 && !best.bad) for (const sp of speeds.filter(v => v < best.sp)) {
+      const b = score(build(sp, best.k, best.tP, G)); if (b.bad) continue; b.cost = best.cost;
+      const r = solve(b, G); if (r.got && !r.best.bad && r.G > G + .03) { best = r.best; G = r.G; got = r.got; if (G >= Gfloor - .02) break; }
     }
-    if (got && Math.abs(got.G - G) > 1e-6) { const g2 = pick(best, G, true) || tryRun(best, G, got.r, got.sh); if (g2) got = { r: got.r, sh: got.sh, ...g2 }; } // (the run for the length it ended at)
-    // (and never shorter than his run needs at a jog: a short run-in is walked through at its own pace, not rushed)
-    if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = score(build(best.sp, best.k, best.tP * Gf / G, Gf)); if (b.bad <= best.bad) { const g2 = tryRun(b, Gf, got.r, got.sh); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
     if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
     else for (const id of [th, second].filter(Boolean)) { const a = at[id]; best.paths[id] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; }
   }

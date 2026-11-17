@@ -22,7 +22,7 @@ export const TIMEOUT = { title: 'He got there!', first: 'He came for the ball! C
 // The words for a time-out in this scene.
 export const timeoutWords = sc => (sc?.restart ? TIMEOUT.restart : sc?.kind === 'defense' ? TIMEOUT.defense : sc?.kind === 'receive' ? TIMEOUT.receive : sc?.run === 'follow' || sc?.shot ? TIMEOUT.follow : sc?.kind === 'support' ? TIMEOUT.off : TIMEOUT);
 import { pickFoot } from './outcomes.js';
-import { arrAt, pathAt, planHold } from '../window.js';
+import { arrAt, pathAt, planHold, PACE } from '../window.js';
 
 export const rounds = {
   // Short run-up: he dribbles forward head-down while defenders close in.
@@ -101,7 +101,9 @@ export const rounds = {
     const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo, b = s.ball;
     // (round 2) Everyone comes on as the pass travels, and is where the scene has him as it gets to him: the window is
     // the pass's flight (it is played as the window opens), and he picks his turn before it arrives.
-    const dur = Math.max(.25, Math.hypot(hx - .45 - (m.x + .4), hy - m.y) / PASS_IN);
+    // (round 5: a pass no faster than leaves him the window's floor of time: a firm pass, never under 3.2 m/s)
+    const far = Math.hypot(hx - .45 - (m.x + .4), hy - m.y), need = PACE * (Math.min(this.windowReal(), this.windowMin()) - .1) + .12;
+    const dur = Math.max(.25, far / PASS_IN, Math.min(need, far / 3.2));
     await this.plannedRunUp({ skip: ['m1'], G: dur, during: async T => {
       await this.delay(Math.max(0, T - .2));
       const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
@@ -248,7 +250,7 @@ export const rounds = {
     this.yaw = this.frameYaw(this.sc, { x: base.heroTo[0], y: base.heroTo[1] }, s.a('m1'));
     const st = this.liveState(), P = { at: Object.fromEntries(Object.entries(st.at).map(([id, a]) => [id, { ...a, vx: 0, vy: 0 }])) };
     for (const id of ['o1', 'o2']) if (P.at[id] && t.move?.[id]) { P.at[id].x = t.move[id][0]; P.at[id].y = t.move[id][1]; }
-    let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), from: st.at, lead: T, yaw: this.yaw }); } catch (e) { console.error(e); }
+    let plan = null; try { plan = planHold(this.sc, P, { R: this.windowReal(), Rfloor: this.windowMin(), from: st.at, lead: T, yaw: this.yaw }); } catch (e) { console.error(e); }
     if (!plan) { s.go('o1', ...t.move.o1, 3.2); s.go('o2', ...t.move.o2, 2.6); await this.delay(T); return; } // (as before v66: the choice opens from play going on)
     plan.sc = this.sc; plan.live = false; plan.openAt = s.time + T; this.wplan = plan;
     for (const [id, p] of Object.entries(plan.paths)) {

@@ -3,7 +3,7 @@
 // part, and the threat already running in from farther out); then play drops into slow motion and goes on until he
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
-import { planHold, planLive, pathAt, windowSeconds, kindOf, attackOptions, spotsNow, PACE } from '../window.js';
+import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE } from '../window.js';
 import { L, W, facesBall } from './shared.js';
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -58,7 +58,7 @@ export const moving = {
     if (kindOf(sc) === 'tackle') return null;
     const st = live ? this.liveState() : this.sceneState(sc);
     try {
-      const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), ...extra });
+      const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra });
       if (p) p.live = live;
       return p;
     } catch (e) { console.error(e); return null; } // (never a stuck choice: without a plan the choice opens as before v64)
@@ -147,6 +147,11 @@ export const moving = {
   windowReal() {
     const sc = this.sc, id = sc?.live ? this.idea?.() : sc?.skill, lv = this.levelOf?.(id) ?? (this.mode === 'lesson' ? 1 : 3);
     return windowSeconds({ level: Math.max(1, lv), first: !!this.firstRound, think: (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal', retry: this.timeouts || 0 });
+  },
+  // The shortest this choice's window may be cut to (window.js windowFloor), with the same level and setting as windowReal.
+  windowMin() {
+    const sc = this.sc, id = sc?.live ? this.idea?.() : sc?.skill, lv = this.levelOf?.(id) ?? (this.mode === 'lesson' ? 1 : 3);
+    return windowFloor({ level: Math.max(1, lv), first: !!this.firstRound, think: (this.toStreak || 0) >= 3 ? 'relaxed' : this.thinkTime?.() || 'normal' });
   },
   openWindow() {
     const s = this.sim, sc = this.sc;
