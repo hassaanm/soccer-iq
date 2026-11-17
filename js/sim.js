@@ -198,7 +198,8 @@ export class Sim {
   a(id) { return this.agents.get(id); }
   team(t) { const out = []; for (const a of this.agents.values()) if (a.team === t && !a.gk) out.push(a); return out; } // (outfield players only)
   keeper(t) { for (const a of this.agents.values()) if (a.gk && a.team === t) return a; return null; }
-  go(id, x, y, speed = 4) { const a = this.a(id); a.tx = x; a.ty = y; a.speed = speed; if (this.ball.reach && this.ball.carrier === id) this.ball.reach.stop = false; }
+  // (round 7) hop: sent a step or less from where he is, to somewhere new (step: he goes there at a step's pace).
+  go(id, x, y, speed = 4) { const a = this.a(id); a.hop = Math.hypot(x - a.x, y - a.y) < .5 ? (a.hop || Math.hypot(x - a.tx, y - a.ty) > .3) : false; a.tx = x; a.ty = y; a.speed = speed; if (this.ball.reach && this.ball.carrier === id) this.ball.reach.stop = false; }
   stop(id) { const a = this.a(id); a.tx = a.x; a.ty = a.y; if (this.ball.reach && this.ball.carrier === id) this.ball.reach.stop = true; }
   stopAll() { for (const a of this.agents.values()) { a.tx = a.x; a.ty = a.y; } if (this.ball.reach) this.ball.reach.stop = true; }
   // He has the ball: it stays on its line out from his feet until a foot moves it. A pass he takes counts as "just
@@ -419,7 +420,8 @@ export class Sim {
         } // (still coming round from the way he was going)
         // (round 7) One the play's script sends sets off as a body can, not at full speed from the first step: 20 m/s² (a quarter of a second to a sprint).
         if (!a.ease && (!has || (a.id !== 'hero' && !m)) && !a.gk) { if (a.rd && a.rv > 1 && d > .6 && (a.rd[0] * dx + a.rd[1] * dy) / d < -.3) a.rv = 0; (a.rd ||= [0, 0])[0] = dx / d; a.rd[1] = dy / d; // (sent back the other way: he sets off anew)
-          if (d > .3) v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v; } else a.rv = v; // (not for the last step onto a place he is following)
+          if (d > .3) v = Math.min(v, (a.rv || 0) + 20 * dt); a.rv = v;
+          if (a.hop) v = Math.min(v, .8 + d * 5); } else a.rv = v; // (a hop of a step or less, to a place he was not already going to: at a step's pace, not a sprint's)
         const s = Math.min(v * dt, d);
         const before = a.dist; a.x += dx / d * s; a.y += dy / d * s; if (!m && !a.gk) turnToward(a, dx / d, dy / d, dt); a.dist += s; // (a keeper side-steps and dives: he keeps facing the play)
         if (a.id === 'hero' && Math.floor(a.dist / .7) > Math.floor(before / .7)) this.on('step');

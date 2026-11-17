@@ -168,7 +168,7 @@ export const outcomes = {
     for (const p of s.agents.values()) if (p.id !== id && !p.gk && !this.scripted.has(p.id) && closestOnLane(p, s.ball, to, .02).d < 1.2) { this.scripted.add(p.id); this.frozen.push(p.id); this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); }
     // (v66) One of the other team the play's script has coming at the kicker (the one who was running in) may be on the
     // ball's line near its start: he too steps off it. (Not one waiting where it is going: he is there to cut it out.)
-    for (const p of s.agents.values()) if (p.id !== id && !p.gk && this.scripted.has(p.id) && !this.frozen.includes(p.id) && dist(p, to) > 1.1 && (p.team === a.team || dist(p, s.ball) < 3) && closestOnLane(p, s.ball, to, .02).d < .9) this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); // (and a friend who has drifted onto it, anywhere along it)
+    for (const p of s.agents.values()) if (p.id !== id && !p.gk && this.scripted.has(p.id) && !this.frozen.includes(p.id) && dist(p, to) > 1.1 && Math.hypot(p.tx - to.x, p.ty - to.y) > 1 && (p.team === a.team || dist(p, s.ball) < 3) && closestOnLane(p, s.ball, to, .02).d < .9) this.giveWay(p, s.ball, to, (opts?.arc ?? .3) < .4); // (and a friend who has drifted onto it, anywhere along it)
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
     const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, x > L - .5 || x < .5 ? 'shot' : kind, [...s.agents.values()].filter(o => o.team !== a.team)); // (at goal, the side's foot, also for a placed inside-foot shot: v64, he may come to it from any way he was carrying the ball)
@@ -228,7 +228,7 @@ export const outcomes = {
     }
     // The receiver steps toward the ball to meet it; the defender in the lane gets there first.
     this.scripted.add(id); s.go(id, lerp(m.x, s.ball.x, .3), lerp(m.y, s.ball.y, .3), 4.2);
-    this.scripted.add(ic.opp.id); ic.opp.mom = null; ic.opp.momOff = this.sim.time + 1.5; s.go(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once)
+    this.scripted.add(ic.opp.id); ic.opp.mom = null; this.comeRound(ic.opp.id, ic.x, ic.y, 6); // (he steps into its line at once; round 7: coming round, not flipping, when he was running the other way)
     yield* this.strike('hero', ic.x, ic.y, { speed: 13, arc: .15 });
     yield () => s.ball.state === 'loose';
     const t0 = s.time; yield () => { s.go(ic.opp.id, s.ball.x, s.ball.y, 6); return dist(ic.opp, s.ball) < .7 || s.time - t0 > 1; };
@@ -932,7 +932,10 @@ export const outcomes = {
     // His defender: behind him, he chases him (a step behind, and slower). Standing in his way on the other side
     // ('go-far'), he holds his place, edging toward the ball.
     const o2at = { x: o2.x, y: o2.y }, behind = o2.x < h.x;
-    const follows = () => { if (!behind) { s.go('o2', lerp(o2at.x, m.x, .12), lerp(o2at.y, m.y, .12), 1.5); return; } const k = dist(o2, h) || 1; s.go('o2', h.x + (o2.x - h.x) / k * 1.6, h.y + (o2.y - h.y) / k * 1.6, 4.2); };
+    const follows = () => { if (!behind) { s.go('o2', lerp(o2at.x, m.x, .12), lerp(o2at.y, m.y, .12), 1.5); return; } const k = dist(o2, h) || 1;
+      // (round 7: once he is that near he runs on with him, the way his player is running: he is never sent back a step to keep his distance)
+      if (k < 1.8) { const hx = h.tx - h.x, hy = h.ty - h.y, hl = Math.hypot(hx, hy); if (hl > .3) s.go('o2', o2.x + hx / hl * 1.5, o2.y + hy / hl * 1.5, 3.6); else s.stop('o2'); return; }
+      s.go('o2', h.x + (o2.x - h.x) / k * 1.6, h.y + (o2.y - h.y) / k * 1.6, 4.2); };
     let alive = null;
     yield () => {
       if (via && dist(h, via) < .5) { s.go('hero', P.x, P.y, 5.2); via = null; }
