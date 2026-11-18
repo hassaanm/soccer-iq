@@ -15,7 +15,7 @@ export const input = {
   get canAct() { return this.phase === 'decide' && this.mode !== 'demo' && !this.showing; },
   get canLook() { return (this.phase === 'pre' || this.phase === 'decide') && this.mode !== 'demo' && !this.showing; },
   // LOOK is a toggle: head up to see the field, head down to watch the ball.
-  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) { this.scanned = true; if (this.phase === 'pre') this.lookedEarly = true; } }, // (v64: a look before the choice opens gives him more of its time, as on a pitch)
+  toggleLook() { if (!this.canLook) return; this.lookUp = !this.lookUp; this.sfx(this.lookUp ? 'up' : 'down'); if (this.lookUp) { this.scanned = true; if (this.phase === 'pre') this.lookedEarly = true; if (this.sc?.shots) this.faceGoal(); } }, // (v64: a look before the choice opens gives him more of its time, as on a pitch) (v72: in a shot lesson's scene his look goes to the goal and the keeper)
   // Turning stays where he leaves it, so he can turn all the way around to find someone behind him.
   lookStart(x, width) { if (this.canLook && this.step !== 'dribble') { this.cancel(this.swing); this.drag = { x0: x, yaw0: this.yaw, w: width }; } },
   lookMove(x) {
