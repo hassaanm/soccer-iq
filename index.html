@@ -168,7 +168,7 @@
 addEventListener('error', e => {
   if (!/export|import|module/i.test(e.message || '')) return;
   try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
-  const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'tex', 'pro/rig', 'pro/hair', 'pro/motion', 'pro/light', 'pro/sky', 'pro/grass', 'pro/post', 'pro/stadium', 'pro/park', 'pro/keeper', 'fx', 'sound', 'voice', 'geom', 'teams', 'flair', 'version',
+  const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'tex', 'pro/rig', 'pro/hair', 'pro/motion', 'pro/light', 'pro/sky', 'pro/grass', 'pro/post', 'pro/stadium', 'pro/park', 'pro/keeper', 'fx', 'sound', 'storage', 'voice', 'geom', 'teams', 'flair', 'version',
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
     'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm', 'voicelines']
