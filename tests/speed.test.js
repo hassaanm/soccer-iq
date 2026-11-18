@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = f => readFileSync(join(root, f), 'utf8');
@@ -20,27 +21,30 @@ test('the speed test is silent unless its sound box is ticked: no player can be 
   assert.equal(page.match(/\.unlock\(\)/g)?.length, 1, 'one unlock');
   assert.match(page, /withSound = !!\$\('#stSound'\)\?\.checked;\s*if \(withSound\) \{ try \{ G\.sound\.SILENT\.on = false; G\.sound\.unlock\(\); G\.sound\.setMuted\(true\);/);
   assert.match(page, /if \(r\.sfx && withSound\)/, 'only the sound runs unmute');
-  assert.match(page, /else \{ G\.hush\(\); sound\.setMuted\(true\); \}/, 'and mute again as they end');
+  assert.match(page, /else \{ G\.hush\(\); sound\.setMuted\(true\); applyGraphics\(\); \}/, 'and mute again as they end');
   assert.match(read('dev/speed.html'), /you will <b>hear<\/b> the game's sounds/, 'the page says so');
-  // the one audio run plays zeros on muted players
-  assert.match(page, /el\.muted = true; el\.volume = 0;/);
-  assert.match(read('dev/speed.js'), /new ArrayBuffer\(44 \+ n \* 2\), v = new DataView\(buf\); \/\/ the samples stay zero/, 'nothing is written into the samples');
-  assert.ok(!/setInt16|Float32Array/.test(page.slice(page.indexOf('function silentWav'), page.indexOf('let quiet'))), 'no sample is ever set');
+  assert.ok(!/new Audio\(/.test(page), 'the page makes no player of its own');
 });
 
 test('the speed test writes nothing to his save but settings.tuned', () => {
   const page = code('dev/speed.js');
   assert.equal(page.match(/REAL\.setItem\(/g)?.length, 1, 'one write to the real storage');
-  assert.match(page, /if \(tuned\) s\.settings\.tuned = tuned; else delete s\.settings\.tuned;\s*REAL\.setItem\(SAVE_KEY, JSON\.stringify\(s\)\);/, 'and it changes only settings.tuned');
+  assert.match(page, /if \(tuned\) save\.settings\.tuned = tuned; else delete save\.settings\.tuned;\s*REAL\.setItem\(SAVE_KEY, JSON\.stringify\(save\)\);/, 'and it changes only settings.tuned');
   assert.match(page, /globalThis\.SOCCER_THROWAWAY = \{ map \};/, 'the game sees a throwaway copy');
   assert.ok(page.indexOf('SOCCER_THROWAWAY') < page.indexOf("import('../js/"), 'set before any game module loads');
   assert.ok(!/if \(!swapped\)/.test(page), 'replacing window.localStorage is not required');
 });
 
-test('the speed test runs every switch the brief asks for', () => {
+test('the speed test (version 2): the standard three times, the ways of starting a sound, the pop-ups, under two minutes', () => {
   const page = code('dev/speed.js'), runs = page.match(/const RUNS = \[([\s\S]*?)\n\];/)[1];
-  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'sfx: true', 'voice: true', "body: ['v75look', 'v75layers']", "body: ['softwords']", 'pretty: true', "id: 'base2'"])
+  for (const want of ["id: 'base'", "id: 'base2'", "id: 'base3'", "sfx: 'one'", "sfx: 'pool'", "sfx: 'later'", "sfx: 'pool+later'", 'rebuild: true', "body: ['nofx']", "off: ['blur', 'softwords']", 'pr: 2 ', 'pretty: true'])
     assert.ok(runs.includes(want), want);
+  const n = (runs.match(/\{ id:/g) || []).length, heard = (runs.match(/sfx: '/g) || []).length;
+  const [RUN, HEARD] = page.match(/const RUN_MS = (\d+), HEARD_MS = (\d+)/).slice(1).map(Number);
+  assert.ok(((n - heard) * RUN + heard * HEARD) / 1000 + 6 < 120, 'under two minutes');
+  const first = runs.indexOf("id: 'base'"), second = runs.indexOf("id: 'base2'"), third = runs.indexOf("id: 'base3'");
+  assert.ok(first < second && second < third && runs.indexOf("'pretty'") < third, 'the standard runs spread through the test');
+  assert.match(page, /noise \(standard ×3\)/, 'the spread is printed');
   assert.ok(read('js/ui/menu.js').length && read('index.html').includes('id="speedTestBtn"'), 'the grown-ups menu has the row');
   assert.match(code('js/ui/speed.js'), /speedTestBtn'\)\.onclick = \(\) => \{ location\.href = 'dev\/speed\.html'; \}/);
 });
@@ -74,7 +78,7 @@ test('voice clips load a few at a time, and a line that needs one now puts it fi
   // a clip already loading or loaded is only moved up the queue, never queued again with nothing to run
   assert.match(s, /return job\.p; \}\s*if \(!go\) return null;/);
   // and the queue itself, run here on its own: priority, the limit, and a second ask for a clip in flight
-  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip('));
+  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip(')).replace(/^export /gm, '');
   const q = new Function(src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')();
   const done = {}, go = f => () => new Promise(r => { done[f] = r; });
   for (const f of ['a', 'b', 'c', 'd', 'e', 'f']) q.queued(f, go(f), false);
@@ -121,13 +125,101 @@ test('the game reaches the save only through js/storage.js', () => {
   for (const f of walk('js')) if (f !== join('js', 'storage.js')) assert.ok(!/\blocalStorage\b/.test(code(f)), f + ' uses localStorage directly');
 });
 
-test('tuned settings count only as true booleans and pixel ratios 2 or 3', () => {
+test('one standard look everywhere; a test result wins only with real values; the menu says what is in force', () => {
   const sp = code('js/ui/speed.js');
-  assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0 \};/);
-  const fn = new Function('P', sp.match(/const tuned = \(\) => \{[\s\S]*?: 0 \}; \};/)[0] + 'return tuned();');
-  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3' } } }), { blur: false, glow: false, soft: false, pr: 0 });
-  assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2 } } }), { blur: true, glow: false, soft: true, pr: 2 });
-  assert.deepEqual(fn({ settings: {} }), {});
-  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to normal settings</, 'a way back');
-  assert.match(read('index.html'), /About 90 seconds, a few of them with sound/, 'the menu row says there is sound');
+  assert.match(sp, /export const graphics = \(\) => 'smooth';/, 'no Smooth or Pretty choice: a saved settings.graphics is ignored');
+  assert.match(sp, /export const STANDARD = \{ blur: true, glow: true, soft: true, pr: 0 \};/);
+  const src = sp.match(/export const tuned = \(\) => \{[\s\S]*?return o; \};/)[0].replace('export ', '');
+  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', 'TUNED_VERSION', src + 'return tuned();')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 }, 2);
+  const std = { blur: true, glow: true, soft: true, pr: 0, fromTest: false };
+  assert.deepEqual(fn({ settings: {} }), std, 'the standard');
+  assert.deepEqual(fn({ settings: { graphics: 'pretty' } }), std, 'an old Pretty is ignored');
+  assert.deepEqual(fn({ settings: { tuned: { pr: 3 } } }), std, "v76's result (no version) is ignored");
+  assert.deepEqual(fn({ settings: { tuned: { tv: 1, blur: false, pr: 2 } } }), std, 'another version is ignored');
+  assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), std, 'every value invalid: the standard, and the menu says so');
+  assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' } } }), { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18', fromTest: true });
+  assert.match(sp, /const t = tuned\(\), set = t\.fromTest;/, 'the menu calls it a test result only when one is in force');
+  assert.match(code('dev/speed.js'), /writeTuned\(\{ tv: G\.TUNED_VERSION,/, 'the test stamps its results');
+  const html = read('index.html');
+  assert.ok(!html.includes('gfxSel') && !/>Pretty</.test(html), 'no Smooth / Pretty row');
+  assert.match(html, /<small id="gfxNow">/); assert.match(html, /id="gfxResetRow"/); assert.match(html, /Run the speed test<small>About 100 seconds, some of it with sound/);
+  assert.match(sp, /if \(\$\('#gfxResetRow'\)\) \$\('#gfxResetRow'\)\.style\.display = w\.set \? '' : 'none';/, 'the reset row shows only with a test result');
+  const page = code('dev/speed.js');
+  assert.match(page, /\$\('#stMsg'\)\.textContent = `Green: as good as the standard runs\. \$\{applyBest\(b\)\}/, 'the test uses what it found, by itself');
+  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to standard settings</, 'and a way back');
+  assert.ok(!read('dev/speed.html').includes('stBest'), 'no separate best-settings button');
+});
+
+
+test('effects start in the way the speed test found best; two players for the frequent ones, never one still playing', () => {
+  const s = code('js/sound.js');
+  assert.match(s, /export const SFX_START = \{ mode: 'pool\+later' \};/);
+  assert.match(s, /const FREQ = new Set\(\['tap', 'click', 'kick', 'up', 'star:0', 'star:1', 'star:2'\]\), POOL = 2;/);
+  const src = s.slice(s.indexOf('function fxPick('), s.indexOf('function fxStart('));
+  const fxEls = new Map(), fxNext = new Map(), pick = new Function('fxEls', 'fxNext', src + 'return fxPick;')(fxEls, fxNext);
+  const a = { paused: false, ended: false }, b = { paused: true, ended: false };
+  fxEls.set('tap', [a, b]); fxEls.set('goal', [a]);
+  assert.equal(pick('tap', true), b, 'the free one');
+  b.paused = false; assert.ok([a, b].includes(pick('tap', true)), 'both busy: the one started longest ago');
+  assert.equal(pick('tap', false), a, "'one' mode: always the first");
+  assert.equal(pick('goal', true), a);
+  assert.match(code('js/ui/speed.js'), /SFX_START\.mode = t\.sfx \|\| 'pool\+later';/);
+});
+
+test('the modules this work touches parse', () => {
+  for (const f of ['js/sound.js', 'js/ui/speed.js', 'js/ui/hud.js', 'js/ui/results.js', 'js/world.js', 'js/main.js', 'js/storage.js', 'dev/speed.js']) {
+    const r = spawnSync(process.execPath, ['--check', join(root, f)], { encoding: 'utf8' });
+    assert.equal(r.status, 0, f + ': ' + r.stderr);
+  }
+});
+
+test('a result builds no nodes: the big words, stars, dots and score reuse theirs', () => {
+  const h = code('js/ui/hud.js');
+  for (const gone of ["big.querySelector('b').innerHTML", "querySelector('.stars').innerHTML", 'inner.innerHTML', 'ui.dots.innerHTML'])
+    assert.ok(!h.includes(gone), gone + ' is gone');
+  assert.match(h, /if \(i\.firstChild\.nodeValue !== t\) i\.firstChild\.nodeValue = t;/, 'letters change their text in place');
+  assert.match(h, /if \(was && was\.teams === `\$\{us\.id\} \$\{them\.id\}` && ems\.length === 2\)/, 'the score changes only its numbers');
+  assert.match(read('css/app.css'), /:is\(#banner,#skillName\) i\.off\{display:none\}/);
+  assert.match(code('js/ui/results.js'), /requestAnimationFrame\(\(\) => \{ if \(tok === paperTok\) \{ el\.prepend\(box\);/, 'confetti one frame after the card');
+});
+
+test('the governor steps down only after five slow seconds in a row, never while voice clips load', () => {
+  const w = code('js/world.js');
+  const src = 'function ' + w.slice(w.indexOf('  pace(ms) {') + 2, w.indexOf("  // (round 11) The grown-ups' \"Graphics\" setting") > 0 ? w.indexOf("  // (round 11) The grown-ups' \"Graphics\" setting") : w.indexOf('  setGraphics('));
+  const QUALITY = eval(w.match(/const QUALITY = (\[[\s\S]*?\]);/)[1]);
+  let loading = 0;
+  const make = () => new Function('QUALITY', 'SLOW_SECONDS', 'clipsLoading', 'devicePixelRatio', 'performance', src + '; return pace;')(QUALITY, 5, () => loading, 3, { now: () => 1e9 });
+  const world = () => ({ level: 0, pacer: { win: [], t: 0, slow: 0, skip: 3, first: 0, steps: 0, done: false }, pending: null });
+  const run = (o, ms, secs) => { const pace = make(); for (let t = 0; t < secs * 1000; t += ms) pace.call(o, ms); };
+  let o = world(); run(o, 16.7, 60); assert.equal(o.pending, null, 'a steady 60 never steps');
+  o = world(); run(o, 19, 60); assert.equal(o.pending, null, 'about 52 a second never steps');
+  o = world(); run(o, 40, 7); assert.equal(o.pending, null, '4 slow seconds (after the first 3 not judged) are not enough');
+  o = world(); run(o, 40, 10); assert.equal(o.pending, 1, 'five slow seconds in a row step down once');
+  o = world(); loading = 5; run(o, 40, 20); assert.equal(o.pending, null, 'not while clips load'); loading = 0;
+});
+
+test('the speed test changes a setting only when the evidence is outside the noise of the three standard runs', () => {
+  const page = code('dev/speed.js'), bestOf = new Function(page.match(/function bestOf\(res\) \{[\s\S]*?\n\}\n/)[0] + 'return bestOf;')();
+  const run = (id, fps, p95, slow, extra = {}) => ({ id, name: id, fps, p95, slow, max: 40, n: 300, ...extra });
+  const base = (a = 0) => [run('base', 54 + a, 26, 6, { base: true }), run('base2', 55, 25, 5, { base: true }), run('base3', 53, 33, 8, { base: true })];
+  const sounds = (one, pool, later, pl) => [run('one', ...one, { sfx: 'one' }), run('pool', ...pool, { sfx: 'pool' }), run('later', ...later, { sfx: 'later' }), run('poollater', ...pl, { sfx: 'pool+later' })];
+  // all equal: nothing moves away from the standard (except a ratio 2 that is no worse on every measure)
+  let b = bestOf([...base(), ...sounds([54, 26, 6], [54, 26, 6], [54, 26, 6], [54, 26, 6]), run('plain', 55, 25, 5), run('pr2', 54, 26, 6)]);
+  assert.equal(b.sfx, null); assert.ok(b.blur && b.glow && b.soft); assert.equal(b.pr, 2);
+  assert.ok(b.why.some(w => /no clear difference, kept standard/.test(w)), 'says so');
+  // within the noise (3 slow frames of spread): still the standard
+  b = bestOf([...base(), ...sounds([54, 26, 4], [54, 26, 5], [54, 26, 6], [54, 26, 6]), run('plain', 56, 25, 4), run('pr2', 42, 30, 6)]);
+  assert.equal(b.sfx, null, 'one or two slow frames fewer is noise'); assert.ok(b.blur, 'a small gain is noise'); assert.equal(b.pr, 0, 'ratio 2 at 42 a second loses');
+  // one clearly better: it wins
+  b = bestOf([...base(), ...sounds([54, 26, 14], [54, 26, 2], [54, 26, 12], [54, 26, 12]), run('plain', 59, 19, 0), run('pr2', 54, 34, 6)]);
+  assert.equal(b.sfx, 'pool'); assert.ok(!b.blur && !b.glow && !b.soft, 'off when clearly better without them'); assert.equal(b.pr, 0, 'ratio 2 worse on the 95th percentile');
+  // no sound runs (box unticked)
+  b = bestOf([...base(), run('pr2', 54, 26, 6)]); assert.equal(b.sfx, null); assert.equal(b.measuredSfx, false);
+  assert.ok(b.why.length >= 4 && b.why.every(w => typeof w === 'string'), 'each decision says what it compared');
+});
+
+test('a voice clip fetch that never ends does not stop the governor for good', () => {
+  const s = code('js/sound.js');
+  assert.match(s, /export const clipsLoading = \(\) => \(performance\.now\(\) - moved < STUCK \? loading \+ waiting\.length : 0\);/);
+  assert.match(s, /setTimeout\(\(\) => ctl\.abort\(\), 20000\)/, 'a fetch is given up after 20 s');
 });

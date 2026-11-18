@@ -780,6 +780,9 @@ body.smooth:not(.v75look) #hud .btn{transition:transform .07s}
 #tunnel > img.edge{display:none}
 html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel{display:block;background:none}
 html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel > img.edge{display:block;position:absolute;inset:0;width:100%;height:100%;will-change:transform}
+/* (round 14) Reused nodes (js/ui/hud.js letters, marks): a letter not used by this word, and a result with no stars. */
+:is(#banner,#skillName) i.off{display:none}
+#rate .stars.none{display:none}
 /* (v76) The play log ("Record play", js/ui/playlog.js), shown only while it records (body.logon): the flag in play, top
    right under the sound button (clear of the play buttons, the home button and a thumb), "Copy log" and "Clear" on the
    home screen between the team size and PLAY, and the box to copy it from by hand when the clipboard says no. */

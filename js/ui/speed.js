@@ -1,19 +1,32 @@
-// The grown-ups' "Speed" settings (round 11): Graphics (Smooth, the default on phones, or Pretty) and "Record speed"
-// (the frame recorder, js/perf.js) with its report to copy.
+// The grown-ups' "Speed" settings: Graphics (round 14: one standard look on every device, or what the speed test chose for
+// this one) and "Record speed" (the frame recorder, js/perf.js) with its report to copy.
 import { $ } from './dom.js';
 import { P, save } from './store.js';
 import { world } from './stage.js';
 import * as perf from '../perf.js';
+import { SFX_START, SFX_MODES } from '../sound.js';
 
-const phone = () => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } };
-export const graphics = () => (P.settings.graphics === 'pretty' || P.settings.graphics === 'smooth' ? P.settings.graphics : phone() ? 'smooth' : 'pretty');
+// (round 14) There is no Smooth or Pretty choice any more: every device starts from the standard below (what the owner's
+// phone landed on in the speed test: the cheap way of painting, sharpness 1.5, the head-down blur, the glow and the big
+// words' soft shadow). A saved `settings.graphics` from before is ignored. The old full picture ('pretty') is drawn only in
+// the speed test's comparison run.
+export const graphics = () => 'smooth';
 export const smooth = () => mode === 'smooth';
-let mode = 'pretty';
-// (round 13) What the speed test (dev/speed.html) measured as free on this phone, kept in the save by its "Use the best
-// settings" button: { blur, glow, pr, soft }. Smooth then puts back the head-down blur, the glow, or more pixels.
-// Only true counts as on, and only 2 or 3 as a pixel ratio: a stray value ("no", "1") changes nothing.
-const tuned = () => { const t = P.settings.tuned; if (!t || typeof t !== 'object') return {};
-  return { blur: t.blur === true, glow: t.glow === true, soft: t.soft === true, pr: t.pr === 2 || t.pr === 3 ? t.pr : 0 }; };
+let mode = 'smooth';
+export const STANDARD = { blur: true, glow: true, soft: true, pr: 0 };
+export const TUNED_VERSION = 2; // (the speed test's version that wrote `settings.tuned`: an older result, as v76's, is ignored)
+// What the speed test (dev/speed.html) chose for this device, kept in the save when it finishes: { blur, glow, soft, pr, sfx,
+// at }. Each value wins over the standard only when it is a real one: true or false, a pixel ratio of 2 or 3, a known way of
+// starting sounds; anything else ("no", "1") leaves the standard.
+// A result from another version of the test, or one with no valid value at all, reads as the standard (fromTest false).
+export const tuned = () => { const t = P.settings.tuned, o = { ...STANDARD, fromTest: false }; if (!t || typeof t !== 'object' || t.tv !== TUNED_VERSION) return o;
+  let n = 0;
+  for (const k of ['blur', 'glow', 'soft']) if (typeof t[k] === 'boolean') { o[k] = t[k]; n++; }
+  if (t.pr === 2 || t.pr === 3 || t.pr === 0) { if (t.pr) o.pr = t.pr; n++; }
+  if (SFX_MODES.includes(t.sfx)) { o.sfx = t.sfx; n++; }
+  if (!n) return { ...STANDARD, fromTest: false };
+  if (typeof t.at === 'string') o.at = t.at;
+  o.fromTest = true; return o; };
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
@@ -21,6 +34,7 @@ export function applyGraphics() {
   document.body.classList.toggle('smooth', sm); document.body.classList.toggle('blur', sm && !!t.blur); // (blur: the head-down edge as in Pretty)
   document.body.classList.toggle('softwords', sm && !!t.soft); // (soft: the big words' soft shadow, css/app.css)
   world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: t.pr } : {});
+  SFX_START.mode = t.sfx || 'pool+later'; // (round 14: how effects start, as the speed test found best here; sound.js)
 }
 // (round 13) Switches for the speed test only (dev/speed.js); nothing here is saved. cap: the 60-a-second cap (main.js);
 // strip: read the picture's bottom row for the iPad's strip colour even on an iPhone (null: as the device needs); onFrame:
@@ -31,15 +45,27 @@ applyGraphics(); applyRecord();
 
 const box = $('#recBox');
 const showRecord = () => { if (!box) return; box.value = perf.rec.on ? perf.report() : 'Turn "Record speed" on, play for a few minutes, then come back here.'; box.hidden = false; $('#recCopy').hidden = false; };
-if ($('#gfxSel')) {
-  $('#gfxSel').onchange = () => { P.settings.graphics = $('#gfxSel').value; save(); applyGraphics(); };
+if ($('#recChk')) {
   $('#recChk').onchange = () => { P.settings.recordSpeed = $('#recChk').checked; save(); applyRecord(); };
   $('#recShow').onclick = showRecord;
   $('#recCopy').onclick = async () => { box.focus(); box.select(); try { await navigator.clipboard.writeText(box.value); $('#recCopy').textContent = 'Copied'; } catch { try { document.execCommand('copy'); $('#recCopy').textContent = 'Copied'; } catch { $('#recCopy').textContent = 'Select the text and copy it'; } } };
 }
 if ($('#speedTestBtn')) $('#speedTestBtn').onclick = () => { location.href = 'dev/speed.html'; }; // (round 13: dev/speed.html)
+// (round 14) The Graphics area says in words what is in force; "Back to standard settings" shows only when a test result is.
+export function graphicsWords() {
+  const t = tuned(), set = t.fromTest;
+  const facts = `sharpness ${t.pr || 1.5}, head-down blur ${t.blur ? 'on' : 'off'}, glow ${t.glow ? 'on' : 'off'}, soft shadow ${t.soft ? 'on' : 'off'}`;
+  return { set, text: (set ? `Set by the speed test${t.at ? ' on ' + t.at : ''}` : 'Standard settings') + ': ' + facts };
+}
+if ($('#gfxReset')) $('#gfxReset').onclick = () => { delete P.settings.tuned; save(); applyGraphics(); showSpeed(); };
 // (called as the menu opens: the controls show what is set)
-export function showSpeed() { if (!$('#gfxSel')) return; $('#gfxSel').value = graphics(); $('#recChk').checked = !!P.settings.recordSpeed; if (box) { box.hidden = true; $('#recCopy').hidden = true; $('#recCopy').textContent = 'Copy'; } }
+export function showSpeed() {
+  const w = graphicsWords();
+  if ($('#gfxNow')) $('#gfxNow').textContent = w.text;
+  if ($('#gfxResetRow')) $('#gfxResetRow').style.display = w.set ? '' : 'none';
+  if ($('#recChk')) $('#recChk').checked = !!P.settings.recordSpeed;
+  if (box) { box.hidden = true; $('#recCopy').hidden = true; $('#recCopy').textContent = 'Copy'; }
+}
 // The game's own layer is painted once, unseen, before it is first needed (css: #hud.warm).
 function warmHud() { const hud = $('#hud'); if (!hud || !hud.classList.contains('hidden')) return; hud.classList.add('warm'); const off = () => hud.classList.remove('warm'); setTimeout(off, 250); addEventListener('pointerdown', off, { once: true, capture: true }); }
 setTimeout(warmHud, 600);

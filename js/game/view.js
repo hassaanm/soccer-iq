@@ -17,7 +17,13 @@ const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
 // and one near it down to RING_SHRINK times, and the view is only taken if that leaves no ring more than RING_RATIO
 // times bigger on screen than another.
 const FIT_TRIES = 3000; // (v76) tries of a spot view's fit in one frame before its other tiers wait for the next frame (spotView)
-export const TURN_MAX = .6; // (v76) how far (rad) the view may turn off the way he runs, to show the one who comes (threatFit)
+// (v76) How fast the camera comes round to the way he carries the ball on from live play (game/window.js settle): it
+// is there as the choice opens, not still swinging over (the glide and the slow start of a live window, 2.6 and 1.4, left
+// it 40° to 100° off his run as the choice opened).
+const CAM_TURN = 4;
+// (v76) How much farther back the view sits (along its own line) as a demo's idea starts, gliding in as it is said.
+const PUSH = .7;
+export const TURN_MAX = .6; // (v76) how far (rad) the camera's heading may be off the way he runs, to show the one who comes (threatFit)
 const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
 // held sideways; if that cannot be had, a little less), so a child finds him at once (v60).
@@ -319,9 +325,11 @@ export const view = {
     const none = { k: plan?.wide ? 1 : 0, off: 0, seen: false }, v = this.viewSize(), th = plan?.threat?.id, tp = th && plan.paths[th], hp = plan?.paths.hero;
     if (!tp || !hp || !v.w || this.sc?.kind === 'receive') return none;
     const h = pathAt(hp, 0, {}), t = pathAt(tp, 0, {}), C = HEAD_DOWN, F = Math.max(v.h * C[6], v.w * C[7]), floor = HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 1;
+    const run = Math.hypot(h.vx, h.vy) > .3 ? Math.atan2(h.vy, h.vx) : this.yaw; // (v76: the way he runs as it opens)
     const fit = (k, off) => {
       const yaw = this.yaw + off, [bx, by] = rot(-C[0] - 3.5 * k, C[1], yaw), [ax, ay] = rot(.45, 0, yaw), eye = [h.x + bx, h.y + by, C[2] + 2.2 * k], tgt = [h.x + ax, h.y + ay, C[5]];
-      const f = [tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]], fl = Math.hypot(...f); f[0] /= fl; f[1] /= fl; f[2] /= fl; const rl = Math.hypot(f[0], f[1]) || 1, r = [f[1] / rl, -f[0] / rl, 0], up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+      const f = [tgt[0] - eye[0], tgt[1] - eye[1], tgt[2] - eye[2]], fl = Math.hypot(...f); f[0] /= fl; f[1] /= fl; f[2] /= fl;
+      if (Math.abs(Math.atan2(Math.sin(Math.atan2(f[1], f[0]) - run), Math.cos(Math.atan2(f[1], f[0]) - run))) > turnMax) return false; /* (v76: the camera's own heading, eye to target, never more than turnMax off his run) */ const rl = Math.hypot(f[0], f[1]) || 1, r = [f[1] / rl, -f[0] / rl, 0], up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
       const proj = (x, y, z) => { const d = [x - eye[0], y - eye[1], z - eye[2]], zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; return zz < .5 ? null : [v.w / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, v.h / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz]; };
       const a = proj(h.x, h.y, 0), b = proj(h.x, h.y, 1.65); if (!a || !b || a[1] - b[1] < floor) return false;
       // (in the picture: clear of the edges, the top row, LOOK UP in the bottom left and the buttons in the bottom right)
@@ -332,10 +340,11 @@ export const view = {
       if (tp.jock) { const hm = proj(h.x, h.y, .9); if (!hm || !qm || Math.abs(qm[0] - hm[0]) < .5 * (a[1] - b[1])) return false; }
       return on(q0) && on(q1) && free(qm);
     };
-    // (v76) Turned by TURN_MAX at most (turnMax): the view looks the way he runs. Turned farther (it was up to 70°) to show
-    // one coming from the side or behind, it faced the side line while he ran up the field across the screen, sideways.
-    // Raised and drawn back instead; where no such view shows him, he sets off from nearer (game/window.js plannedRunUp).
-    const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) if (Math.abs(off) <= turnMax + 1e-9) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
+    // (v76) The camera's own heading (eye to target: the eye sits over his shoulder, so it is 10° to 20° off the way he
+    // looks) is TURN_MAX at most (turnMax) off the way he runs. Turned farther (it was up to 70°) to show one coming from
+    // the side or behind, it faced the side line while he ran up the field across the screen, sideways. Raised and drawn
+    // back instead; where no such view shows him, he sets off from nearer (game/window.js plannedRunUp).
+    const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
     tries.sort((p, q) => p.cost - q.cost);
     for (const c of tries) if (fit(c.k, c.off)) return { k: c.k, off: c.off, seen: true };
     return none;
@@ -356,7 +365,13 @@ export const view = {
     }
     this.camAsk = this.heavyAt === (this.frameNo |= 0) && !!this.lastWant; this.frameNo++;
     const was = this.lastWant;
-    let want = this.camSpec(time); this.camAsk = false; this.lastWant = want;
+    let want = this.camSpec(time); this.camAsk = false;
+    // (v76) A demo's idea being said while play crawls (demo.js crawlFor, `push`): the view draws back along its own line
+    // (wider and higher, the same heading: the whole scene shows) over the run-up, then glides in to the play's own view at an
+    // even pace, arriving as the idea ends: the picture never sits still while play crawls.
+    { const P = this.mode === 'demo' && this.push, rt = this.realTime || 0, t = P ? rt - P.t0 : -1, p = t < 0 ? 0 : P.open == null ? Math.min(1, t / P.out) : P.peak * clamp((P.end - rt) / Math.max(.5, P.end - P.open), 0, 1); // (out over the run-up, then in at an even pace from the window's opening, arriving as the idea ends)
+      if (p > 0) { const k = 1 + PUSH * p; want = { ...want, eye: [want.tgt[0] + (want.eye[0] - want.tgt[0]) * k, want.tgt[1] + (want.eye[1] - want.tgt[1]) * k, want.tgt[2] + (want.eye[2] - want.tgt[2]) * k] }; } }
+    this.lastWant = want;
     // (round 10) A view that changes at once (the arrows' view as he taps DRIBBLE, the goal view in a celebration): the
     // camera sets off for it from rest, its speed building up over a third of a second, never with a step in the first frame.
     if (was && Math.hypot(want.eye[0] - was.eye[0], want.eye[1] - was.eye[1], want.eye[2] - was.eye[2]) > 1) this.camT0 = this.clock;
@@ -371,7 +386,7 @@ export const view = {
     // (When the camera sets off for a new view, or for the skill camera, its speed builds up over a moment, so it never
     // starts with a jerk.)
     if (this.camSlow > 0) this.camSlow -= dt;
-    const k = 1 - Math.exp(-dt * lerp(this.camSlow > 0 ? 1.4 : this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4, 12, sw) * smooth((this.clock - Math.max(this.skView?.t0 ?? -9, this.camT0 ?? -9)) / .35)), c = this.cam;
+    const k = 1 - Math.exp(-dt * lerp(this.camTurn > this.clock ? CAM_TURN : this.camSlow > 0 ? 1.4 : this.glide > 0 ? 2.6 : this.camMode === 'player' ? 12 : 4, 12, sw) * smooth((this.clock - Math.max(this.skView?.t0 ?? -9, this.camT0 ?? -9)) / .35)), c = this.cam;
     // The point looked at slides over; the eye goes round it (way round, how high, how far), so on the way from
     // one view to another the camera always looks at the play. Sliding the eye and the point each on its own
     // straight line made them cross when the new view looks the other way (behind him facing the passer, to the

@@ -5,12 +5,12 @@
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
-import { L, W, gy0, gy1, facesBall } from './shared.js';
+import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).
-const VIEW_OFF = .6, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+const VIEW_OFF = .3, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -102,7 +102,8 @@ export const moving = {
       const ga = Math.atan2(g[1] - c.y, g[0] - c.x), to = a => [Math.cos(a), Math.sin(a)];
       cdir = to(ga);
       if (burst && !clear(cdir)) { const a = Math.atan2(dir[1], dir[0]), d = wrapA(a - ga), u = to(ga + Math.sign(d) * Math.min(Math.abs(d), CARRY_BACK)); cdir = clear(u) ? u : dir; }
-      this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga);
+      this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga); this.camTurn = this.clock + T + .8; // (view.js CAM_TURN: the camera is round by the time the choice opens)
+      if (this.wplan?.sc === this.sc && spotKind(this.sc)) this.wplan = null; // (the last play's plan, a run to a ring or a defending choice: its view from above held on through these moments, and swung round as the choice opened)
     }
     const D = [cdir[0] * v, cdir[1] * v];
     // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
@@ -254,9 +255,9 @@ export const moving = {
     }
     w.u = (s.time - w.t0) / w.G;
     // (v76) A demo or a replay of the better play (demo.js showClock): the pace that brings play to the share of the window
-    // its choice is planned at, just as the hand taps it. Never slower than a third of the slowest window pace.
+    // its choice is planned at, just as the hand taps it. Never slower than an eighth of the slowest window pace (a demo's crawl).
     if (w.demo?.crawl != null) w.f = w.demo.crawl; // (v76: a demo's idea being said: play crawls on, demo.js crawlFor)
-    else if (w.demo?.eta != null) { const left = w.demo.u * w.G - (s.time - w.t0), real = w.demo.eta - w.real; w.f = clamp(left / Math.max(.3, real), PACE * .3, 1); }
+    else if (w.demo?.eta != null) { const left = w.demo.u * w.G - (s.time - w.t0), real = w.demo.eta - w.real; w.f = clamp(left / Math.max(.3, real), PACE * .125, 1); }
     if (w.u >= 1 && !w.out) { w.out = true; if (this.mode !== 'demo' && !this.showing) { this.choose('timeout'); this.woke = true; } } // (the frame steps no further: the play that follows goes on from this very step)
   },
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
@@ -293,7 +294,7 @@ export const moving = {
   timerUi() {
     const w = this.win; if (!w || this.phase !== 'decide') return null;
     const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
-    out.left = w.demo ? (w.demo.crawl != null ? 1 : clamp(1 - ((w.u || 0) - w.demo.u0) / (1 - w.demo.u0), 0, 1)) : w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
+    out.left = w.demo ? (w.demo.crawl != null ? clamp(1 - w.demo.drain * (w.real - w.demo.r0) / w.demo.sec, .6, 1) : clamp((w.demo.L0 ?? 1) * (1 - ((w.u || 0) - w.demo.u0) / (1 - w.demo.u0)), 0, 1)) : /* (v76: a demo's ring: slowly while its idea is said, then on from there; demo.js crawlFor, showClock) */ w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
     out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
     return out;
   },

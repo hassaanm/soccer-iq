@@ -13,14 +13,17 @@ function showSticker(emoji, trophy) {
 }
 // Paper confetti falls around the card after a win (behind it).
 const PAPER = ['#ffd84d', '#2fcf6a', '#5aa2ff', '#ef4444', '#ffffff', '#ff8ad0'];
+let paperTok = 0;
 function confetti(n) {
-  $('#confetti')?.remove();
+  $('#confetti')?.remove(); paperTok++;
   if (!n || reducedMotion()) return;
   const box = document.createElement('div'), rnd = (a, b) => Math.round(a + Math.random() * (b - a));
   box.id = 'confetti';
   box.innerHTML = Array.from({ length: n }, (_, i) => `<i style="left:${rnd(0, 100)}%;background:${PAPER[i % PAPER.length]};--dx:${rnd(-90, 90)}px;--rot:${rnd(-720, 720)}deg;`
     + `animation-duration:${rnd(170, 330) / 100}s;animation-delay:${rnd(0, 80) / 100}s"></i>`).join('');
-  el.prepend(box); setTimeout(() => box.remove(), 4500); // behind the card, so it never covers the tiles
+  // (round 14) Put in one frame after the card, so the card's own frame does not also lay out 70 to 140 pieces (each
+  // piece has its own delay of up to 0.8 s anyway, so nothing is seen later).
+  const tok = ++paperTok; requestAnimationFrame(() => { if (tok === paperTok) { el.prepend(box); setTimeout(() => box.remove(), 4500); } }); // behind the card, so it never covers the tiles
 }
 // What comes next: three tiles of the same size and weight, always in the same places (v64, left to right: the lesson
 // violet, ⚽ Match blue, 🏆 Cup gold), a big picture with a short word under it. None is the "obvious" one. The lesson tile

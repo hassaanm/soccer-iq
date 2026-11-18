@@ -41,13 +41,13 @@ export function unlock() {
   if (!OAC()) return;
   unlocked = true;
   bed = player(); bed.loop = true; voiceEl = player(); voiceEl.muted = muted;
-  for (const k of EFFECTS) fxEls.set(k, player());
+  for (const k of EFFECTS) fxEls.set(k, Array.from({ length: FREQ.has(k) ? POOL : 1 }, player)); // (round 14: two for the frequent ones)
   hushUrl = wav(hush());
   playBed();
   renderEffects(); startMusic();
 }
 // The players, for the sound lab page (dev/sound-lab.html) and the browser checks.
-export const audioPlayers = () => (unlocked ? { bed, voice: voiceEl, fx: Object.fromEntries(fxEls) } : null);
+export const audioPlayers = () => (unlocked ? { bed, voice: voiceEl, fx: Object.fromEntries([...fxEls].map(([k, els]) => [k, els[0]])), pools: Object.fromEntries(fxEls) } : null);
 // Nothing plays while the game is in the background.
 export function pauseAll() { if (!unlocked) return; bed.pause(); stopVoice(); fxStop(); }
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAll(); else playBed(); });
@@ -154,7 +154,19 @@ export async function renderEffect(key) {
 // ---------- effects ----------
 // Each effect has its own player holding its recording, so two different effects overlap (a kick during a cheer)
 // and the same one played again starts over.
-const fxEls = new Map(), fxRaw = new Map(), fxUrls = new Map();
+// (round 14) On the phone (v76 record) the slowest frames left came just after a sound started (a ball touch, a button's
+// click, look up, a kick: 50 to 125 ms). How an effect starts is now a setting the speed test compares on the phone
+// (SFX_START.mode; ui/speed.js applies the one it found best):
+//   'one'  : as v76, one player per effect, started again even right after it played;
+//   'pool' : the frequent effects (FREQ) have two players, used in turn, so a player that is still playing is never
+//            restarted or sought;
+//   'later': the start waits until the frame it was asked in has been drawn (the next frame, then a 0 ms timer), so it
+//            never adds to a tap's or a result's frame; one frame is 17 ms, too short to hear;
+//   'pool+later' (the default): both.
+export const SFX_START = { mode: 'pool+later' };
+export const SFX_MODES = ['one', 'pool', 'later', 'pool+later'];
+const FREQ = new Set(['tap', 'click', 'kick', 'up', 'star:0', 'star:1', 'star:2']), POOL = 2;
+const fxEls = new Map(), fxRaw = new Map(), fxUrls = new Map(), fxNext = new Map(); // fxEls: key -> its players
 let fxVol = null, fxTimer = 0;
 async function renderEffects() {
   for (const k of EFFECTS) { try { fxRaw.set(k, await renderEffect(k)); } catch { /* this effect stays silent */ } }
@@ -163,22 +175,38 @@ async function renderEffects() {
 function encodeEffects() {
   clearTimeout(fxTimer); fxTimer = 0; fxVol = vol.sfx;
   for (const [k, raw] of fxRaw) {
-    const old = fxUrls.get(k), url = wav(scaled(raw, vol.sfx)), el = fxEls.get(k);
-    fxUrls.set(k, url); el.pause(); el.src = url; el.load();
+    const old = fxUrls.get(k), url = wav(scaled(raw, vol.sfx));
+    fxUrls.set(k, url); for (const el of fxEls.get(k) || []) { el.pause(); el.src = url; el.load(); }
     if (old) URL.revokeObjectURL(old);
   }
 }
-function fxStop() { for (const el of fxEls.values()) el.pause(); }
-export function sfx(name, arg) {
-  if (!unlocked || !enabled || muted || document.hidden) return;
-  if (fxTimer) encodeEffects(); // a volume change is waiting: record it now, so this sound plays at the new level
-  const key = name === 'star' ? 'star:' + ([0, 1, 2].includes(arg) ? arg : 2) : name, el = fxEls.get(key);
-  if (!el || !fxUrls.has(key)) return; // 'step', or not recorded yet
-  mark('sound ' + key);
+function fxStop() { for (const els of fxEls.values()) for (const el of els) el.pause(); fxWaiting.length = 0; }
+// The player for this start: in 'pool' mode one that is not playing (or the one started longest ago).
+function fxPick(key, pool) {
+  const els = fxEls.get(key); if (!els?.length) return null;
+  if (!pool || els.length === 1) return els[0];
+  const n = fxNext.get(key) || 0, free = els.find(el => el.paused || el.ended);
+  const el = free || els[n % els.length]; fxNext.set(key, (els.indexOf(el) + 1) % els.length); return el;
+}
+function fxStart(key, pool) {
+  const el = fxPick(key, pool); if (!el) return;
   // (round 13) A player that has played to its end starts again from the start by itself on play(): the seek, a call into
   // the phone's media player, is made only when the sound is cut off part way.
   if (!el.ended && el.currentTime > 0) { try { el.currentTime = 0; } catch { /* not loaded yet */ } }
   el.play().catch(() => {});
+}
+const fxWaiting = []; let flushing = false;
+function flush() { flushing = false; const keys = [...new Set(fxWaiting.splice(0))]; for (const k of keys) fxStart(k, SFX_START.mode !== 'later'); }
+export function sfx(name, arg) {
+  if (!unlocked || !enabled || muted || document.hidden) return;
+  if (fxTimer) encodeEffects(); // a volume change is waiting: record it now, so this sound plays at the new level
+  const key = name === 'star' ? 'star:' + ([0, 1, 2].includes(arg) ? arg : 2) : name;
+  if (!fxEls.has(key) || !fxUrls.has(key)) return; // 'step', or not recorded yet
+  mark('sound ' + key);
+  const mode = SFX_MODES.includes(SFX_START.mode) ? SFX_START.mode : 'pool+later';
+  if (!mode.endsWith('later')) return fxStart(key, mode === 'pool');
+  fxWaiting.push(key);
+  if (!flushing) { flushing = true; requestAnimationFrame(() => setTimeout(flush, 0)); }
 }
 
 // ---------- background tune ----------
@@ -244,8 +272,11 @@ export function trim(d) {
 // load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
 // (round 13) At most LOADS clips are fetched and decoded at once. A mode starting asks for up to 194 together: all at once
 // they arrived in one burst of decoding and trimming over the first seconds of play. A clip a line needs now goes first.
-const LOADS = 4, waiting = []; let loading = 0;
-function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; job.go().finally(() => { loading--; nextLoad(); }); } }
+const LOADS = 4, waiting = [], STUCK = 10000; let loading = 0, moved = 0;
+// (round 14) Clips still to load, for the slow-device governor (world.js pace: it does not judge while they load). When no
+// clip has started or finished for 10 s (a fetch that never ends), it counts as nothing loading, so the governor goes on.
+export const clipsLoading = () => (performance.now() - moved < STUCK ? loading + waiting.length : 0);
+function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; moved = performance.now(); job.go().finally(() => { loading--; moved = performance.now(); nextLoad(); }); } }
 function queued(file, go, now) {
   let job = waiting.find(j => j.file === file);
   if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); } return job.p; }
@@ -255,9 +286,15 @@ function queued(file, go, now) {
   if (now) waiting.unshift(job); else waiting.push(job);
   nextLoad(); return p;
 }
+// A clip's bytes; a fetch that has not ended after 20 s is given up (the clip is fetched again when next needed), so it
+// never holds one of the LOADS places for good.
+function fetchClip(url) {
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null, t = ctl && setTimeout(() => ctl.abort(), 20000);
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(r => r.arrayBuffer()).finally(() => clearTimeout(t));
+}
 function clip(key, now = true) {
   const file = voiceIndex?.clips[key]; if (!file || !OAC()) return null;
-  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, queued(file, () => fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim), now)
+  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, queued(file, () => fetchClip(voiceIndex.base + file).then(decode).then(trim), now)
     .then(d => { mark('voice-decoded ' + key); clipFailed.delete(file); return d; }, () => { clipCache.delete(file); clipFailed.add(file); return null; })); }
   else if (now) queued(file, null, true); // (still waiting: it moves to the front)
   return clipCache.get(file);
