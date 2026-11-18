@@ -254,8 +254,9 @@ export const moving = {
     }
     w.u = (s.time - w.t0) / w.G;
     // (v76) A demo or a replay of the better play (demo.js showClock): the pace that brings play to the share of the window
-    // its choice is planned at (about half), just as the hand taps it. Never slower than a third of the slowest window pace.
-    if (w.demo) { const left = w.demo.u * w.G - (s.time - w.t0), real = w.demo.eta - w.real; w.f = clamp(left / Math.max(.3, real), PACE * .3, 1); }
+    // its choice is planned at, just as the hand taps it. Never slower than a third of the slowest window pace.
+    if (w.demo?.crawl != null) w.f = w.demo.crawl; // (v76: a demo's idea being said: play crawls on, demo.js crawlFor)
+    else if (w.demo?.eta != null) { const left = w.demo.u * w.G - (s.time - w.t0), real = w.demo.eta - w.real; w.f = clamp(left / Math.max(.3, real), PACE * .3, 1); }
     if (w.u >= 1 && !w.out) { w.out = true; if (this.mode !== 'demo' && !this.showing) { this.choose('timeout'); this.woke = true; } } // (the frame steps no further: the play that follows goes on from this very step)
   },
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
@@ -292,7 +293,7 @@ export const moving = {
   timerUi() {
     const w = this.win; if (!w || this.phase !== 'decide') return null;
     const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
-    out.left = w.jock && !w.demo ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
+    out.left = w.demo ? (w.demo.crawl != null ? 1 : clamp(1 - ((w.u || 0) - w.demo.u0) / (1 - w.demo.u0), 0, 1)) : w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
     out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
     return out;
   },

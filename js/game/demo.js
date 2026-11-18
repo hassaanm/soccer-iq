@@ -6,6 +6,9 @@ import { L, W, MATE, spotKind, wrap } from './shared.js';
 // (v76) How long a line takes in talk() (game.js): the slow reading of it (the voice clips are all shorter), then the pause.
 const talkSec = (text, pause = 1.2) => .6 + text.length / 12 + pause;
 const TAP = 1.2; // tapAt: the hand's move to the button and its tap
+// (v76) A demo's crawl while its idea is said: the slowest and the fastest share of play's speed, and the most of the
+// window's play it may use up (demo.js crawlFor).
+const CRAWL = [.015, .06], CRAWL_U = .2;
 // (v76) What each lesson's demo looks at once his head is up: the things the lesson is about. A look turns his head
 // only to those not on the screen yet; with all of them in sight (a view from above shows everything) he does not look
 // around at all. Only "Look up!" sweeps left and right: looking around is that lesson, and in its scene there are
@@ -57,13 +60,23 @@ export const demo = {
   },
   // (v76) The demo's own clock. The demos and the replays of the better play talk and show taps while play goes on in
   // slow motion, which takes longer than a child's window: the ring used to be empty long before the hand tapped, the one
-  // who comes stood at the ball, and play crawled. Now the play's pace is set so that the choice lands with a little under
-  // half of the ring left (45%), wherever the talking is: `sec` is how long (real seconds) until the choice from now. Called again
-  // as the demo goes on (the voice may take a little longer than planned), so the pace follows (game/window.js windowStep).
-  showClock(sec, u = .55) {
+  // who comes stood at the ball, and play crawled. Now the play's pace is set so that the choice lands with half of the
+  // ring left, wherever the talking is: `sec` is how long (real seconds) until the choice from now. Called again as the
+  // demo goes on (the voice may take a little longer than planned), so the pace follows (game/window.js windowStep).
+  // `left`: the share of the ring left as the choice lands (the ring counts from u0, where the demo's crawl ended).
+  showClock(sec, left = .5) {
     const w = this.win; if (!w || this.skipping) return;
-    w.demo = { eta: w.real + Math.max(.5, sec), u: Math.max(u, Math.min(.9, (w.u || 0) + .05)) }; w.R = 99; // (R: no jockey's lunge at the end of a real window)
+    const u0 = w.demo?.u0 ?? 0, u = u0 + (1 - left) * (1 - u0);
+    w.demo = { eta: w.real + Math.max(.5, sec), u: Math.max(u, Math.min(.9, (w.u || 0) + .05)), u0 }; w.R = 99; // (R: no jockey's lunge at the end of a real window)
   },
+  // (v76) The crawl while a demo's idea is said (`sec`: how long that takes): CRAWL of play's speed, less where the
+  // window's play is short, so that no more than CRAWL_U of it is used up before the ring starts (the one who comes is
+  // then still well off the ball when the hand taps). The ring stays full meanwhile.
+  crawlFor(sec) {
+    const w = this.win; if (!w || this.skipping) return;
+    w.demo = { crawl: Math.max(CRAWL[0], Math.min(CRAWL[1], CRAWL_U * w.G / Math.max(1, sec))), u0: 0 }; w.R = 99;
+  },
+  crawlEnd() { const w = this.win; if (w?.demo?.crawl != null) w.demo = { u0: Math.min(.5, w.u || 0) }; },
   talkTime: (text, pause) => talkSec(text, pause),
   // How long showTaps takes for `opt` (real seconds), as it plays them.
   tapsSec(opt) {
@@ -159,22 +172,27 @@ export const demo = {
     const sc = demoScenario(skillId); this.load(sc);
     const hero = this.name('hero'), tip = skillById(skillId)?.tip || '', capTip = skillById(skillId)?.capTip; // capTip: a shorter caption for a long tip, so it covers no gold place (v64)
     const shot = !!sc.best?.startsWith('shoot'), mateId = MATE[sc.best];
-    // (v76) "Watch …" over the run-up; then, the moment the choice's window opens, play holds still (game.js `held`: a
-    // coach pausing the video, the ring full) while the hand taps LOOK UP and the lesson's one idea is said over the very
-    // picture it is about (the one who comes on his way, the friends where they are). Then play goes on in slow motion with
-    // only the look and the taps left in the window. All that talk used to be said over the window: it took three times
-    // a child's window, so the ring was empty long before the hand tapped and the one who comes stood waiting at the ball.
-    this.realJobs = true; const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`); this.realJobs = false; // (its wait runs on real time: it goes on into the hold)
+    // (v76) "Watch …" over the run-up; then, from the moment the choice's window opens, play crawls on (CRAWL: a few
+    // hundredths of its speed, the one who comes still coming, everyone's legs still going) while the hand taps LOOK UP
+    // and the lesson's one idea is said over the very picture it is about. The ring stays full meanwhile (timerUi): its
+    // count starts as the idea ends, and the look and the taps that are left land the choice with half of it left
+    // (showClock). All that talk used to be said over the window as it ran: it took three times a child's window, so the
+    // ring was empty long before the hand tapped and the one who comes stood waiting at the ball. (Play never stands
+    // still: the owner wants a world that moves while a choice is made, and a still picture reads as a freeze.)
+    const t0 = this.realTime || 0;
+    this.realJobs = true; const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`); this.realJobs = false; // (its wait runs on real time: it goes on into the window)
     await this.pre();
     // (v72) The window opens the moment the run-up ends, as in a round.
     this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.showing = true;
     this.openWindow(); // (v64: the demo goes on over play in slow motion, as his own choices do)
-    this.held = true;
+    const tapLook = sc.kind !== 'tackle' && sc.kind !== 'receive';
+    const idea = Math.max(0, talkSec(`Watch ${hero}.`, .2) - ((this.realTime || 0) - t0)) + (tapLook ? .2 + TAP + (shot ? .6 : 0) : 0) + .3 + talkSec(tip, .8);
+    this.crawlFor(idea);
     await intro;
-    if (sc.kind !== 'tackle' && sc.kind !== 'receive') { await this.delay(.2); await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
+    if (tapLook) { await this.delay(.2); await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
     await this.delay(.3);
-    await this.talk(tip, .8, capTip); // the lesson's one idea: let it sit before anything moves
-    this.held = false;
+    await this.talk(tip, .8, capTip); // the lesson's one idea: let it sit (play crawls)
+    this.crawlEnd();
     const h = this.sim.a('hero');
     // (v76) What he says once he has looked, and how long it all takes from here to the choice (showClock).
     const peek = sc.pattern === 'peek-turn', recv = ['Peek over your shoulder.', peek ? 'A defender is behind you! Turn away!' : 'Nobody behind you! Turn and go!'];

@@ -105,6 +105,7 @@ const howTo = (sk, hero) => sk.id === 'steal-it' ? `You are ${hero}, defending. 
   : sk.side === 'defense' ? `You are ${hero}, defending. Tap 👀 to look up, then tap where to run.`
   : sk.id === 'spread-out' ? `You are ${hero}. It is our ball! Tap 👀 to look up, then tap where to go. Your ball? Pass or dribble.`
   : sk.id === 'get-open' || sk.id === 'go-to-goal' ? `You are ${hero}. A friend has the ball. Tap 👀 to look up, then tap where to run, or stay.`
+  : sk.id === 'shoot-close' ? `You are ${hero}. Tap 👀 to look up at the goal. Shoot, pass or dribble?`
   : sk.id === 'inside-laces' ? `You are ${hero}. Tap 👀 to look up, then SHOOT, then the foot: inside or laces.`
   : sk.id === 'shoot-space' ? `You are ${hero}. Tap 👀 to look up, then SHOOT, then where in the goal, then the foot.`
   : sk.id === 'follow-shot' ? `You are ${hero}. After the shot, tap 👀 to look up, then tap where to run.` : `You are ${hero}. Tap 👀 to look up, then drag to look around.`;

@@ -47,7 +47,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false, held: false });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false });
   }
 
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
@@ -106,9 +106,8 @@ export class Game {
   // however long the frames are. See game/skill.js skillFrame.)
   // (v64) A job made while a decision window is open runs on real time (`real`): it is the picture and the words (a
   // caption, the hand, the view swinging round, a demo's talk), which must not crawl with the slow motion of play.
-  // (v76) So is one made while play is held still (`held`: a demo says its idea over the picture its choice opens on), or
-  // while `realJobs` is set (a demo's first line, said over the run-up and on into the hold).
-  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win || !!this.held || !!this.realJobs }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
+  // (v76) So is one made while `realJobs` is set (a demo's first line, said over the run-up and on into the window).
+  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win || !!this.realJobs }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
   cancel(t) { if (t && !t.dead) { t.dead = true; t.res(); } }
   delay(sec) { return this.skipping ? Promise.resolve() : this.job(sec).done; }
   tween(sec, f) { if (this.skipping) { f(1); return Promise.resolve(); } return this.job(sec, f).done; }
@@ -158,10 +157,8 @@ export class Game {
   tick(dt, time) {
     this.clock = time;
     this.runJobs(dt, true);
-    // Game time: the real game steps it in small even steps, slower in a skill moment (see game/skill.js). (v76) Not while
-    // play is held still: a demo's first picture, while its idea is said (demo.js); the camera and the hand go on.
-    if (this.held) { this.realTime = (this.realTime || 0) + dt; if (this.skillTaps) this.ui.clock += dt * .85; } // (game time stands, and so do its waits; the standing players breathe, as while play waits for a tap)
-    else if (this.skillTaps) this.skillFrame(dt); else this.gameTime(dt);
+    // Game time: the real game steps it in small even steps, slower in a skill moment (see game/skill.js).
+    if (this.skillTaps) this.skillFrame(dt); else this.gameTime(dt);
     if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null && Math.abs(wrap(this.yaw - this.yaw0)) > 1.4) this.peeked = true;
     this.frame(dt, time);
   }
