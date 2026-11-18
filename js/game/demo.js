@@ -75,8 +75,9 @@ export const demo = {
   crawlFor(sec) {
     const w = this.win; if (!w || this.skipping) return;
     w.demo = { crawl: Math.max(CRAWL[0], Math.min(CRAWL[1], CRAWL_U * w.G / Math.max(1, sec))), u0: 0 }; w.R = 99;
+    const P = this.push, rt = this.realTime || 0; if (P) Object.assign(P, { open: rt, peak: Math.min(1, (rt - P.t0) / P.out), end: rt + sec }); // (view.js PUSH: from here the view glides in, arriving as the idea ends)
   },
-  crawlEnd() { const w = this.win; if (w?.demo?.crawl != null) w.demo = { u0: Math.min(.5, w.u || 0) }; },
+  crawlEnd() { const w = this.win; if (w?.demo?.crawl != null) w.demo = { u0: Math.min(.5, w.u || 0) }; this.push = null; },
   talkTime: (text, pause) => talkSec(text, pause),
   // How long showTaps takes for `opt` (real seconds), as it plays them.
   tapsSec(opt) {
@@ -180,6 +181,7 @@ export const demo = {
     // ring was empty long before the hand tapped and the one who comes stood waiting at the ball. (Play never stands
     // still: the owner wants a world that moves while a choice is made, and a still picture reads as a freeze.)
     const t0 = this.realTime || 0;
+    this.push = { t0: this.realTime || 0, out: sc.run === 'follow' ? .45 : 1.3, end: null }; // (view.js: the view draws back over the run-up (a shot's is short) at an even pace, and glides in as the idea is said: never a stop between)
     this.realJobs = true; const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`); this.realJobs = false; // (its wait runs on real time: it goes on into the window)
     await this.pre();
     // (v72) The window opens the moment the run-up ends, as in a round.
@@ -191,6 +193,7 @@ export const demo = {
     await intro;
     if (tapLook) { await this.delay(.2); await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
     await this.delay(.3);
+    if (this.push) this.push.end = (this.realTime || 0) + talkSec(tip, .8); // (the view arrives as the idea ends)
     await this.talk(tip, .8, capTip); // the lesson's one idea: let it sit (play crawls)
     this.crawlEnd();
     const h = this.sim.a('hero');
@@ -201,7 +204,7 @@ export const demo = {
     const scan = sc.skill === 'look-up' && !mateId && !spotKind(sc) && !shot && sc.kind !== 'receive';
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
     this.showClock((mateId ? 1.6 + talkSec('Pass is open!', 1) : sc.kind === 'receive' ? talkSec(recv[0], .2) + 2.4 + talkSec(recv[1], .6) + .6
-      : sc.kind === 'lead' ? .8 + talkSec('Pass is running!', .8) : spotKind(sc) ? .8 + talkSec(q, 1) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : .8) + talkSec(saw, .8)) + this.tapsSec(sc.best));
+      : sc.kind === 'lead' ? .8 + talkSec('Pass is running!', .8) : spotKind(sc) ? .8 + talkSec(q, 1) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : .8) + talkSec(saw, .8)) + this.tapsSec(sc.best), .6); // (aimed at 60% left until the taps start, where it is aimed at 50%: a line that runs long still leaves the choice in the middle)
     // (v76) Then he looks at what the lesson is about (LOOK_AT), and only where it is not in sight already: no look
     // left and right for nothing. "Look up!" itself looks around (that is the lesson); a shot, one glance at the goal.
     if (mateId) {

@@ -138,7 +138,7 @@ export const ENTRIES = [
   { id: 'lessons', group: SCREEN, title: 'The lesson sheet', screen: 'lessons',
     look: 'Six chapters, every lesson open, with stars at the level chosen above.' },
   { id: 'demos', group: SCREEN, title: 'The "Watch" demos (v76)', screen: 'lessons',
-    look: 'Tap a lesson, then Watch. The idea is said over a still first picture, then the play runs; he looks only at what the lesson is about (only "Look up!" looks left and right), and the hand taps with about half the ring left, the defender still coming. Try "Follow your shot!", "Two defenders? Pass!" and "Run into space".' },
+    look: 'Tap a lesson, then Watch. As the choice opens, play crawls on and the view glides in from a wider one while the idea is said (the ring stays full), then the ring starts; he looks only at what the lesson is about (only "Look up!" looks left and right), and the hand taps with about half the ring left, the defender still coming. Try "Follow your shot!", "Two defenders? Pass!" and "Run into space".' },
   { id: 'results-lesson', group: SCREEN, title: 'Results: a lesson passed', results: 'lesson', pick: ['size'],
     look: 'The real lesson flow, played through at once (6 of 6 right, mini match won 2–1), up to its results card.' },
   { id: 'results-training', group: SCREEN, title: 'Results: training', results: 'training', pick: ['size'],

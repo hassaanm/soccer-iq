@@ -21,6 +21,8 @@ const FIT_TRIES = 3000; // (v76) tries of a spot view's fit in one frame before 
 // is there as the choice opens, not still swinging over (the glide and the slow start of a live window, 2.6 and 1.4, left
 // it 40° to 100° off his run as the choice opened).
 const CAM_TURN = 4;
+// (v76) How much farther back the view sits (along its own line) as a demo's idea starts, gliding in as it is said.
+const PUSH = .7;
 export const TURN_MAX = .6; // (v76) how far (rad) the camera's heading may be off the way he runs, to show the one who comes (threatFit)
 const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
@@ -363,7 +365,13 @@ export const view = {
     }
     this.camAsk = this.heavyAt === (this.frameNo |= 0) && !!this.lastWant; this.frameNo++;
     const was = this.lastWant;
-    let want = this.camSpec(time); this.camAsk = false; this.lastWant = want;
+    let want = this.camSpec(time); this.camAsk = false;
+    // (v76) A demo's idea being said while play crawls (demo.js crawlFor, `push`): the view draws back along its own line
+    // (wider and higher, the same heading: the whole scene shows) over the run-up, then glides in to the play's own view at an
+    // even pace, arriving as the idea ends: the picture never sits still while play crawls.
+    { const P = this.mode === 'demo' && this.push, rt = this.realTime || 0, t = P ? rt - P.t0 : -1, p = t < 0 ? 0 : P.open == null ? Math.min(1, t / P.out) : P.peak * clamp((P.end - rt) / Math.max(.5, P.end - P.open), 0, 1); // (out over the run-up, then in at an even pace from the window's opening, arriving as the idea ends)
+      if (p > 0) { const k = 1 + PUSH * p; want = { ...want, eye: [want.tgt[0] + (want.eye[0] - want.tgt[0]) * k, want.tgt[1] + (want.eye[1] - want.tgt[1]) * k, want.tgt[2] + (want.eye[2] - want.tgt[2]) * k] }; } }
+    this.lastWant = want;
     // (round 10) A view that changes at once (the arrows' view as he taps DRIBBLE, the goal view in a celebration): the
     // camera sets off for it from rest, its speed building up over a third of a second, never with a step in the first frame.
     if (was && Math.hypot(want.eye[0] - was.eye[0], want.eye[1] - was.eye[1], want.eye[2] - was.eye[2]) > 1) this.camT0 = this.clock;
