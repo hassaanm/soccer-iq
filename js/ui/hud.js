@@ -26,6 +26,26 @@ const flash = (el, cls, text, ms) => {
   el.textContent = text; el.className = cls; void el.offsetWidth; el.classList.add('show');
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
+// (round 14) The big words, the stars, the dots and the score reuse their nodes: a result changes text and classes only,
+// so the frame it shows in builds nothing (the phone's record: 29 to 38 nodes made and dropped in a result's frame, which
+// took 85 to 105 ms). Each animation still starts again as its class comes back, as it did on fresh nodes.
+function letters(b, text, spaces) {
+  const chars = [...text];
+  while (b.children.length < chars.length) { const i = document.createElement('i'); i.style.setProperty('--i', b.children.length); b.appendChild(i); }
+  for (let k = 0; k < b.children.length; k++) {
+    const i = b.children[k], ch = chars[k], off = ch === undefined; i.classList.toggle('off', off); if (off) continue;
+    const sp = !!spaces && ch === ' ', t = sp ? '' : ch; i.classList.toggle('sp', sp);
+    if (!i.firstChild) i.appendChild(document.createTextNode('')); if (i.firstChild.nodeValue !== t) i.firstChild.nodeValue = t; // (the text in place: no node made)
+  }
+}
+const marks = (box, n, on, glyph = '★') => { // n spans showing `glyph`, `on` of them lit (or a class for each, from a function)
+  while (box.children.length < n) { const e = document.createElement('span'); e.style.setProperty('--i', box.children.length); e.textContent = glyph; box.appendChild(e); }
+  while (box.children.length > n) box.lastChild.remove();
+  for (let k = 0; k < n; k++) box.children[k].className = typeof on === 'function' ? on(k) : k < on ? 'on' : '';
+};
+letters(ui.banner.querySelector('b'), ' '.repeat(18)); letters(ui.banner.querySelector('b'), ''); // (made once, now, while nothing shows)
+letters(ui.skillName.querySelector('b'), ' '.repeat(18), true); letters(ui.skillName.querySelector('b'), '', true);
+marks(ui.rate.querySelector('.stars'), 3, 0); marks(ui.pop.firstChild, 3, 0);
 // state() runs every frame, so it remembers what is on screen and touches the page only when a value changes.
 const shown = {};
 const changed = (k, v) => shown[k] !== v && ((shown[k] = v), true);
@@ -78,7 +98,7 @@ export const hud = {
     clearTimeout(timers.rate); clearTimeout(timers.big);
     hudEl.classList.add('rating'); ui.skillName.classList.remove('show'); // the result's big letters take over from a move's name
     if (splash) {
-      big.querySelector('b').innerHTML = [...text].map((ch, i) => `<i style="--i:${i}">${ch}</i>`).join('');
+      letters(big.querySelector('b'), text);
       big.className = kind; void big.offsetWidth; big.classList.add('show');
     }
     if (text === 'GOAL!') replay(ui.flash, 'go');
@@ -87,7 +107,7 @@ export const hud = {
     const title = el.querySelector('.title'), lead = splash ? 850 : 0, tip = rated.text || '';
     title.textContent = text; title.className = 'title ' + kind;
     el.className = 's' + rated.stars + (splash ? ' under' : '');
-    el.querySelector('.stars').innerHTML = rated.nostars ? '' : [1, 2, 3].map(i => `<span class="${i <= rated.stars ? 'on' : ''}">★</span>`).join(''); // (no stars taken for running out of time)
+    const st = el.querySelector('.stars'); st.classList.toggle('none', !!rated.nostars); marks(st, 3, rated.stars); // (no stars taken for running out of time)
     el.querySelector('.txt').textContent = tip; el.querySelector('.btns').classList.toggle('hidden', !rated.watch);
     timers.big = setTimeout(() => {
       big.classList.toggle('up', splash); void el.offsetWidth; el.classList.add('show');
@@ -129,7 +149,7 @@ export const hud = {
   },
   // The name of the move he just did, in big letters for a moment.
   skillName(text) {
-    const el = ui.skillName; el.querySelector('b').innerHTML = [...text].map((ch, i) => ch === ' ' ? '<i class="sp"></i>' : `<i style="--i:${i}">${ch}</i>`).join('');
+    const el = ui.skillName; letters(el.querySelector('b'), text, true);
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     for (const n of [ui.skillTag, ui.seenNote, ui.toast]) n.classList.remove('show'); // nothing else up there while it shows: one name at a time
     if (ui.caption.classList.contains('show')) this.caption('');
@@ -141,7 +161,7 @@ export const hud = {
   // and fade within a second. `at()` gives his place on screen each frame: they ride along over his head.
   pop(stars, at) {
     const el = ui.pop, inner = el.firstChild;
-    inner.innerHTML = [0, 1, 2].map(i => `<span class="${i < stars ? 'on' : ''}" style="--i:${i}">★</span>`).join('');
+    marks(inner, 3, stars);
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     for (let i = 0; i < stars; i++) setTimeout(() => sfx('star', i), 40 + i * 110);
     // With a praise word up, the stars sit at its end (so they never meet it, and never jump); otherwise over his head.
@@ -162,8 +182,7 @@ export const hud = {
   // One dot per round: gold = right on the first try. The dot just earned pops.
   dots(results, n) {
     const done = results.length, fresh = done > dotsDone; dotsDone = done;
-    ui.dots.innerHTML = Array.from({ length: n }, (_, i) =>
-      `<span class="${i < done ? (results[i] ? 'star' : 'done') + (fresh && i === done - 1 ? ' new' : '') : i === done ? 'now' : ''}"></span>`).join('');
+    marks(ui.dots, n, i => (i < done ? (results[i] ? 'star' : 'done') + (fresh && i === done - 1 ? ' new' : '') : i === done ? 'now' : ''), '');
   },
   // The scoreboard: each team's color and short name, the score in the middle. A goal makes its number jump.
   score(s, us, them) {
@@ -171,6 +190,13 @@ export const hud = {
     el.classList.remove('hidden');
     if (was?.key === key) return;
     scoreNow = { key, us: s.us, them: s.them };
+    const ems = el.querySelectorAll('em');
+    if (was && was.teams === `${us.id} ${them.id}` && ems.length === 2) { // (round 14) the same two teams: only the numbers change
+      scoreNow.teams = was.teams;
+      [[ems[0], s.us, was.us], [ems[1], s.them, was.them]].forEach(([em, v, old]) => { if (em.textContent !== String(v)) em.textContent = v; em.classList.remove('bump'); if (v > old) { void em.offsetWidth; em.classList.add('bump'); } });
+      return;
+    }
+    scoreNow.teams = `${us.id} ${them.id}`;
     const chip = t => `<i style="background:${t.kit.colors[0]}"></i>`, num = (v, old) => `<em class="${was && v > old ? 'bump' : ''}">${v}</em>`;
     el.innerHTML = `${chip(us)}<span>${us.short}</span><b>${num(s.us, was?.us)}–${num(s.them, was?.them)}</b><span>${them.short}</span>${chip(them)}`;
   },

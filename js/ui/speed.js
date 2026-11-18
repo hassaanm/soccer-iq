@@ -4,7 +4,7 @@ import { $ } from './dom.js';
 import { P, save } from './store.js';
 import { world } from './stage.js';
 import * as perf from '../perf.js';
-import { SFX, SFX_MODES } from '../sound.js';
+import { SFX_START, SFX_MODES } from '../sound.js';
 
 const phone = () => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } };
 export const graphics = () => (P.settings.graphics === 'pretty' || P.settings.graphics === 'smooth' ? P.settings.graphics : phone() ? 'smooth' : 'pretty');
@@ -22,7 +22,7 @@ export function applyGraphics() {
   document.body.classList.toggle('smooth', sm); document.body.classList.toggle('blur', sm && !!t.blur); // (blur: the head-down edge as in Pretty)
   document.body.classList.toggle('softwords', sm && !!t.soft); // (soft: the big words' soft shadow, css/app.css)
   world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: t.pr } : {});
-  SFX.mode = t.sfx || 'pool+later'; // (round 14: how effects start, as the speed test found best here; sound.js)
+  SFX_START.mode = t.sfx || 'pool+later'; // (round 14: how effects start, as the speed test found best here; sound.js)
 }
 // (round 13) Switches for the speed test only (dev/speed.js); nothing here is saved. cap: the 60-a-second cap (main.js);
 // strip: read the picture's bottom row for the iPad's strip colour even on an iPhone (null: as the device needs); onFrame:

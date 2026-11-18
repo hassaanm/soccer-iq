@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = f => readFileSync(join(root, f), 'utf8');
@@ -134,15 +135,32 @@ test('tuned settings count only as true booleans and pixel ratios 2 or 3', () =>
 
 test('effects start in the way the speed test found best; two players for the frequent ones, never one still playing', () => {
   const s = code('js/sound.js');
-  assert.match(s, /export const SFX = \{ mode: 'pool\+later' \};/);
+  assert.match(s, /export const SFX_START = \{ mode: 'pool\+later' \};/);
   assert.match(s, /const FREQ = new Set\(\['tap', 'click', 'kick', 'up', 'star:0', 'star:1', 'star:2'\]\), POOL = 2;/);
-  const src = s.slice(s.indexOf('function pick('), s.indexOf('function start('));
-  const fxEls = new Map(), fxNext = new Map(), pick = new Function('fxEls', 'fxNext', src + 'return pick;')(fxEls, fxNext);
+  const src = s.slice(s.indexOf('function fxPick('), s.indexOf('function fxStart('));
+  const fxEls = new Map(), fxNext = new Map(), pick = new Function('fxEls', 'fxNext', src + 'return fxPick;')(fxEls, fxNext);
   const a = { paused: false, ended: false }, b = { paused: true, ended: false };
   fxEls.set('tap', [a, b]); fxEls.set('goal', [a]);
   assert.equal(pick('tap', true), b, 'the free one');
   b.paused = false; assert.ok([a, b].includes(pick('tap', true)), 'both busy: the one started longest ago');
   assert.equal(pick('tap', false), a, "'one' mode: always the first");
   assert.equal(pick('goal', true), a);
-  assert.match(code('js/ui/speed.js'), /SFX\.mode = t\.sfx \|\| 'pool\+later';/);
+  assert.match(code('js/ui/speed.js'), /SFX_START\.mode = t\.sfx \|\| 'pool\+later';/);
+});
+
+test('the modules this work touches parse', () => {
+  for (const f of ['js/sound.js', 'js/ui/speed.js', 'js/ui/hud.js', 'js/ui/results.js', 'js/world.js', 'js/main.js', 'js/storage.js', 'dev/speed.js']) {
+    const r = spawnSync(process.execPath, ['--check', join(root, f)], { encoding: 'utf8' });
+    assert.equal(r.status, 0, f + ': ' + r.stderr);
+  }
+});
+
+test('a result builds no nodes: the big words, stars, dots and score reuse theirs', () => {
+  const h = code('js/ui/hud.js');
+  for (const gone of ["big.querySelector('b').innerHTML", "querySelector('.stars').innerHTML", 'inner.innerHTML', 'ui.dots.innerHTML'])
+    assert.ok(!h.includes(gone), gone + ' is gone');
+  assert.match(h, /if \(i\.firstChild\.nodeValue !== t\) i\.firstChild\.nodeValue = t;/, 'letters change their text in place');
+  assert.match(h, /if \(was && was\.teams === `\$\{us\.id\} \$\{them\.id\}` && ems\.length === 2\)/, 'the score changes only its numbers');
+  assert.match(read('css/app.css'), /:is\(#banner,#skillName\) i\.off\{display:none\}/);
+  assert.match(code('js/ui/results.js'), /requestAnimationFrame\(\(\) => \{ if \(tok === paperTok\) \{ el\.prepend\(box\);/, 'confetti one frame after the card');
 });

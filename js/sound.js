@@ -156,14 +156,14 @@ export async function renderEffect(key) {
 // and the same one played again starts over.
 // (round 14) On the phone (v76 record) the slowest frames left came just after a sound started (a ball touch, a button's
 // click, look up, a kick: 50 to 125 ms). How an effect starts is now a setting the speed test compares on the phone
-// (SFX.mode; ui/speed.js applies the one it found best):
+// (SFX_START.mode; ui/speed.js applies the one it found best):
 //   'one'  : as v76, one player per effect, started again even right after it played;
 //   'pool' : the frequent effects (FREQ) have two players, used in turn, so a player that is still playing is never
 //            restarted or sought;
 //   'later': the start waits until the frame it was asked in has been drawn (the next frame, then a 0 ms timer), so it
 //            never adds to a tap's or a result's frame; one frame is 17 ms, too short to hear;
 //   'pool+later' (the default): both.
-export const SFX = { mode: 'pool+later' };
+export const SFX_START = { mode: 'pool+later' };
 export const SFX_MODES = ['one', 'pool', 'later', 'pool+later'];
 const FREQ = new Set(['tap', 'click', 'kick', 'up', 'star:0', 'star:1', 'star:2']), POOL = 2;
 const fxEls = new Map(), fxRaw = new Map(), fxUrls = new Map(), fxNext = new Map(); // fxEls: key -> its players
@@ -180,32 +180,32 @@ function encodeEffects() {
     if (old) URL.revokeObjectURL(old);
   }
 }
-function fxStop() { for (const els of fxEls.values()) for (const el of els) el.pause(); waiting.length = 0; }
+function fxStop() { for (const els of fxEls.values()) for (const el of els) el.pause(); fxWaiting.length = 0; }
 // The player for this start: in 'pool' mode one that is not playing (or the one started longest ago).
-function pick(key, pool) {
+function fxPick(key, pool) {
   const els = fxEls.get(key); if (!els?.length) return null;
   if (!pool || els.length === 1) return els[0];
   const n = fxNext.get(key) || 0, free = els.find(el => el.paused || el.ended);
   const el = free || els[n % els.length]; fxNext.set(key, (els.indexOf(el) + 1) % els.length); return el;
 }
-function start(key, pool) {
-  const el = pick(key, pool); if (!el) return;
+function fxStart(key, pool) {
+  const el = fxPick(key, pool); if (!el) return;
   // (round 13) A player that has played to its end starts again from the start by itself on play(): the seek, a call into
   // the phone's media player, is made only when the sound is cut off part way.
   if (!el.ended && el.currentTime > 0) { try { el.currentTime = 0; } catch { /* not loaded yet */ } }
   el.play().catch(() => {});
 }
-const waiting = []; let flushing = false;
-function flush() { flushing = false; const keys = [...new Set(waiting.splice(0))]; for (const k of keys) start(k, SFX.mode !== 'later'); }
+const fxWaiting = []; let flushing = false;
+function flush() { flushing = false; const keys = [...new Set(fxWaiting.splice(0))]; for (const k of keys) fxStart(k, SFX_START.mode !== 'later'); }
 export function sfx(name, arg) {
   if (!unlocked || !enabled || muted || document.hidden) return;
   if (fxTimer) encodeEffects(); // a volume change is waiting: record it now, so this sound plays at the new level
   const key = name === 'star' ? 'star:' + ([0, 1, 2].includes(arg) ? arg : 2) : name;
   if (!fxEls.has(key) || !fxUrls.has(key)) return; // 'step', or not recorded yet
   mark('sound ' + key);
-  const mode = SFX_MODES.includes(SFX.mode) ? SFX.mode : 'pool+later';
-  if (!mode.endsWith('later')) return start(key, mode === 'pool');
-  waiting.push(key);
+  const mode = SFX_MODES.includes(SFX_START.mode) ? SFX_START.mode : 'pool+later';
+  if (!mode.endsWith('later')) return fxStart(key, mode === 'pool');
+  fxWaiting.push(key);
   if (!flushing) { flushing = true; requestAnimationFrame(() => setTimeout(flush, 0)); }
 }
 
