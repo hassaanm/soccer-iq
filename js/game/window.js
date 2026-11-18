@@ -5,12 +5,12 @@
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
-import { L, W, gy0, gy1, facesBall } from './shared.js';
+import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).
-const VIEW_OFF = .6, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+const VIEW_OFF = .3, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -102,7 +102,8 @@ export const moving = {
       const ga = Math.atan2(g[1] - c.y, g[0] - c.x), to = a => [Math.cos(a), Math.sin(a)];
       cdir = to(ga);
       if (burst && !clear(cdir)) { const a = Math.atan2(dir[1], dir[0]), d = wrapA(a - ga), u = to(ga + Math.sign(d) * Math.min(Math.abs(d), CARRY_BACK)); cdir = clear(u) ? u : dir; }
-      this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga);
+      this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga); this.camTurn = this.clock + T + .8; // (view.js CAM_TURN: the camera is round by the time the choice opens)
+      if (this.wplan?.sc === this.sc && spotKind(this.sc)) this.wplan = null; // (the last play's plan, a run to a ring or a defending choice: its view from above held on through these moments, and swung round as the choice opened)
     }
     const D = [cdir[0] * v, cdir[1] * v];
     // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
