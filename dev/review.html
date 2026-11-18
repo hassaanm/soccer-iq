@@ -25,8 +25,7 @@
   #rv button:disabled { opacity: .35; }
   /* The handle: a small pill just right of the game's home button, above anything the game draws there. */
   #rvHandle { position: absolute; top: 12px; left: calc(70px + env(safe-area-inset-left, 0px)); display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--rv-bg); pointer-events: auto; }
-  #rvHandle button { min-height: 38px; min-width: 38px; padding: 0 8px; font-size: 16px; }
-  #rvHandle .n { font-size: 12px; color: var(--rv-mute); }
+  #rvHandle button { min-height: 36px; min-width: 34px; padding: 0 6px; font-size: 16px; }
   #rv:not(.min) #rvHandle { display: none; }
   /* The bar: a strip across the top (it covers only the game's top row while it is open). */
   #rvBar { position: absolute; top: 0; left: 0; right: 0; padding: 6px calc(8px + env(safe-area-inset-right, 0px)) 6px calc(8px + env(safe-area-inset-left, 0px)); background: var(--rv-bg); pointer-events: auto; display: grid; gap: 5px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); }
@@ -43,7 +42,8 @@
   #rv .lbl { color: var(--rv-mute); font-size: 11px; margin: 0 3px 0 2px; }
   #rv .fixed { color: var(--rv-mute); font-size: 12px; padding: 0 6px; }
   #rv .seed b { display: inline-block; min-width: 2.2em; text-align: center; }
-  #rvNote { flex: 1 1 110px; min-width: 90px; min-height: 32px; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .08); padding: 0 8px; pointer-events: auto; }
+  #rv .notes { display: flex; gap: 5px; flex: 1 1 250px; min-width: 0; }
+  #rvNote { flex: 1 1 auto; min-width: 80px; min-height: 32px; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .08); padding: 0 8px; pointer-events: auto; }
   #rv button.good.on { background: var(--rv-good); color: #fff; }
   #rv button.work.on { background: var(--rv-work); color: #fff; }
   #rvErr { color: #ff8080; font-size: 12px; white-space: pre-wrap; max-height: 4.2em; overflow: auto; }
@@ -64,7 +64,7 @@
   #rvList .item small { color: var(--rv-mute); margin-left: 4px; }
   #rvList .foot { margin-top: 16px; display: grid; gap: 6px; }
   #rvList .foot .row { display: flex; gap: 6px; flex-wrap: wrap; }
-  #rvOut { width: 100%; min-height: 7em; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .06); padding: 8px; font: 12px/1.35 ui-monospace, Menlo, monospace; pointer-events: auto; }
+  #rvOut { width: 100%; min-height: 12em; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .06); padding: 8px; font: 12px/1.35 ui-monospace, Menlo, monospace; pointer-events: auto; }
   #rvList .hint { color: var(--rv-mute); font-size: 12px; }
   /* Not in this build yet / errors: a quiet note over the field. */
   #rvNotice { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 80vw; background: var(--rv-bg); padding: 14px 18px; border-radius: 14px; text-align: center; font-size: 15px; }

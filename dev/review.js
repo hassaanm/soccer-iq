@@ -312,7 +312,7 @@ function setNote(patch) {
 function feedbackText() {
   const thinkName = t => THINKS.find(x => x[0] === t)?.[1] || t;
   const list = ENTRIES.filter(e => mine.notes[e.id]);
-  const head = `Heads Up! Soccer: review notes (${G?.VERSION || 'game'}, ${new Date().toISOString().slice(0, 10)})`;
+  const head = `Heads Up! Soccer: review notes (${G?.VERSION || 'game'}, ${new Date().toLocaleDateString('en-CA')})`;
   if (!list.length) return head + '\n\nNo notes yet.';
   return head + '\n\n' + list.map((e, i) => {
     const n = mine.notes[e.id], how = [n.vote === 'good' ? 'Good' : n.vote === 'work' ? 'Needs work' : null, n.size, e.round || e.match ? `Level ${n.level}` : null, e.round || e.match ? `${thinkName(n.think)} thinking time` : null, e.round || e.match?.first ? `seed ${n.seed}` : null].filter(Boolean).join(' · ');
@@ -335,7 +335,7 @@ const quiet = n => { for (const ev of ['pointerdown', 'pointerup', 'pointermove'
 function buildBar() {
   const root = el('div', { id: 'rv', class: 'bar' });
   const handle = quiet(el('div', { id: 'rvHandle' },
-    btn('☰', 'All entries', () => setView('list')), btn('↻', 'Again', again), btn('›', 'Next', () => step(1)), btn(el('span', { class: 'n', id: 'rvHn' }), 'Show the bar', () => setView('bar'))));
+    btn('☰', 'All entries', () => setView('list')), btn('↻', 'Again', again), btn('›', 'Next', () => step(1)), btn('▾', 'Show the bar', () => setView('bar'))));
   const seg = (id, items, on) => el('span', { class: 'seg', id }, ...items.map(([v, t]) => btn(t, t, () => on(v)))) ;
   const bar = quiet(el('div', { id: 'rvBar' },
     el('div', { class: 'r1' },
@@ -347,9 +347,10 @@ function buildBar() {
       el('span', { id: 'rvLevel' }, el('span', { class: 'lbl' }, 'level'), seg('rvLevelSeg', LEVELS.map(l => [l, String(l)]), v => { state.level = v; mine.prefs.level = v; keepMine(); again(); })),
       el('span', { id: 'rvThink' }, el('span', { class: 'lbl' }, 'time'), seg('rvThinkSeg', THINKS, v => { state.think = v; mine.prefs.think = v; keepMine(); again(); })),
       el('span', { id: 'rvSeed', class: 'seed' }, el('span', { class: 'lbl' }, 'seed'), btn('−', 'Another one like this (back)', () => { state.stepDir = -1; start(cur.id, { seed: Math.max(1, state.seed - 1) }); }), el('b', { id: 'rvSeedN' }), btn('+', 'Another one like this', () => start(cur.id, { seed: state.seed + 1 }))),
-      btn('👍', 'Looks good', () => setNote({ vote: noteOf(cur.id)?.vote === 'good' ? null : 'good' }), 'good'),
-      btn('🔧', 'Needs work', () => setNote({ vote: noteOf(cur.id)?.vote === 'work' ? null : 'work' }), 'work'),
-      el('input', { id: 'rvNote', type: 'text', placeholder: 'Note (dictation works)', autocomplete: 'off', oninput: e => setNote({ text: e.target.value }) })),
+      el('span', { class: 'notes' },
+        btn('👍', 'Looks good', () => setNote({ vote: noteOf(cur.id)?.vote === 'good' ? null : 'good' }), 'good'),
+        btn('🔧', 'Needs work', () => setNote({ vote: noteOf(cur.id)?.vote === 'work' ? null : 'work' }), 'work'),
+        el('input', { id: 'rvNote', type: 'text', placeholder: 'Note (dictation works)', autocomplete: 'off', oninput: e => setNote({ text: e.target.value }) }))),
     el('div', { id: 'rvErr' })));
   const list = quiet(el('div', { id: 'rvList' }));
   const cols = el('div', { class: 'cols' });
@@ -378,7 +379,7 @@ function renderSeed() { const n = document.getElementById('rvSeedN'); if (n) n.t
 function render() {
   const $ = id => document.getElementById(id); if (!$('rv')) return;
   const e = cur || byId('home'), i = ENTRIES.indexOf(e), pick = new Set(e.pick || []), n = noteOf(e.id);
-  $('rvTitle').textContent = e.title; $('rvN').textContent = `${i + 1}/${ENTRIES.length}`; $('rvHn').textContent = `${i + 1}/${ENTRIES.length}`;
+  $('rvTitle').textContent = e.title; $('rvN').textContent = `${i + 1}/${ENTRIES.length}`;
   $('rvLook').textContent = e.look; status(state.status);
   $('rvSize').hidden = !pick.has('size') && !e.size; $('rvSizeSeg').hidden = !!e.size; $('rvSizeFixed').textContent = e.size ? `${e.size} only` : '';
   $('rvLevel').hidden = !pick.has('level'); $('rvThink').hidden = !pick.has('think'); $('rvSeed').hidden = !pick.has('seed') || !(e.round || e.match?.first);
