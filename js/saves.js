@@ -73,6 +73,9 @@ export function saveOf(shot, at, tap = null) {
 // The kind line after a goal, by why it went in (spoken: tests/spoken.js).
 export const SAVED = 'Saved!';
 export const WHY = { dive: 'Good try! Watch his eyes.', spot: 'Good try! Ball, you, goal!', late: 'Good try! Dive for it!' };
+// What else the keeper game says (ui/goalie.js): the first time it opens, the results card's headline by how many he saved,
+// and in a match the first few times he is handed our keeper.
+export const SAID = { intro: 'You are the keeper! Stop his shots!', top: 'Super keeper! You got a new sticker!', good: 'Great saves!', try: 'Good try!', youre: "You're the keeper!" };
 
 // ---------- the shooter's tell ----------
 // Before the kick he shows where it goes, honestly: he looks at it (his eyes, drawn big over his head while it is new)

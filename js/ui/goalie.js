@@ -13,15 +13,14 @@ import { teamById, keeperKit } from '../teams.js';
 import { makeRig } from '../pro/rig.js';
 import { PITCH } from '../geom.js';
 import { Goalie } from '../game/goalie.js';
-import { roundPlan, SHOTS, STICKER_AT, GOAL } from '../saves.js';
+import { roundPlan, SHOTS, STICKER_AT, GOAL, SAID } from '../saves.js';
 import { keeperDone } from '../progress.js';
 import { toMatch, toCup, toLessons, ASK } from '../flows.js';
 import { sfx } from '../sound.js';
 
 export const goalie = new Goalie({ world, hud, say, sfx });
 // Said the first time, on the card that opens it; and the headline on the results card, by how many he saved.
-export const INTRO = 'You are the keeper! Stop his shots!';
-export const HEADLINE = { top: 'Super keeper! You got a new sticker!', good: 'Great saves!', try: 'Good try!' };
+const INTRO = SAID.intro, HEADLINE = SAID;
 
 // ---------- his body and his goal ----------
 // He plays as his team's keeper (the fifth player, in a keeper's colours that are neither team's, with gloves).
@@ -106,7 +105,7 @@ export const keeperOn = () => goalie.on;
 // With "Play the keeper" on (the grown-ups' menu; 5v5 only, where there is a keeper), some of their shots are his:
 // game/handover.js decides which and hands the moment here. The first few times he is told he is the keeper; a glove
 // badge stays up while he is.
-export const YOURE = "You're the keeper!", TOLD = 3;
+const YOURE = SAID.youre, TOLD = 3;
 game.keeperPlay = () => P.settings.keeperPlay || 'off';
 game.keeperMoment = (spec, shooter) => {
   const k = P.keeper ||= { best: 0, plays: 0, last: 0, day: -1, stickers: 0 };
