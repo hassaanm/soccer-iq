@@ -216,7 +216,7 @@ async function run(e, my) {
     hud.dots([r.firstTry && r.stars === 3], 1); status('done: Again, or the next one');
     return;
   }
-  if (e.match || (e.keeper === 'match' && keeperMoment())) {
+  if (e.match) {
     const m = e.match || { goals: 5 }, without = m.without || [];
     for (const id of without) delete G.P.skills[id];
     const ids = PATH.map(s => s.id).filter(id => !without.includes(id));
@@ -231,6 +231,10 @@ async function run(e, my) {
     if (my !== epoch) return;
     status(`done: ${score.us}–${score.them}. Again, or the next one`);
     return;
+  }
+  if (e.keeper === 'match' && keeperMoment()) { // (the keeper moment of a 5v5 Match at once: ui/goalie.js keeperMomentNow; Again plays another)
+    const k = await import('../js/ui/goalie.js'); G.goalie = k.goalie;
+    status('playing'); await k.keeperMomentNow({ seed: state.seed }); if (my === epoch) status('done: Again, or the next one'); return;
   }
   if (e.keeper) {
     const ok = e.keeper === 'game' && !!$('#keeperBtn');
@@ -258,7 +262,7 @@ async function run(e, my) {
   if (e.results) return results(e, my);
   throw new Error('This entry has no way to start.');
 }
-const keeperMoment = () => typeof G.game.keeperMoment === 'function';
+const keeperMoment = () => typeof G.game.keeperMoment === 'function'; // (ui/goalie.js sets it: the build has the keeper in matches)
 // One of the game's own flows, played through at once: every round right, the match won, every card tapped.
 async function results(e, my) {
   const { game, $, P, runSession, runFreePlay } = G;

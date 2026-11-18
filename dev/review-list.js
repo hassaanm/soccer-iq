@@ -42,7 +42,7 @@ export const GROUPS = [
   'Team ideas',
   'Matches',
   'Screens and flow',
-  'Goalkeeper (coming on another branch)',
+  'Goalkeeper',
 ];
 const [MOVE, SHOOT, DRIB, RESTART, TEAM, MATCH, SCREEN, KEEPER] = GROUPS;
 const ALL = ['size', 'level', 'think', 'seed'];
@@ -148,7 +148,7 @@ export const ENTRIES = [
 
   // ---------- goalkeeper ----------
   { id: 'keeper-game', group: KEEPER, title: 'Keeper mini game', keeper: 'game',
-    look: 'He is the keeper: watch the shooter\'s eyes and pick where to dive.' },
-  { id: 'keeper-moment', group: KEEPER, title: 'Keeper moment in a match', keeper: 'match', size: '5v5',
-    look: 'A keeper decision inside a match.' },
+    look: 'The glove button: eight shots at him. Tap a gold spot (between the ball and the goal), then where to dive (watch the shooter\'s eyes).' },
+  { id: 'keeper-moment', group: KEEPER, title: 'Keeper moment in a match', keeper: 'match', size: '5v5', pick: ['seed'],
+    look: 'Their player is through on our goal: the camera goes to our keeper ("You\'re the keeper!", the glove badge), the same two taps, then back to the match. Again: another one.' },
 ];

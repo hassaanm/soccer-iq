@@ -607,7 +607,7 @@ export class World {
     const tm = ui.timer && h; this.timerRing.visible = !!tm;
     if (tm) {
       const left = ui.timer.left, top = Math.atan2(c.position.y - h.y, c.position.x - h.x) + Math.PI; // the ring's far side from the camera: where it starts and ends
-      this.timerRing.position.set(h.x, h.y, .03); this.timerRing.scale.setScalar(ui.timer.wide ? 1.45 : 1);
+      this.timerRing.position.set(h.x, h.y, .03); this.timerRing.scale.setScalar(ui.timer.scale ?? (ui.timer.wide ? 1.45 : 1)); // (scale: the keeper game's smaller ring)
       for (const m of this.timerSegs) { const o = (((top - m.userData.a) / (2 * Math.PI)) % 1 + 1) % 1; m.visible = o >= 1 - left; } // (clockwise from the far side: the part already gone is the first stretch after it)
       this.timerMat.color.setHex(left > .5 ? 0x5fe08a : left > .25 ? 0xffd23f : 0xff7a2e);
     }

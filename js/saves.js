@@ -18,21 +18,20 @@ export const zoneAt = id => { const col = id.slice(-1), top = id.length > 1; ret
 // "Ball, you, goal": the right spot is on the line from the ball (where it is struck) to the middle of the goal, OFF m
 // off the line: a step for a shot, two in a 1v1 (he comes out to make the goal small), on the line for a penalty (the
 // rule). The other two spots are GAP m across from it, inside the posts.
-export const OFF = { shot: 1, '1v1': 2.2, pen: .2 };
+export const OFF = { shot: 1, '1v1': 2.2, pen: .15 };
 const GAP = 1.4, EDGE = 2.1, NEAR = .5;
 export const rightSpot = shot => { const off = Math.min(OFF[shot.kind], shot.from.x * .4), f = off / shot.from.x; return { x: off, u: shot.from.u * f }; }; // (never closer to the ball than he is to the goal: a 1v1 struck from close in a match)
 // The three gold spots, left to right as he sees them: { id: 0..2, x, u, right }.
 export function spotsFor(shot) {
-  const r = rightSpot(shot), side = Math.sign(r.u) || 1;
-  let others;
-  if (shot.kind === '1v1') others = [{ x: .5, u: shot.from.u * .5 / shot.from.x }, { x: 1.1, u: r.u - side * 1.7 }]; // (on his line but too deep, and off to the far side)
-  else others = [r.u + GAP, r.u - GAP].map(u => ({ x: r.x, u: Math.abs(u) <= EDGE ? u : r.u - Math.sign(u) * 2 * GAP })); // (one would be outside a post: both go on the other side)
+  const r = rightSpot(shot);
+  if (shot.kind === 'pen') return []; // (a penalty: the rule keeps him on his line, in the middle, where he starts: only the dive)
+  const others = [r.u + GAP, r.u - GAP].map(u => ({ x: r.x, u: Math.abs(u) <= EDGE ? u : r.u - Math.sign(u) * 2 * GAP })); // (side by side at one depth, so all three are clear on screen; one would be outside a post: both go on the other side)
   return [{ ...r, right: true }, ...others.map(p => ({ ...p, right: false }))].sort((p, q) => q.u - p.u || p.x - q.x).map((p, id) => ({ id, ...p }));
 }
 // Where he stands as the shot is struck is right when it is the right spot (within NEAR m of it).
 export const standOf = (shot, at) => (Math.hypot(at.x - rightSpot(shot).x, at.u - rightSpot(shot).u) <= NEAR ? 'right' : 'wrong');
 // Where he starts each shot: in the middle of his goal, on the line.
-export const START = { x: .3, u: 0 };
+export const START = { x: .15, u: 0 }; // (just off the line: the ring round his feet stays clear of the spots a step out)
 
 // ---------- what a shot does ----------
 // Where the ball, struck from `from` along the grass at a target, crosses his line (x = kx): u across, z its height.

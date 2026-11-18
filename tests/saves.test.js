@@ -26,18 +26,20 @@ test('a round: eight shots from the left, the middle and the right, close and fa
 test('where to stand: one right spot of three, on the line from the ball to the middle of the goal, a step off the line', () => {
   for (const sh of allShots()) {
     const sp = spotsFor(sh), r = sp.filter(p => p.right);
+    if (sh.kind === 'pen') { assert.deepEqual(sp, [], 'a penalty: on his line, no spots'); assert.equal(standOf(sh, START), 'right'); continue; }
     assert.equal(sp.length, 3); assert.equal(r.length, 1);
+    assert.ok(sp.every(p => p.x === r[0].x), 'side by side, at one depth');
     const R = r[0], cross = R.u * sh.from.x - sh.from.u * R.x; // (zero when the ball, the spot and the goal's middle are in one line)
     assert.ok(Math.abs(cross) < 1e-9, 'ball, you, goal');
-    assert.ok(Math.abs(R.x - (sh.kind === 'pen' ? .2 : sh.kind === '1v1' ? 2.2 : 1)) < 1e-9, 'a step off the line (two in a 1v1, on it for a penalty)');
+    assert.ok(Math.abs(R.x - (sh.kind === '1v1' ? 2.2 : 1)) < 1e-9, 'a step off the line (two in a 1v1)');
     for (const p of sp) assert.ok(Math.abs(p.u) <= 2.15, 'every spot is inside the posts');
-    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.ok(Math.hypot(sp[i].x - sp[j].x, sp[i].u - sp[j].u) > 1, 'spots are apart, so a finger can tell them apart');
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.ok(Math.hypot(sp[i].x - sp[j].x, sp[i].u - sp[j].u) >= 1.4 - 1e-9, 'spots are apart, so a finger can tell them apart');
     assert.equal(standOf(sh, R), 'right'); for (const p of wrongSpots(sh)) assert.equal(standOf(sh, p), 'wrong');
   }
 });
 
 test('the same taps in the same shot give the same result', () => {
-  for (const sh of allShots().slice(0, 64)) for (const p of spotsFor(sh)) for (const z of [null, ...ZONES]) assert.deepEqual(saveOf(sh, p, z), saveOf(sh, p, z));
+  for (const sh of allShots().slice(0, 64)) for (const p of [...spotsFor(sh), START]) for (const z of [null, ...ZONES]) assert.deepEqual(saveOf(sh, p, z), saveOf(sh, p, z));
 });
 
 test('a ball he can reach where he chose is saved; one out of his reach never is', () => {
@@ -55,7 +57,7 @@ test('a ball he can reach where he chose is saved; one out of his reach never is
 
 test('standing right widens his reach: the other height on the side he chose, and no far corner out of reach', () => {
   let more = 0;
-  for (const sh of allShots()) {
+  for (const sh of allShots().filter(s => s.kind !== 'pen')) {
     const count = p => ZONES.reduce((n, ball) => n + ZONES.filter(tap => saveOf({ ...sh, zone: ball, foot: 'las' }, p, tap).res === 'save').length, 0);
     const R = spotsFor(sh).find(p => p.right), right = count(R);
     for (const p of wrongSpots(sh)) { const n = count(p); assert.ok(right > n, `${sh.kind} ${sh.n}: right ${right} > wrong ${n}`); more++; }
@@ -110,7 +112,7 @@ const policy = choose => g => {
 test('a round played through: eight shots, the score, and the picture matches the result', async () => {
   const plan = roundPlan(7);
   // Even shots: the right spot and the right target (saved). Odd shots: no taps at all (in, unless it is at him).
-  const pick = (sh, what) => (sh.n % 2 ? null : what === 'spot' ? spotsFor(sh).find(p => p.right).id : sh.zone);
+  const pick = (sh, what) => (sh.n % 2 ? null : what === 'spot' ? spotsFor(sh).find(p => p.right)?.id ?? null : sh.zone);
   const { g, events } = makeGoalie(), { res, ball } = await play(g, plan, policy(pick));
   assert.equal(res.length, 8);
   res.forEach((r, i) => {
@@ -131,7 +133,7 @@ test('a round played through: eight shots, the score, and the picture matches th
 });
 
 test('the same taps in the same round give the same results, played out', async () => {
-  const plan = roundPlan(3), pick = (sh, what) => (what === 'spot' ? spotsFor(sh)[sh.n % 3].id : ZONES[(sh.n * 5) % 6]);
+  const plan = roundPlan(3), pick = (sh, what) => (what === 'spot' ? spotsFor(sh)[sh.n % 3]?.id ?? null : ZONES[(sh.n * 5) % 6]);
   const a = (await play(makeGoalie().g, plan, policy(pick))).res, b = (await play(makeGoalie().g, plan, policy(pick))).res;
   const key = r => [r.res, r.why, r.act, r.held, r.spot, r.tap].join();
   assert.deepEqual(a.map(key), b.map(key));

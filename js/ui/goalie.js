@@ -11,7 +11,9 @@ import { fillResults } from './results.js';
 import { renderPickers } from './home.js';
 import { teamById, keeperKit } from '../teams.js';
 import { makeRig } from '../pro/rig.js';
-import { PITCH } from '../geom.js';
+import { PITCH, sizeOf } from '../geom.js';
+import { generate } from '../generate.js';
+import { PATH } from '../skills.js';
 import { Goalie } from '../game/goalie.js';
 import { roundPlan, SHOTS, STICKER_AT, GOAL, SAID } from '../saves.js';
 import { keeperDone } from '../progress.js';
@@ -59,10 +61,27 @@ function sizeGoal(on) {
 // The shooter's eyes over his head, looking where he will shoot (saves.js tellOf), and a glove on the target he picked.
 const eyes = $('#kEyes'), glove = $('#kGlove'), badge = $('#kBadge');
 let handTap = 0, handOn = false;
+const TOP_BAR = 52; // px: the dots (or the score) along the top
+// While he picks a spot his keeper is see-through, so no spot hides behind him; solid again as he goes to the one he tapped.
+let ghostK = 1, ghostRig = null;
+const opacity = (rig, o) => { for (const m of rig.userData.mats) { const t = o < .99; if (m.transparent !== t) { m.transparent = t; m.depthWrite = !t; m.needsUpdate = true; } m.opacity = o; } };
+function ghost(g) {
+  const rig = g.on ? world.rigs.get('hero') : null;
+  if (ghostRig && ghostRig !== rig) { opacity(ghostRig, 1); ghostK = 1; }
+  ghostRig = rig; if (!rig) return;
+  ghostK += ((g.ui.ghost ? .35 : 1) - ghostK) * .2; if (ghostK > .99) ghostK = 1;
+  opacity(rig, ghostK);
+}
 goalie.onFrame = g => {
   const t = g.ui.tell, q = t && world.project(t.x, t.y, t.z);
   eyes.classList.toggle('show', !!q);
-  if (q) { eyes.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px) translate(-50%,-100%) scale(${t.big ? 1.25 : 1})`; eyes.style.opacity = t.alpha; eyes.style.setProperty('--dx', t.dx); eyes.style.setProperty('--dy', t.dy); }
+  if (q) { // (over his head; when that would cover the dots or the score at the top, beside his head instead)
+    const k = t.big ? 1.25 : 1, side = q[1] - 62 * k < TOP_BAR;
+    eyes.classList.toggle('side', side);
+    eyes.style.transform = side ? `translate(${Math.round(q[0] + 14)}px,${Math.round(Math.max(q[1] + 8, TOP_BAR + 30 * k))}px) translate(0,-50%) scale(${k})` : `translate(${Math.round(q[0])}px,${Math.round(q[1])}px) translate(-50%,-100%) scale(${k})`;
+    eyes.style.opacity = t.alpha; eyes.style.setProperty('--dx', t.dx); eyes.style.setProperty('--dy', t.dy);
+  }
+  ghost(g);
   const a = g.ui.pick && g.phase === 'dive' && g.ui.aims[['TL', 'TM', 'TR', 'L', 'M', 'R'].indexOf(g.ui.pick)], p = a && world.project(a.x, a.y, a.z);
   glove.classList.toggle('show', !!p); if (p) glove.style.transform = `translate(${Math.round(p[0])}px,${Math.round(p[1])}px) translate(-50%,-50%)`;
   badge.classList.toggle('show', !!(g.on && g.match));
@@ -115,3 +134,19 @@ game.keeperMoment = (spec, shooter) => {
 };
 $('#keeperBtn').onclick = () => runKeeper();
 window.__keeper = goalie; // (for debugging in the console, as window.__game)
+
+// For the review page (dev/review.js): a keeper moment at once, as in a 5v5 Match: their player through on our goal with
+// the ball, then the hand-over (game/handover.js keeperShot) and play going on after it. `seed` picks the scene.
+export async function keeperMomentNow({ seed = 1 } = {}) {
+  if (!sizeOf().keeper) throw new Error('A keeper moment needs a size with keepers (5v5).');
+  const us = teamById(P.us), them = teamById(P.them);
+  game.setTeams(us, them); world.setEnv('crowd'); hud.hideScore(); hud.caption(''); show(null);
+  let sc = null; for (let k = 0; k < 20 && !sc; k++) sc = generate('get-goal-side', seed + k);
+  game.mode = 'free'; game.skills = new Set(PATH.map(p => p.id)); game.load(sc); game.mode = 'free';
+  const s = game.sim, o = s.a('o1'), cy = PITCH.W / 2, at = { x: 8 + (seed % 3), y: cy + ((seed % 5) - 2) * .9 };
+  Object.assign(o, { x: at.x, y: at.y, tx: at.x, ty: at.y, face: [-1, 0] });
+  Object.assign(s.ball, { x: at.x - .45, y: at.y, z: 0, state: 'carried', carrier: 'o1', move: null, reach: null, h: Math.PI });
+  for (const a of s.agents.values()) if (a.id !== 'o1' && !a.gk && Math.hypot(a.x - at.x, a.y - at.y) < 2.5) { a.x += 3; a.tx = a.x; } // (nobody on top of him)
+  game.kOf = game.missed; game.kShots = (game.kShots || 0) + 1; game.kGiven = true;
+  await game.play(game.keeperShot(o));
+}

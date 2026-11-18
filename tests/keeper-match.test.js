@@ -94,3 +94,23 @@ test('a keeper moment from where their shooter is: the right spot is between the
   const p = defaultProgress(); logChoice(p, { id: KEEPER_IDEA, mode: 'free', grade: 'okay', sec: 1.2, looked: null }, 100);
   assert.deepEqual(p.log.days[100][KEEPER_IDEA].r.free, [0, 1, 0]);
 });
+
+test('"Play the keeper" is for Matches and Cups only: lessons, training and a lesson\'s mini match never hand him a shot', async () => {
+  const { generate } = await import('../js/generate.js');
+  const { drive } = await import('./harness.js');
+  const { g } = makeGame(); let moments = 0, shots = 0;
+  g.skills = new Set(PATH.map(s => s.id)); g.keeperPlay = () => 'always'; g.keeperMoment = async () => { moments++; return { res: 'goal', failed: true }; };
+  const concede = g.concede; g.concede = function* (sh) { shots++; yield* concede.call(this, sh); };
+  // Lesson and training rounds (both play as 'lesson'): defending, at the wrong spot, so they get through and shoot.
+  for (let seed = 1; seed <= 12; seed++) {
+    const sc = generate('get-goal-side', seed); if (!sc) continue;
+    g.mode = 'lesson';
+    const wrong = sc.spots.find(s => 'spot:' + s.id !== sc.best) || sc.spots[0];
+    await drive(g, g.round(sc, { hint: false }), { maxSec: 120, pick: gm => (gm.sc === sc ? 'spot:' + wrong.id : gm.sc.best) });
+  }
+  // A lesson's mini match plays as 'match'.
+  const real = Math.random; let x = 99; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+  try { await drive(g, g.match(PATH.map(s => s.id), [], 2, 'match'), { maxSec: 1500, pick: gm => (gm.sc.spots ? 'spot:' + gm.sc.spots[gm.sc.spots.length - 1].id : optionsFor(gm.sc).find(o => !o.startsWith('shoot') && gm.rating(o) === 'bad') || gm.sc.best || 'drib:fwd') }); }
+  finally { Math.random = real; }
+  assert.ok(shots > 0, 'they did shoot at our goal'); assert.equal(moments, 0, 'and none was his');
+});

@@ -679,6 +679,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* The shooter's eyes over his head (a tell: where he looks is where he shoots), and the glove on the target he picked. */
 #kEyes{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;gap:4px;padding:6px 9px 8px;margin-top:-14px;background:#fff;border-radius:22px;border:3px solid var(--ink);box-shadow:0 4px 10px rgba(0,0,0,.3);transform-origin:50% 100%}
 #kEyes.show{display:flex}
+#kEyes.side::after{display:none} /* (beside his head: no tail) */
 #kEyes::after{content:"";position:absolute;left:50%;bottom:-9px;width:12px;height:12px;margin-left:-8px;background:#fff;border:3px solid var(--ink);border-top:0;border-left:0;transform:rotate(45deg)}
 #kEyes i{position:relative;width:19px;height:25px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-sizing:border-box}
 #kEyes i::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:var(--ink);left:calc(50% - 5px + var(--dx, 0) * 3.5px);top:calc(50% - 5px + var(--dy, 0) * 5.5px)}
@@ -687,3 +688,6 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* (in a match) While he is the keeper: a glove badge under the Home button. */
 #kBadge{position:absolute;top:70px;left:calc(12px + var(--safe-l));z-index:2;pointer-events:none;display:none;width:52px;height:52px;border-radius:50%;background:linear-gradient(#ff9447,#e8691e);border:3px solid #fff;box-shadow:0 4px 0 #b24f12,0 6px 14px rgba(0,0,0,.35);place-items:center;font-size:30px}
 #kBadge.show{display:grid;animation:popIn .3s var(--bounce)}
+
+/* (v67) The version label sits clear of the glove button at the end of the row: just over it. */
+#home #version{bottom:auto;top:calc(100% - 78px);right:calc(14px + var(--safe-r))}

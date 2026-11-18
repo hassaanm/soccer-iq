@@ -19,7 +19,9 @@ const NONE = [];
 // From up there the shooter stands above the crossbar in the picture and the six targets fill the goal mouth.
 const EYE = [5.8, 4.5], LOOK = [5.5, 0], FF = 1.45; // (just inside the stadium's wall, high: the shooter stands clear above the bar from 5 m out)
 const SIDE_STEP = 3.6;            // m/s: his side-step to the spot he chose (a quick shuffle)
-const SPOT = .78;                  // the gold spots a little smaller than in matches, so three fit apart across the goal
+const SPOT = .6, SPOT_R = .75;     // the gold spots smaller than in matches (scale; the gold ring's radius at scale 1, m: world.js), so three sit apart across the goal
+const RING = .42;                  // the draining ring round his feet, smaller than in matches: clear of the spots a step out and of the low middle target
+const TAP = 1.6;                   // a tap picks a spot only this close to it (times its drawn radius)
 const RUN = { in: 3.2, las: 3.9 }, DRIBBLE = 4.3; // the shooter's run-up (m/s), and a 1v1's dribble
 const PLANT = .45, WIND = .2;      // game s: his last stride and plant, then the wind-up to the kick
 const REACT = .05;                 // game s: he chose before the kick, so he goes as it is struck
@@ -180,7 +182,7 @@ export class Goalie {
     if (kind === 'spot' && this.phase === 'stand' && this.spots[+id]) {
       this.pickSpot = +id; this.spotSec = this.real - this.tapAt0; const p = this.w(this.spots[+id]);
       this.sim.go('hero', p.x, p.y, SIDE_STEP); this.sfx('click');
-      this.ui.spotScale = this.spots.map((_, i) => (i === +id ? 1 : SPOT * .85));
+      this.ui.spotScale = this.spots.map((_, i) => (i === +id ? SPOT * 1.15 : SPOT * .85));
       return true;
     }
     if (kind === 'zone' && this.phase === 'dive' && ZONES.includes(id)) { this.pickZone = id; this.tapSec = this.real - this.diveAt0; this.ui.pick = id; this.sfx('click'); return true; }
@@ -189,7 +191,11 @@ export class Goalie {
   // A tap on the screen (CSS px): the nearest spot or target to it, within reach of a finger.
   tapAt(x, y) {
     const near = (pts, r) => { let best = null, bd = r; pts.forEach((p, i) => { const q = this.world.project(p.x, p.y, p.z || 0); if (!q) return; const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = i; } }); return best; };
-    if (this.phase === 'stand') { const i = near(this.ui.spots, 90); if (i != null) return this.choose('spot:' + i); }
+    if (this.phase === 'stand') { // (only on a spot or just round it: a tap elsewhere does nothing)
+      let best = null, bd = 1e9;
+      this.ui.spots.forEach((p, i) => { const q = this.world.project(p.x, p.y, 0), e = this.world.project(p.x, p.y + SPOT_R * (this.ui.spotScale[i] || SPOT), 0); if (!q || !e) return; const r = Math.hypot(e[0] - q[0], e[1] - q[1]), d = Math.hypot(q[0] - x, q[1] - y); if (d <= TAP * r && d < bd) { bd = d; best = i; } });
+      if (best != null) return this.choose('spot:' + best);
+    }
     if (this.phase === 'dive') { const i = near(this.ui.aims, 110); if (i != null) return this.choose('zone:' + ZONES[i]); }
     return false;
   }
@@ -247,7 +253,8 @@ export class Goalie {
   // The ring at his feet drains with the window; the tells show while he picks where to dive.
   frame() {
     const s = this.sim, w = this.win, ui = this.ui, o = s.a(this.shooter);
-    ui.timer = w ? { left: clamp(1 - (s.time - w.t0) / w.T, 0, 1), wide: false } : null;
+    ui.timer = w ? { left: clamp(1 - (s.time - w.t0) / w.T, 0, 1), wide: false, scale: RING } : null;
+    ui.ghost = this.phase === 'stand' && this.pickSpot == null && this.spots?.length > 0; // (see-through while he picks a spot, so none hides behind him: ui/goalie.js)
     ui.heroRing = this.phase === 'ready'; // (not while he chooses: the gold is for the spots and targets; the ring that drains is round his feet)
     const t = this.tell; ui.tell = null; ui.lines = NONE;
     if (t && o) {
@@ -259,7 +266,7 @@ export class Goalie {
     }
     // The teaching hand (his very first shot): over the right spot, then over the target his eyes show.
     ui.hand = null;
-    if (this.hint && this.phase === 'stand' && this.pickSpot == null) { const p = this.spots.find(q => q.right); ui.hand = this.w(p, 0); }
+    if (this.hint && this.phase === 'stand' && this.pickSpot == null) { const p = this.spots.find(q => q.right); if (p) ui.hand = this.w(p, 0); }
     if (this.hint && this.phase === 'dive' && this.pickZone == null) { const Z = zoneAt(this.spec.zone); ui.hand = this.w({ x: 0, u: Z.u }, Z.z); }
   }
 }

@@ -11,7 +11,7 @@ import { keeperGive, matchShot, gradeOf, KEEPER_IDEA } from '../saves.js';
 export const handover = {
   // Whether this shot of theirs is his. A new match starts its own count (match() makes a new `missed` each match).
   keeperTurn(shooter) {
-    if (!this.keeperMoment || (this.mode !== 'match' && this.mode !== 'free') || !this.sim.keeper('us')) return false;
+    if (!this.keeperMoment || this.mode !== 'free' || !this.sim.keeper('us')) return false; // (Matches and Cups only: a lesson's mini match plays as 'match', lessons and training as 'lesson')
     if (this.kOf !== this.missed) Object.assign(this, { kOf: this.missed, kSaves: 0, kShots: 0, kGiven: false });
     const give = keeperGive(this.keeperPlay?.() || 'off', this.kGiven, seeded(shooter.x, shooter.y, this.sim.time, ++this.kShots, 17));
     this.kGiven = give;
