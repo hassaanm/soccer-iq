@@ -152,11 +152,15 @@ export function sessionRounds(skillId, n, { first = false, level = 1, rnd = Math
 
 // A round list: n scenarios, no repeats until the bank runs out, never the same base twice in a row.
 export function pickRounds(skillIds, n, rnd = Math.random) {
-  const pool = shuffle(skillIds.flatMap(allScenarios), rnd), out = [];
+  // (frame time) Only the scenes that are picked are generated (each of a lesson's ten on demand), not all of every
+  // lesson's first: that was a third of a second of work in the frame a match starts on a slow phone.
+  const pool = shuffle(skillIds.flatMap(id => (generates(id) ? Array.from({ length: 10 }, (_, i) => ({ id, seed: 101 + i })) : [])), rnd), out = [];
+  const at = i => { while (i < pool.length) { const e = pool[i]; if (!('sc' in e)) e.sc = generate(e.id, e.seed); if (e.sc) return e.sc; pool.splice(i, 1); } return null; };
   while (out.length < n && pool.length) {
     const prev = out[out.length - 1];
-    const i = pool.findIndex(s => !prev || s.id.replace(/m$/, '') !== prev.id.replace(/m$/, ''));
-    out.push(pool.splice(i < 0 ? 0 : i, 1)[0]);
+    let i = 0; for (;; i++) { const s = at(i); if (!s) { i = -1; break; } if (!prev || s.id.replace(/m$/, '') !== prev.id.replace(/m$/, '')) break; }
+    const s = at(i < 0 ? 0 : i); if (!s) break;
+    pool.splice(i < 0 ? 0 : i, 1); out.push(s);
   }
   return out;
 }

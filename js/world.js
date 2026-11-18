@@ -443,6 +443,7 @@ export class World {
   // Builds the six players. The home screen calls this on every tap of a team picker, so a side whose team did
   // not change keeps its bodies, and a body that is replaced gives back its shapes, materials and textures.
   setTeams(us, them) {
+    this.warmed = false; // (see render)
     this.resetRigs(); // every sim id drives its own body again, as it does with freshly built ones
     this.mood = null;
     let changed = false;
@@ -529,6 +530,10 @@ export class World {
     if (!this.watched) this.measure();
     const Wpx = this.width, Hpx = this.height, c = this.camera, eye = cam.eye, tgt = cam.tgt;
     if (this.resized) { this.resized = false; this.resize(Wpx, Hpx); }
+    // (frame time) Every material's shader is compiled once up front, also for what is hidden now (rings, arrows,
+    // targets, the effects' pool), and again after the teams change (new kits): the first time something shows in play
+    // it costs no compile. (On the first frame and at a scene change, where the picture changes anyway.)
+    if (!this.warmed) { this.warmed = true; try { this.renderer.compile(this.scene, c); } catch (e) { console.error(e); } }
     // Focal length from height (Ff) and width (Fw) so wide phones don't see extra field.
     const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), aspect = Wpx / Hpx;
     let fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI;

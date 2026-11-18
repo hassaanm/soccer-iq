@@ -1,5 +1,7 @@
-// Frame time: how long the game's own work takes in the frames in which a choice opens or closes (npm run audit:frames,
-// and at the end of npm run audit:motion).
+// Frame time: how long the game's own work takes in every frame of play (npm run audit:frames, and at the end of
+// npm run audit:motion): the frames in which a choice opens or closes, and every other frame of the run-up, the choice
+// and the outcome. Only the one frame in which a new scene is set up (a cut: the picture changes anyway) is reported
+// without a limit. What this cannot see: drawing (the renderer is a stub here), so not the GPU nor the effects.
 //
 // A frame that takes too long is a hitch on the phone: the picture stops, then jumps. The heavy work is all at a
 // choice's edges (the window's plan, the fit of the view, the next scene), so those frames are timed here: matches at
@@ -53,9 +55,9 @@ async function runs(size) {
     let a, b; try { a = await make(); b = await make(); } catch (e) { rows.push({ name, err: String(e.message || e) }); continue; }
     const n = Math.min(a.length, b.length), same = a.length === b.length;
     for (const j of a.jumps) rows.push({ name, jump: j });
-    for (let i = 0; i < n; i++) { // a frame at an edge, or next to one
-      const near = [i - 1, i, i + 1].map(j => a[j]?.edge).find(Boolean); if (!near) continue;
-      rows.push({ name, i, edge: a[i].edge || near, ms: same ? Math.min(a[i].ms, b[i].ms) : a[i].ms, what: a[i].what });
+    for (let i = 0; i < n; i++) { // every frame: the one a new scene is set up in (the cut), one at or next to a choice's edge, or any other (play)
+      const near = [i - 1, i, i + 1].map(j => a[j]?.edge).find(e => e && e !== 'scene');
+      rows.push({ name, i, edge: a[i].edge === 'scene' ? 'scene' : near || 'play', ms: same ? Math.min(a[i].ms, b[i].ms) : a[i].ms, what: a[i].what });
     }
   }
   return rows;
@@ -67,9 +69,9 @@ export async function frameAudit({ sizes = SIZES, limit = LIMIT, log = console.l
     setSize(size); const rows = await runs(size), errs = rows.filter(r => r.err), J = rows.filter(r => r.jump), R = rows.filter(r => !r.err && !r.jump);
     for (const e of errs) { fails++; log(`  ${size} ${e.name}: did not run (${e.err})`); }
     fails += J.length; log(`  ${size} jumps (somebody moved by more than a frame's travel): ${J.length}`); for (const r of J.slice(0, 6)) log(`     ${r.name}: ${r.jump}`);
-    for (const edge of ['opens', 'closes', 'scene']) {
+    for (const edge of ['opens', 'closes', 'play', 'scene']) {
       const v = R.filter(r => r.edge === edge).sort((p, q) => q.ms - p.ms), over = v.filter(r => r.ms > limit), strict = edge !== 'scene';
-      log(`  ${size} choice ${edge === 'scene' ? 'set up (a new scene: a cut, reported only)' : edge}: ${v.length} frames, worst ${v[0]?.ms.toFixed(1) ?? '-'} ms here (${((v[0]?.ms || 0) * 4).toFixed(0)} ms on a phone four times slower), over the limit: ${strict ? over.length : '-'}`);
+      log(`  ${size} ${edge === 'scene' ? 'the frame a new scene is set up in (a cut, reported only)' : edge === 'play' ? 'every other frame (the choice, the outcome, the run-up)' : 'choice ' + edge}: ${v.length} frames, worst ${v[0]?.ms.toFixed(1) ?? '-'} ms here (${((v[0]?.ms || 0) * 4).toFixed(0)} ms on a phone four times slower), over the limit: ${strict ? over.length : '-'}`);
       if (strict) { fails += over.length; for (const r of over.slice(0, 5)) log(`     ${r.ms.toFixed(1)} ms  ${r.name} frame ${r.i}: ${r.what}`); }
     }
   }
@@ -77,7 +79,7 @@ export async function frameAudit({ sizes = SIZES, limit = LIMIT, log = console.l
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  console.log(`Frame time at a choice's edges (limit ${LIMIT.toFixed(1)} ms here, ${(LIMIT * 4).toFixed(0)} ms on a phone four times slower):`);
+  console.log(`Frame time in every frame of play (limit ${LIMIT.toFixed(1)} ms here, ${(LIMIT * 4).toFixed(0)} ms on a phone four times slower):`);
   const fails = await frameAudit();
   console.log(fails ? `${fails} long frames or jumps` : 'no frame over the limit, no jump');
   process.exit(fails ? 1 : 0);
