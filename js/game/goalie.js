@@ -23,6 +23,7 @@ const SPOT = .78;                  // the gold spots a little smaller than in ma
 const RUN = { in: 3.2, las: 3.9 }, DRIBBLE = 4.3; // the shooter's run-up (m/s), and a 1v1's dribble
 const PLANT = .45, WIND = .2;      // game s: his last stride and plant, then the wind-up to the kick
 const REACT = .05;                 // game s: he chose before the kick, so he goes as it is struck
+const CAM_IN = 1.1, SET_TOUCH = 1.6; // (a match) real s the camera takes to his goal; the shooter's touch to set the ball (m/s)
 const LIE = 1.1;                   // game s after his hands reach the ball that he stays down (then gets up: pro/keeper.js)
 export const AFTER = { save: 2.3, goal: 2.6 }; // real s the result stays before the next shot
 
@@ -51,7 +52,8 @@ export class Goalie {
     this.slowV = (this.slowV - k * q) * d; this.slow = clamp(want + (c + q) * d, .02, 1);
     this.acc = Math.min(.25, (this.acc || 0) + dt * this.slow);
     while (this.acc >= STEP) { this.acc -= STEP; this.gameStep(STEP); }
-    this.ui.clock += dt * Math.max(this.slow, .35);
+    this.ui.clock += dt * Math.max(this.slow, .35); this.real = (this.real || 0) + dt;
+    this.blendCam(dt);
     this.frame();
     this.onFrame?.(this);
   }
@@ -96,36 +98,69 @@ export class Goalie {
     // The view looks a little toward the side the shot comes from, so the shooter is never at the edge.
     this.cam = { eye: [-EYE[0], this.cy + f.u * .12, EYE[1]], tgt: [LOOK[0], this.cy + f.u * .3, LOOK[1]], Ff: FF, Fw: 0 };
   }
+  // (v67) A shot of theirs in a match that he plays as our keeper (game/handover.js): on the match's own sim, with
+  // everyone where play left them. For the moment our keeper is `hero` (the ids and the bodies swap back after), the
+  // camera glides from the match's view to the keeper's and back, and the match's picture clock goes on from where it was.
+  async inMatch(game, spec, shooter) {
+    const own = this.sim, s = this.sim = game.sim, W = this.world;
+    this.cy = PITCH.W / 2; this.match = true; this.shooter = shooter; this.hint = false; this.n = (this.n || 0) + 1;
+    swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
+    const k = s.a('hero'); k.gkm = null; k.face = [1, 0]; s.stop('hero');
+    this.ui.clock = game.ui.clock ?? this.ui.clock;
+    const f = spec.from, to = { eye: [-EYE[0], this.cy + f.u * .12, EYE[1]], tgt: [LOOK[0], this.cy + f.u * .3, LOOK[1]], Ff: FF, Fw: 0 };
+    this.cam = camOf(game.cam || to, W); this.camGo = { from: camOf(this.cam, W), to, t: 0, dur: CAM_IN };
+    this.on = true;
+    try { return await this.play(spec, { ready: CAM_IN + .2, run: SET_TOUCH }); }
+    finally {
+      swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
+      game.cam = camOf(this.cam, W); game.ui.clock = this.ui.clock; // (the match's camera goes on from here, back to its own view: game/view.js eases it)
+      Object.assign(this.ui, { spots: NONE, aims: NONE, lines: NONE, timer: null, tell: null, pick: null, hand: null });
+      this.on = false; this.match = false; this.sim = own; this.phase = 'idle'; this.camGo = null;
+    }
+  }
+  // The camera on its way from one view to another (eased, by real time).
+  blendCam(dt) {
+    const g = this.camGo; if (!g) return;
+    g.t += dt; const e = Math.min(1, g.t / g.dur), k = e * e * (3 - 2 * e), L = (a, b) => a + (b - a) * k;
+    this.cam = { eye: g.from.eye.map((v, i) => L(v, g.to.eye[i])), tgt: g.from.tgt.map((v, i) => L(v, g.to.tgt[i])), Ff: L(g.from.Ff, g.to.Ff), Fw: 0 };
+    if (e >= 1) this.camGo = null;
+  }
   // One shot. Resolves { ...saves.js saveOf, spot (the one he tapped, or null), tap, spec }.
   async shot(spec, { hint = false } = {}) {
-    const s = this.sim;
-    this.setup(spec); this.spec = spec; this.pickSpot = null; this.pickZone = null; this.result = null; this.hint = hint;
+    this.setup(spec); this.hint = hint; this.match = false; this.shooter = 'o1';
+    return this.play(spec, { ready: .8, others: spec.kind === 'pen' ? [] : ['m1', 'o2'] });
+  }
+  // The shot itself, on the sim as it is set up (the mini game's, or a match's: inMatch): `hero` is the keeper, the
+  // shooter (this.shooter) has the ball. ready: real seconds before the run-up; others: who comes in a little too.
+  async play(spec, { ready = .8, others = [], run = null } = {}) {
+    const s = this.sim, id = this.shooter;
+    this.spec = spec; this.pickSpot = null; this.pickZone = null; this.result = null;
     Object.assign(this.ui, { spots: NONE, aims: NONE, lines: NONE, timer: null, heroRing: true, tell: null, pick: null });
     this.slow = 1; this.slowV = 0; this.win = null; this.phase = 'ready';
-    await this.wait(.8);
+    await this.wait(ready);
     // The run-up: he picks where to stand.
-    const spots = this.spots = spotsFor(spec), o = s.a('o1'), dir = this.aimDir(spec);
+    const spots = this.spots = spotsFor(spec), o = s.a(id), dir = this.aimDir(spec), home = this.local(s.a('hero'));
     const plant = this.w({ x: spec.from.x - dir.x * .42, u: spec.from.u - dir.u * .42 });
-    const v = spec.kind === '1v1' ? DRIBBLE : RUN[spec.foot], T = dist(o, plant) / v;
+    const v = run || (spec.kind === '1v1' ? DRIBBLE : RUN[spec.foot]), T = Math.max(.15, dist(o, plant) / v);
     this.ui.spots = spots.map(p => this.w(p)); this.ui.spotScale = spots.map(() => SPOT);
-    this.phase = 'stand'; this.win = { t0: s.time, T, real: spec.stand }; this.slow = T / spec.stand; // (he is standing still as it starts: the slow motion is there at once)
-    s.go('o1', plant.x, plant.y, v);
-    if (spec.kind !== 'pen') for (const id of ['m1', 'o2']) { const a = s.a(id); s.go(id, a.x - (a.x - plant.x) * .25, a.y - (a.y - plant.y) * .15, 2.4); } // (they come in too, slower)
+    this.phase = 'stand'; this.win = { t0: s.time, T, real: spec.stand }; this.tapAt0 = this.real; this.slow = T / spec.stand; // (he is standing still as it starts: the slow motion is there at once)
+    s.go(id, plant.x, plant.y, v);
+    for (const m of others) { const a = s.a(m); if (a) s.go(m, a.x - (a.x - plant.x) * .25, a.y - (a.y - plant.y) * .15, 2.4); } // (they come in too, slower)
     await this.wait(99, () => dist(o, plant) < .06 || s.time - this.win.t0 > T + .5);
     // The plant and the wind-up: he picks where to dive. The shooter turns to where he will shoot (his body, his
     // standing foot) and looks at it (tells).
-    s.stop('o1'); for (const id of ['m1', 'o2']) s.stop(id);
+    s.stop(id); for (const m of others) if (s.a(m)) s.stop(m);
     const aim = this.w({ x: 0, u: zoneAt(spec.zone).u }); faceTo(o, aim.x, aim.y);
     this.ui.spots = NONE; this.ui.aims = ZONES.map(id => this.w({ x: -.05, u: zoneAt(id).u }, zoneAt(id).z));
-    this.phase = 'dive'; this.win = { t0: s.time, T: PLANT + WIND, real: spec.dive };
+    this.phase = 'dive'; this.win = { t0: s.time, T: PLANT + WIND, real: spec.dive }; this.diveAt0 = this.real;
     this.tell = tellOf(spec); this.diveT0 = this.ui.clock;
     await this.wait(99, () => s.time - this.win.t0 >= PLANT);
-    s.windup('o1', spec.foot === 'in' ? 'pass' : 'shot', null);
+    s.windup(id, spec.foot === 'in' ? 'pass' : 'shot', null);
     await this.wait(99, () => s.time - this.win.t0 >= PLANT + WIND);
     // The kick: what happens follows from where he stood and what he chose (saves.js).
     this.win = null; this.phase = 'flight'; this.ui.aims = NONE; this.ui.timer = null; this.tell = null;
-    const at = this.pickSpot != null ? spots[this.pickSpot] : START, r = saveOf(spec, at, this.pickZone);
-    this.result = { ...r, spot: this.pickSpot, tap: this.pickZone, spec };
+    const at = this.pickSpot != null ? spots[this.pickSpot] : home, r = saveOf(spec, at, this.pickZone); // (no spot chosen: where he stood)
+    this.result = { ...r, spot: this.pickSpot, tap: this.pickZone, spec, sec: this.pickZone ? this.tapSec : this.pickSpot != null ? this.spotSec : -1 };
     const arrive = this.strike(spec, r, at);
     await this.wait(99, () => s.time >= arrive);
     if (r.res === 'save') this.saved(r); else this.conceded(r);
@@ -142,12 +177,12 @@ export class Goalie {
   choose(opt) {
     const [kind, id] = opt.split(':');
     if (kind === 'spot' && this.phase === 'stand' && this.spots[+id]) {
-      this.pickSpot = +id; const p = this.w(this.spots[+id]);
+      this.pickSpot = +id; this.spotSec = this.real - this.tapAt0; const p = this.w(this.spots[+id]);
       this.sim.go('hero', p.x, p.y, SIDE_STEP); this.sfx('click');
       this.ui.spotScale = this.spots.map((_, i) => (i === +id ? 1 : SPOT * .85));
       return true;
     }
-    if (kind === 'zone' && this.phase === 'dive' && ZONES.includes(id)) { this.pickZone = id; this.ui.pick = id; this.sfx('click'); return true; }
+    if (kind === 'zone' && this.phase === 'dive' && ZONES.includes(id)) { this.pickZone = id; this.tapSec = this.real - this.diveAt0; this.ui.pick = id; this.sfx('click'); return true; }
     return false;
   }
   // A tap on the screen (CSS px): the nearest spot or target to it, within reach of a finger.
@@ -210,7 +245,7 @@ export class Goalie {
   // ---------- each frame: the highlights ----------
   // The ring at his feet drains with the window; the tells show while he picks where to dive.
   frame() {
-    const s = this.sim, w = this.win, ui = this.ui, o = s.a('o1');
+    const s = this.sim, w = this.win, ui = this.ui, o = s.a(this.shooter);
     ui.timer = w ? { left: clamp(1 - (s.time - w.t0) / w.T, 0, 1), wide: false } : null;
     ui.heroRing = this.phase === 'ready'; // (not while he chooses: the gold is for the spots and targets; the ring that drains is round his feet)
     const t = this.tell; ui.tell = null; ui.lines = NONE;
@@ -227,3 +262,12 @@ export class Goalie {
     if (this.hint && this.phase === 'dive' && this.pickZone == null) { const Z = zoneAt(this.spec.zone); ui.hand = this.w({ x: 0, u: Z.u }, Z.z); }
   }
 }
+
+// Swaps two players' ids in a sim (and who has the ball), so the match's keeper is `hero` for his moment.
+function swapIds(s, a, b) {
+  const A = s.a(a), B = s.a(b); if (!A || !B) return;
+  A.id = b; B.id = a; s.agents.set(a, B); s.agents.set(b, A);
+  const ball = s.ball; if (ball.carrier === a) ball.carrier = b; else if (ball.carrier === b) ball.carrier = a;
+}
+// A camera as the keeper game uses it: its lens from the height alone (World.render: the larger of Ff and Fw).
+const camOf = (c, W) => ({ eye: [...c.eye], tgt: [...c.tgt], Ff: Math.max(c.Ff || 0, (c.Fw || 0) * ((W?.width || 16) / (W?.height || 9))), Fw: 0 });

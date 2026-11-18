@@ -20,7 +20,7 @@ export const zoneAt = id => { const col = id.slice(-1), top = id.length > 1; ret
 // rule). The other two spots are GAP m across from it, inside the posts.
 export const OFF = { shot: 1, '1v1': 2.2, pen: .2 };
 const GAP = 1.4, EDGE = 2.1, NEAR = .5;
-export const rightSpot = shot => { const f = OFF[shot.kind] / shot.from.x; return { x: OFF[shot.kind], u: shot.from.u * f }; };
+export const rightSpot = shot => { const off = Math.min(OFF[shot.kind], shot.from.x * .4), f = off / shot.from.x; return { x: off, u: shot.from.u * f }; }; // (never closer to the ball than he is to the goal: a 1v1 struck from close in a match)
 // The three gold spots, left to right as he sees them: { id: 0..2, x, u, right }.
 export function spotsFor(shot) {
   const r = rightSpot(shot), side = Math.sign(r.u) || 1;
@@ -116,3 +116,20 @@ export function roundPlan(seed = 1) {
 }
 // The score after a round: saves of SHOTS, and the stars on the card (3: STICKER_AT or more, 2: four or more, 1: some).
 export const starsFor = saves => (saves >= STICKER_AT ? 3 : saves >= 4 ? 2 : saves > 0 ? 1 : 0);
+
+// ---------- in a match (v67): now and then he is our keeper for one of their shots ----------
+// The grown-ups' setting "Play the keeper" (P.settings.keeperPlay): off (our keeper plays as before: game/keeper.js
+// OUR_SAVE), sometimes, always. Only at a size with keepers (5v5). Sometimes: a shot is his half of the time when the
+// last one was not, and never two in a row, so about one of their shots in three is his (u: a seeded number 0..1).
+export const KEEPER_PLAY = ['off', 'sometimes', 'always'], SOMETIMES = .5;
+export const keeperGive = (mode, lastGiven, u) => mode === 'always' || (mode === 'sometimes' && !lastGiven && u < SOMETIMES);
+// Their shot as a keeper's moment: struck from `from` (he takes one touch to set it, from `start`), at a target picked by
+// the seeded number u (the inside of the foot from close: low; the laces from farther: any). His eyes show it all the way.
+export function matchShot(from, start, u) {
+  const close = Math.hypot(from.x, from.u) <= CLOSE, low = ['L', 'R', 'M', 'L', 'R'], zone = close ? low[Math.floor(u * low.length) % low.length] : ZONES[Math.floor(u * 6) % 6];
+  return { ...makeShot(2, Math.hypot(from.x, from.u) <= 7.5 ? '1v1' : 'shot', from, zone, start), match: true };
+}
+// How his two taps went, for the decision log (progress.js logChoice, under its own idea 'keeper'): both right (the right
+// spot, and the side the ball went) best; one of them okay; neither a miss. No taps at all: out of time.
+export const KEEPER_IDEA = 'keeper';
+export const gradeOf = r => (r.spot == null && r.tap == null ? 'timeout' : r.right && r.tap && zoneAt(r.tap).col === zoneAt(r.spec.zone).col ? 'best' : r.right || (r.tap && zoneAt(r.tap).col === zoneAt(r.spec.zone).col) ? 'okay' : 'miss');

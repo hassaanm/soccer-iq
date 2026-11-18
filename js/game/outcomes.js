@@ -405,6 +405,7 @@ export const outcomes = {
   },
   // Their player is through: everyone stops, and he shoots into our goal.
   *concede(shooter) {
+    if (this.keeperTurn?.(shooter)) { this.spice(null); yield* this.keeperShot(shooter); return; } // (v67: now and then he is our keeper for it: game/handover.js)
     const s = this.sim; this.spice(null);
     this.ai = false; s.stopAll();
     const gk = s.keeper('us'), y = gk ? placedAim(shooter, gk, 0) : clamp(shooter.y, gy0 + .8, gy1 - .8); // (our keeper: past him, in the bigger space)

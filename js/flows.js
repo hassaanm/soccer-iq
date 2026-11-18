@@ -88,7 +88,8 @@ function tomorrow() {
   focus(P, id); save();
   const k = skillById(id); return `Practice next: ${k.emoji} ${k.kid}`;
 }
-const scoreLine = (us, them, s) => `${us.short} ${s.us} – ${s.them} ${them.short}`;
+const scoreLine = (us, them, s) => `${us.short} ${s.us} – ${s.them} ${them.short}` + keeperLine(); // (v67: and his saves, when he played the keeper: game/handover.js)
+const keeperLine = () => { const n = game.keeperSaves?.() || 0; return n ? ` · 🧤 ${n} save${n > 1 ? 's' : ''}` : ''; };
 const outside = sk => (sk.outside ? `<b>🏡 Try it outside</b>${sk.outside}` : '');
 const countRight = results => `${results.filter(Boolean).length} of ${results.length} right on the first try`;
 

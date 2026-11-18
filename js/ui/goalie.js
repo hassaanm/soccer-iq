@@ -58,7 +58,7 @@ function sizeGoal(on) {
 
 // ---------- over the picture ----------
 // The shooter's eyes over his head, looking where he will shoot (saves.js tellOf), and a glove on the target he picked.
-const eyes = $('#kEyes'), glove = $('#kGlove');
+const eyes = $('#kEyes'), glove = $('#kGlove'), badge = $('#kBadge');
 let handTap = 0, handOn = false;
 goalie.onFrame = g => {
   const t = g.ui.tell, q = t && world.project(t.x, t.y, t.z);
@@ -66,6 +66,7 @@ goalie.onFrame = g => {
   if (q) { eyes.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px) translate(-50%,-100%) scale(${t.big ? 1.25 : 1})`; eyes.style.opacity = t.alpha; eyes.style.setProperty('--dx', t.dx); eyes.style.setProperty('--dy', t.dy); }
   const a = g.ui.pick && g.phase === 'dive' && g.ui.aims[['TL', 'TM', 'TR', 'L', 'M', 'R'].indexOf(g.ui.pick)], p = a && world.project(a.x, a.y, a.z);
   glove.classList.toggle('show', !!p); if (p) glove.style.transform = `translate(${Math.round(p[0])}px,${Math.round(p[1])}px) translate(-50%,-50%)`;
+  badge.classList.toggle('show', !!(g.on && g.match));
   const h = g.ui.hand, hp = h && world.project(h.x, h.y, h.z || 0);
   if (hp) { if (!handOn) handTap++; handOn = true; hud.hand([hp[0], hp[1] + 6], handTap); } else if (handOn) { handOn = false; hud.hand(null); }
 };
@@ -98,7 +99,20 @@ export async function runKeeper() {
   } catch (e) { console.error(e); end(); show('#home'); } finally { busy = false; }
 }
 // Back to the game's own world: his outfield body, the goal as it was, the home scene.
-function end() { goalie.on = false; hud.hand(null); eyes.classList.remove('show'); glove.classList.remove('show'); undress(); sizeGoal(false); game.home(); }
+function end() { goalie.on = false; hud.hand(null); for (const el of [eyes, glove, badge]) el.classList.remove('show'); undress(); sizeGoal(false); game.home(); }
 export const keeperOn = () => goalie.on;
+
+// ---------- in a match (v67) ----------
+// With "Play the keeper" on (the grown-ups' menu; 5v5 only, where there is a keeper), some of their shots are his:
+// game/handover.js decides which and hands the moment here. The first few times he is told he is the keeper; a glove
+// badge stays up while he is.
+export const YOURE = "You're the keeper!", TOLD = 3;
+game.keeperPlay = () => P.settings.keeperPlay || 'off';
+game.keeperMoment = (spec, shooter) => {
+  const k = P.keeper ||= { best: 0, plays: 0, last: 0, day: -1, stickers: 0 };
+  k.turns = (k.turns || 0) + 1; save();
+  if (k.turns <= TOLD) { hud.caption('🧤 ' + YOURE); say(YOURE); setTimeout(() => { if (hud.busy?.()) hud.caption(''); }, 1800); }
+  return goalie.inMatch(game, spec, shooter);
+};
 $('#keeperBtn').onclick = () => runKeeper();
 window.__keeper = goalie; // (for debugging in the console, as window.__game)

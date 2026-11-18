@@ -675,3 +675,6 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #kEyes i::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:var(--ink);left:calc(50% - 5px + var(--dx, 0) * 3.5px);top:calc(50% - 5px + var(--dy, 0) * 5.5px)}
 #kGlove{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;font-size:44px;line-height:1;filter:drop-shadow(0 3px 0 rgba(36,25,58,.6))}
 #kGlove.show{display:block;animation:popIn .25s var(--bounce)}
+/* (in a match) While he is the keeper: a glove badge under the Home button. */
+#kBadge{position:absolute;top:70px;left:calc(12px + var(--safe-l));z-index:2;pointer-events:none;display:none;width:52px;height:52px;border-radius:50%;background:linear-gradient(#ff9447,#e8691e);border:3px solid #fff;box-shadow:0 4px 0 #b24f12,0 6px 14px rgba(0,0,0,.35);place-items:center;font-size:30px}
+#kBadge.show{display:grid;animation:popIn .3s var(--bounce)}
