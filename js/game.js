@@ -3,6 +3,7 @@
 // methods for each concern live in js/game/ and are added to the class at the bottom of this file.
 import { Sim } from './sim.js';
 import { demoScenario } from './skills.js';
+import { shotLook } from './generate.js';
 import { clamp, closestOnLane, PITCH } from './geom.js';
 import { displayName } from './teams.js';
 import { MATES, ROSTER, DIRS, NONE, facesBall, wrap } from './game/shared.js';
@@ -46,7 +47,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false, held: false });
   }
 
   home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
@@ -76,10 +77,11 @@ export class Game {
     this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; this.bounced = undefined; this.followRuns = []; this.followRacer = null; this.reshoot = null; // (v64: the rings' own places; the window's plan)
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
-    if (sc.shots) { // (v62) a shot lesson's scene: he faces the goal and anyone of his close to it (a friend free at the far post), so LOOK UP shows the goal and the keeper (v72: at every size, not only with a keeper)
-      const [hx, hy] = sc.heroTo, pts = [[PITCH.L, PITCH.W / 2], ...sc.mates.filter(m => Math.hypot(PITCH.L - m[0], PITCH.W / 2 - m[1]) < 9)];
-      this.yaw = Math.atan2(pts.reduce((a, p) => a + p[1], 0) / pts.length - hy, pts.reduce((a, p) => a + p[0], 0) / pts.length - hx);
-    }
+    // (v62) A shot lesson's scene: he faces the goal and anyone of his close to it (a friend free at the far post), so LOOK
+    // UP shows the goal and the keeper (v72: at every size, not only with a keeper). (v76) Only where his run in comes from
+    // there too (generate.js shotScene); "too far" (shot-far) runs straight up the field, so the view looks that way, and
+    // LOOK UP turns it to the goal (input.js faceGoal).
+    if (sc.shots && sc.shotPlan) this.yaw = shotLook(sc.heroTo, sc.mates);
   }
   // Which way he faces at the start of a spot round: toward the ball, turned so the ball and every spot are on
   // screen when they fit. Otherwise the right spot would often be the one he has to turn to find, and he could
@@ -104,7 +106,9 @@ export class Game {
   // however long the frames are. See game/skill.js skillFrame.)
   // (v64) A job made while a decision window is open runs on real time (`real`): it is the picture and the words (a
   // caption, the hand, the view swinging round, a demo's talk), which must not crawl with the slow motion of play.
-  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
+  // (v76) So is one made while play is held still (`held`: a demo says its idea over the picture its choice opens on), or
+  // while `realJobs` is set (a demo's first line, said over the run-up and on into the hold).
+  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win || !!this.held || !!this.realJobs }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
   cancel(t) { if (t && !t.dead) { t.dead = true; t.res(); } }
   delay(sec) { return this.skipping ? Promise.resolve() : this.job(sec).done; }
   tween(sec, f) { if (this.skipping) { f(1); return Promise.resolve(); } return this.job(sec, f).done; }
@@ -154,8 +158,10 @@ export class Game {
   tick(dt, time) {
     this.clock = time;
     this.runJobs(dt, true);
-    // Game time: the real game steps it in small even steps, slower in a skill moment (see game/skill.js).
-    if (this.skillTaps) this.skillFrame(dt); else this.gameTime(dt);
+    // Game time: the real game steps it in small even steps, slower in a skill moment (see game/skill.js). (v76) Not while
+    // play is held still: a demo's first picture, while its idea is said (demo.js); the camera and the hand go on.
+    if (this.held) { this.realTime = (this.realTime || 0) + dt; if (this.skillTaps) this.ui.clock += dt * .85; } // (game time stands, and so do its waits; the standing players breathe, as while play waits for a tap)
+    else if (this.skillTaps) this.skillFrame(dt); else this.gameTime(dt);
     if (this.sc?.kind === 'receive' && this.phase === 'decide' && this.yaw0 != null && Math.abs(wrap(this.yaw - this.yaw0)) > 1.4) this.peeked = true;
     this.frame(dt, time);
   }

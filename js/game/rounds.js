@@ -316,6 +316,7 @@ export const rounds = {
       if (rating === 'safe') {
         if (answer === 'watch') {
           restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.openWindow();
+          this.showClock(this.talkTime('Here is the 3-star play!', .2) + this.tapsSec(sc.best)); // (v76: its own clock: the choice lands with about half the ring left)
           await this.talk('Here is the 3-star play!', .2); await this.showPlay(sc.best); await this.delay(.8); this.hud.caption('');
         }
         return { firstTry: false, stars: 2 };
@@ -325,6 +326,7 @@ export const rounds = {
         this.shown.add(opt);
         await this.feedback(save, opt);
         restart(); this.showing = true; this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.openWindow(); // (v64: the better way, from play going on)
+        this.showClock(this.talkTime('Watch this way!', .2) + this.tapsSec(sc.best)); // (v76: its own clock, as the demo's)
         await this.talk('Watch this way!', .2);
         await this.showPlay(sc.best);
         await this.delay(.8); // let the better play land before resetting

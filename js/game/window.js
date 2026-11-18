@@ -7,6 +7,11 @@ import { time } from '../perf.js';
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
+// (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
+// VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
+// after a touch away from one of theirs turns off the way to their goal (settle).
+const VIEW_OFF = .6, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
 
@@ -83,7 +88,23 @@ export const moving = {
         const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
         if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9);
         { const k = 3.4 * .25 + 1.2 * (T - .25), ex = c.x + dir[0] * k - o.x, ey = c.y + dir[1] * k - o.y; if (Math.hypot(ex, ey) < 1.9) dir = [bx, by]; } } } // (round 6: never a touch that takes him past that player's shoulder: then straight away from him)
-    const D = [dir[0] * v, dir[1] * v];
+    // (v76) His own player carries it on toward their goal, the way the choice's plan then has him carry it (window.js
+    // planHold: a picture from live play has him carry it at the goal), and the view looks that way (viewFor). He used to
+    // carry on the way the last play left him (a dribble out wide, the touch away), at the side line or back across with
+    // nobody there, and turned for the goal as the choice opened, while the view looked straight up the field
+    // (continueLive): near the side line he crossed the screen sideways. One exception: where carrying at the goal would
+    // take him back at the player he has just touched it away from, he goes on across, never more than CARRY_BACK off the
+    // way to the goal if there is room (then the touch's own way, away from him).
+    let cdir = dir;
+    if (c.id === 'hero' && c.team === 'us') {
+      const o = s.team('them').sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0], k0 = burst * .25;
+      const clear = u => !o || [.5, 1, 1.5, 2].every(t => Math.hypot(c.x + dir[0] * k0 + u[0] * v * t - o.x, c.y + dir[1] * k0 + u[1] * v * t - o.y) >= 2.2); // (two steps clear of that player as he stands)
+      const ga = Math.atan2(g[1] - c.y, g[0] - c.x), to = a => [Math.cos(a), Math.sin(a)];
+      cdir = to(ga);
+      if (burst && !clear(cdir)) { const a = Math.atan2(dir[1], dir[0]), d = wrapA(a - ga), u = to(ga + Math.sign(d) * Math.min(Math.abs(d), CARRY_BACK)); cdir = clear(u) ? u : dir; }
+      this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga);
+    }
+    const D = [cdir[0] * v, cdir[1] * v];
     // (round 6) The nearest of the other team is already coming as the choice opens: he closes on the ball through
     // these moments (to two and a half metres off it, no nearer: from there the window brings him in), never standing.
     const cm = [...s.agents.values()].filter(a => !a.gk && a.team !== c.team && !(a.beat > s.time + .3)).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
@@ -115,6 +136,8 @@ export const moving = {
     // (v66) The view he chooses in is set now, before the run-up: raised and turned as little as shows the one who comes
     // as he sets off. If no view that keeps his own player big enough shows him from that far, he sets off from nearer.
     let plan = null, tv = null;
+    // (v76: the view turns by TURN_MAX at most, view.js threatFit: it looks the way he runs; so where only a view turned
+    // farther showed him, he now sets off from nearer)
     for (const rCap of kindOf(sc) === 'attack' ? [0, 5.2, 4.2, 3.4] : [0]) { const p = this.plan(false, rCap ? { ...extra, rCap } : extra); if (!p) break; const t = kindOf(sc) === 'attack' ? this.threatFit(p) : null; if (!plan || t?.seen) { plan = p; tv = t; } if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break; }
     this.wplan = plan;
     if (!plan) return;
@@ -209,7 +232,11 @@ export const moving = {
       if (Math.hypot(E[0] - h.x, E[1] - h.y) < 2.5) plan.paths.hero = { herm: true, S: [h.x, h.y], V0: [q.vx, q.vy], E, V1: [0, 0], T };
     }
     // (a window from play going on, a match: its view is fitted now, and the camera goes over to it slowly: no lurch)
-    if ((plan.live || plan.fromLive) && plan.hold && !plan.viewSet) { plan.viewSet = true; if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
+    if ((plan.live || plan.fromLive) && plan.hold && !plan.viewSet) { plan.viewSet = true;
+      // (v76) His own player on the ball: the view looks the way the plan has him carry it (viewFor; settle has set it so
+      // already), so he never crosses the screen sideways.
+      if (kindOf(sc) === 'attack' && s.ball.carrier === 'hero' && plan.paths.hero) { const q = pathAt(plan.paths.hero, 0), h = s.a('hero'); if (h && Math.hypot(q.vx, q.vy) > .6) this.yaw = viewFor(Math.atan2(q.vy, q.vx), Math.atan2(W / 2 - h.y, L - h.x)); }
+      if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
@@ -226,6 +253,9 @@ export const moving = {
       this.sc.spots.forEach((sp, i) => { if (now[i]) { sp.x = now[i].x; sp.y = now[i].y; } });
     }
     w.u = (s.time - w.t0) / w.G;
+    // (v76) A demo or a replay of the better play (demo.js showClock): the pace that brings play to the share of the window
+    // its choice is planned at (about half), just as the hand taps it. Never slower than a third of the slowest window pace.
+    if (w.demo) { const left = w.demo.u * w.G - (s.time - w.t0), real = w.demo.eta - w.real; w.f = clamp(left / Math.max(.3, real), PACE * .3, 1); }
     if (w.u >= 1 && !w.out) { w.out = true; if (this.mode !== 'demo' && !this.showing) { this.choose('timeout'); this.woke = true; } } // (the frame steps no further: the play that follows goes on from this very step)
   },
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
@@ -262,7 +292,7 @@ export const moving = {
   timerUi() {
     const w = this.win; if (!w || this.phase !== 'decide') return null;
     const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
-    out.left = w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
+    out.left = w.jock && !w.demo ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
     out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
     return out;
   },

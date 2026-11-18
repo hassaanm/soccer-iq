@@ -353,19 +353,22 @@ export class Sim {
       const bx = hx + ux * .5, by = hy + uy * .5, bg = Math.hypot(gx - bx, gy - by), pr = them.find(p => p.job === 'press');
       if (pr && k * dt > .2 && bg < Math.hypot(gx - pr.x, gy - pr.y) - .4 && Math.hypot(pr.x - bx, pr.y - by) > 1.2) {
         pr.job = 'ball'; const nx = them.filter(p => p.job !== 'ball' && !p.beat && !p.o.track && Math.hypot(gx - p.x, gy - p.y) < bg).sort((p, q) => Math.hypot(p.x - bx, p.y - by) - Math.hypot(q.x - bx, q.y - by))[0];
-        if (nx) { nx.job = 'press'; nx.v = Math.max(nx.v, 4.6); }
+        if (nx) { nx.job = 'press'; nx.across = true; nx.v = Math.max(nx.v, 4.6); }
       }
       for (const p of them) {
         if (p.o.track) { const q = p.o.track.at(this.time - p.o.track.t0 + dt * k); p.x = q.x; p.y = q.y; }
         else {
           let tx = p.o.tx, ty = p.o.ty;
           if (p.job === 'ball') { tx = bx; ty = by; }
-          else if (p.job === 'press') { const kk = Math.min(1.9, Math.max(1, Math.hypot(p.x - bx, p.y - by))); tx = bx + (gx - bx) / (bg || 1) * kk; ty = by + (gy - by) / (bg || 1) * kk; }
+          else if (p.job === 'press') { const dp = Math.hypot(p.x - bx, p.y - by), kk = p.across ? Math.min(2.4, dp * .6) : Math.min(1.9, Math.max(1, dp)); tx = bx + (gx - bx) / (bg || 1) * kk; ty = by + (gy - by) / (bg || 1) * kk; } // (v76: one stepping across to a ball past the first presser goes to meet it on its way to goal, as team.js has him: not to his stand-off)
           else if (p.job === 'cover') { // (he sticks with his place until the ball has gone 2 m or 0.8 s has passed: team.js aiGo)
             if (Math.hypot(bx - p.cb[0], by - p.cb[1]) > 2 || this.time + dt * k - p.ct > .8) { p.tx = bx + (gx - bx) * .4; p.ty = by + (gy - by) * .5; const d = Math.hypot(p.tx - bx, p.ty - by); if (d < 2.4 && d > .05) { p.tx = bx + (p.tx - bx) / d * 2.4; p.ty = by + (p.ty - by) / d * 2.4; } p.cb = [bx, by]; p.ct = this.time + dt * k; }
             tx = p.tx; ty = p.ty; }
           // (he changes his velocity no faster than he can: a child the team moves at EASE, one the play's script sends quicker)
-          const ex = tx - p.x, ey = ty - p.y, el = Math.hypot(ex, ey), w = Math.min(p.v, Math.sqrt(2 * p.acc * el)), wx = el > 1e-6 ? ex / el * w : 0, wy = el > 1e-6 ? ey / el * w : 0, dx = wx - p.vx, dy = wy - p.vy, dv = Math.hypot(dx, dy), lim = p.acc * dt;
+          const ex = tx - p.x, ey = ty - p.y, el = Math.hypot(ex, ey), w = Math.min(p.v, Math.sqrt(2 * p.acc * el)), wx = el > 1e-6 ? ex / el * w : 0, wy = el > 1e-6 ? ey / el * w : 0, dx = wx - p.vx, dy = wy - p.vy, dv = Math.hypot(dx, dy);
+          // (v76) Sent back the way he came, one the team moves comes round as the sim has him (his momentum turn: much harder than
+          // EASE), not at EASE: judged at EASE, a cover defender going on away from the ball was taken to stay away.
+          const ls = Math.hypot(p.vx, p.vy), back = p.acc === EASE && ls > .8 && el > 1e-6 && (p.vx * ex + p.vy * ey) / (ls * el) < -.17, lim = (back ? Math.min(MOM_MAX, Math.max(MOM_A, (.25 + .6 * ls) / .18)) : p.acc) * dt;
           if (dv > lim) { p.vx += dx / dv * lim; p.vy += dy / dv * lim; } else { p.vx = wx; p.vy = wy; }
           p.x += p.vx * dt; p.y += p.vy * dt;
         }
