@@ -345,6 +345,8 @@ export class Sim {
     const b = this.ball; if (!this.offerOK || a.offer || a.armed || a.skill || a.sp < 2.2) return;
     const ch = Math.cos(b.h), sh = Math.sin(b.h), left = Math.hypot(a.tx - a.x, a.ty - a.y);
     let best = null;
+    // (none while one of theirs is on him, or has just gone in at him: the play is about to stop him, outcomes.js challenge)
+    for (const o of this.agents.values()) if (o.team !== a.team && !o.gk && Math.hypot(o.x - a.x, o.y - a.y) < 2.4 && (!(o.beat > this.time) || this.time - (o.tk ?? -9) < .6)) return;
     for (const o of this.agents.values()) {
       if (o.team === a.team || o.gk) continue;
       const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (f < 2.5 || Math.hypot(f, l) > SEE) continue;
@@ -364,6 +366,8 @@ export class Sim {
     // a second man of theirs (exitGap), judged at the touch it would start.
     const now = touchAt(a);
     for (const m of alts) { const n = m.n = Math.min(plan.start(m.at + .7), ev.last + 1 + 2); if (left < (n + 1.2 - now) * 1.4 + .3 || this.exitGap(a, n) < EXIT_FREE + .4) return; } // (with room to spare: it is judged again as the move starts)
+    // Nor while a second one of theirs would be on him before then (he would go in at him and the play would stop first).
+    { const run = (Math.max(...alts.map(m => m.n)) + 1.15 - now) * 1.4; if (this.exitRoom(a, run, run / Math.max(a.sp, 1.5), .02) < 1.6) return; }
     a.offer = { kind: 'run', alts, tgt: tgt.id, last: ev.last, why, fl, n0: touchAt(a), yaw: b.h };
   }
   // (v78) When moves at `tgt` could start, if both go on as they are going (he on along the ball's line at his speed,
@@ -463,11 +467,12 @@ export class Sim {
     a.offer = null; a.armed = { ...m, tgt: o.tgt, last: o.last, why: o.why, fl: o.fl, tap: this.time };
     return m.k;
   }
-  // (v78) The defender of an offer is no longer one a move could start at: he has left his way, or is already so near
-  // that no touch from here would start one LATE m or more from him.
+  // (v78) The defender of an offer is no longer one a move could start at: he has gone well off his way, or is already
+  // within a touch and LATE m of him.
   offerGone(a) {
-    const t = this.a(a.offer.tgt); if (!t) return true;
-    const ev = this.moveEvents(a, t, 12, 0, 1), ew = this.moveEvents(a, t, 12, WARY, 1); return !ev || ev.gap(1) < LATE - .3 || (ew && Math.abs(ew.side(ew.j)) > 3.2); // (between touches the next one a move can be set off at is the coming one)
+    const t = this.a(a.offer.tgt), b = this.ball; if (!t) return true;
+    const ch = Math.cos(b.h), sh = Math.sin(b.h), f = (t.x - a.x) * ch + (t.y - a.y) * sh, l = (t.y - a.y) * ch - (t.x - a.x) * sh;
+    return f < LATE + 1.4 || Math.abs(l) > 4.5; // (where he is now: what is ahead is judged as the offer is made, and again as the move starts)
   }
   // Starts the kick animation; call it a moment before kick() so the foot meets the ball.
   // kind: 'pass' (inside of the foot) or 'shot' (laces); foot: 1 his left, 0 his right (game/outcomes.js picks it), or
