@@ -145,6 +145,7 @@ export const demo = {
     await this.showPlay(sc.best);
     if (sc.then && !this.skipping) { // give-and-go: now the run
       await this.toStep2(); this.phase = 'decide'; this.step = 'spot'; this.lookUp = true;
+      this.openWindow(); // (v72: as the step's run-in ends, as in a round; opened after the line, everyone jumped back to where it starts)
       await this.talk('Now run past him!', .6); this.hud.caption('');
       await this.showPlay(this.sc.best);
     }
