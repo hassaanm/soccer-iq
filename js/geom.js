@@ -6,6 +6,7 @@
 // 5 m goal (FA 37 x 27, DFB 40 x 25). "Close enough to shoot" stays about 9 m at every size: it is about a child's leg.
 // `area`: the box in front of each goal (m deep, m wide): the keeper's area at 5v5, and at every size the landmark for
 // "close" (inside it, shoot with the inside of the foot) against "the edge" (laces; shot.js CLOSE).
+import { storage as STORE } from './storage.js'; // (round 13: the save's storage; see storage.js)
 export const SIZES = {
   '3v3': { out: 3, keeper: false, pitch: { L: 30, W: 20, gy0: 8, gy1: 12, gh: 1.6 }, area: { d: 8, w: 12 }, offer: true },
   '4v4': { out: 4, keeper: false, pitch: { L: 32, W: 22, gy0: 9, gy1: 13, gh: 1.6 }, area: { d: 8, w: 13 }, offer: true },
@@ -26,7 +27,7 @@ export function setSize(id) {
   for (const f of SIZE_HOOKS) f();
 }
 export const SAVE_KEY = 'soccer-iq:v1'; // where progress.js keeps the save
-try { setSize(globalThis.process?.env?.SOCCER_SIZE || JSON.parse(globalThis.localStorage?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }
+try { setSize(globalThis.process?.env?.SOCCER_SIZE || JSON.parse(STORE?.getItem(SAVE_KEY) || 'null')?.settings?.size); } catch { /* no storage (tests, private mode): 3v3 */ }
 // (SOCCER_SIZE=4v4 npm test: the tests and tools in Node at another size.)
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));

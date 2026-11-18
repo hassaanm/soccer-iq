@@ -39,7 +39,7 @@ const shim = {
   getItem: k => (Object.hasOwn(tmp.map, k) ? tmp.map[k] : null),
   setItem: (k, v) => { tmp.map[k] = String(v); keepTmp(); },
   removeItem: k => { delete tmp.map[k]; keepTmp(); },
-  clear: () => { tmp.map = {}; keepTmp(); },
+  clear: () => { for (const k of Object.keys(tmp.map)) delete tmp.map[k]; keepTmp(); },
   key: i => Object.keys(tmp.map)[i] ?? null,
   get length() { return Object.keys(tmp.map).length; },
 };
@@ -60,14 +60,16 @@ const bootSize = sizeFor(want0 && byId(want0.id));
   tmp.map[SAVE_KEY] = JSON.stringify({ v: 1, us: childSave?.us || 'barca', them: childSave?.them || 'madrid', settings: s });
   tmp.setSize = bootSize; keepTmp();
 }
-let swapped = false;
-try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); swapped = window.localStorage === shim && globalThis.localStorage === shim; } catch { swapped = false; }
+// (round 13) The game reads and writes its save through js/storage.js, which takes this in-memory copy when the flag is set
+// before it loads. Replacing window.localStorage too is a second guard only (Safari has refused it).
+globalThis.SOCCER_THROWAWAY = { map: tmp.map, onWrite: keepTmp };
+try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); } catch { /* the flag above is the guard */ }
 
 // ---------- boot ----------
 let G = null; // the game's modules, once loaded
 boot().catch(e => fail(e));
 async function boot() {
-  if (!swapped) throw new Error('This browser would not let the page use a throwaway save, so the game was not started (the child\'s save stays safe).');
+  if (!(await import('../js/storage.js')).throwaway) throw new Error('The game did not take the throwaway save, so it was not started (the child\'s save stays safe).');
   const html = await (await fetch('index.html', { cache: 'no-cache' })).text();
   const doc = new DOMParser().parseFromString(html, 'text/html');
   for (const n of [...doc.body.childNodes]) if (n.nodeName !== 'SCRIPT') document.body.appendChild(document.adoptNode(n));

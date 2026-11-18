@@ -744,25 +744,34 @@ body.smooth:not(.v75look) #skillBtn .ring circle.glow{display:inline;stroke:rgba
 body.smooth:not(.v75look):not(.softwords) :is(#banner,#skillName) b{text-shadow:0 .07em 0 var(--ink)}
 body.smooth:not(.v75look):not(.softwords) #banner.bad b{text-shadow:0 .07em 0 #7a1d1d}
 body.smooth:not(.v75look):not(.softwords) #caption{text-shadow:0 3px 0 rgba(36,25,58,.5)}
-/* - The buttons' pulse: the same grow and shrink, with the glow on a layer of its own that fades in and out (opacity),
-     not a brightness and drop-shadow filter repainted every frame. */
+/* - The buttons' pulse: the same grow and shrink (scale), and on two layers painted once that fade in and out (opacity):
+     the brightening, as a copy of the button's own face added on top (plus-lighter at 18%: about brightness 1.18; where
+     plus-lighter is missing the copy matches the face, so nothing changes), and the glow round it. Not a brightness and
+     drop-shadow filter repainted every frame. */
 @keyframes nudgeS{0%,100%{scale:1}50%{scale:1.07}}
 @keyframes nudgeGlow{0%,100%{opacity:0}50%{opacity:1}}
+@keyframes nudgeLift{0%,100%{opacity:0}50%{opacity:.18}}
 body.smooth:not(.v75look) .nudge{animation-name:nudgeS}
 body.smooth:not(.v75look) #hud .pointed{animation-name:nudgeS}
 body.smooth:not(.v75look) #hud .btn-round:is(.nudge,.pointed),body.smooth:not(.v75look) #hud.skilling #skillBtn{animation-name:popIn,nudgeS}
 body.smooth:not(.v75look) #hud .howpick .btn.pointed{animation-name:fromLeft,nudgeS}
 body.smooth:not(.v75look) #hud .howpick .btn + .btn.pointed{animation-name:fromRight,nudgeS}
-body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  box-shadow:0 0 0 3px rgba(255,246,176,.35),0 0 17px rgba(255,246,176,.95),inset 0 0 0 200px rgba(255,255,255,.12);opacity:0;animation:nudgeGlow .9s ease-in-out infinite}
-body.smooth:not(.v75look) #hud.skilling #skillBtn::after{animation-duration:.7s}
-body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{animation-duration:.8s}
-body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::after{display:none}
-body.smooth:not(.v75look) #hud.skilling #skillBtn::after{display:block}
-/* - The lesson's dot for this round: its ring stays, and the wider soft ring around it fades in and out (opacity), not an
-     animated box shadow. */
-body.smooth:not(.v75look) #dots span.now{position:relative;animation:none}
-body.smooth:not(.v75look) #dots span.now::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 5px rgba(255,216,77,.35);opacity:0;animation:nudgeGlow 1.2s ease-in-out infinite}
+body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(180deg,var(--top),var(--bot));mix-blend-mode:plus-lighter;opacity:0;animation:nudgeLift .9s ease-in-out infinite}
+body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::after{content:"";position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;
+  box-shadow:0 2px 14px 2px rgba(255,246,176,.95);opacity:0;animation:nudgeGlow .9s ease-in-out infinite}
+body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{inset:0 0 -5px}
+body.smooth:not(.v75look) #hud.skilling #skillBtn::before,body.smooth:not(.v75look) #hud.skilling #skillBtn::after{animation-duration:.7s}
+body.smooth:not(.v75look) #hud .howpick .btn.pointed::before,body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{animation-duration:.8s}
+body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::before,body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::after{display:none}
+body.smooth:not(.v75look) #hud.skilling #skillBtn::before,body.smooth:not(.v75look) #hud.skilling #skillBtn::after{display:block}
+/* - The lesson's dot for this round: v75's ring (3 px, strong) and its wider soft ring (5 px, faint) as two layers that
+     cross-fade (opacity), not an animated box shadow. */
+body.smooth:not(.v75look) #dots span.now{position:relative;animation:none;box-shadow:none}
+body.smooth:not(.v75look) #dots span.now::before,body.smooth:not(.v75look) #dots span.now::after{content:"";position:absolute;inset:0;border-radius:50%;animation:nudgeGlow 1.2s ease-in-out infinite}
+body.smooth:not(.v75look) #dots span.now::before{box-shadow:0 0 0 3px rgba(255,216,77,.7);animation-name:dotRing}
+body.smooth:not(.v75look) #dots span.now::after{box-shadow:0 0 0 5px rgba(255,216,77,.35)}
+@keyframes dotRing{0%,100%{opacity:1}50%{opacity:0}}
 /* - A button pressed in play: it moves at once, and its shadow changes at once instead of being redrawn over 70 ms. */
 body.smooth:not(.v75look) #hud .btn{transition:transform .07s}
 /* - The head-down edge: a small picture of the same gradient (js/ui/hud.js edgePicture), stretched by the graphics chip, on a

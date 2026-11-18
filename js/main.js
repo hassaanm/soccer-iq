@@ -37,10 +37,14 @@ function frame(now) {
   const ms = now - last; last = now;
   if (FPS >= 100) { one(now - ms / 2, ms / 2, false); one(now, ms / 2, false); } else one(now, ms, !cap || cap === 60);
 }
-// (round 13) The strip under the page that iPadOS paints with the page's colour (ui/strip.js) is never there on an iPhone, so
-// an iPhone does not read the picture back for it: reading pixels makes the page wait for the graphics chip to finish
-// the frame, twice a second.
-const STRIP = !/iPhone|iPod/.test(navigator.userAgent);
+// (round 13) The strip under the page that iPadOS paints with the page's colour (ui/strip.js) is only there in an iPad's
+// home-screen app, so only that reads the picture back for it: reading pixels makes the page wait for the graphics chip
+// to finish the frame, twice a second. An iPad says "iPad", or (as a desktop site) "Macintosh" with a touch screen; an
+// iPhone asking for the desktop site says the same, so the screen's short side tells them apart (an iPad's is 744 or more).
+const STRIP = (() => { try {
+  const ua = navigator.userAgent, pad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return pad && navigator.standalone === true && Math.min(screen.width, screen.height) >= 700;
+} catch { return false; } })();
 function one(now, ms, judge) { // judge: the slow-device governor looks at this frame's length (not when the loop is held back on purpose)
   const dt = Math.min(.05, ms / 1000); time += dt;
   try {

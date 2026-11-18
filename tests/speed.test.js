@@ -2,7 +2,7 @@
 // run here, so these checks read the source as text.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,8 +31,10 @@ test('the speed test is silent unless its sound box is ticked: no player can be 
 test('the speed test writes nothing to his save but settings.tuned', () => {
   const page = code('dev/speed.js');
   assert.equal(page.match(/REAL\.setItem\(/g)?.length, 1, 'one write to the real storage');
-  assert.match(page, /s\.settings\.tuned = \{/);
-  assert.match(page, /defineProperty\(window, 'localStorage'/, 'the game sees a throwaway copy');
+  assert.match(page, /if \(tuned\) s\.settings\.tuned = tuned; else delete s\.settings\.tuned;\s*REAL\.setItem\(SAVE_KEY, JSON\.stringify\(s\)\);/, 'and it changes only settings.tuned');
+  assert.match(page, /globalThis\.SOCCER_THROWAWAY = \{ map \};/, 'the game sees a throwaway copy');
+  assert.ok(page.indexOf('SOCCER_THROWAWAY') < page.indexOf("import('../js/"), 'set before any game module loads');
+  assert.ok(!/if \(!swapped\)/.test(page), 'replacing window.localStorage is not required');
 });
 
 test('the speed test runs every switch the brief asks for', () => {
@@ -58,9 +60,9 @@ test('the sunburst images are drawn from the same numbers as the CSS gradients t
   assert.match(css, /html\.burst body:not\(\.v75look\) \.sticker\.trophy::before\{background:var\(--burst-trophy\)[^}]*mask:none\}/);
 });
 
-test('an iPhone never reads the picture back for the iPad strip', () => {
+test('only an iPad home-screen app reads the picture back for the iPad strip', () => {
   const main = code('js/main.js');
-  assert.match(main, /const STRIP = !\/iPhone\|iPod\/\.test\(navigator\.userAgent\);/);
+  assert.match(main, /return pad && navigator\.standalone === true && Math\.min\(screen\.width, screen\.height\) >= 700;/, 'only an iPad home-screen app');
   assert.match(main, /if \(TEST\.strip \?\? STRIP\) matchStrip\(now\);/);
 });
 
@@ -99,4 +101,33 @@ test('Smooth paints what shows in play the cheap way; Pretty and the speed test\
   assert.match(read('index.html'), /<circle class="glow" cx="50" cy="50" r="47"\/>/);
   assert.match(code('js/ui/hud.js'), /g\.translate\(128, \.57 \* 256\); g\.scale\(\.23 \* 256, \.26 \* 256\);/, 'the edge picture uses the CSS gradient\'s ellipse');
   assert.match(css, /body\.smooth #tunnel\{[^}]*radial-gradient\(ellipse 23% 26% at 50% 57%,rgba\(14,10,26,0\) 50%,rgba\(14,10,26,\.62\) 72%,rgba\(14,10,26,\.9\) 100%\)/);
+});
+
+test('with the throwaway flag set, the game reads and writes its save only in memory', async () => {
+  const touched = [];
+  globalThis.localStorage = { getItem: k => { touched.push('get ' + k); return null; }, setItem: k => touched.push('set ' + k), removeItem: k => touched.push('remove ' + k), clear: () => touched.push('clear') };
+  const map = { 'soccer-iq:v1': JSON.stringify({ v: 1, us: 'liverpool', sessions: 3, settings: { size: process.env.SOCCER_SIZE || '3v3', graphics: 'smooth' } }) };
+  globalThis.SOCCER_THROWAWAY = { map };
+  const st = await import('../js/storage.js'), pr = await import('../js/progress.js');
+  assert.equal(st.throwaway, true);
+  const p = pr.load(); assert.equal(p.us, 'liverpool'); assert.equal(p.sessions, 3);
+  p.sessions = 9; p.settings.tuned = { blur: true }; pr.save(p);
+  assert.equal(JSON.parse(map['soccer-iq:v1']).sessions, 9, 'written to the copy');
+  assert.deepEqual(touched, [], 'the real storage was never read or written');
+});
+
+test('the game reaches the save only through js/storage.js', () => {
+  const walk = d => readdirSync(join(root, d), { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.js') ? [join(d, e.name)] : []));
+  for (const f of walk('js')) if (f !== join('js', 'storage.js')) assert.ok(!/\blocalStorage\b/.test(code(f)), f + ' uses localStorage directly');
+});
+
+test('tuned settings count only as true booleans and pixel ratios 2 or 3', () => {
+  const sp = code('js/ui/speed.js');
+  assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0 \};/);
+  const fn = new Function('P', sp.match(/const tuned = \(\) => \{[\s\S]*?: 0 \}; \};/)[0] + 'return tuned();');
+  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3' } } }), { blur: false, glow: false, soft: false, pr: 0 });
+  assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2 } } }), { blur: true, glow: false, soft: true, pr: 2 });
+  assert.deepEqual(fn({ settings: {} }), {});
+  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to normal settings</, 'a way back');
+  assert.match(read('index.html'), /About 90 seconds, a few of them with sound/, 'the menu row says there is sound');
 });
