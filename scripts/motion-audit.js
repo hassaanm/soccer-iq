@@ -379,5 +379,12 @@ if (!only && !scene && !args.includes('--nolive')) {
     console.log(`${size} live play (${flag('--live') || 8} matches): ${stat.plays} choices, shortest live window ${stat.minWin.toFixed(2)} s; ${Object.entries(stat.counts || {}).map(([k, v]) => `${k} ${v}`).join(', ')}`);
     for (const [k, m] of flags.slice(0, 30)) console.log(`  ${k}: ${m}`); }
 }
-console.log(`\n${mis.length} flag(s), ${fails} share(s) missed, ${liveBad} live-play flag(s)`);
-process.exitCode = mis.length || fails || liveBad ? 1 : 0;
+// (round 7) Frame time: no long frame as a choice opens or closes (scripts/frame-audit.js), with the live audit.
+let frameBad = 0;
+if (!only && !scene && !args.includes('--nolive') && !args.includes('--noframes')) {
+  const { frameAudit } = await import('./frame-audit.js');
+  console.log("\nFrame time at a choice's edges (limit 12.5 ms here: 50 ms on a phone four times slower):");
+  frameBad = await frameAudit({ sizes });
+}
+console.log(`\n${mis.length} flag(s), ${fails} share(s) missed, ${liveBad} live-play flag(s), ${frameBad} long frame(s)`);
+process.exitCode = mis.length || fails || liveBad || frameBad ? 1 : 0;

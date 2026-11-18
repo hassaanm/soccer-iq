@@ -4,7 +4,7 @@ import { pickRounds, skillById } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
 import { L, W, MATES, wrap } from './shared.js';
-import { planHold, rolesOf } from '../window.js';
+import { planHold, rolesOf, pathAt } from '../window.js';
 // His friends' and their players' places, m1 m2 (m3) and o1 o2 o3 (o4): as many as the team size has.
 const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y]), foes = s => s.team('them').map(a => [a.x, a.y]);
 
@@ -128,7 +128,12 @@ export const live = {
       if (t && !t.gk && d > 2.5) { near = { id: th, x: bx + (t.x - bx) / d * 2.3, y: h.y + (t.y - h.y) / d * 2.3 }; P.at[th].x = near.x; P.at[th].y = near.y; } } catch (e) { console.error(e); }
     this.sc = liveScenario(s, this.sc?.skill, this.pushAllowed, near, this.cameFrom && MATES.includes(this.cameFrom) && s.a(this.cameFrom) ? MATES.indexOf(this.cameFrom) : null);
     if (near) { let plan = null; this.heavyAt = this.frameNo | 0; try { plan = planHold(this.sc, P, { R: this.windowReal(), Rfloor: this.windowMin(), options: this.offerList(), from: st.at, lead: 0, yaw: this.yaw }); } catch (e) { console.error(e); }
-      if (plan && plan.threat?.id === near.id) { plan.sc = this.sc; plan.live = false; plan.fromLive = true; plan.ready = true; this.wplan = plan; } }
+      // (round 7: only a plan in which he does run in from where he is: one that could not find him a run has him in his
+      // place in the picture, a jump of metres as the choice opens; then the window is planned from where everyone is)
+      const tp = plan?.threat?.id === near.id && plan.paths[near.id], t0 = tp && pathAt(tp, 0, {}), ta = s.a(near.id);
+      if (plan && t0 && Math.hypot(t0.x - ta.x, t0.y - ta.y) < .2) { plan.sc = this.sc; plan.live = false; plan.fromLive = true; plan.ready = true; this.wplan = plan; }
+      // (frame time: the plan from where everyone is, is made in the next frame, not in this one too)
+      else await this.delay(.001); }
   },
 
   // After we lose the ball in a match: our team gets back into shape for a moment, then he decides where to run.

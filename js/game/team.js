@@ -87,7 +87,9 @@ export const team = {
   // choice), not keepers. His own player in a defending play he has chosen is held to it like anyone.
   noHover(dt) {
     const s = this.sim, c = s.ball.carrier && s.ball.state !== 'flying' ? s.a(s.ball.carrier) : null;
-    if (!c || c.gk || this.win || (this.mode !== 'match' && this.mode !== 'free') || this.phase === 'feedback' || this.sc?.kind === 'tackle') { for (const a of s.agents.values()) a.hov = 0; return; }
+    // (round 7: nor in the moments before a choice opens: everyone is on the way the window's plan gave him, and one
+    // taken off it here was put back on it with a jump as the choice opened)
+    if (!c || c.gk || this.win || this.phase === 'pre' || (this.mode !== 'match' && this.mode !== 'free') || this.phase === 'feedback' || this.sc?.kind === 'tackle') { for (const a of s.agents.values()) a.hov = 0; return; }
     for (const d of s.agents.values()) {
       if (d.gk || d.team === c.team || (d.id === 'hero' && !(this.sc?.kind === 'defense' && this.phase === 'outcome')) || d.beat > s.time || d.tk > s.time - .5 || Math.min(dist(d, c), dist(d, s.ball)) >= 1.5) { d.hov = 0; continue; }
       if (this.leaving(d)) { d.hov = 0; continue; } // (a friend whose job is one of their other players: he is on his way off the ball)

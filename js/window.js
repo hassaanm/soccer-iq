@@ -516,12 +516,15 @@ function planHold0(sc, st, opts, kind) {
   const posOf = (b, t, real = null, tmp = {}) => id => (comer(id) ? real?.[id] ? pathAt(real[id], t, tmp[id] ||= {}) : virtAt(b, t, id) : b.paths[id] ? pathAt(b.paths[id], t, tmp[id] ||= {}) : at[id]);
   const o2 = { options: opts.options, ids: ids.filter(id => !at[id].gk), at0: id => at[id], ball: st.ball };
   // Which moments of the window agree (ok[i]: at i·STEP_T), and whether everyone stays on the pitch.
-  function score(b) {
+  // (frame time) `bound`: a try that can no longer cost less than this is given up (pruned) part of the way through.
+  let samples = 0;
+  function score(b, bound = null) {
     const tmp = {}, ok = [], vd = [], onp = Object.keys(b.paths).filter(id => !at[id].gk && onPitch(at[id].x, at[id].y, .4)); let bad = 0, first = null;
     const n = Math.max(1, Math.ceil(b.G / STEP_T - 1e-6)), dtS = b.G / n; b.dtS = dtS;
     for (let i = 0; i <= n; i++) {
       const t = i * dtS, d = disagree(sc, posOf(b, t, null, tmp), t, o2), off = onp.some(id => { const q = pathAt(b.paths[id], t, tmp[id] ||= {}); return !onPitch(q.x, q.y, .4); });
       ok.push(!d.length && !off); vd.push(d); if (d.length || off) { bad++; first ||= d.length ? d : ['off the pitch']; }
+      samples++; if (bound != null && bad * 10 - n >= bound) return Object.assign(b, { pruned: true });
     }
     let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
@@ -530,7 +533,12 @@ function planHold0(sc, st, opts, kind) {
   const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
   search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
     if (shotOn && tail && sp < .5) break search; // (a stretch of real play up to his strike comes before a slower, stiller one)
-    const b = score(build(sp, k, frac * G, G)), cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + (speeds.indexOf(sp) + (1 - k)) * .01;
+    // (frame time) In a match (planned in the frame the choice opens) the search is cut short once it has cost what a
+    // few whole tries cost and none agrees all the way: the best so far is the plan. A try that cannot beat the best so
+    // far is given up early (not where a friend is about to shoot: there every try's own moments are looked at below).
+    if ((live || opts.from) && best && samples > 150) break search;
+    const eps = (speeds.indexOf(sp) + (1 - k)) * .01, b = score(build(sp, k, frac * G, G), best && !shotOn ? best.cost - eps : null); if (b.pruned) continue;
+    const cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + eps;
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
     if (!b.bad && !b.offp) break search;
     // (a friend about to shoot: rather than a slower play, a shorter stretch of this one, the last of it up to his strike,
