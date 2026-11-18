@@ -19,6 +19,7 @@ import { roundPlan, SHOTS, STICKER_AT, GOAL, SAID } from '../saves.js';
 import { keeperDone } from '../progress.js';
 import { toMatch, toCup, toLessons, ASK } from '../flows.js';
 import { sfx } from '../sound.js';
+import { warmKeeper } from './voicewarm.js';
 
 export const goalie = new Goalie({ world, hud, say, sfx });
 // Said the first time, on the card that opens it; and the headline on the results card, by how many he saved.
@@ -99,7 +100,11 @@ canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary) re
 
 // ---------- a round ----------
 let busy = false;
-export async function runKeeper(opts) { // (opts.plan: a round of one's own, for the review tools; a tap passes an event)
+export async function runKeeper(opts) {
+  warmKeeper(); // (round 11: the keeper game's lines are loaded as it starts)
+  return runKeeper0(opts);
+}
+async function runKeeper0(opts) { // (opts.plan: a round of one's own, for the review tools; a tap passes an event)
   if (busy) return; busy = true; unlockSpeech();
   try {
     const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays, plan = Array.isArray(opts?.plan) ? opts.plan : roundPlan(Math.floor(Math.random() * 1e9));

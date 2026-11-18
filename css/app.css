@@ -697,7 +697,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
    on his player: no backdrop-filter, no mask, nothing repainted while it moves. Cards and sheets get a darker plain
    backdrop in place of their blur. */
 body.smooth #tunnel{backdrop-filter:none;-webkit-backdrop-filter:none;-webkit-mask:none;mask:none;inset:-50%;will-change:transform,opacity;
-  background:radial-gradient(ellipse 23% 26% at 50% 57%,rgba(20,14,34,0) 55%,rgba(20,14,34,.6) 100%)}
+  background:radial-gradient(ellipse 23% 26% at 50% 57%,rgba(14,10,26,0) 50%,rgba(14,10,26,.62) 72%,rgba(14,10,26,.9) 100%)}
 body.smooth #card,body.smooth #results,body.smooth #menu,body.smooth #lessonSheet,body.smooth #albumSheet,body.smooth #cupSheet,body.smooth #report{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(36,25,58,.55)}
 body.smooth .btn-glass{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(255,250,242,.93)}
 /* (round 11) Warm-up, once, while the home screen covers it (js/ui/speed.js warmHud): every button, bubble, banner and
