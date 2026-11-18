@@ -294,7 +294,7 @@ export const moving = {
   timerUi() {
     const w = this.win; if (!w || this.phase !== 'decide') return null;
     const h = this.sim.a('hero'), out = (this.ui.timer ||= {});
-    out.left = w.demo ? (w.demo.crawl != null ? clamp(1 - w.demo.drain * (w.real - w.demo.r0) / w.demo.sec, .6, 1) : clamp((w.demo.L0 ?? 1) * (1 - ((w.u || 0) - w.demo.u0) / (1 - w.demo.u0)), 0, 1)) : // (v76: a demo's ring: slowly while its idea is said, then on from there; demo.js crawlFor, showClock) w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
+    out.left = w.demo ? (w.demo.crawl != null ? clamp(1 - w.demo.drain * (w.real - w.demo.r0) / w.demo.sec, .6, 1) : clamp((w.demo.L0 ?? 1) * (1 - ((w.u || 0) - w.demo.u0) / (1 - w.demo.u0)), 0, 1)) : /* (v76: a demo's ring: slowly while its idea is said, then on from there; demo.js crawlFor, showClock) */ w.jock ? clamp(Math.min(1 - w.real / w.R, 1 - (w.u || 0) * .02), 0, 1) : clamp(1 - (w.u || 0), 0, 1); // (round 6: the ring empties with real time: where the world speeds up at the end, the ring does not)
     out.wide = !!(h && this.sc?.spots?.some(sp => Math.hypot(sp.x - h.x, sp.y - h.y) < 1.4));
     return out;
   },

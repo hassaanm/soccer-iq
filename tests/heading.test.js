@@ -17,7 +17,8 @@ test('a lesson scene opens with the camera the way he runs', async () => {
     const { g } = makeGame(); g.world.canvas = { clientWidth: 844, clientHeight: 390 }; g.mode = 'lesson'; g.load(sc);
     const hw = headingWatch(g, r => { if (r.why) return; n++; if (r.bad || r.badLater) bad.push(`${sc.id}: ${Math.round(r.open)}° as it opens, ${r.later == null ? '-' : Math.round(r.later)}° ${HEADING.later} s in`); });
     await drive(g, g.pre(), { onFrame: hw });
-    let k = 0; await drive(g, g.decide(), { onFrame: hw, pick: gm => (++k > 40 ? optionsFor(gm.sc)[0] : null) }); hw();
+    const ring = gm => { hw(); const l = gm.win && gm.phase === 'decide' ? gm.timerUi()?.left : null; if (l != null && !(typeof l === 'number' && l >= 0 && l <= 1)) bad.push(`${sc.id}: the ring reads ${l}`); }; // (and his timer ring is a share of the window)
+    let k = 0; await drive(g, g.decide(), { onFrame: ring, pick: gm => (++k > 40 ? optionsFor(gm.sc)[0] : null) }); hw();
   }
   assert.ok(n > 20, `windows measured: ${n}`);
   assert.deepEqual(bad, [], `${TEAM.size}: the camera is more than ${HEADING.lim}° off his run`);
