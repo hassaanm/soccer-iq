@@ -42,7 +42,7 @@ function sizeGoal(on) {
   const CY = PITCH.W / 2, half = (PITCH.gy1 - PITCH.gy0) / 2, dy = GOAL.half - half, dz = GOAL.gh - PITCH.gh, sg = on ? 1 : -1;
   const net = world.nets?.find(n => n.x === 0);
   if (net) { net.mesh.material.opacity = on ? .45 : 1; net.sides.material.opacity = on ? .45 : 1; }
-  for (const g of world.aimPool || []) g.children[0].material.opacity = on ? .18 : .5; // (the targets' dark discs: fainter, so his body shows through the middle ones)
+  aimLook(on);
   if (!dy && !dz) return;
   for (const o of world.bars || []) {
     const pos = o.geometry.attributes.position, a = pos.array;
@@ -55,6 +55,12 @@ function sizeGoal(on) {
     pos.needsUpdate = true; o.geometry.computeBoundingSphere();
   }
   if (net) for (const m of [net.mesh, net.sides]) { m.scale.set(1, on ? GOAL.half / half : 1, on ? GOAL.gh / PITCH.gh : 1); m.position.z = (on ? GOAL.gh : PITCH.gh) / 2; }
+}
+
+// The six targets in his own goal: their dark discs fainter, so his body shows through the middle ones, and drawn after
+// the ring round his feet (they stand in the goal mouth, nearer the camera than he is), so the ring never hides the low one.
+function aimLook(on) {
+  for (const g of world.aimPool || []) g.children.forEach((m, i) => { m.userData.ro ??= m.renderOrder; m.renderOrder = m.userData.ro + (on ? 10 : 0); if (!i) m.material.opacity = on ? .18 : .5; });
 }
 
 // ---------- over the picture ----------
@@ -130,7 +136,8 @@ game.keeperMoment = (spec, shooter) => {
   const k = P.keeper ||= { best: 0, plays: 0, last: 0, day: -1, stickers: 0 };
   k.turns = (k.turns || 0) + 1; save();
   if (k.turns <= TOLD) { hud.caption('🧤 ' + YOURE); say(YOURE); setTimeout(() => { if (hud.busy?.()) hud.caption(''); }, 1800); }
-  return goalie.inMatch(game, spec, shooter);
+  aimLook(true);
+  return goalie.inMatch(game, spec, shooter).finally(() => aimLook(false));
 };
 $('#keeperBtn').onclick = () => runKeeper();
 window.__keeper = goalie; // (for debugging in the console, as window.__game)

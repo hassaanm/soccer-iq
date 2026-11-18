@@ -690,4 +690,4 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #kBadge.show{display:grid;animation:popIn .3s var(--bounce)}
 
 /* (v67) The version label sits clear of the glove button at the end of the row: just over it. */
-#home #version{bottom:auto;top:calc(100% - 78px);right:calc(14px + var(--safe-r))}
+#home #version{bottom:auto;top:calc(100% - 88px);right:calc(14px + var(--safe-r))}

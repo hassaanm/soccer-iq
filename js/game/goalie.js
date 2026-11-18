@@ -20,7 +20,8 @@ const NONE = [];
 const EYE = [5.8, 4.5], LOOK = [5.5, 0], FF = 1.45; // (just inside the stadium's wall, high: the shooter stands clear above the bar from 5 m out)
 const SIDE_STEP = 3.6;            // m/s: his side-step to the spot he chose (a quick shuffle)
 const SPOT = .6, SPOT_R = .75;     // the gold spots smaller than in matches (scale; the gold ring's radius at scale 1, m: world.js), so three sit apart across the goal
-const RING = .42;                  // the draining ring round his feet, smaller than in matches: clear of the spots a step out and of the low middle target
+const RING_DIVE = 1.1;
+const RING = .38;                  // the draining ring round his feet, smaller than in matches: clear of the spots a step out and of the low middle target
 const TAP = 1.6;                   // a tap picks a spot only this close to it (times its drawn radius)
 const RUN = { in: 3.2, las: 3.9 }, DRIBBLE = 4.3; // the shooter's run-up (m/s), and a 1v1's dribble
 const PLANT = .45, WIND = .2;      // game s: his last stride and plant, then the wind-up to the kick
@@ -107,7 +108,7 @@ export class Goalie {
     const own = this.sim, s = this.sim = game.sim, W = this.world;
     this.cy = PITCH.W / 2; this.match = true; this.shooter = shooter; this.hint = false; this.n = (this.n || 0) + 1;
     s.untrackAll(); swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
-    const k = s.a('hero'); k.gkm = null; k.face = [1, 0]; s.stop('hero');
+    const k = s.a('hero'), set = this.w(START); k.gkm = null; k.face = [1, 0]; s.go('hero', set.x, set.y, 3); // (he sets himself in the middle of his goal as the camera comes: the spots and his ring are then clear of each other)
     this.ui.clock = game.ui.clock ?? this.ui.clock;
     const f = spec.from, to = { eye: [-EYE[0], this.cy + f.u * .12, EYE[1]], tgt: [LOOK[0], this.cy + f.u * .3, LOOK[1]], Ff: FF, Fw: 0 };
     this.cam = camOf(game.cam || to, W); this.camGo = { from: camOf(this.cam, W), to, t: 0, dur: CAM_IN };
@@ -253,7 +254,7 @@ export class Goalie {
   // The ring at his feet drains with the window; the tells show while he picks where to dive.
   frame() {
     const s = this.sim, w = this.win, ui = this.ui, o = s.a(this.shooter);
-    ui.timer = w ? { left: clamp(1 - (s.time - w.t0) / w.T, 0, 1), wide: false, scale: RING } : null;
+    ui.timer = w ? { left: clamp(1 - (s.time - w.t0) / w.T, 0, 1), wide: false, scale: this.phase === 'dive' ? RING_DIVE : RING } : null; // (diving: the spots are gone, so it is full size round the low middle target, which is drawn over it)
     ui.ghost = this.phase === 'stand' && this.pickSpot == null && this.spots?.length > 0; // (see-through while he picks a spot, so none hides behind him: ui/goalie.js)
     ui.heroRing = this.phase === 'ready'; // (not while he chooses: the gold is for the spots and targets; the ring that drains is round his feet)
     const t = this.tell; ui.tell = null; ui.lines = NONE;
