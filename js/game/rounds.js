@@ -211,7 +211,7 @@ export const rounds = {
     if (opt.startsWith('turn:')) return grade(this.sc)['drib:' + this.sc.turns[opt[5]]] === 'good' ? 'ok' : 'bad';
     if (opt.startsWith('shoot:') && !this.sc.shots?.[opt]) { // (a match: as SHOOT is, then each part he picked: the target and the foot; v64: by the choice, not by how the chances fell)
       const r = this.rating('shoot'), g = this.shotPartGrades(opt);
-      return r === 'bad' || g?.space === false || (g?.foot === false && g.space == null) ? 'bad' : g?.space === 'okay' || g?.foot === false ? 'safe' : r; // (the foot alone wrong: a miss, as before; with a good target: 2 stars)
+      return r === 'bad' || g?.space === false || (g?.foot === false && g.space == null) ? 'bad' : g?.space === 'okay' || g?.foot === false || g?.foot === 'okay' ? 'safe' : r; // (the foot alone wrong: a miss, as before; with a good target: 2 stars; v72: laces from close, only okay)
     }
     if ((this.sc.ok || []).includes(opt)) return 'ok';
     if ((this.sc.safe || []).includes(opt)) return 'safe';

@@ -76,7 +76,7 @@ export class Game {
     this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; this.bounced = undefined; this.followRuns = []; this.followRacer = null; this.reshoot = null; // (v64: the rings' own places; the window's plan)
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
-    if (sc.shots && sc.gk) { // (v62) a shot lesson's scene with a keeper: he faces the goal and anyone of his close to it (a friend free at the far post)
+    if (sc.shots) { // (v62) a shot lesson's scene: he faces the goal and anyone of his close to it (a friend free at the far post), so LOOK UP shows the goal and the keeper (v72: at every size, not only with a keeper)
       const [hx, hy] = sc.heroTo, pts = [[PITCH.L, PITCH.W / 2], ...sc.mates.filter(m => Math.hypot(PITCH.L - m[0], PITCH.W / 2 - m[1]) < 9)];
       this.yaw = Math.atan2(pts.reduce((a, p) => a + p[1], 0) / pts.length - hy, pts.reduce((a, p) => a + p[0], 0) / pts.length - hx);
     }

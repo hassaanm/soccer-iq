@@ -13,10 +13,12 @@ export function card({ emoji, title, sub, html, lines = [], button, alt }) {
   el.querySelector('.emoji').textContent = emoji; el.querySelector('h2').textContent = title;
   if (html) el.querySelector('p').innerHTML = html; else el.querySelector('p').textContent = sub || '';
   main.textContent = button; other.textContent = alt || ''; other.classList.toggle('hidden', !alt);
-  el.classList.remove('hidden');
+  el.classList.remove('hidden', 'out'); const tok = el.tok = (el.tok || 0) + 1;
   (async () => { await say(title); for (const l of lines) if (!el.classList.contains('hidden')) await say(l); })();
   return new Promise(res => {
-    const done = v => { el.classList.add('hidden'); res(v); };
+    // (v72) The card fades out over a third of a second while what it leads to starts under it: the next scene (a
+    // demo, or the first round after a demo) comes in as a soft cross-fade, not a hard jump from where the last one ended.
+    const done = v => { el.classList.add('out'); setTimeout(() => { if (el.tok === tok) el.classList.add('hidden'); el.classList.remove('out'); }, 300); res(v); };
     main.onclick = () => done('main'); other.onclick = () => done('alt');
   });
 }

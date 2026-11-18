@@ -23,7 +23,7 @@ const ALL = [
   { id: 'shoot-close', ch: 1, emoji: '🥅', kid: 'Shoot when close!', side: 'attack', adult: 'Shoot from close range with a clear look; get closer or go around otherwise', ready: true,
     tip: 'Close to the goal and nobody in the way? Shoot!', outside: 'Mark a line near the goal. Goals only count from inside the line, so he dribbles closer first.' },
   { id: 'inside-laces', ch: 1, emoji: '🦵', kid: 'Inside or laces?', side: 'attack', added: true, ready: true,
-    adult: 'Choose the shot: the inside of the foot to place it from close (in the box); the laces for pace from the edge of the box; farther out, get closer first. (The game makes its close shots need placing: from very close, laces are not always wrong.)',
+    adult: 'Choose the shot: the inside of the foot to place it from close (in the box); the laces for pace from the edge of the box; farther out, get closer first. (From close, laces are only okay, not wrong: a hard low shot away from the keeper goes in, one at him is saved, and only one aimed high flies over. The inside is the surer shot there.)',
     tip: 'Close? Inside, for control. Far? Laces, for power!', outside: 'Two lines of cones. From the near line only inside-of-the-foot goals count; from the far line only laces goals, while you walk slowly across the goal.' },
   { id: 'shoot-space', ch: 1, emoji: '🧤', kid: 'Shoot to the space!', side: 'attack', added: true, ready: true, keeper: true,
     adult: 'Finishing past a keeper: look, then pass it low into the bigger open side of the goal, away from him (six targets since v64: low away is best; high away is only okay, it can fly over; at him is wrong). If the keeper rushes out, go round him; if a friend is free at the far post, pass it across.',

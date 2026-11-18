@@ -21,13 +21,17 @@ test('every target, foot, distance and keeper side gives a sane result, the same
     assert.deepEqual(again, r, `${tag}: a lesson gives the same answer every time`);
     if (r.res === 'goal') assert.ok(r.to.y > PITCH.gy0 && r.to.y < PITCH.gy1 && r.to.z < PITCH.gh, `${tag}: a goal is inside the goal`);
     if (r.res === 'save') assert.ok(Number.isFinite(r.t) && r.t > 0 && r.at && Math.hypot(r.at.x - k.x, r.at.y - k.y) < 3, `${tag}: a save is near him`);
-    if (foot === 'las' && d < CLOSE - .5) assert.equal(r.res, 'over', `${tag}: laces from close fly over the bar`);
+    if (foot === 'las' && d < CLOSE - .5) { // (v72) laces from close: over only at the top; low, in away from him, saved at or beside him
+      const rel = relations(from, k)[zone(z).col];
+      assert.equal(r.res, zone(z).top ? 'over' : rel === 'away' ? r.res : 'save', `${tag}: laces from close (${rel})`);
+      if (!zone(z).top && rel === 'away') assert.ok(['goal', 'save'].includes(r.res), `${tag}: a low laces shot from close never flies over`);
+    }
     for (const seed of [.1, .5, .9]) { const m = shotResult({ ...args, rand: stream(seed), duel: d <= 8 }); assert.ok(RES.has(m.res) && ACTS.has(m.act), `${tag} (match)`); assert.deepEqual(shotResult({ ...args, rand: stream(seed), duel: d <= 8 }), m, `${tag}: a match's seed gives the same answer`); }
   }
   setSize('3v3');
 });
 
-test('what the results teach: low and away best, at the keeper wrong, high never best, top laces from close over', () => {
+test('what the results teach: low and away best, at the keeper wrong, high never best, top laces from close over, low laces from close in', () => {
   setSize('5v5');
   const from = shooter(6, .2), k = keeper(1), rel = relations(from, k);
   assert.equal(rel.L, 'at'); assert.equal(rel.R, 'away');
@@ -36,8 +40,13 @@ test('what the results teach: low and away best, at the keeper wrong, high never
   for (const z of ['L', 'TL']) assert.equal(zoneGrade(from, z, k), 'bad', `${z}: at him`);
   for (const d of [5, 7, 10]) for (const s of [-1, 0, 1]) for (const z of ['TL', 'TM', 'TR']) assert.notEqual(zoneGrade(shooter(d, .3 * s), z, keeper(s)), 'best', 'high is never best');
   assert.equal(shotResult({ from, zone: 'TR', foot: 'las', k }).res, 'over', 'laces at the top from close: over the bar');
+  assert.equal(shotResult({ from, zone: 'R', foot: 'las', k }).res, 'goal', 'laces low and away from close: in (v72)');
+  assert.equal(shotResult({ from, zone: 'L', foot: 'las', k }).res, 'save', 'laces at him from close: saved');
   let over = 0; for (let i = 0; i < 400; i++) if (shotResult({ from, zone: 'TR', foot: 'las', k, rand: stream(i / 400 + .001) }).res === 'over') over++;
-  assert.ok(over > 400 * .4, `a match: laces at the top from close mostly fly over (${over} of 400)`);
+  assert.ok(over > 400 * .2, `a match: laces at the top from close often fly over (${over} of 400)`);
+  // (v72) A match: low laces from close miss hardly more often than the inside, and never over the bar.
+  const miss = f => { let n = 0; for (let i = 0; i < 400; i++) { const r = shotResult({ from, zone: 'R', foot: f, k, rand: stream(i / 400 + .001) }); if (f === 'las') assert.notEqual(r.res, 'over', 'a low laces shot goes wide, not over'); n += r.res === 'over' || r.res === 'wide'; } return n; };
+  assert.ok(miss('las') <= miss('in') + 400 * .04, `low from close, misses: laces ${miss('las')}, inside ${miss('in')} of 400`);
   // The inside of the foot is true but slow: from far, a ball near him he gets to; laces get there first.
   const far = shooter(11, 0), kc = keeper(0);
   assert.equal(shotResult({ from: far, zone: 'R', foot: 'in', k: kc }).res, 'save'); assert.equal(shotResult({ from: far, zone: 'R', foot: 'las', k: kc, stray: .3 }).res, 'goal');

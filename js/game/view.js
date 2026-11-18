@@ -444,6 +444,7 @@ export const view = {
         this.step === 'dribble' ? 'Tap an arrow' :
         this.step === 'aim' ? 'Tap where to shoot' :
         this.step === 'foot' ? 'Inside or laces?' :
+        this.sc?.shots && this.lookUp ? 'Shoot, pass or dribble?' : // (v72: a shot lesson's scene: his look is at the goal, not a look around)
         this.seen.size ? 'Pass or dribble?' : this.lookUp ? 'Drag to look around' : 'Tap 👀 to look up';
     }
     // The only nudge: if he hasn't looked up after a while, pulse LOOK. Never point at the answer.

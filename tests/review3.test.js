@@ -23,7 +23,8 @@ test('six chapters, "Shoot!" second with the shot lessons, and no chapter longer
 test('a wrong shot says what happened and why', () => {
   setSize('5v5');
   const { g } = makeGame(), close = generate('inside-laces', 1, { pattern: 'foot-close' }), edge = generate('inside-laces', 2, { pattern: 'foot-edge' }), aim = generate('shoot-space', 1, { pattern: 'aim-open' });
-  g.load(close); assert.match(g.shotWhy('shoot:*:las'), /fly high.*Inside, for control/);
+  g.load(close); assert.match(g.shotTip('shoot:*:las'), /^Goal! .*inside is safer/, 'laces from close (v72): in, only okay: the goal first, then the surer way');
+  { g.load(aim); const z = ['TL', 'TM', 'TR'].find(t => g.shotPartGrades(`shoot:${t}:las`).space === false); assert.ok(z, 'a wrong high target'); assert.equal(g.shotOf(`shoot:${z}:las`).res, 'over'); assert.match(g.shotWhy(`shoot:${z}:las`), /high flies over.*Keep it low/); }
   g.load(edge); assert.match(g.shotWhy('shoot:*:in'), /Too slow.*Laces, for power/);
   const other = aim.best.split(':')[1] === 'L' ? 'R' : 'L'; g.load(aim); assert.match(g.shotWhy(`shoot:${other}:in`), /(right at him|near his hands).*big space/);
   setSize('3v3');
