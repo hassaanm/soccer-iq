@@ -18,7 +18,7 @@ import { MOVE_NAME } from '../flair.js';
 
 const PACE = [.12, .3];       // game speed while the moves are offered: the slower end when the defender comes on fast (.12: the slowest a choice's window goes, window.js PACE)
 const OFFER_REAL = 3;         // real seconds an offer aims to last (the pace is set for it, within PACE)
-const OFFER_DEMO = 3.8, DEMO_TAP = 2.6; // the demo: longer, for the line that explains it; when the hand taps
+const OFFER_DEMO = 3.8, DEMO_TAP = 3, HOLD_DEMO = .46; // the demo: longer, for the line that explains it (its turn held longer too); when the hand taps
 const ARMED = .25;            // game speed once a move is armed, until it starts (it is chosen: the wait need not be long)
 const MOVE = .28, MOVE_TURN = .25; // game speed through the move he picked (a dribble move: one touch, about a second to watch)
 const HOLD_G = .36;           // game seconds his turn is held while a turn is offered (he carries the ball on at a walk; round 6)
@@ -54,7 +54,7 @@ export const skill = {
   // hold is the same length whether he taps or not, so the play goes on the same either way.
   skillHold() {
     const s = this.sim, h = s.a('hero');
-    if (h?.holdTurn && (s.time - this.skHoldT >= HOLD_G || this.phase !== 'outcome' || s.ball.carrier !== 'hero')) h.holdTurn = false; // (his turn starts on the next step)
+    if (h?.holdTurn && (s.time - this.skHoldT >= this.holdG() || this.phase !== 'outcome' || s.ball.carrier !== 'hero')) h.holdTurn = false; // (his turn starts on the next step)
     if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 3.5 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed()) return;
     // (round 13) No skill turn on offer where it would end by a second man of theirs (sim.js exitRoom: he turns and is
     // away about a metre in some 0.4 to 0.7 s).
@@ -67,6 +67,7 @@ export const skill = {
     this.skillOffer({ kind: 'turn', alts, tgt: foe.id, yaw: b.h });
     h.holdTurn = true; this.skHoldT = s.time;
   },
+  holdG() { return this.mode === 'demo' ? HOLD_DEMO : HOLD_G; },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).
   skillPace(dt) {
     const s = this.sim, h = s.a('hero');
@@ -116,7 +117,7 @@ export const skill = {
     const s = this.sim, h = s.a('hero'), demo = this.mode === 'demo', scr = this.screenLeft(h, o.yaw);
     // dir: where the ball goes on the screen after the move ('l', 'r'); the button on the left gets the move that goes left
     const alts = o.alts.map((m, i) => { const exit = m.exit ?? -m.fake; return { ...m, i, exit, dir: exit * scr > 0 ? 'l' : 'r' }; }).sort((p, q) => (p.dir === 'l' ? 0 : 1) - (q.dir === 'l' ? 0 : 1));
-    const T = o.kind === 'turn' ? HOLD_G : Math.max(.05, (o.last - touchAt(h)) * 1.4 / Math.max(1.5, h.sp)); // game seconds to the last moment a move can start
+    const T = o.kind === 'turn' ? this.holdG() : Math.max(.05, (o.last - touchAt(h)) * 1.4 / Math.max(1.5, h.sp)); // game seconds to the last moment a move can start
     const pace = Math.min(PACE[1], Math.max(PACE[0], T / (demo ? OFFER_DEMO : OFFER_REAL)));
     this.sk = { kind: o.kind, alts, phase: 'offer', t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
     this.skDone = true; this.skLast = this.clock;
@@ -172,16 +173,16 @@ export const skill = {
     if (!this.sk && h?.offer && this.phase === 'outcome') this.skillOffer(h.offer);
     const sk = this.sk;
     if (sk?.phase === 'offer') {
-      const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / HOLD_G) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));
+      const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / this.holdG()) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));
       if (sk.kind === 'run' ? !h?.offer : !h?.holdTurn || left <= 0) this.skillEnd();
-      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .3)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
+      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .12)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
     } else if (sk?.phase === 'armed') {
       if (sk.kind === 'run') {
         if (h?.skill && h.skill.k === sk.pick.k) this.skillGo(h.skill.good !== false); // (the move has started)
         else if (!h?.armed) { sk.phase = 'out'; this.hud.skill(null); } // (dropped: the defender came too close first, or anything else started)
       } else {
         const m = b.move; if (m && m.k === sk.pick.k && b.carrier === 'hero') this.skillGo(m.good !== false);
-        else if (!h?.holdTurn && s.time - sk.g0 > HOLD_G + .4) { sk.phase = 'out'; this.hud.skill(null); } // (the turn never came)
+        else if (!h?.holdTurn && s.time - sk.g0 > this.holdG() + .4) { sk.phase = 'out'; this.hud.skill(null); } // (the turn never came)
       }
       if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt) && this.clock - sk.tm > .4) this.handAt = null;
     } else if (sk?.phase === 'move') {
