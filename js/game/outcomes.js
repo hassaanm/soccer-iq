@@ -605,7 +605,7 @@ export const outcomes = {
   // guesses and goes the wrong way early: the owner asked to see a keeper who guesses wrong now and then, and these shots
   // score whatever he does. Seeded by the play. Returns the result to act out, or null.
   guessWrong(gk, y) {
-    const s = this.sim, b = s.ball; if (!gk || !(this.mode === 'match' || this.mode === 'free') || seeded(b.x, b.y, s.time, 29) >= GUESS_PLACED) return null;
+    const s = this.sim, b = s.ball; if (!gk || !(this.mode === 'match' || this.mode === 'free') || (!this.forceGuess && seeded(b.x, b.y, s.time, 29) >= GUESS_PLACED)) return null; // (forceGuess: every time, for the review page dev/review.html)
     return { ...shotResult({ from: b, y, foot: 'placed', k: gk, force: 'goal' }), act: 'wrong', dir: -Math.sign(y - gk.y) || 1, guess: -Math.sign(y - gk.y) || 1 };
   },
   // A shot he picked that does not go in (it may still be only okay as a choice: then 1 star, never 2; v64 round 3).

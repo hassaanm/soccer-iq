@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="robots" content="noindex">
+<!-- The review page: jump straight into a situation of the real game, repeat it, and leave a note on it. For the people
+  building the game; linked from nowhere in it. Everything below resolves from the project folder (the <base>), so the
+  game's own files load exactly as on its home page. How to open it and add an entry: dev/review-list.js. -->
+<base href="../">
+<title>Heads Up! review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<style>
+  #rv { --rv-bg: rgba(20, 16, 32, .9); --rv-ink: #f3f1f7; --rv-mute: #b9b2c8; --rv-line: rgba(255, 255, 255, .16); --rv-on: #ffd84d; --rv-good: #2fcf6a; --rv-work: #ff9d3a;
+    position: fixed; inset: 0; z-index: 50; pointer-events: none; font: 13px/1.3 -apple-system, system-ui, sans-serif; color: var(--rv-ink); }
+  #rv [hidden] { display: none !important; }
+  #rv button, #rv input, #rv textarea { font: inherit; color: inherit; }
+  #rv button { pointer-events: auto; border: 0; border-radius: 9px; background: rgba(255, 255, 255, .12); min-height: 32px; padding: 0 10px; cursor: pointer; white-space: nowrap; }
+  #rv button:active { background: rgba(255, 255, 255, .25); }
+  #rv button.on { background: var(--rv-on); color: #24193a; font-weight: 700; }
+  #rv button:disabled { opacity: .35; }
+  /* The handle: a small pill just right of the game's home button, above anything the game draws there. */
+  #rvHandle { position: absolute; top: 12px; left: calc(70px + env(safe-area-inset-left, 0px)); display: flex; gap: 2px; padding: 3px; border-radius: 12px; background: var(--rv-bg); pointer-events: auto; }
+  #rvHandle button { min-height: 38px; min-width: 38px; padding: 0 8px; font-size: 16px; }
+  #rvHandle .n { font-size: 12px; color: var(--rv-mute); }
+  #rv:not(.min) #rvHandle { display: none; }
+  /* The bar: a strip across the top (it covers only the game's top row while it is open). */
+  #rvBar { position: absolute; top: 0; left: 0; right: 0; padding: 6px calc(8px + env(safe-area-inset-right, 0px)) 6px calc(8px + env(safe-area-inset-left, 0px)); background: var(--rv-bg); pointer-events: auto; display: grid; gap: 5px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); }
+  #rv.min #rvBar { display: none; }
+  #rvBar .r1, #rvBar .r2 { display: flex; gap: 5px; align-items: center; min-width: 0; }
+  #rvBar .r2 { flex-wrap: wrap; row-gap: 4px; }
+  #rvBar .what { flex: 1; min-width: 0; }
+  #rvBar .what b { font-size: 14px; }
+  #rvBar .what .n { color: var(--rv-mute); margin-left: 6px; font-size: 12px; }
+  #rvBar .what .st { margin-left: 6px; font-size: 12px; color: var(--rv-on); }
+  #rvBar .look { color: var(--rv-mute); font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #rv .seg { display: inline-flex; gap: 1px; border-radius: 9px; overflow: hidden; }
+  #rv .seg button { border-radius: 0; padding: 0 7px; }
+  #rv .lbl { color: var(--rv-mute); font-size: 11px; margin: 0 3px 0 2px; }
+  #rv .fixed { color: var(--rv-mute); font-size: 12px; padding: 0 6px; }
+  #rv .seed b { display: inline-block; min-width: 2.2em; text-align: center; }
+  #rvNote { flex: 1 1 110px; min-width: 90px; min-height: 32px; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .08); padding: 0 8px; pointer-events: auto; }
+  #rv button.good.on { background: var(--rv-good); color: #fff; }
+  #rv button.work.on { background: var(--rv-work); color: #fff; }
+  #rvErr { color: #ff8080; font-size: 12px; white-space: pre-wrap; max-height: 4.2em; overflow: auto; }
+  #rvErr:empty { display: none; }
+  /* The list: the rest of the screen, under the bar. */
+  #rvList { position: absolute; left: 0; right: 0; bottom: 0; overflow: auto; -webkit-overflow-scrolling: touch; background: rgba(20, 16, 32, .96); pointer-events: auto;
+    padding: 8px calc(12px + env(safe-area-inset-right, 0px)) 20px calc(12px + env(safe-area-inset-left, 0px)); }
+  #rv:not(.list) #rvList { display: none; }
+  #rvList h3 { margin: 14px 0 4px; font-size: 13px; color: var(--rv-on); font-weight: 700; }
+  #rvList .cols { columns: 2 280px; column-gap: 18px; }
+  #rvList .grp { break-inside: avoid; }
+  #rvList .item { display: flex; width: 100%; text-align: left; gap: 8px; align-items: baseline; padding: 4px 8px; margin: 0; min-height: 30px; background: transparent; white-space: normal; }
+  #rvList .item.cur { background: rgba(255, 216, 77, .18); }
+  #rvList .item .m { flex: 0 0 14px; text-align: center; font-size: 12px; }
+  #rvList .item .m.good { color: var(--rv-good); }
+  #rvList .item .m.work { color: var(--rv-work); }
+  #rvList .item .m.note { color: var(--rv-mute); }
+  #rvList .item small { color: var(--rv-mute); margin-left: 4px; }
+  #rvList .foot { margin-top: 16px; display: grid; gap: 6px; }
+  #rvList .foot .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #rvOut { width: 100%; min-height: 7em; border-radius: 9px; border: 1px solid var(--rv-line); background: rgba(255, 255, 255, .06); padding: 8px; font: 12px/1.35 ui-monospace, Menlo, monospace; pointer-events: auto; }
+  #rvList .hint { color: var(--rv-mute); font-size: 12px; }
+  /* Not in this build yet / errors: a quiet note over the field. */
+  #rvNotice { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 80vw; background: var(--rv-bg); padding: 14px 18px; border-radius: 14px; text-align: center; font-size: 15px; }
+  #rvNotice:empty { display: none; }
+</style>
+</head>
+<body>
+<script type="module" src="dev/review.js"></script>
+</body>
+</html>
