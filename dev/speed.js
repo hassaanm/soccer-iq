@@ -4,8 +4,8 @@
 // percentile and the worst frame. "Use the best settings for this phone" keeps what cost nothing here (js/ui/speed.js).
 //
 // The child's save is never touched, except by that button, which writes only `settings.tuned`. Before any game module
-// loads, the page swaps the browser's localStorage, as the game sees it, for a throwaway copy in memory (as dev/review.js
-// does). Sound: the game's audio players are never made (sound.js SILENT), the voice is off in the throwaway save, and the
+// loads, the page sets globalThis.SOCCER_THROWAWAY: the game then reads and writes its save in that in-memory copy
+// (js/storage.js). Replacing window.localStorage as well is only a second guard; if Safari refuses it, the test still runs. Sound: the game's audio players are never made (sound.js SILENT), the voice is off in the throwaway save, and the
 // run that measures bare audio players plays recordings of pure silence on muted players. Only with "Include the two runs
 // with sound" ticked (the page says they are heard) does the Start tap unlock the game's own players, and only those two
 // runs unmute them: the game's effects at their real rate, then the same with voice lines.
@@ -28,8 +28,8 @@ const shim = {
   getItem: k => (k in map ? map[k] : null), setItem: (k, v) => { map[k] = String(v); }, removeItem: k => { delete map[k]; }, clear: () => { for (const k of Object.keys(map)) delete map[k]; },
   key: i => Object.keys(map)[i] ?? null, get length() { return Object.keys(map).length; },
 };
-let swapped = false;
-try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); swapped = window.localStorage === shim; } catch { swapped = false; }
+globalThis.SOCCER_THROWAWAY = { map }; // (read by js/storage.js as the game loads)
+try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); } catch { /* the flag above is the guard */ }
 
 // ---------- what each run changes ----------
 // body: classes on <body> (blur: the old head-down blur in Smooth; nofx, nopulse and noedge: dev/speed.html's style; softwords, v75look: css/app.css).
@@ -92,10 +92,11 @@ $('#stGo').onclick = () => {
 function fail(e) { console.error(e); $('#st').className = ''; $('#stIntro').hidden = false; $('#stNow').hidden = true; $('#stErr').textContent = 'The test stopped: ' + (e?.message || e); }
 
 async function boot() {
-  if (!swapped) throw new Error('This browser would not let the page use a throwaway save, so the game was not started (his save stays safe).');
   const html = await (await fetch('index.html', { cache: 'no-cache' })).text();
   const doc = new DOMParser().parseFromString(html, 'text/html');
   for (const n of [...doc.body.childNodes]) if (n.nodeName !== 'SCRIPT') document.body.appendChild(document.adoptNode(n));
+  const st = await import('../js/storage.js');
+  if (!st.throwaway) throw new Error('The game did not take the throwaway save, so it was not started (his save stays safe).');
   const sound = await import('../js/sound.js'); sound.SILENT.on = true; // before anything can unlock a player
   const [main, stage, hudM, screens, speed, skills, teams, version, geom, store, speech, voice] = await Promise.all(['../js/main.js', '../js/ui/stage.js', '../js/ui/hud.js', '../js/ui/screens.js',
     '../js/ui/speed.js', '../js/skills.js', '../js/teams.js', '../js/version.js', '../js/geom.js', '../js/ui/store.js', '../js/ui/speech.js', '../js/voice.js'].map(p => import(p)));
@@ -228,15 +229,22 @@ $('#stCopy').onclick = async () => {
   try { await navigator.clipboard.writeText(report); $('#stCopy').textContent = 'Copied'; }
   catch { try { document.execCommand('copy'); $('#stCopy').textContent = 'Copied'; } catch { $('#stCopy').textContent = 'Select the text and copy it'; } }
 };
-// Writes only `settings.tuned` into his real save (the rest of it is left as it is).
+// Writes only `settings.tuned` into his real save (the rest of it is left as it is); "Back to normal" takes it out again.
+function writeTuned(tuned) {
+  const s = parse(realGet(SAVE_KEY), null);
+  if (!s || typeof s !== 'object') throw new Error('no save yet: play once first');
+  s.settings = s.settings || {};
+  if (tuned) s.settings.tuned = tuned; else delete s.settings.tuned;
+  REAL.setItem(SAVE_KEY, JSON.stringify(s));
+}
+$('#stNormal').onclick = () => {
+  try { writeTuned(null); $('#stMsg').textContent = 'Back to normal: Smooth as shipped (no tuned settings).'; $('#stBest').disabled = false; }
+  catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
+};
 $('#stBest').onclick = () => {
   if (!best) return;
   try {
-    const s = parse(realGet(SAVE_KEY), null);
-    if (!s || typeof s !== 'object') throw new Error('no save yet: play once first');
-    s.settings = s.settings || {};
-    s.settings.tuned = { blur: best.blur, glow: best.glow, soft: best.soft, pr: best.pr || 0, at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' };
-    REAL.setItem(SAVE_KEY, JSON.stringify(s));
+    writeTuned({ blur: best.blur, glow: best.glow, soft: best.soft, pr: best.pr || 0, at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
     $('#stMsg').textContent = `Saved for this phone: head-down blur ${best.blur ? 'on' : 'off'}, glow ${best.glow ? 'on' : 'off'}, soft shadow ${best.soft ? 'on' : 'off'}, pixel ratio ${best.pr || 1.5}. They apply with Graphics on Smooth.`;
     $('#stBest').disabled = true;
   } catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }

@@ -11,14 +11,16 @@ export const smooth = () => mode === 'smooth';
 let mode = 'pretty';
 // (round 13) What the speed test (dev/speed.html) measured as free on this phone, kept in the save by its "Use the best
 // settings" button: { blur, glow, pr, soft }. Smooth then puts back the head-down blur, the glow, or more pixels.
-const tuned = () => (P.settings.tuned && typeof P.settings.tuned === 'object' ? P.settings.tuned : {});
+// Only true counts as on, and only 2 or 3 as a pixel ratio: a stray value ("no", "1") changes nothing.
+const tuned = () => { const t = P.settings.tuned; if (!t || typeof t !== 'object') return {};
+  return { blur: t.blur === true, glow: t.glow === true, soft: t.soft === true, pr: t.pr === 2 || t.pr === 3 ? t.pr : 0 }; };
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
   mode = graphics(); const sm = mode === 'smooth', t = tuned();
   document.body.classList.toggle('smooth', sm); document.body.classList.toggle('blur', sm && !!t.blur); // (blur: the head-down edge as in Pretty)
   document.body.classList.toggle('softwords', sm && !!t.soft); // (soft: the big words' soft shadow, css/app.css)
-  world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: +t.pr || 0 } : {});
+  world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: t.pr } : {});
 }
 // (round 13) Switches for the speed test only (dev/speed.js); nothing here is saved. cap: the 60-a-second cap (main.js);
 // strip: read the picture's bottom row for the iPad's strip colour even on an iPhone (null: as the device needs); onFrame:

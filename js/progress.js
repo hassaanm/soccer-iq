@@ -3,6 +3,7 @@
 // separate days. Boxes set the review gaps in days; the level shown is the highest box ever reached, so a bad
 // day never takes stars away.
 import { shuffle, SAVE_KEY } from './geom.js';
+import { storage as STORE } from './storage.js'; // (round 13: the browser's storage, or a test page's throwaway copy)
 const KEY = SAVE_KEY;
 const INTERVALS = [0, 1, 3, 7, 14, 30]; // days before a lesson in each box comes back as review rounds
 const MASTER_BOX = 3;
@@ -13,7 +14,7 @@ export function defaultProgress() {
     settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal', keeperPlay: 'off' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK); keeperPlay: he plays our keeper in matches (v67, saves.js KEEPER_PLAY)
 }
 
-export function load(storage = globalThis.localStorage) {
+export function load(storage = STORE) {
   const d = defaultProgress();
   try {
     const p = JSON.parse(storage.getItem(KEY));
@@ -22,7 +23,7 @@ export function load(storage = globalThis.localStorage) {
   return d;
 }
 
-export function save(p, storage = globalThis.localStorage) {
+export function save(p, storage = STORE) {
   try { storage.setItem(KEY, JSON.stringify(p)); } catch { /* storage unavailable */ }
 }
 
