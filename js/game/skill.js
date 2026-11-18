@@ -15,7 +15,7 @@ const WAIT = 1.2;  // real seconds a turn is offered (in the demo, long enough f
 const HOLD_G = .2; // seconds of play his turn is held while it is offered (he carries the ball on at a walk; round 6)
 const WAIT_DEMO = 3.4, DEMO_TAP = 2.8; // the demo: how long it waits, and when the hand taps (it rests on the button first)
 export const EXPLAIN = 'See the gold button? Tap it to do a trick!'; // said in the take-him-on demo when the button first shows
-const GAP = 5;     // in matches: real seconds from one offer to the next
+const GAP = 3;     // in matches: real seconds from one offer to the next (round 13: 5 s before; a little more often, as offers into a second defender are gone)
 const OFFER_END = -.3; // as in sim.js: where a run-at offer closes (dribble touches before its move)
 
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
