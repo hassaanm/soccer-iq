@@ -339,7 +339,11 @@ export const view = {
       f.yaw += (f.yawT - f.yaw) * (1 - Math.exp(-dt * 1.4));
     }
     this.camAsk = this.heavyAt === (this.frameNo |= 0) && !!this.lastWant; this.frameNo++;
+    const was = this.lastWant;
     let want = this.camSpec(time); this.camAsk = false; this.lastWant = want;
+    // (round 10) A view that changes at once (the arrows' view as he taps DRIBBLE, the goal view in a celebration): the
+    // camera sets off for it from rest, its speed building up over a third of a second, never with a step in the first frame.
+    if (was && Math.hypot(want.eye[0] - was.eye[0], want.eye[1] - was.eye[1], want.eye[2] - was.eye[2]) > 1) this.camT0 = this.clock;
     // In a skill moment the view comes round to the skill camera and back on the same orbit, eased (no cut), and
     // follows it closely meanwhile.
     const sw = smooth(this.skCam || 0); if (sw > 0) want = this.skillView(want, sw, dt);
