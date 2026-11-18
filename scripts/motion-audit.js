@@ -35,8 +35,9 @@
 //            taker may be still, and at least two others move 1.5 m or more
 //   gap      two players closer than 0.5 m
 //   late     the time-out happens when the ring is empty (u = 1)
-//   heading  (v76) as the window opens with his player carrying the ball, the view and his body look the way he runs: 40° or
-//            less off it (scripts/live-audit.js HEADING; the owner saw him run up the field across the screen, sideways)
+//   heading  (v76) as the window opens with his player carrying the ball, the camera (eye to target) and his body look the way
+//            he runs: 40° or less off it, and 0.7 s in; in matches (whole ones, a child's taps) at most 5% of windows over it as
+//            they open, none 0.7 s in (scripts/live-audit.js HEADING; the owner saw him run up the field across the screen, sideways)
 // An exemption names a pattern and a reason (EXEMPT, below), and every use of one is counted in the output.
 // Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--scene id] [--json out.json] [--notaps]
 import { PATH, allScenarios } from '../js/skills.js';
@@ -44,7 +45,7 @@ import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
 import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
-import { headingWatch, HEADING } from './live-audit.js';
+import { headingWatch, headingMatches, HEADING } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
@@ -317,7 +318,7 @@ const all = [], counts = {}, mis = [], used = USED, stats = {};
 const mkShare = () => ({ n: 0, ok: 0, miss: [] });
 for (const size of sizes) {
   setSize(size);
-  const st = stats[size] = { size, heading: { n: 0, why: {} }, comes: mkShare(), seen: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {}, cuts: [],
+  const st = stats[size] = { size, heading: { n: 0, why: {}, whyMax: 0 }, comes: mkShare(), seen: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {}, cuts: [],
     use: e => used.set(e, (used.get(e) || 0) + 1) };
   for (const sk of PATH.filter(s => s.ready && (!only || s.id === only))) {
     const scs = [...allScenarios(sk.id), ...Array.from({ length: nGen }, (_, i) => generate(sk.id, 5001 + i, { even: true })).filter(Boolean).map(s => ({ ...s, id: s.id + 'e' }))];
@@ -333,7 +334,9 @@ for (const size of sizes) {
       }
       VW = 844; VH = 390;
       const r = await play(sc, null, 1), fl = timeout(r, sc, st); motion(r, sc);
-      for (const h of r.info.heading || []) { st.heading.n++; if (h.why) st.heading.why[h.why] = (st.heading.why[h.why] || 0) + 1; if (h.bad) fl.push(['heading', `as the choice opens the view is ${Math.round(h.view)}° and his body ${Math.round(h.body)}° off the way he runs (${HEADING.lim}° at most)`]); }
+      for (const h of r.info.heading || []) { st.heading.n++; if (h.why) { st.heading.why[h.why] = (st.heading.why[h.why] || 0) + 1; st.heading.whyMax = Math.max(st.heading.whyMax, h.open); }
+        if (h.bad) fl.push(['heading', `as the choice opens the camera is ${Math.round(h.open)}° and his body ${Math.round(h.body)}° off the way he runs (${HEADING.lim}° at most)`]);
+        if (h.badLater) fl.push(['heading', `${HEADING.later} s into the choice the camera is ${Math.round(h.later)}° off the way he runs (${HEADING.lim}° at most)`]); }
       for (const x of [...shape(r, sc, st), ...views(r, sc, st), ...after(r, sc)]) fl.push(x);
       VW = 667; VH = 375; { const r2 = await play(sc, null, 1); for (const x of views(r2, sc, st)) fl.push(x); } VW = 844; VH = 390;
       // every step view he can go to in this window, at both screens: his size, his ring, nobody in front of him
@@ -360,7 +363,7 @@ for (const [size, st] of Object.entries(stats)) {
   for (const [k, v] of Object.entries(st.cls)) console.log(`    ${k.padEnd(20)} ${v.length}${v.length < 7 ? '  ' + v.join(' ') : ''}`);
   const rows = [['comes', st.comes, 'the one who comes is the nearest free defender as it opens'], ['arrive', st.arrive, 'within 0.8 m as the ring empties, touch within 0.3 s'], ['grade', st.grade, 'the picture agrees with the grade at the tap'],
     ['size', st.size_[844], 'his player 60 px at 844x390'], ['size', st.size_[667], 'his player 48 px at 667x375'], ['friends', st.friends, 'friends neither go away from the ball nor leave the view'], ['closes', st.closes, 'the threat closes 2.5 m with the ball at his feet'], ['seen', st.seen, 'the one who comes is on the screen as the window opens']];
-  console.log(`  heading: ${st.heading.n} windows with his player carrying the ball as it opens (not counted, with a reason: ${Object.entries(st.heading.why).map(([k, v]) => `${k} ${v}`).join('; ') || 'none'}); a view or body off his way is a 'heading' flag`);
+  console.log(`  heading: ${st.heading.n} windows with his player carrying the ball as it opens (not counted, with a reason: ${Object.entries(st.heading.why).map(([k, v]) => `${k} ${v}`).join('; ') || 'none'}; the largest such angle ${Math.round(st.heading.whyMax)}°); a camera or body off his way is a 'heading' flag`);
   console.log(`  windows shorter than asked (never under the floor: 6 s here): ${st.cuts.length}${st.cuts.length ? ': ' + st.cuts.map(c => c.replace(size + ' ', '')).join('; ') : ''}`);
   for (const [k, s, what] of rows) {
     const ok = !s.n || s.ok / s.n >= SHARE[k] - 1e-9; if (!ok) { fails++; counts[`${size} ${k}-share`] = 1; }
@@ -383,7 +386,12 @@ if (!only && !scene && !args.includes('--nolive')) {
   const { liveAudit } = await import('./live-audit.js');
   for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(flag('--live') || 8)); liveBad += flags.length;
     console.log(`${size} live play (${flag('--live') || 8} matches): ${stat.plays} choices, shortest live window ${stat.minWin.toFixed(2)} s; ${Object.entries(stat.counts || {}).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-    for (const [k, m] of flags.slice(0, 30)) console.log(`  ${k}: ${m}`); }
+    for (const [k, m] of flags.slice(0, 30)) console.log(`  ${k}: ${m}`);
+    // (v76) heading in matches, a child's taps: the camera as each choice opens and 0.7 s in
+    const rows = await headingMatches(size, +(flag('--hmatch') || 6)), ok = rows.filter(r => !r.why), open = ok.filter(r => r.bad), later = ok.filter(r => r.badLater), ex = rows.filter(r => r.why);
+    const share = ok.length ? open.length / ok.length : 0; liveBad += later.length + (share > HEADING.share ? 1 : 0);
+    console.log(`${size} heading in matches (${flag('--hmatch') || 6}, a child's taps): ${ok.length} windows with his player carrying the ball; over ${HEADING.lim}° as it opens ${open.length} (${(share * 100).toFixed(1)}%, ${HEADING.share * 100}% at most), ${HEADING.later} s in ${later.length}; not counted, with a reason: ${ex.length} (largest ${Math.round(Math.max(0, ...ex.map(r => r.open)))}°)`);
+    for (const r of [...later, ...(share > HEADING.share ? open : [])].slice(0, 10)) console.log(`  heading: match ${r.seed} ${r.sc} (${r.kind}): ${Math.round(r.open)}° as it opens, ${r.later == null ? '-' : Math.round(r.later)}° ${HEADING.later} s in`); }
 }
 // (round 7) Frame time: no long frame as a choice opens or closes (scripts/frame-audit.js), with the live audit.
 let frameBad = 0;
