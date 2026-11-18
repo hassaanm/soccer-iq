@@ -2,6 +2,7 @@
 import { demoScenario, skillById } from '../skills.js';
 import { clamp, smooth } from '../geom.js';
 import { L, W, MATE, spotKind, wrap } from './shared.js';
+import { pathAt } from '../window.js';
 
 // (v76) How long a line takes in talk() (game.js): the slow reading of it (the voice clips are all shorter), then the pause.
 const talkSec = (text, pause = 1.2) => .6 + text.length / 12 + pause;
@@ -14,9 +15,15 @@ const TAP = 1.2; // tapAt: the hand's move to the button and its tap
 const CRAWL = [.015, .06], CRAWL_U = .2, RING_DRAIN = [.12, .28]; // (RING_DRAIN: the least and most of the ring that drains while the idea is said)
 // (v76) What each lesson's demo looks at once his head is up: the things the lesson is about. A look turns his head
 // only to those not on the screen yet; with all of them in sight (a view from above shows everything) he does not look
-// around at all. Only "Look up!" sweeps left and right: looking around is that lesson, and in its scene there are
-// friends and defenders on both sides, out of a head-down view. (See the coaching notes in the report: a scan is for
-// finding what is around him before he decides; alone in front of goal it is one glance at the goal and the keeper.)
+// around at all. (See the coaching notes in the report: a scan is for finding what is around him before he decides;
+// alone in front of goal it is one glance at the goal and the keeper.)
+// (v78) And he scans where something that matters is beside or behind him (SCAN, scanWhy): "Look up and scan!" itself;
+// the one who comes from behind (a look over his shoulder); friends to pass to on both sides; and off the ball, finding
+// space. Not running at the goal (the owner, v76: "the scanning part looked awkward when you're running towards a goal").
+// BEHIND: the one who comes is this far (rad) off the way he runs, out of any view that looks that way. SIDE: a friend
+// this far (rad) to one side of the view counts as on that side.
+const BEHIND = 1.92, SIDE = .26;
+const SHOULDER = { turn: .8, hold: .5, back: .6 }; // (shoulderLook: seconds to turn his head, to hold it, to turn back)
 //   defenders: their players near the ball (is there only one, or two?); friends: his other friends ahead of or beside
 //   him; goal; space: the open grass ahead; ball; open: the player nobody guards; runner: the friend on his run.
 const LOOK_AT = {
@@ -26,13 +33,58 @@ const LOOK_AT = {
 };
 
 export const demo = {
+  // (v78) Why he scans before this choice (coaching notes in the report), by where things are as the window opens:
+  //   'goal'     a clear shot: one glance at the goal and the keeper, no scan (US Youth Soccer, TeamSnap: look up at the
+  //              goal, then eyes on the ball)
+  //   'shoulder' the one who comes is behind him (BEHIND off his run): a look over the shoulder at him ("check your
+  //              shoulder": Jordet's research on scanning before acting; youth coaching cues)
+  //   'both'     a pass, with friends to pass to on both sides of the view: a look left and right, then the friend
+  //   'around'   off the ball, finding space (get open, spread out): a look left and right (scanning before receiving)
+  //   null       everything that matters is ahead, or he runs at the goal: no scan (a glance only at what is off the screen)
+  scanWhy(sc = this.sc) {
+    const s = this.sim, h = s.a('hero'); if (!h || !sc) return null;
+    if (sc.best?.startsWith('shoot')) return 'goal';
+    if (sc.kind === 'receive' || sc.kind === 'tackle' || sc.kind === 'defense') return null; // (a pass to him: his peek; defending: the ball is in front of him)
+    if (this.threatBehind()) return 'shoulder';
+    if (sc.kind === 'support' && sc.run !== 'follow' && sc.run !== 'goal') return 'around';
+    const mates = s.team('us').filter(a => a !== h && !a.gk).map(a => wrap(Math.atan2(a.y - h.y, a.x - h.x) - this.yaw));
+    if (MATE[sc.best] && mates.some(a => a > SIDE) && mates.some(a => a < -SIDE)) return 'both'; // (a pass is the play: which friend)
+    return null;
+  },
+  // (v78) The one who comes is behind him as the window opens: BEHIND or more off the way he runs (his planned way; the
+  // view, when he is not moving). Kept for the window (w.behind).
+  threatBehind() {
+    const w = this.win; if (!w) return false;
+    if (w.behind == null) {
+      const s = this.sim, h = s.a('hero'), t = w.threat?.id && s.a(w.threat.id), p = w.plan?.paths?.hero, q = p && pathAt(p, Math.max(0, s.time - w.t0));
+      const run = q && Math.hypot(q.vx, q.vy) > .4 ? Math.atan2(q.vy, q.vx) : this.yaw;
+      w.behind = !!(h && t && s.ball.carrier === 'hero' && Math.abs(wrap(Math.atan2(t.y - h.y, t.x - h.x) - run)) > BEHIND);
+      w.behindId = t?.id || null;
+    }
+    return w.behind;
+  },
+  // (v78) A look over his shoulder at the one who comes from behind, and back: `say` says the line meanwhile (a demo).
+  async shoulderLook(say = true) {
+    const s = this.sim, h = s.a('hero'), t = this.win?.behindId && s.a(this.win.behindId); if (!h || !t || this.skipping) return;
+    const y0 = this.yaw, d = wrap(Math.atan2(t.y - h.y, t.x - h.x) - y0); this.checkedBack = true;
+    if (say) { this.hud.caption('👀 Behind you?'); this.say('Check your shoulder!'); }
+    await this.tween(SHOULDER.turn, u => { this.yaw = y0 + d * smooth(u); }); await this.delay(SHOULDER.hold);
+    await this.tween(SHOULDER.back, u => { this.yaw = y0 + d * (1 - smooth(u)); });
+  },
+  shoulderSec: () => SHOULDER.turn + SHOULDER.hold + SHOULDER.back,
+  // (v78) A look left and right over what matters (`pts`: points on the field), then on to `aim` (a direction).
+  async scanSides(pts, aim) {
+    const h = this.sim.a('hero'); if (!h) return;
+    const a = pts.map(p => wrap(Math.atan2(p.y - h.y, p.x - h.x) - this.yaw)), L0 = clamp(Math.max(.7, ...a.filter(v => v > 0)), .7, 1.6), R0 = clamp(Math.max(.7, ...a.filter(v => v < 0).map(v => -v)), .7, 1.6);
+    await this.lookAround(aim, L0, R0);
+  },
   // "Look up!"'s demo: he really looks around: head up, turn left, then right (past his shoulder, so he can see behind),
   // then settle on what he found. Shows a child that turning to look is part of the move.
-  async lookAround(aim, wide = 1.5) {
+  async lookAround(aim, wide = 1.5, right = wide) {
     const turnTo = (to, sec) => { const y0 = this.yaw; return this.tween(sec, t => { this.yaw = y0 + wrap(to - y0) * smooth(t); }); };
     const base = this.yaw;
     this.hud.caption('👀 Look left…'); this.say('Look left.'); await turnTo(base + wide, 1);
-    this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnTo(base - wide, 1.5);
+    this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnTo(base - right, 1.5);
     await turnTo(aim, 1);
   },
   // (v76) A look with a reason: his head turns to each of `pts` that is not on the screen yet, one glance each, and stays
@@ -90,6 +142,7 @@ export const demo = {
   tapsSec(opt) {
     const sc = this.sc, h = this.sim.a('hero'); if (!h) return 0;
     let t = sc.kind === 'tackle' ? .6 : sc.kind === 'receive' ? .4 : !this.lookUp ? TAP + .5 : 0;
+    if (!this.checkedBack && this.scanWhy(sc) === 'shoulder') t += SHOULDER.turn + SHOULDER.hold + SHOULDER.back; // (v78: showTaps looks over his shoulder first)
     const off = p => (p && !this.onScreen(p) ? 1.8 : 0); // (dragTo)
     if (MATE[opt]) { const m = this.sim.a(MATE[opt]); t += off(m && { ...m, z: .9 }) + TAP + .3 + TAP; }
     else if (opt === 'shoot' || opt.startsWith('shoot:')) { const [, sp, ft] = opt.split(':'), parts = opt === 'shoot' ? {} : this.shotParts(); t += .5 + TAP + (parts.space && sp !== '*' ? .6 + TAP : 0) + (parts.foot && ft !== '*' ? .5 + TAP : 0); }
@@ -139,6 +192,7 @@ export const demo = {
     if (sc.kind === 'tackle') { this.step = 'tackle'; this.lookUp = true; this.handAt = 'stealBtn'; await this.delay(.6); return; } // tapped when the ball rolls loose (tackleGen)
     if (sc.kind === 'receive') { this.step = 'turn'; this.facePasser(); await this.delay(.4); }
     else if (!this.lookUp) { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); await this.delay(.5); }
+    if (!this.checkedBack && this.scanWhy(sc) === 'shoulder') await this.shoulderLook(false); // (v78: the one who comes is behind him: the better play starts with a look over his shoulder)
     const face = p => wrap(Math.atan2(p.y - h.y, p.x - h.x));
     if (MATE[opt]) {
       const m = this.sim.a(MATE[opt]);
@@ -213,9 +267,11 @@ export const demo = {
     const K = this.sim.keeper('them'), goalLine = K ? 'Look at the goal. Where is the keeper?' : 'Look at the goal. Nobody in the way!', saw = sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
     const scan = sc.skill === 'look-up' && !mateId && !spotKind(sc) && !shot && sc.kind !== 'receive';
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
-    const lookSec = this.lookPoints(sc).filter(p => !this.onScreen({ x: p.x, y: p.y, z: p.z ?? .9 })).length * .8; // (lookTo: a glance for each thing not in sight yet)
+    const why = this.scanWhy(sc), sides = why === 'both' || why === 'around', back = why === 'shoulder' && !scan; // (v78: a scan with a reason, scanWhy)
+    if (scan && why === 'shoulder') this.checkedBack = true; // ("Look up and scan!": its own look round goes as far as the one behind him)
+    const lookSec = sides ? 3.5 : this.lookPoints(sc).filter(p => !this.onScreen({ x: p.x, y: p.y, z: p.z ?? .9 })).length * .8 + (back ? this.shoulderSec() : 0); // (lookTo: a glance for each thing not in sight yet; scanSides: left, right, on; shoulderLook)
     const after = () => (mateId ? lookSec + talkSec('Pass is open!', 1) : sc.kind === 'receive' ? talkSec(recv[0], .2) + 2.4 + talkSec(recv[1], .6) + .6
-      : sc.kind === 'lead' ? lookSec + talkSec('Pass is running!', .8) : spotKind(sc) ? lookSec + talkSec(q, 1) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : lookSec) + talkSec(saw, .8)) + this.tapsSec(sc.best); // (how long from the idea's end to the choice)
+      : sc.kind === 'lead' ? lookSec + talkSec('Pass is running!', .8) : spotKind(sc) ? lookSec + talkSec(q, 1) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : lookSec) + talkSec(saw, .8)) + (this.checkedBack || !back ? this.tapsSec(sc.best) : this.tapsSec(sc.best) - this.shoulderSec()); // (how long from the idea's end to the choice; his look over the shoulder is counted once)
     this.crawlFor(idea, after());
     await intro;
     if (tapLook) { await this.delay(.2); await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
@@ -227,8 +283,10 @@ export const demo = {
     const h = this.sim.a('hero');
     // (v76) Then he looks at what the lesson is about (LOOK_AT), and only where it is not in sight already: no look
     // left and right for nothing. "Look up!" itself looks around (that is the lesson); a shot, one glance at the goal.
+    const toward = p => Math.atan2(p.y - h.y, p.x - h.x);
     if (mateId) {
-      await this.lookTo(this.lookPoints(sc));
+      if (back) await this.shoulderLook();
+      if (why === 'both') await this.scanSides(this.sim.team('us').filter(a => a !== h && !a.gk), toward(this.sim.a(mateId))); else await this.lookTo(this.lookPoints(sc));
       this.seen.add(mateId); this.hint = true;
       await this.talk(`${this.name(mateId)} is open!`, 1);
     } else if (sc.kind === 'receive') {
@@ -242,15 +300,17 @@ export const demo = {
       this.step = 'tackle'; this.hint = true;
       await this.talk('Watch the ball.', .4, 'Watch the ball… 👀');
     } else if (sc.kind === 'lead') { // he sees his friend running, and where he is going
+      if (back) await this.shoulderLook();
       await this.lookTo(this.lookPoints(sc));
       await this.talk(`${this.name('m1')} is running!`, .8);
     } else if (spotKind(sc)) {
-      await this.lookTo(this.lookPoints(sc));
+      if (why === 'around') await this.scanSides([...(sc.spots || []), this.sim.ball], this.yaw); else await this.lookTo(this.lookPoints(sc)); // (off the ball: he looks round for the space, and back to where he was looking)
       await this.talk(q.replace(/ 👀$/, ''), 1, q);
     } else if (shot) { // clear on goal (v72): one look at the goal and the keeper, then the shot (the ball is his to look at)
       await this.glanceAtGoal(.4); await this.talk(goalLine, .6, goalLine + (K ? ' 🧤' : ' 🥅'));
     } else {
-      if (scan) await this.lookAround(0); else await this.lookTo(this.lookPoints(sc));
+      if (scan) { const t = this.win?.behindId && this.threatBehind() && this.sim.a(this.win.behindId), a = t ? wrap(toward(t) - this.yaw) : 0; await this.lookAround(0, a > 0 ? Math.min(2.5, a) : 1.5, a < 0 ? Math.min(2.5, -a) : 1.5); } // ("Look up and scan!": left and right, and as far round as the one who comes from behind)
+      else { if (back) await this.shoulderLook(); await this.lookTo(this.lookPoints(sc)); }
       await this.talk(saw.replace(/ \S+$/u, ''), .8, saw);
     }
     this.hud.caption('');

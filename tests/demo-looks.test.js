@@ -1,5 +1,6 @@
 // (v76) The "Watch" demos, at the size being played (SOCCER_SIZE): a look has a reason, and the demo has its own clock.
-//   - Only "Look up!" looks left and right (looking around is that lesson); the shot demos glance at the goal; every
+//   - (v78) A scan only with a reason (demo.js scanWhy): "Look up and scan!", friends on both sides, finding space off
+//     the ball; a look over the shoulder when the one who comes is behind him; the shot demos glance at the goal; every
 //     other look turns his head only to something the lesson is about that is not on the screen yet.
 //   - The idea is said while play crawls on (never still: in every quarter second of it play moves on; over it the one who
 //     comes gets nearer), the ring draining slowly and steadily (not still: the owner, v76: a full ring that does not change
@@ -11,11 +12,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PATH } from '../js/skills.js';
 import { makeGame } from './harness.js';
+import { pathAt } from '../js/window.js';
 
 test('demos: a look only with a reason, and the choice with about half the ring left', async () => {
   for (const sk of PATH) {
     const { g } = makeGame(); let T = 0, scans = 0, glances = 0, chose = null, crawl = 0, still = [], ring = [], q0 = null, d0 = null, dEnd = null, moved = null, last = null;
     const la = g.lookAround.bind(g); g.lookAround = (...a) => { scans++; return la(...a); };
+    let backs = 0, why, behind = null; // (v78: a look over the shoulder; why the demo scans; the one who comes behind him as the window opens, measured here)
+    if (g.shoulderLook) { const sl = g.shoulderLook.bind(g); g.shoulderLook = (...a) => { backs++; return sl(...a); }; const sw = g.scanWhy.bind(g); g.scanWhy = (...a) => { const r = sw(...a); if (why === undefined) why = r; return r; }; }
     const gg = g.glanceAtGoal.bind(g); g.glanceAtGoal = (...a) => { glances++; return gg(...a); };
     const oc = g.outcome.bind(g);
     g.outcome = (opt, good) => { if (!chose && g.win) { const w = g.win, th = w.threat?.id && g.sim.a(w.threat.id), to = w.threat?.to ? { x: w.threat.to[0], y: w.threat.to[1] } : g.sim.ball;
@@ -25,6 +29,7 @@ test('demos: a look only with a reason, and the choice with about half the ring 
     for (let k = 0; k < 30 * 90 && !done; k++) {
       T += 1 / 30; g.tick(1 / 30, T);
       const w = g.win;
+      if (w && behind == null && g.sim.ball.carrier === 'hero') { const h = g.sim.a('hero'), t = w.threat?.id && g.sim.a(w.threat.id), q = pathAt(w.plan.paths.hero, 0), run = Math.hypot(q.vx, q.vy) > .4 ? Math.atan2(q.vy, q.vx) : g.yaw, a = t ? Math.atan2(t.y - h.y, t.x - h.x) - run : 0; behind = !!t && Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) > 2; }
       if (w?.demo?.crawl != null) { // the idea being said: every quarter second, play has moved on and the one who comes is nearer
         crawl += 1 / 30; const th = w.threat?.id && g.sim.a(w.threat.id), to = w.threat?.to ? { x: w.threat.to[0], y: w.threat.to[1] } : g.sim.ball;
         const q = { t: g.sim.time, d: th ? Math.hypot(th.x - to.x, th.y - to.y) : null, at: [...g.sim.agents.values()].map(a => [a.x, a.y]), T };
@@ -39,8 +44,15 @@ test('demos: a look only with a reason, and the choice with about half the ring 
       await new Promise(r => setImmediate(r));
     }
     assert.ok(done, `${sk.id}: the demo ends`);
-    assert.equal(scans > 0, sk.id === 'look-up', `${sk.id}: looks left and right ${scans} time(s); only "Look up!" does`);
-    if (g.sc.best?.startsWith('shoot')) assert.ok(glances > 0, `${sk.id}: a glance at the goal before the shot`);
+    // (v78) A scan with a reason (demo.js scanWhy): "Look up and scan!" itself; friends on both sides; off the ball, finding
+    // space (not running at the goal). A look over the shoulder whenever the one who comes is behind him (measured here: more
+    // than 115° off his run as the window opens), unless "Look up and scan!"'s own look goes round to him. A shot: one glance.
+    const shot = !!g.sc.best?.startsWith('shoot'), wantScan = sk.id === 'look-up' || why === 'both' || why === 'around';
+    assert.equal(scans > 0, wantScan, `${sk.id}: looks left and right ${scans} time(s) (${why || 'no reason'})`);
+    if (behind && !shot && sk.id !== 'look-up') assert.ok(backs > 0, `${sk.id}: the one who comes is behind him, and he never looks over his shoulder`);
+    assert.equal(backs > 0, why === 'shoulder' && sk.id !== 'look-up', `${sk.id}: looks over his shoulder ${backs} time(s) (${why || 'no reason'})`);
+    if (shot) { assert.ok(glances > 0, `${sk.id}: a glance at the goal before the shot`); assert.equal(scans + backs, 0, `${sk.id}: no scan before a clear shot`); }
+    if (g.sc.run === 'goal') assert.equal(scans, 0, `${sk.id}: no scan running at the goal`);
     if (g.sc.kind === 'tackle') continue; // (the 1v1 steal has no window: he taps as the ball rolls loose)
     assert.ok(crawl > 2, `${sk.id}: the idea is said while play crawls on (${crawl.toFixed(1)} s)`);
     assert.deepEqual(still, [], `${sk.id}: play stood still while the idea was said, at`);

@@ -47,7 +47,7 @@ export class Game {
   reset() {
     Object.assign(this, { phase: 'idle', step: null, seen: new Set(), look: 0, lookUp: false, yaw: 0, drag: null,
       scanned: false, hint: false, cam: null, camMode: 'orbit', lines: [], aimAt: null, decideAt: 0,
-      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false, push: null });
+      ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, checkedBack: false, showing: false, handAt: null, lookedEarly: false, push: null });
   }
 
   home() { this.mode = 'home'; this.reset(); this.playLook = this.carriedLook = false; this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }

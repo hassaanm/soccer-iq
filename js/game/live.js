@@ -219,7 +219,7 @@ export const live = {
     this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses };
     if (!this.cued.has(id) && this.cued.size < 3) this.hintNext = { id };
   },
-  // Called as a play's result shows (outcomes.js emit): after a miss, the idea's short name ("Look up!"), once per
+  // Called as a play's result shows (outcomes.js emit): after a miss, the idea's short name ("Look up and scan!"), once per
   // idea and three at most in a match, never over other words (a caption, a skill move's name). It is short, so it is
   // over before the next decision opens.
   resultCue() {

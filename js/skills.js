@@ -14,8 +14,8 @@ export const CHAPTERS = ['Me and the ball', 'Shoot!', 'Win it back', 'Me and my 
 // `keeper`: a lesson only for sizes with a keeper (5v5): it is on the path only then (PATH, below), and the lessons after
 // it never wait for it (progress.js isOpen).
 const ALL = [
-  { id: 'look-up', ch: 0, emoji: '👀', kid: 'Look up!', side: 'attack', adult: 'Scan before deciding: goal, then space, then friends', ready: true,
-    tip: 'Look up! Where is the space?', outside: 'Dribble around the yard. Hold up some fingers: he shouts how many without stopping.' },
+  { id: 'look-up', ch: 0, emoji: '👀', kid: 'Look up and scan!', side: 'attack', adult: 'Scan before deciding: goal, then space, then friends', ready: true,
+    tip: 'Look up and scan! Where is the space?', outside: 'Dribble around the yard. Hold up some fingers: he shouts how many without stopping.' },
   { id: 'dribble-to-space', ch: 0, emoji: '💨', kid: 'Run into space', side: 'attack', adult: 'Small touches vs. a big push into space', ready: true,
     tip: 'Lots of space? Push it and go!', outside: 'Open grass: he pushes it far and races after it. You stand close: he keeps it close and goes around you.' },
   { id: 'take-him-on', ch: 0, emoji: '⚡', kid: 'Take him on!', side: 'attack', adult: '1v1: stay on the ball and dribble past a lone defender', ready: true,
