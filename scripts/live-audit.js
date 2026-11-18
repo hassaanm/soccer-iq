@@ -69,7 +69,7 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
       // hover: runs of frames outside windows where a defender is within 1.5 m of the carrier
       const ids = Object.keys(rec[0]?.at || {});
       for (const id of ids) { let t0 = null, f0 = null;
-        for (let i = 0; i < rec.length; i++) { const r = rec[i], a = r.at[id], on = a && !r.win && !(id === 'hero' && r.k === 'tackle') /* (his own tackle: when to go in is the choice he is making) */ && r.c && r.cs && a[2] !== r.cs && r.st !== 'flying' && Math.hypot(a[0] - r.b[0], a[1] - r.b[1]) < 1.5 && !(a[3] > r.t - .5 && a[3] <= r.t + .01) && !(a[4] > r.t) && !passing(i, id);
+        for (let i = 0; i < rec.length; i++) { const r = rec[i], a = r.at[id], on = a && !r.win && r.ph !== 'pre' /* (the moments before a choice opens: everyone is on the way its plan gave him) */ && !(id === 'hero' && r.k === 'tackle') /* (his own tackle: when to go in is the choice he is making) */ && r.c && r.cs && a[2] !== r.cs && r.st !== 'flying' && Math.hypot(a[0] - r.b[0], a[1] - r.b[1]) < 1.5 && !(a[3] > r.t - .5 && a[3] <= r.t + .01) && !(a[4] > r.t) && !passing(i, id);
           if (on) { if (t0 == null) { t0 = r.t; f0 = r; } else if (r.t - t0 > .5 && !f0.done) { f0.done = true; stat.hover++; flags.push(['hover', `${size} match ${seed} after choice ${r.n}: ${id} within 1.5 m of ${r.c} for more than 0.5 s with no tackle (from t=${t0.toFixed(1)})`]); } }
           else t0 = null; } }
       // yoyo: down, up more than 1 m, down again within 3 s

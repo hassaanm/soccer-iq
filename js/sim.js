@@ -367,7 +367,7 @@ export class Sim {
     if (w > .3) turnToward(a, wx / w, wy / w, dt * .6); // his body comes round to where he is going
     return false;
   }
-  untrackAll() { for (const a of this.agents.values()) if (a.track) a.softT = this.time + .25; for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
+  untrackAll(soft = false) { if (soft) for (const a of this.agents.values()) if (a.track) a.softT = this.time + .25; for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
 
   step(dt) {
     this.time += dt;

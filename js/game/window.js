@@ -230,7 +230,7 @@ export const moving = {
   closeWindow() {
     const w = this.win; if (!w) { this.sim.untrackAll(); return; } // (a play may start straight after a run-up: the tests)
     this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null;
-    this.sim.untrackAll(); this.win = null;
+    this.sim.untrackAll(!!this.sc?.live); this.win = null; // (in a match: two left overlapping step apart over a few frames, sim.js)
     // (v66) The ones who were coming go on to where their runs end (by the ball), not on through the player on it: what
     // the play does next takes them from there.
     for (const id of [w.threat?.id, w.plan.second]) { const p = id && w.plan.paths[id], a = id && this.sim.a(id); if (!p?.run || !a) continue; const e = pathAt(p, w.G), v = Math.hypot(e.vx, e.vy); if (Math.hypot(e.x - a.x, e.y - a.y) > .1) this.sim.go(id, e.x, e.y, Math.max(1, v)); }
