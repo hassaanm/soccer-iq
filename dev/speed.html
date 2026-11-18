@@ -41,9 +41,8 @@
   body.nofx :is(#banner, #pop, #flash, #toast, #rate, #skillName, #skillTag, #seenNote, #confetti) { display: none !important; }
   body.noedge #tunnel { display: none !important; }
   /* The buttons' glow pulse (css/app.css nudge: a filter with a drop shadow, painted again every frame) and the lesson dot's ring. */
-  /* The big words' soft shadow (a blur under every letter, each letter its own layer while it drops in). */
-  body.nosoft #banner b, body.nosoft #skillName b { text-shadow: 0 .07em 0 var(--ink) !important; }
   body.nopulse #hud :is(.nudge, .pointed, #skillBtn), body.nopulse #dots span.now { animation: none !important; }
+  body.nopulse #hud :is(.nudge, .pointed, #skillBtn)::after, body.nopulse #dots span.now::after { display: none !important; }
 </style>
 </head>
 <body>

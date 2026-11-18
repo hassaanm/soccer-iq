@@ -32,7 +32,7 @@ let swapped = false;
 try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); swapped = window.localStorage === shim; } catch { swapped = false; }
 
 // ---------- what each run changes ----------
-// body: classes on <body> (blur: the old head-down blur in Smooth; nofx, nopulse, nosoft and noedge: dev/speed.html's style).
+// body: classes on <body> (blur: the old head-down blur in Smooth; nofx, nopulse and noedge: dev/speed.html's style; softwords, v75look: css/app.css).
 // test: world.setTest (pr, bloom, shadowPass, particles). cap: the 60 cap. strip: the iPad strip's pixel read.
 const RUNS = [
   { id: 'base', name: 'Smooth as shipped (px 1.5)' },
@@ -45,12 +45,12 @@ const RUNS = [
   { id: 'nofx', name: 'Pop-ups, stars off', body: ['nofx'] },
   { id: 'noparts', name: 'Particles off', test: { particles: false } },
   { id: 'nopulse', name: 'Button glow pulse off', body: ['nopulse'] },
-  { id: 'nosoft', name: 'Big words: no soft shadow', body: ['nosoft'] },
+  { id: 'soft', name: 'Big words: soft shadow on', body: ['softwords'] },
   { id: 'nocap', name: '60 cap off', cap: false },
   { id: 'sound', name: 'Sound players (silent)', sound: true },
   { id: 'sfx', name: 'Game sounds on (heard)', sfx: true },
   { id: 'voice', name: 'Sounds + voice lines (heard)', sfx: true, voice: true },
-  { id: 'oldlayers', name: 'Pop-up layers as in v75', body: ['v75layers'] },
+  { id: 'v75', name: 'Painted as in v75', body: ['v75look', 'v75layers'] },
   { id: 'strip', name: 'iPad strip read on', strip: true },
   { id: 'noedge', name: 'Head-down edge off', body: ['noedge'] },
   { id: 'park', name: 'Training ground (day)', env: 'park' },
@@ -199,7 +199,7 @@ function bestOf(res) {
   const ref = !b1?.n ? b2 : !b2?.n ? b1 : (b1.p95 >= b2.p95 ? b1 : b2);
   const free = r => !!(r && r.n && ref?.n && r.fps >= ref.fps - 2 && r.p95 <= ref.p95 * 1.2 + 2 && r.over <= ref.over + 1);
   const pr = free(by('pr3')) && free(by('pr2')) ? 3 : free(by('pr2')) ? 2 : 0;
-  return { blur: free(by('blur')), glow: free(by('glow')), pr, free };
+  return { blur: free(by('blur')), glow: free(by('glow')), soft: free(by('soft')), pr, free };
 }
 let best = null, report = '';
 function showResults(res) {
@@ -210,7 +210,7 @@ function showResults(res) {
     const cls = r.id.startsWith('base') ? '' : b.free(r) ? 'good' : 'bad';
     return `<tr class="${cls}"><td>${r.name}</td><td>${f(r.fps)}</td><td>${f(r.med, 1)}</td><td>${f(r.p95, 1)}</td><td>${f(r.max)}</td><td>${r.n ? r.over : '-'}</td></tr>`;
   }).join('');
-  const c = G.world.renderer.domElement, words = `head-down blur ${b.blur ? 'on' : 'off'}, glow ${b.glow ? 'on' : 'off'}, pixel ratio ${b.pr || 1.5}`;
+  const c = G.world.renderer.domElement, words = `head-down blur ${b.blur ? 'on' : 'off'}, glow ${b.glow ? 'on' : 'off'}, soft shadow ${b.soft ? 'on' : 'off'}, pixel ratio ${b.pr || 1.5}`;
   $('#stMsg').textContent = `Green: cost nothing here. Best: ${words}.`;
   report = [
     `Heads Up! Soccer speed test · ${G.VERSION || ''} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
@@ -235,9 +235,9 @@ $('#stBest').onclick = () => {
     const s = parse(realGet(SAVE_KEY), null);
     if (!s || typeof s !== 'object') throw new Error('no save yet: play once first');
     s.settings = s.settings || {};
-    s.settings.tuned = { blur: best.blur, glow: best.glow, pr: best.pr || 0, at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' };
+    s.settings.tuned = { blur: best.blur, glow: best.glow, soft: best.soft, pr: best.pr || 0, at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' };
     REAL.setItem(SAVE_KEY, JSON.stringify(s));
-    $('#stMsg').textContent = `Saved for this phone: head-down blur ${best.blur ? 'on' : 'off'}, glow ${best.glow ? 'on' : 'off'}, pixel ratio ${best.pr || 1.5}. They apply with Graphics on Smooth.`;
+    $('#stMsg').textContent = `Saved for this phone: head-down blur ${best.blur ? 'on' : 'off'}, glow ${best.glow ? 'on' : 'off'}, soft shadow ${best.soft ? 'on' : 'off'}, pixel ratio ${best.pr || 1.5}. They apply with Graphics on Smooth.`;
     $('#stBest').disabled = true;
   } catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
 };

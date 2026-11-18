@@ -7,6 +7,21 @@ export const hudEl = $('#hud');
 const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'shootBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag', 'pop']
   .map(id => [id, $('#' + id)]));
 const timers = {};
+// (round 13) The Smooth head-down edge as a small picture: the same gradient as css/app.css body.smooth #tunnel, drawn once
+// into 256x256 and stretched over the edge's box by the graphics chip (an image on its own layer is shown as it is, with no
+// page-sized drawing). Until it is ready, or if anything fails, the CSS gradient stays.
+function edgePicture() {
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); if (!g || !c.toBlob) return;
+    g.translate(128, .57 * 256); g.scale(.23 * 256, .26 * 256); // ellipse 23% 26% at 50% 57%
+    const r = g.createRadialGradient(0, 0, 0, 0, 0, 1); r.addColorStop(0, 'rgba(14,10,26,0)'); r.addColorStop(.5, 'rgba(14,10,26,0)'); r.addColorStop(.72, 'rgba(14,10,26,.62)'); r.addColorStop(1, 'rgba(14,10,26,.9)');
+    g.fillStyle = r; g.fillRect(-20, -20, 40, 40);
+    c.toBlob(b => { if (!b) return; const img = new Image(); img.className = 'edge'; img.alt = ''; img.src = URL.createObjectURL(b);
+      const done = () => { ui.tunnel.appendChild(img); document.documentElement.classList.add('edgeimg'); };
+      (img.decode ? img.decode() : Promise.resolve()).then(done, done); }, 'image/png');
+  } catch { /* the gradient stays */ }
+}
+setTimeout(edgePicture, 700);
 const flash = (el, cls, text, ms) => {
   el.textContent = text; el.className = cls; void el.offsetWidth; el.classList.add('show');
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);

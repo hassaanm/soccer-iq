@@ -712,8 +712,8 @@ body.smooth .btn-glass{backdrop-filter:none;-webkit-backdrop-filter:none;backgro
 
 /* (round 13) The sunbursts as images drawn once (js/ui/speed.js makeBursts): the same picture as the gradient under its
    mask, with nothing for the phone to work out as the big words come in. */
-html.burst #banner.goal::before{background:var(--burst-goal) center/100% 100% no-repeat;-webkit-mask:none;mask:none}
-html.burst .sticker.trophy::before{background:var(--burst-trophy) center/100% 100% no-repeat;-webkit-mask:none;mask:none}
+html.burst body:not(.v75look) #banner.goal::before{background:var(--burst-goal) center/100% 100% no-repeat;-webkit-mask:none;mask:none}
+html.burst body:not(.v75look) .sticker.trophy::before{background:var(--burst-trophy) center/100% 100% no-repeat;-webkit-mask:none;mask:none}
 /* (round 13) Smooth with the head-down blur put back (the speed test found it free on this phone: js/ui/speed.js): the
    edge as in Pretty, blurred, with its clear middle on his player. */
 body.smooth.blur #tunnel{inset:0;will-change:auto;background:none;transform:none!important;
@@ -725,3 +725,49 @@ body.smooth.blur #tunnel{inset:0;will-change:auto;background:none;transform:none
    or changing one never repaints the full-screen layer they sit on (the phone froze 100–300 ms about once a second in a
    match, as these changed). The speed test's run "Pop-up layers as in v75" turns this off (body.v75layers). */
 body:not(.v75layers) #hud :is(#toast,#pop,#prompt,#seenNote,#skillTag,#caption){will-change:transform,opacity}
+
+/* (round 13) Graphics on Smooth: what shows or moves in play is painted the cheap way, with the same look where one
+   exists. On the phone the big words came 200–350 ms after their sunburst, and the freezes came as things over the field
+   changed. body.v75look (the speed test only) brings back v75's way of painting all of these; Pretty keeps it always.
+   - Stars and the keeper's glove: a text shadow in place of a drop-shadow filter (the same glow or offset). */
+body.smooth:not(.v75look) #rate .stars span.on.pop{filter:none;text-shadow:0 2px 0 var(--gold-e),0 0 7px rgba(255,216,77,.9)}
+body.smooth:not(.v75look) #kGlove{filter:none;text-shadow:0 3px 0 rgba(36,25,58,.6)}
+/* - The pointing hand: its white edge and its shadow as text shadows, not three chained filters. */
+body.smooth:not(.v75look) #hand span{filter:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 6px 6px rgba(0,0,0,.4)}
+/* - The SKILL ring drains every frame: its glow is a wider soft-gold ring under it, not a blur filter redrawn each frame. */
+#skillBtn .ring circle.glow{display:none}
+body.smooth:not(.v75look) #skillBtn .ring circle{filter:none}
+body.smooth:not(.v75look) #skillBtn .ring circle.glow{display:inline;stroke:rgba(255,190,0,.45);stroke-width:10}
+/* - The big words and the caption keep their stroke and hard shadow; the soft blurred shadow under every letter is left
+     out (each letter is its own layer while it drops in, so each paid for its own blur). The speed test's best settings
+     can put it back (body.softwords). */
+body.smooth:not(.v75look):not(.softwords) :is(#banner,#skillName) b{text-shadow:0 .07em 0 var(--ink)}
+body.smooth:not(.v75look):not(.softwords) #banner.bad b{text-shadow:0 .07em 0 #7a1d1d}
+body.smooth:not(.v75look):not(.softwords) #caption{text-shadow:0 3px 0 rgba(36,25,58,.5)}
+/* - The buttons' pulse: the same grow and shrink, with the glow on a layer of its own that fades in and out (opacity),
+     not a brightness and drop-shadow filter repainted every frame. */
+@keyframes nudgeS{0%,100%{scale:1}50%{scale:1.07}}
+@keyframes nudgeGlow{0%,100%{opacity:0}50%{opacity:1}}
+body.smooth:not(.v75look) .nudge{animation-name:nudgeS}
+body.smooth:not(.v75look) #hud .pointed{animation-name:nudgeS}
+body.smooth:not(.v75look) #hud .btn-round:is(.nudge,.pointed),body.smooth:not(.v75look) #hud.skilling #skillBtn{animation-name:popIn,nudgeS}
+body.smooth:not(.v75look) #hud .howpick .btn.pointed{animation-name:fromLeft,nudgeS}
+body.smooth:not(.v75look) #hud .howpick .btn + .btn.pointed{animation-name:fromRight,nudgeS}
+body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  box-shadow:0 0 0 3px rgba(255,246,176,.35),0 0 17px rgba(255,246,176,.95),inset 0 0 0 200px rgba(255,255,255,.12);opacity:0;animation:nudgeGlow .9s ease-in-out infinite}
+body.smooth:not(.v75look) #hud.skilling #skillBtn::after{animation-duration:.7s}
+body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{animation-duration:.8s}
+body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::after{display:none}
+body.smooth:not(.v75look) #hud.skilling #skillBtn::after{display:block}
+/* - The lesson's dot for this round: its ring stays, and the wider soft ring around it fades in and out (opacity), not an
+     animated box shadow. */
+body.smooth:not(.v75look) #dots span.now{position:relative;animation:none}
+body.smooth:not(.v75look) #dots span.now::after{content:"";position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 5px rgba(255,216,77,.35);opacity:0;animation:nudgeGlow 1.2s ease-in-out infinite}
+/* - A button pressed in play: it moves at once, and its shadow changes at once instead of being redrawn over 70 ms. */
+body.smooth:not(.v75look) #hud .btn{transition:transform .07s}
+/* - The head-down edge: a small picture of the same gradient (js/ui/hud.js edgePicture), stretched by the graphics chip, on a
+     layer kept between looks (opacity only). It was a gradient on a layer twice the screen each way (about 58 MB at 3x),
+     made and dropped at every look up and down. */
+#tunnel > img.edge{display:none}
+html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel{display:block;background:none}
+html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel > img.edge{display:block;position:absolute;inset:0;width:100%;height:100%;will-change:transform}

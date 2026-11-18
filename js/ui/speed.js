@@ -10,13 +10,14 @@ export const graphics = () => (P.settings.graphics === 'pretty' || P.settings.gr
 export const smooth = () => mode === 'smooth';
 let mode = 'pretty';
 // (round 13) What the speed test (dev/speed.html) measured as free on this phone, kept in the save by its "Use the best
-// settings" button: { blur, glow, pr }. Smooth then puts back the head-down blur, the glow, or more pixels.
+// settings" button: { blur, glow, pr, soft }. Smooth then puts back the head-down blur, the glow, or more pixels.
 const tuned = () => (P.settings.tuned && typeof P.settings.tuned === 'object' ? P.settings.tuned : {});
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
   mode = graphics(); const sm = mode === 'smooth', t = tuned();
   document.body.classList.toggle('smooth', sm); document.body.classList.toggle('blur', sm && !!t.blur); // (blur: the head-down edge as in Pretty)
+  document.body.classList.toggle('softwords', sm && !!t.soft); // (soft: the big words' soft shadow, css/app.css)
   world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: +t.pr || 0 } : {});
 }
 // (round 13) Switches for the speed test only (dev/speed.js); nothing here is saved. cap: the 60-a-second cap (main.js);

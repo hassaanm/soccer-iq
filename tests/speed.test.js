@@ -37,7 +37,7 @@ test('the speed test writes nothing to his save but settings.tuned', () => {
 
 test('the speed test runs every switch the brief asks for', () => {
   const page = code('dev/speed.js'), runs = page.match(/const RUNS = \[([\s\S]*?)\n\];/)[1];
-  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'sfx: true', 'voice: true', "body: ['v75layers']", 'pretty: true', "id: 'base2'"])
+  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'sfx: true', 'voice: true', "body: ['v75look', 'v75layers']", "body: ['softwords']", 'pretty: true', "id: 'base2'"])
     assert.ok(runs.includes(want), want);
   assert.ok(read('js/ui/menu.js').length && read('index.html').includes('id="speedTestBtn"'), 'the grown-ups menu has the row');
   assert.match(code('js/ui/speed.js'), /speedTestBtn'\)\.onclick = \(\) => \{ location\.href = 'dev\/speed\.html'; \}/);
@@ -54,8 +54,8 @@ test('the sunburst images are drawn from the same numbers as the CSS gradients t
   const call = name => { const m = js.match(new RegExp(`burst\\('${name}', [^,]+\\([^)]*\\)\\), '(rgba\\([^)]*\\))', (\\d+), (\\d+), ([.\\d]+), ([.\\d]+)\\)`)); return [m[1], +m[2], +m[3], +m[4], +m[5]]; };
   assert.deepEqual(call('--burst-goal'), grad('#banner.goal::before'));
   assert.deepEqual(call('--burst-trophy'), grad('.sticker.trophy::before'));
-  assert.match(css, /html\.burst #banner\.goal::before\{background:var\(--burst-goal\)[^}]*mask:none\}/);
-  assert.match(css, /html\.burst \.sticker\.trophy::before\{background:var\(--burst-trophy\)[^}]*mask:none\}/);
+  assert.match(css, /html\.burst body:not\(\.v75look\) #banner\.goal::before\{background:var\(--burst-goal\)[^}]*mask:none\}/);
+  assert.match(css, /html\.burst body:not\(\.v75look\) \.sticker\.trophy::before\{background:var\(--burst-trophy\)[^}]*mask:none\}/);
 });
 
 test('an iPhone never reads the picture back for the iPad strip', () => {
@@ -87,4 +87,16 @@ test('Smooth with the tuned blur uses the blurred edge; without it, the plain on
   assert.match(hud, /classList\.contains\('smooth'\) && !document\.body\.classList\.contains\('blur'\)/);
   assert.match(css, /body\.smooth\.blur #tunnel\{[^}]*backdrop-filter:blur\(7px\)/);
   assert.match(sp, /classList\.toggle\('blur', sm && !!t\.blur\)/);
+});
+
+test('Smooth paints what shows in play the cheap way; Pretty and the speed test\'s v75 run keep the old way', () => {
+  const css = read('css/app.css'), tail = css.slice(css.indexOf('(round 13) Graphics on Smooth: what shows or moves in play'));
+  for (const sel of ['#rate .stars span.on.pop', '#kGlove', '#hand span', '#skillBtn .ring circle'])
+    assert.match(tail, new RegExp('body\\.smooth:not\\(\\.v75look\\) ' + sel.replace(/[.#()]/g, m => '\\' + m) + '\\{filter:none'), sel);
+  assert.match(tail, /@keyframes nudgeS\{0%,100%\{scale:1\}50%\{scale:1\.07\}\}/, 'the pulse keeps its size change');
+  assert.match(tail, /#tunnel > img\.edge\{display:block/, 'the edge picture');
+  assert.ok(!/filter|box-shadow|left|top|width|height/.test(tail.match(/@keyframes nudgeS[^}]*\}[^}]*\}\}/)[0].replace('nudgeS', '')), 'the new pulse animates scale only');
+  assert.match(read('index.html'), /<circle class="glow" cx="50" cy="50" r="47"\/>/);
+  assert.match(code('js/ui/hud.js'), /g\.translate\(128, \.57 \* 256\); g\.scale\(\.23 \* 256, \.26 \* 256\);/, 'the edge picture uses the CSS gradient\'s ellipse');
+  assert.match(css, /body\.smooth #tunnel\{[^}]*radial-gradient\(ellipse 23% 26% at 50% 57%,rgba\(14,10,26,0\) 50%,rgba\(14,10,26,\.62\) 72%,rgba\(14,10,26,\.9\) 100%\)/);
 });
