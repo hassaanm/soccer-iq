@@ -74,10 +74,10 @@ canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary) re
 
 // ---------- a round ----------
 let busy = false;
-export async function runKeeper() {
+export async function runKeeper(opts) { // (opts.plan: a round of one's own, for the review tools; a tap passes an event)
   if (busy) return; busy = true; unlockSpeech();
   try {
-    const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays, plan = roundPlan(Math.floor(Math.random() * 1e9));
+    const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays, plan = Array.isArray(opts?.plan) ? opts.plan : roundPlan(Math.floor(Math.random() * 1e9));
     game.setTeams(us, them); game.mode = 'keeper'; world.setEnv('crowd');
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'keeper' });
     dress(us, them); sizeGoal(true);

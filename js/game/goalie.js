@@ -104,7 +104,7 @@ export class Goalie {
   async inMatch(game, spec, shooter) {
     const own = this.sim, s = this.sim = game.sim, W = this.world;
     this.cy = PITCH.W / 2; this.match = true; this.shooter = shooter; this.hint = false; this.n = (this.n || 0) + 1;
-    swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
+    s.untrackAll(); swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
     const k = s.a('hero'); k.gkm = null; k.face = [1, 0]; s.stop('hero');
     this.ui.clock = game.ui.clock ?? this.ui.clock;
     const f = spec.from, to = { eye: [-EYE[0], this.cy + f.u * .12, EYE[1]], tgt: [LOOK[0], this.cy + f.u * .3, LOOK[1]], Ff: FF, Fw: 0 };
@@ -115,7 +115,8 @@ export class Goalie {
       swapIds(s, 'hero', 'k1'); W.swapRigs?.('hero', 'k1');
       game.cam = camOf(this.cam, W); game.ui.clock = this.ui.clock; // (the match's camera goes on from here, back to its own view: game/view.js eases it)
       Object.assign(this.ui, { spots: NONE, aims: NONE, lines: NONE, timer: null, tell: null, pick: null, hand: null });
-      this.on = false; this.match = false; this.sim = own; this.phase = 'idle'; this.camGo = null;
+      this.on = false; this.match = false; this.sim = own; this.phase = 'idle'; this.camGo = null; this.tell = null;
+      this.onFrame?.(this); // (the page clears its badge and marks)
     }
   }
   // The camera on its way from one view to another (eased, by real time).
@@ -146,7 +147,7 @@ export class Goalie {
     this.phase = 'stand'; this.win = { t0: s.time, T, real: spec.stand }; this.tapAt0 = this.real; this.slow = T / spec.stand; // (he is standing still as it starts: the slow motion is there at once)
     s.go(id, plant.x, plant.y, v);
     for (const m of others) { const a = s.a(m); if (a) s.go(m, a.x - (a.x - plant.x) * .25, a.y - (a.y - plant.y) * .15, 2.4); } // (they come in too, slower)
-    await this.wait(99, () => dist(o, plant) < .06 || s.time - this.win.t0 > T + .5);
+    await this.wait(99, () => dist(o, plant) < .06 || s.time - this.win.t0 > T + .05); // (the window's own length: he is there, or near enough)
     // The plant and the wind-up: he picks where to dive. The shooter turns to where he will shoot (his body, his
     // standing foot) and looks at it (tells).
     s.stop(id); for (const m of others) if (s.a(m)) s.stop(m);
