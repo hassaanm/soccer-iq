@@ -25,3 +25,6 @@ if ($('#gfxSel')) {
 }
 // (called as the menu opens: the controls show what is set)
 export function showSpeed() { if (!$('#gfxSel')) return; $('#gfxSel').value = graphics(); $('#recChk').checked = !!P.settings.recordSpeed; if (box) { box.hidden = true; $('#recCopy').hidden = true; $('#recCopy').textContent = 'Copy'; } }
+// The game's own layer is painted once, unseen, before it is first needed (css: #hud.warm).
+function warmHud() { const hud = $('#hud'); if (!hud || !hud.classList.contains('hidden')) return; hud.classList.add('warm'); const off = () => hud.classList.remove('warm'); setTimeout(off, 250); addEventListener('pointerdown', off, { once: true, capture: true }); }
+setTimeout(warmHud, 600);
