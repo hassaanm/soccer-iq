@@ -78,6 +78,8 @@ async function boot() {
   ].map(p => import(p)));
   G = { main, ...stage, ...hudM, ...screens, ...dom, ...store, ...flows, ...home, ...report, ...speech, ...progress, ...skills, ...generate, ...geom, ...shot, ...teams, ...sound, ...voice, ...version, save: store.save, P: store.P, CLOSE: shot.CLOSE }; // (progress.js has a save() of its own: the store's is the one)
   const { game, hud } = G;
+  // (round 11) The frame recorder (js/perf.js) is always on here: "Speed record" below shows what it kept.
+  G.perf = await import('../js/perf.js').catch(() => null); G.perf?.start(G.world?.renderer);
   if (G.P.settings.size !== G.TEAM.size) throw new Error('The throwaway save and the pitch disagree on the team size.');
   G.levelOf0 = game.levelOf; G.thinkTime0 = game.thinkTime;
   // A result card from a round that was stopped never lets that round go on.
@@ -364,7 +366,8 @@ function buildBar() {
       el('span', { class: 'm' }), el('span', {}, e.title, e.size ? el('small', {}, e.size) : '')))));
   }
   list.append(cols, el('div', { class: 'foot' },
-    el('div', { class: 'row' }, el('button', { type: 'button', id: 'rvCopy', onclick: copyFeedback }, 'Copy feedback')),
+    el('div', { class: 'row' }, el('button', { type: 'button', id: 'rvCopy', onclick: copyFeedback }, 'Copy feedback'),
+      el('button', { type: 'button', id: 'rvSpeed', onclick: () => { const out = document.getElementById('rvOut'), t = G?.perf ? G.perf.report() : 'No recorder in this build.'; out.value = t; out.hidden = false; out.focus(); out.select(); navigator.clipboard?.writeText(t).catch(() => {}); } }, 'Speed record')),
     el('div', { class: 'hint' }, 'Notes stay in this browser (not in the game\'s save). Copy feedback puts every note into the clipboard as plain text, with the size, level and seed in use, ready to paste into a chat. If the clipboard is blocked, copy it from the box.'),
     el('textarea', { id: 'rvOut', readonly: '', hidden: '' })));
   root.append(handle, bar, list, el('div', { id: 'rvNotice' }));
