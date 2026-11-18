@@ -455,6 +455,14 @@ export function planHold(sc, st, opts = {}) {
   return p;
 }
 const clonePlan = p => ({ ...p, paths: Object.fromEntries(Object.entries(p.paths).map(([id, q]) => [id, { ...q }])), watch: new Set(p.watch), threat: p.threat && { ...p.threat } });
+// (v78) No pressure: his own player on the ball with the one who comes still CALM.r m or more off it in the picture, and
+// nobody else of theirs that near. He takes his time: the play drifts at a walk (CALM.speeds first: he slows, the others
+// with him, so the shape holds) and he keeps the ball alive with small touches from side to side (sim.js calmTouch),
+// never standing still. The FA (5-11s, skills on the ball): stay on the ball when no forward option is on yet, and wait
+// for one; ball mastery is moving it any way at any speed. With one of theirs nearer, nothing changes: he decides quickly.
+// Not when the one who comes is behind him (CALM.behind rad or more off the way the play goes: he is being chased), and
+// not just after winning it ("Won it? Go!": that idea is to go at once).
+export const CALM = { r: 4.5, rMax: 9, behind: 1.92, speeds: [.5, .8, .25] }; // (rMax: one coming from farther is off the screen as it opens at a walk's drift)
 const SPEEDS = { attack: [1.3, 1, .8, .5, .25], lead: [1.2, 1, .8, .5, .25], defense: [1.8, 1.4, 1, .8, .5, .25], support: [.9, .7, .5, .25], goal: [1.6, 1.3, 1, .8, .5, .25], receive: [.9, .6, .4], dead: [0] };
 function planHold0(sc, st, opts, kind) {
   const live = !!opts.live, at = st.at, R = opts.R || 8, never = opts.never || [], keep = opts.keep || {};
@@ -556,7 +564,9 @@ function planHold0(sc, st, opts, kind) {
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
   }
   let best = null, tail = null;
-  const speeds = dead ? [0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
+  const behind = Math.abs(Math.atan2(Math.sin(bearA - Math.atan2(line[1], line[0])), Math.cos(bearA - Math.atan2(line[1], line[0])))) > CALM.behind;
+  const calm = kind === 'attack' && holder === 'hero' && !dead && !!th && !sc.restart && sc.intro !== 'won' && !behind && rP >= CALM.r && rP <= CALM.rMax && ids.every(id => at[id].team !== defTeam || at[id].gk || dd(P(id), B) >= CALM.r);
+  const speeds = dead ? [0] : calm ? [...CALM.speeds, 0] : [...(SPEEDS[kind] || SPEEDS.attack), 0], fracs = live || opts.from ? [0] : toP ? [1] : opts.fracs || [.5, 1, 0]; // (from where everyone stands now: the picture is the window's start)
   search: for (const sp of speeds) for (const k of [1, .5, 0]) for (const frac of fracs) {
     if (shotOn && tail && sp < .5) break search; // (a stretch of real play up to his strike comes before a slower, stiller one)
     // (frame time) In a match (planned in the frame the choice opens) the search is cut short once it has cost what a
@@ -716,7 +726,7 @@ function planHold0(sc, st, opts, kind) {
   // picture has him (the tests and the audits choose there when they want the picture whole).
   let tPic = clamp(best.tP, 0, G);
   if (run?.run && !toP) { tPic = G; for (let i = 0; i <= 40; i++) { const t = G * i / 40, q = pathAt(run, t, {}), Bt = ballOf(sc, kind, holder, pathAt(best.paths[holder], t, {})); if (Math.hypot(q.x - Bt.x, q.y - Bt.y) <= rP + .05) { tPic = t; break; } } }
-  return { hold: true, arrival: true, live, G, R: Math.min(R, Rmax, jock ? JOCK.R : 99), tP: best.tP, Gpre: tPic, Gpost: G - tPic, a: 0, D: best.D, paths: best.paths, holder,
+  return { calm, hold: true, arrival: true, live, G, R: Math.min(R, Rmax, jock ? JOCK.R : 99), tP: best.tP, Gpre: tPic, Gpost: G - tPic, a: 0, D: best.D, paths: best.paths, holder,
     threat: th ? { id: th } : kind === 'defense' ? { id: holder, to: [4.5, H[1] + (PITCH.W / 2 - H[1]) * .6] } : null, second,
     comers: [th, second].filter(Boolean).map(id => ({ id, x: at[id].x, y: at[id].y })), virt: th ? { x: at[th].x, y: at[th].y } : null, bear: bearA, rP, r0, shift, watch, role, look, wide,
     at0: Object.fromEntries(ids.map(id => [id, { x: at[id].x, y: at[id].y }])), dis: best.bad ? best.first || ['?'] : [], disN: best.bad, k: best.k, sp: best.sp,

@@ -248,6 +248,7 @@ export const moving = {
       // already), so he never crosses the screen sideways.
       if (kindOf(sc) === 'attack' && s.ball.carrier === 'hero' && plan.paths.hero) { const q = pathAt(plan.paths.hero, 0), h = s.a('hero'); if (h && Math.hypot(q.vx, q.vy) > .6) this.yaw = viewFor(Math.atan2(q.vy, q.vx), Math.atan2(W / 2 - h.y, L - h.x)); }
       if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
+    { const h0 = s.a('hero'); if (h0) { h0.calmTouch = !!plan.calm && s.ball.carrier === 'hero'; if (h0.calmTouch && !s.ball.move) { h0.tA = h0.dist - (h0.d0 || 0); h0.tL = .4; } } } // (v78: no pressure: small touches from now, sim.js calmTouch; window.js CALM)
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
@@ -273,7 +274,7 @@ export const moving = {
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
   closeWindow() {
     const w = this.win; if (!w) { this.sim.untrackAll(); return; } // (a play may start straight after a run-up: the tests)
-    this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null;
+    this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null; { const h0 = this.sim.a('hero'); if (h0) h0.calmTouch = false; }
     this.sim.untrackAll(!!this.sc?.live); this.win = null; // (in a match: two left overlapping step apart over a few frames, sim.js)
     // (v66) The ones who were coming go on to where their runs end (by the ball), not on through the player on it: what
     // the play does next takes them from there.
