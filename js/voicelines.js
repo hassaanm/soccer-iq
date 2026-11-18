@@ -2,7 +2,7 @@
 import { ALL_LESSONS } from './skills.js';
 import { OKAY, BAD } from './generate.js';
 import { MOVE_NAME } from './flair.js';
-import { EXPLAIN } from './game/skill.js';
+import { EXPLAIN, SKILL_TIP } from './game/skill.js';
 import { TIMEOUT } from './game/rounds.js';
 import { SAVED, WHY, SAID } from './saves.js';
 
@@ -19,7 +19,7 @@ const SHARED = ['{m0} was open!', 'That was a tough spot!', 'Lots of space! Push
   'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!', 'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'What do you want to play?',
   'You won the match!', 'Good game!', 'Nice pass! You looked up!', 'You looked up!', 'You looked early!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!', "Today's training!", 'Training done!'];
 const shared = () => [...SHARED, TIMEOUT.first, TIMEOUT.again, ...['restart', 'defense', 'off', 'receive', 'follow'].flatMap(k => [TIMEOUT[k]?.first, TIMEOUT[k]?.again]),
-  ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, ...Object.values(OKAY), ...Object.values(BAD)];
+  ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, SKILL_TIP, ...Object.values(OKAY), ...Object.values(BAD)];
 
 // A round list (a lesson's, a training's, a match's): the shared lines, each scene's cue and what is said about it.
 export function linesFor(scenes = []) {

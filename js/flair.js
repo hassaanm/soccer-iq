@@ -4,13 +4,14 @@
 // Moves: stepover, scissors (double stepover), feint (body feint, dropped shoulder), croqueta (inside of one foot
 // across to the inside of the other), double (two quick touches across him: the inside of one foot, the outside of
 // the other), chop (fake shot, inside chop), cruyff (fake pass, drag behind the standing
-// leg), roll (the sole rolls it across his body). No imports, so the sim and the picture can both read it.
+// leg), roll (the sole rolls it across his body); and for the child's own player only (sim.js RUN_MOVES), fakeshot (he
+// shapes to shoot running at the defender, stops his foot short of the ball, and takes it away the other way). No imports, so the sim and the picture can both read it.
 const SIMPLE = ['stepover', 'scissors', 'feint', 'double', 'chop', 'cruyff'], MORE = [...SIMPLE, 'croqueta', 'roll'], ALL = MORE;
 // How often each move comes up against the others it could be (before a player's favourites count four times): the
 // clear, easy-to-see ones most; the chop, which every cut could be, less.
 // The names a child sees and hears for each move (from beginner coaching programmes), kept here so they are easy to change.
-export const MOVE_NAME = { stepover: 'Stepover', scissors: 'Scissors', double: 'Double touch', feint: 'Fake', cruyff: 'Cruyff turn', croqueta: 'Croqueta', roll: 'Sole roll', chop: 'Cut' };
-export const MOVE_W = { stepover: 2.2, scissors: 2, feint: 1, double: 1.2, chop: .3, cruyff: 1, croqueta: 1, roll: .5 };
+export const MOVE_NAME = { stepover: 'Stepover', scissors: 'Scissors', double: 'Double touch', feint: 'Fake', cruyff: 'Cruyff turn', croqueta: 'Croqueta', roll: 'Sole roll', chop: 'Cut', fakeshot: 'Fake shot' };
+export const MOVE_W = { stepover: 2.2, scissors: 2, feint: 1, double: 1.2, chop: .3, cruyff: 1, croqueta: 1, roll: .5, fakeshot: 1 };
 const STARS = { 'VINI JR': 'scissors stepover', YAMAL: 'feint croqueta chop', 'MBAPPÉ': 'stepover scissors', MESSI: 'feint croqueta chop', RONALDO: 'scissors stepover',
   MUSIALA: 'roll croqueta', 'LEÃO': 'stepover chop', 'NICO WILLIAMS': 'stepover feint', DOKU: 'feint stepover', 'DEMBÉLÉ': 'stepover chop' };
 const SKILLED = { SAKA: 'chop', OLISE: 'roll', KUBO: 'chop', MITOMA: 'feint', PEDRI: 'croqueta', 'ØDEGAARD': 'roll', 'MODRIĆ': 'roll', RAPHINHA: 'stepover', SALAH: 'chop',

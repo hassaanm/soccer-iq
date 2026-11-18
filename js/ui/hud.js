@@ -4,7 +4,7 @@ import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
 
 export const hudEl = $('#hud');
-const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'shootBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillBtn', 'skillName', 'skillTag', 'pop']
+const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'shootBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillA', 'skillB', 'skillName', 'skillTag', 'pop']
   .map(id => [id, $('#' + id)]));
 const timers = {};
 // (round 13) The Smooth head-down edge as a small picture: the same gradient as css/app.css body.smooth #tunnel, drawn once
@@ -45,6 +45,7 @@ const marks = (box, n, on, glyph = '★') => { // n spans showing `glyph`, `on` 
 };
 letters(ui.banner.querySelector('b'), ' '.repeat(18)); letters(ui.banner.querySelector('b'), ''); // (made once, now, while nothing shows)
 letters(ui.skillName.querySelector('b'), ' '.repeat(18), true); letters(ui.skillName.querySelector('b'), '', true);
+const SK = [ui.skillA, ui.skillB].map(el => ({ el, mv: el.querySelector('.mv'), k: el.querySelector('.mvK') })); // (v78: the skill moment's two buttons)
 marks(ui.rate.querySelector('.stars'), 3, 0); marks(ui.pop.firstChild, 3, 0);
 // state() runs every frame, so it remembers what is on screen and touches the page only when a value changes.
 const shown = {};
@@ -141,19 +142,27 @@ export const hud = {
     if (el.style.transform !== at) el.style.transform = at;
     if (tap && el.dataset.tap !== String(tap)) { el.dataset.tap = tap; replay(el, 'tap'); }
   },
-  // The SKILL button (game/skill.js): the move on offer (null hides it) and how much of the window is left (0 to 1),
-  // shown by the ring around it. It shows when a move is offered and nothing else is on screen to tap.
-  skill(name, left = 1) {
-    if (changed('skillName', name)) { if (name) { ui.skillBtn.querySelector('span').textContent = name.toUpperCase(); ui.toast.classList.remove('show'); } hudEl.classList.toggle('skilling', !!name); } // (a praise pill from his choice gives way)
-    if (name && changed('skillLeft', left)) ui.skillBtn.style.setProperty('--left', left);
+  // (v78) The skill moment's two buttons (game/skill.js), where PASS and DRIBBLE sit: `pair` is the two moves on offer,
+  // left button first ([{ k, dir: 'l' | 'r' }], null hides them), `left` how much of the time to pick is left (0 to 1),
+  // shown by the ring around each. Each shows its move's picture (index.html #skillPics), turned to the way it goes. The
+  // nodes are made once: an offer changes two links and a transform.
+  skill(pair, left = 1) {
+    if (changed('skillPair', pair ? pair.map(p => p.k + p.dir).join() : null)) {
+      if (pair) { pair.forEach((p, i) => { const b = SK[i]; b.mv.setAttribute('transform', p.dir === 'l' ? 'matrix(-1 0 0 1 100 0)' : ''); b.k.setAttribute('href', '#mv-' + p.k); b.el.classList.remove('on', 'off'); });
+        ui.toast.classList.remove('show'); } // (a praise pill from his choice gives way)
+      hudEl.classList.toggle('skilling', !!pair); hudEl.classList.remove('armed'); shown.skillLeft = null;
+    }
+    if (pair && changed('skillLeft', left)) for (const b of SK) b.el.style.setProperty('--left', left);
   },
+  // He picked one (0: left, 1: right): it stays lit, with its ring full, and the other fades.
+  skillArm(i) { hudEl.classList.add('armed'); SK.forEach((b, j) => { b.el.classList.toggle('on', j === i); b.el.classList.toggle('off', j !== i); }); },
   // The name of the move he just did, in big letters for a moment.
   skillName(text) {
     const el = ui.skillName; letters(el.querySelector('b'), text, true);
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     for (const n of [ui.skillTag, ui.seenNote, ui.toast]) n.classList.remove('show'); // nothing else up there while it shows: one name at a time
     if (ui.caption.classList.contains('show')) this.caption('');
-    clearTimeout(timers.skillName); timers.skillName = setTimeout(() => el.classList.remove('show'), 1700);
+    clearTimeout(timers.skillName); timers.skillName = setTimeout(() => el.classList.remove('show'), 2200); // (v78: up while the move plays, slowly)
   },
   // Someone else's skill move: a small tag in the corner (not while his own move's name shows).
   skillTag(move, who) { if (!ui.skillName.classList.contains('show')) flash(ui.skillTag, '', `⚡ ${move} · ${who}`, 1500); },

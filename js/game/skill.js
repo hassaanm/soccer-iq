@@ -1,24 +1,36 @@
-// The skill moment (real game only: `skillTaps`). When his player has the ball and a skill move would make sense
-// (sim.js: a defender ahead on his run, or a turn past one from a standstill), a big SKILL button shows the move for a
-// short window and play slows down (or, for a turn, waits a moment before it starts). A tap in time: he does the move,
-// the camera comes in close (game/view.js) and time stays slow through it, with its name in big letters. No tap: play
-// goes on with the plain touch. The tests and audits leave `skillTaps` off, and every chance is taken by itself.
-// Slow motion only changes how much game time each frame steps; while play waits for a turn the sim is not stepped
-// at all, so the play goes on exactly as it would have.
-import { touchAt, TURN_SKILLS, EXIT_FREE } from '../sim.js';
+// The skill moment (real game only: `skillTaps`). (v78) Two moves are offered early, as two big buttons where PASS and
+// DRIBBLE sit (they are not there while a play runs), when his player will take on a defender:
+//   run   he runs at a defender who is still coming (sim.js runOffer): the offer comes while there is time, and the
+//         move he picks starts by itself when the defender is at that move's own distance (sim.js MOVE_AT);
+//   turn  a play of his starts with a turn past a defender close by (the take-on): his turn is held (he carries the
+//         ball on at a walk, sim.js a.holdTurn) while he picks, and the move is the turn itself, as the hold ends.
+// Each button shows its move as a picture: the defender, the fake toward him, and the way the ball goes after it. One
+// goes to the open side (the side away from where the defender stands, the way his run goes): the better one. The other
+// goes toward the defender. Play slows down while he picks (about three real seconds; a ring drains on both buttons).
+// A tap arms the move: its button stays lit, the other fades, its name is said, and the camera comes in. The move then
+// plays slowly, with its name in big letters and its button still up. The better move goes by him as the play goes
+// anyway; the other he reads: he steps across into his way and stops him (the play ends "Kept the ball!", and a
+// lesson's card shows 2 stars and why). No tap: play goes on with the plain touch or turn, as with no offer.
+// Slow motion only changes how much game time each frame steps, so the play goes on exactly as it would have.
+import { touchAt, turnSide, TURN_SKILLS, RUN_MOVES, EXIT_FREE } from '../sim.js';
 import { JOCK } from '../window.js';
 import { MOVE_NAME } from '../flair.js';
 
-const SLOW = .3;   // game speed while a run-at move is offered (about 1.3 real seconds to tap)
-const MOVE = .5, MOVE_TURN = .4; // game speed through the move he tapped (a dribble move, a turn: the turns are quicker)
-const WAIT = 1.2;  // real seconds a turn is offered (in the demo, long enough for the line that explains it)
-const HOLD_G = .2; // seconds of play his turn is held while it is offered (he carries the ball on at a walk; round 6)
-const WAIT_DEMO = 3.4, DEMO_TAP = 2.8; // the demo: how long it waits, and when the hand taps (it rests on the button first)
-export const EXPLAIN = 'See the gold button? Tap it to do a trick!'; // said in the take-him-on demo when the button first shows
-const GAP = 3;     // in matches: real seconds from one offer to the next (round 13: 5 s before; a little more often, as offers into a second defender are gone)
-const OFFER_END = -.3; // as in sim.js: where a run-at offer closes (dribble touches before its move)
+const PACE = [.12, .3];       // game speed while the moves are offered: the slower end when the defender comes on fast (.12: the slowest a choice's window goes, window.js PACE)
+const OFFER_REAL = 3;         // real seconds an offer aims to last (the pace is set for it, within PACE)
+const OFFER_DEMO = 3.8, DEMO_TAP = 2.6; // the demo: longer, for the line that explains it; when the hand taps
+const ARMED = .25;            // game speed once a move is armed, until it starts (it is chosen: the wait need not be long)
+const MOVE = .28, MOVE_TURN = .25; // game speed through the move he picked (a dribble move: one touch, about a second to watch)
+const HOLD_G = .36;           // game seconds his turn is held while a turn is offered (he carries the ball on at a walk; round 6)
+const GAP = 20;               // in matches: real seconds from one offer to the next (v78: the owner, "it happens way too often")
+export const TURN_MOVES = ['double', 'chop', 'croqueta', 'roll', 'cruyff']; // the skill turns a take-on offers (sim.js skillPlan)
+export const EXPLAIN = 'Pick a trick! Go where the space is!'; // said the first time the moment comes (and in the take-him-on demo)
+export const SKILL_TIP = 'He saw it! Fake at him, then go to the space.'; // a lesson's card after the move to the wrong side
+export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
 
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
+const clamp01 = v => Math.max(0, Math.min(1, v));
+const pick = (x, y) => (Math.floor(Math.abs(x * 7.31 + y * 13.7) * 10) & 1); // which of the two moves is the better one: from where he is (the same in a replay)
 
 export const skill = {
   // One frame of game time in the real game. It is stepped in small steps of the same size (STEP), however long the
@@ -31,25 +43,29 @@ export const skill = {
     // (round 13) The sim asks the job the team's rule gives each of the other team (sim.js exitGap: where they will be as
     // a skill move ends): the one on the ball ('press'), one chasing it ('ball'), the one covering ('cover').
     this.sim.jobOf ||= id => { const j = this.roles?.jobs?.[id]; return this.chaser?.id === id || j === 'chase' ? 'ball' : j === 'press' || j === 'cover' ? j : null; };
+    this.sim.movePair ||= () => this.movePair(RUN_MOVES); // (v78: which two moves a run-at offer has)
     this.acc = Math.min(.25, (this.acc || 0) + this.skillPace(dt)); this.woke = false;
-    while (this.acc >= STEP) { if (this.skillHold()) { this.acc = 0; break; } this.acc -= STEP; this.gameTime(STEP); if (this.woke) break; }
+    while (this.acc >= STEP) { this.skillHold(); this.acc -= STEP; this.gameTime(STEP); if (this.sk?.blockOn) this.skillBlock(); if (this.woke) break; }
     this.skillWatch(dt);
   },
-  // Before each step: a skill turn as the play starts, from the standstill of his choice (the others have only just
-  // set off), is offered first: play waits for him before the turn begins. (Later in a play a turn starts with no
-  // warning, so it is never offered.) True when play waits.
-  // (round 6) Play never waits now. As a play of his starts with a turn that can be a skill move, the move is offered
-  // and his turn is held for HOLD_G s of play (sim.js a.holdTurn: he carries the ball on at a walk meanwhile), which the
-  // slow motion stretches to the whole offer (skillPace): the world goes on, slowly, and he has time to tap. The hold
-  // is the same length whether he taps or not, so the play ends the same either way.
+  // Before each step: a take-on as the play starts, from the standstill of his choice (the others have only just set
+  // off): his turn past the defender is offered (as the next step would start it, sim.js turnAhead) and held for HOLD_G
+  // s of play (sim.js a.holdTurn: he carries the ball on at a walk), which the slow motion stretches over the offer. The
+  // hold is the same length whether he taps or not, so the play goes on the same either way.
   skillHold() {
     const s = this.sim, h = s.a('hero');
     if (h?.holdTurn && (s.time - this.skHoldT >= HOLD_G || this.phase !== 'outcome' || s.ball.carrier !== 'hero')) h.holdTurn = false; // (his turn starts on the next step)
-    if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 2.4 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed()) return false;
+    if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 3.5 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed()) return;
     // (round 13) No skill turn on offer where it would end by a second man of theirs (sim.js exitRoom: he turns and is
     // away about a metre in some 0.4 to 0.7 s).
-    const k = s.turnAhead('hero'); if (k && s.exitRoom(h, 1, .7, .35) >= EXIT_FREE) { this.skillOffer('turn', k); h.holdTurn = true; this.skHoldT = s.time; }
-    return false;
+    const k = s.turnAhead('hero'); if (!k || s.exitRoom(h, 1, .7, .35) < EXIT_FREE) return;
+    const b = s.ball, ch = Math.cos(b.h), sh = Math.sin(b.h); let foe = null, fd = 3.5;
+    for (const o of s.team('them')) { const d = Math.hypot(o.x - h.x, o.y - h.y); if (d < fd && (o.x - h.x) * ch + (o.y - h.y) * sh > -.3) { fd = d; foe = o; } }
+    if (!foe) return;
+    const side = turnSide(s, h, b.h, Math.atan2(h.ty - h.y, h.tx - h.x)), pair = this.movePair(TURN_MOVES, k), first = pick(h.x, h.y);
+    const alts = pair.map((m, i) => ({ k: m, good: i === first, exit: i === first ? side : -side }));
+    this.skillOffer({ kind: 'turn', alts, tgt: foe.id, yaw: b.h });
+    h.holdTurn = true; this.skHoldT = s.time;
   },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).
   skillPace(dt) {
@@ -57,27 +73,23 @@ export const skill = {
     if (this.phase !== 'outcome' && this.sk && this.sk.phase !== 'out') this.skillEnd();
     if (this.phase !== 'outcome') { this.skDone = false; this.skT0 = null; } // one offer per play (a new outcome starts a new play)
     else this.skT0 ??= s.time;
-    s.offerOK = this.offerAllowed() || (this.sk?.phase === 'offer' && this.sk.kind === 'run' && !!h?.offer);
-    // (a turn on offer, or tapped and the camera still coming in: the held stretch of play, HOLD_G s, is spread over that time)
-    const sk = this.sk, waits = false, held = !!h?.holdTurn && sk?.kind === 'turn' && (sk.phase === 'offer' || sk.phase === 'move');
-    const holdPace = held ? (sk.phase === 'offer' ? HOLD_G / (this.mode === 'demo' ? WAIT_DEMO : WAIT) : Math.min(.6, Math.max(.12, (HOLD_G - (s.time - this.skHoldT)) / Math.max(.08, sk.go - this.clock)))) : 0;
+    s.offerOK = this.offerAllowed() || (this.sk?.phase === 'offer' && !!h?.offer);
+    const sk = this.sk;
     const wj = this.win?.jock && this.phase === 'decide' ? Math.max(0, 1 - (this.win.R - .15 - this.win.real) / JOCK.real) : 0; // (a moment early: the speed eases up, and the window is over as the ring empties, not after) // (round 6: the last half second of a window whose defender jockeys: he goes in, and the world speeds up with him)
-    const want = held ? holdPace : wj > 0 ? this.win.f + (JOCK.F1 - this.win.f) * wj * wj : this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1) : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.kind === 'turn' ? 0 : SLOW; // (v64: the decision window's slow motion)
+    const want = wj > 0 ? this.win.f + (JOCK.F1 - this.win.f) * wj * wj : this.win && this.phase === 'decide' ? this.win.f * ((this.mode === 'demo' || this.showing) && this.win.u > .85 ? .3 : 1)
+      : !sk || sk.phase === 'out' ? 1 : sk.phase === 'move' ? (sk.kind === 'turn' ? MOVE_TURN : MOVE) : sk.phase === 'armed' ? Math.max(sk.pace, ARMED) : sk.pace; // (v64: the decision window's slow motion)
     if (this.win) this.win.real += dt; this.realTime = (this.realTime || 0) + dt;
-    if (waits) { this.slow = 0; this.slowV = 0; }
-    else { // eased (a critically damped spring, by real time), so the speed never steps
-      const st = .12, w = 2 / st, e = w * dt, k = 1 / (1 + e + .48 * e * e + .235 * e * e * e), c = this.slow - want, q = (this.slowV + w * c) * dt;
-      this.slowV = (this.slowV - w * q) * k; this.slow = Math.min(1, Math.max(0, want + (c + q) * k));
-      if (want === 1 && this.slow > .999) { this.slow = 1; this.slowV = 0; }
-    }
-    // The picture's clock: slow too, but while play waits the standing players breathe and shift at nearly their own pace
-    // (eased, so their life never jumps from one pace to the other).
-    this.prate = (this.prate ?? 1) + ((waits ? .85 : Math.max(this.slow, .35)) - (this.prate ?? 1)) * (1 - Math.exp(-dt * 6));
+    // eased (a critically damped spring, by real time), so the speed never steps
+    const st = .12, w = 2 / st, e = w * dt, k = 1 / (1 + e + .48 * e * e + .235 * e * e * e), c = this.slow - want, q = (this.slowV + w * c) * dt;
+    this.slowV = (this.slowV - w * q) * k; this.slow = Math.min(1, Math.max(0, want + (c + q) * k));
+    if (want === 1 && this.slow > .999) { this.slow = 1; this.slowV = 0; }
+    // The picture's clock: slow too, but the players never look frozen (eased, so their life never jumps from one pace to the other).
+    this.prate = (this.prate ?? 1) + (Math.max(this.slow, .35) - (this.prate ?? 1)) * (1 - Math.exp(-dt * 6));
     this.ui.clock += dt * this.prate;
     return dt * this.slow;
   },
   // Whether a new offer may come now: his ball in a play (not while he chooses, not in a replay of the better play),
-  // one per play, and in matches some seconds apart.
+  // one per play, and in matches GAP seconds apart.
   offerAllowed() {
     const m = this.mode, b = this.sim.ball;
     // (round 6: only in a play that is going his way: no fake on a dribble into their players, which is about to be lost)
@@ -85,49 +97,101 @@ export const skill = {
       && (m === 'demo' || ((m === 'lesson' || m === 'match' || m === 'free') && !this.showing)) && (m === 'lesson' || m === 'demo' || this.clock - (this.skLast ?? -99) > GAP)
       && this.skillsOpen(); // (not in the first lessons: from the one that is about taking a defender on)
   },
-  skillOffer(kind, k, n = 0) {
-    const h = this.sim.a('hero');
-    this.sk = { kind, k, n, phase: 'offer', t0: this.clock, c0: kind === 'run' ? touchAt(h) - n : 0 };
-    this.skDone = true; this.skLast = this.clock;
-    this.hud.skill(MOVE_NAME[k], 1); this.sfx('offer');
-    if (this.mode === 'demo') { this.handAt = 'skillBtn'; this.hud.caption(EXPLAIN.replace('?', '? ✨').replace(/!$/, '! 👆')); this.say(EXPLAIN); }
+  // (v78) Two moves of `pool` for the next offer (with `k` first, when given): the ones he has been offered least this
+  // session, so every move comes round within a few offers.
+  movePair(pool, k = null) {
+    const n = this.skSeen ||= {};
+    const rest = pool.filter(m => m !== k).sort((p, q) => (n[p] || 0) - (n[q] || 0) || pool.indexOf(p) - pool.indexOf(q));
+    return k ? [k, rest[0]] : rest.slice(0, 2);
   },
-  // The SKILL button. A tap after the window has closed, or a second tap, does nothing.
-  skillTap() {
+  // Which way his left is on the screen (+1: to the left, -1: to the right), for the pictures' arrows and the buttons'
+  // order: the move that goes left on the screen is on the left.
+  screenLeft(h, yaw) {
+    const p = this.world.project?.(h.x, h.y, .5), q = this.world.project?.(h.x - Math.sin(yaw) * 2, h.y + Math.cos(yaw) * 2, .5);
+    return p && q && Math.abs(q[0] - p[0]) > 4 ? (q[0] < p[0] ? 1 : -1) : 1;
+  },
+  // A new offer (o: sim.js a.offer for a run at him, or the take-on's turn from skillHold): alts, each with the side
+  // (+1 his left) the ball goes after it (`exit`; a run-at move goes away from its fake), and which one is better.
+  skillOffer(o) {
+    const s = this.sim, h = s.a('hero'), demo = this.mode === 'demo', scr = this.screenLeft(h, o.yaw);
+    // dir: where the ball goes on the screen after the move ('l', 'r'); the button on the left gets the move that goes left
+    const alts = o.alts.map((m, i) => { const exit = m.exit ?? -m.fake; return { ...m, i, exit, dir: exit * scr > 0 ? 'l' : 'r' }; }).sort((p, q) => (p.dir === 'l' ? 0 : 1) - (q.dir === 'l' ? 0 : 1));
+    const T = o.kind === 'turn' ? HOLD_G : Math.max(.05, (o.last - touchAt(h)) * 1.4 / Math.max(1.5, h.sp)); // game seconds to the last moment a move can start
+    const pace = Math.min(PACE[1], Math.max(PACE[0], T / (demo ? OFFER_DEMO : OFFER_REAL)));
+    this.sk = { kind: o.kind, alts, phase: 'offer', t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
+    this.skDone = true; this.skLast = this.clock;
+    const n = this.skSeen ||= {}; for (const m of alts) n[m.k] = (n[m.k] || 0) + 1;
+    this.hud.skill(alts.map(m => ({ k: m.k, dir: m.dir })), 1); this.sfx('offer');
+    if (demo) { this.handAt = SKILL_IDS[alts.findIndex(m => m.good)]; this.hud.caption(EXPLAIN.replace('!', '! ✨').replace(/!$/, '! 👆')); this.say(EXPLAIN); this.skTold = true; }
+    else if (!this.skTold) { this.skTold = true; this.say(EXPLAIN); } // (the first time in a session it is said once)
+  },
+  // One of the two buttons (0: left, 1: right; none: the better one). The move is armed: it starts by itself at the
+  // right moment. A tap after the offer has closed, or a second tap, does nothing.
+  skillTap(i = null) {
     const sk = this.sk; if (!sk || sk.phase !== 'offer') return;
-    const s = this.sim, h = s.a('hero');
-    if (sk.kind === 'run') { if (!s.take('hero')) return; } else h.turnTap = sk.k;
+    const m = sk.alts[i ?? sk.alts.findIndex(x => x.good)], h = this.sim.a('hero'); if (!m || !h) return;
+    if (sk.kind === 'run') { if (!this.sim.take('hero', m.i)) return; } else { h.turnTap = m.k; h.turnBad = !m.good; }
+    Object.assign(sk, { phase: 'armed', pick: m, tm: this.clock });
+    this.hud.skillArm(sk.alts.indexOf(m)); this.sfx('skill'); this.say(MOVE_NAME[m.k] + '!');
     this.skillCamStart(); // (it sets this.skIn: how long the camera takes to come in)
-    Object.assign(sk, { phase: 'move', tm: this.clock, started: sk.kind === 'run', go: this.clock + this.skIn * .7 }); // a turn waits most of the way in
-    this.hud.skill(null); this.hud.skillName(MOVE_NAME[sk.k] + '!'); this.sfx('skill'); this.fx('skill');
-    this.say(MOVE_NAME[sk.k] + '!');
   },
   skillEnd() {
     const h = this.sim.a('hero'), sk = this.sk; if (!sk) return;
-    if (sk.phase === 'offer') this.hud.skill(null);
-    if (h) { h.offer = null; h.turnTap = null; }
-    if (this.mode === 'demo' && this.handAt === 'skillBtn') this.handAt = null;
+    if (sk.phase !== 'out') this.hud.skill(null);
+    if (h) { h.offer = null; h.armed = null; h.turnTap = null; h.turnBad = false; }
+    if (sk.blockOn) this.scripted.delete(sk.tgt);
+    if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt)) this.handAt = null;
     sk.phase = 'out';
   },
-  // After the frame's step: new offers, the window running out, the move playing, and skill moves by everyone else.
+  // (v78) The move to the wrong side, as it plays (each step): the defender reads it (he does not buy the fake) and
+  // steps across into his way, a step ahead of the ball, until he is within reach of him; then the play's own rule takes
+  // over (a defender within a step and a half goes in for it, and the play ends with him kept out: outcomes.js onHim,
+  // challenge).
+  skillBlock() {
+    const sk = this.sk, s = this.sim, h = s.a('hero'), o = sk && s.a(sk.tgt), b = s.ball;
+    if (!sk?.blockOn || !o || !h) return;
+    const d = Math.hypot(o.x - h.x, o.y - h.y); o.beat = 0; // (not beaten: a take-on's defender who bit is not left off balance)
+    if (d < 1.35 || s.time - sk.ts > 1.4 || b.carrier !== 'hero') { this.scripted.delete(o.id); sk.blockOn = false; return; }
+    this.scripted.add(o.id); o.mom = null;
+    const yh = b.move ? b.move.a0 + b.move.d : b.h; // (in a turn: the way it takes him)
+    s.go(o.id, h.x + Math.cos(yh) * 1.1, h.y + Math.sin(yh) * 1.1, 5);
+  },
+  // The move has started: its name, and (the wrong one) the defender's read.
+  skillGo(good) {
+    const sk = this.sk, s = this.sim, o = s.a(sk.tgt);
+    Object.assign(sk, { phase: 'move', good, ts: s.time, fired: this.clock });
+    this.hud.skillName(MOVE_NAME[sk.pick.k] + '!'); this.fx('skill');
+    if (!good) {
+      if (o) { sk.blockOn = true; o.track = null; }
+      if (this.rated && !this.rated.soft && this.rated.stars === 3) this.rated = { stars: 2, text: SKILL_TIP, said: SKILL_TIP, say: true, watch: false }; // (a lesson's card: 2 stars, and why)
+    }
+  },
+  // After the frame's step: a new offer, the time left, the move starting and playing, and skill moves by everyone else.
   skillWatch(dt) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
-    if (!this.sk && h?.offer && this.phase === 'outcome') this.skillOffer('run', h.offer.k, h.offer.n);
+    if (!this.sk && h?.offer && this.phase === 'outcome') this.skillOffer(h.offer);
     const sk = this.sk;
     if (sk?.phase === 'offer') {
-      const demo = this.mode === 'demo', left = sk.kind === 'turn' ? 1 - (this.clock - sk.t0) / (demo ? WAIT_DEMO : WAIT) : h?.offer ? 1 - (touchAt(h) - sk.n - sk.c0) / (OFFER_END - sk.c0) : 0;
-      if (left <= 0) this.skillEnd();
-      else { this.hud.skill(MOVE_NAME[sk.k], Math.round(left * 50) / 50); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .15)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
+      const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / HOLD_G) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));
+      if (sk.kind === 'run' ? !h?.offer : !h?.holdTurn || left <= 0) this.skillEnd();
+      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .3)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
+    } else if (sk?.phase === 'armed') {
+      if (sk.kind === 'run') {
+        if (h?.skill && h.skill.k === sk.pick.k) this.skillGo(h.skill.good !== false); // (the move has started)
+        else if (!h?.armed) { sk.phase = 'out'; this.hud.skill(null); } // (dropped: the defender came too close first, or anything else started)
+      } else {
+        const m = b.move; if (m && m.k === sk.pick.k && b.carrier === 'hero') this.skillGo(m.good !== false);
+        else if (!h?.holdTurn && s.time - sk.g0 > HOLD_G + .4) { sk.phase = 'out'; this.hud.skill(null); } // (the turn never came)
+      }
+      if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt) && this.clock - sk.tm > .4) this.handAt = null;
     } else if (sk?.phase === 'move') {
-      // A turn: it starts on the next step (sim.js); the move is over when the turn is (or if it never came). A run-at
-      // move is over a little after the touch that takes the ball away.
-      if (sk.kind === 'turn') { const m = b.move; if (m && m.k === sk.k && b.carrier === 'hero') sk.started = true; if (sk.started ? !m || (s.time - m.t0) / m.dur > .92 : this.clock - sk.go > .4) sk.phase = 'out'; }
-      else if (!h?.skill || touchAt(h) - h.skill.n > 1.15) sk.phase = 'out';
-      if (this.mode === 'demo' && this.handAt === 'skillBtn' && this.clock - sk.tm > .4) this.handAt = null;
-    } else if (sk?.phase === 'out' && this.slow >= 1 && this.skCam <= 0) this.sk = null;
-    // The close camera: only once he taps, in over half a second or more (longer from farther away, see skillCamStart),
-    // back out over about 0.7 s. (Smoothed both ways in game/view.js, so it starts and stops softly.)
-    this.skCam = Math.min(1, Math.max(0, (this.skCam || 0) + (sk?.phase === 'move' ? dt / (this.skIn || .5) : -dt / .7)));
+      const over = sk.kind === 'turn' ? !b.move || b.carrier !== 'hero' || (s.time - b.move.t0) / b.move.dur > .92 : !h?.skill || touchAt(h) - h.skill.n > 1.15;
+      if (over) { sk.phase = 'out'; this.hud.skill(null); }
+      if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt)) this.handAt = null;
+    } else if (sk?.phase === 'out' && this.slow >= 1 && this.skCam <= 0 && !sk.blockOn) this.sk = null;
+    // The close camera: once he taps, in over half a second or more (longer from farther away, see skillCamStart), held
+    // through the move, back out over about 0.7 s. (Smoothed both ways in game/view.js, so it starts and stops softly.)
+    this.skCam = Math.min(1, Math.max(0, (this.skCam || 0) + (sk?.phase === 'armed' || sk?.phase === 'move' ? dt / (this.skIn || .5) : -dt / .7)));
     // Skill moves by the others: a small tag in the corner with the move and who did it.
     const c = b.state === 'carried' ? s.a(b.carrier) : null, ref = c && (b.move && TURN_SKILLS.has(b.move.k) ? b.move : c.skill);
     if (ref && ref !== this.tagRef) { this.tagRef = ref; if (c.id !== 'hero') this.hud.skillTag(MOVE_NAME[ref.k], this.name(c.id)); }
