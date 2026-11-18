@@ -367,7 +367,7 @@ export class Sim {
     if (w > .3) turnToward(a, wx / w, wy / w, dt * .6); // his body comes round to where he is going
     return false;
   }
-  untrackAll() { for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
+  untrackAll() { for (const a of this.agents.values()) if (a.track) a.softT = this.time + .25; for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
 
   step(dt) {
     this.time += dt;
@@ -440,7 +440,7 @@ export class Sim {
       if (d < SPACE && d > 1e-6) { // (a player on a planned way keeps to it: the other one gives way; two on planned ways are kept apart by the plan)
         // (round 5: of two the plan does not hold, the one going faster goes round: a runner never shoves a walker off his way)
         const vp = (p.sp || 0) + .3, vq = (q.sp || 0) + .3, fp = vp * vp / (vp * vp + vq * vq);
-        const kp = p.track ? 0 : q.track ? 1 : fp, kq = q.track ? 0 : p.track ? 1 : 1 - fp, deep = !p.track && !q.track && SPACE - d > .1, push = deep ? Math.min(SPACE - d, 8 * dt) : SPACE - d; // (round 7: two free players left well inside each other as their planned ways end step apart over a few frames, at 8 m/s, not in one)
+        const kp = p.track ? 0 : q.track ? 1 : fp, kq = q.track ? 0 : p.track ? 1 : 1 - fp, deep = p.softT > this.time && q.softT > this.time && SPACE - d > .1, push = deep ? Math.min(SPACE - d, 8 * dt) : SPACE - d; // (round 7: two players left well inside each other as their planned ways end (softT: untrackAll) step apart over a few frames, at 8 m/s, not in one)
         p.x -= dx / d * push * kp; p.y -= dy / d * push * kp; q.x += dx / d * push * kq; q.y += dy / d * push * kq;
       }
     }
