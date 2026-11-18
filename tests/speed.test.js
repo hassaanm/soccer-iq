@@ -123,10 +123,10 @@ test('the game reaches the save only through js/storage.js', () => {
 
 test('tuned settings count only as true booleans and pixel ratios 2 or 3', () => {
   const sp = code('js/ui/speed.js');
-  assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0 \};/);
-  const fn0 = new Function('P', 'SFX_MODES', sp.match(/const tuned = \(\) => \{[\s\S]*?: 0 \}; \};/)[0] + 'return tuned();'), fn = P => fn0(P, ['one', 'pool', 'later', 'pool+later']);
-  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3' } } }), { blur: false, glow: false, soft: false, pr: 0 });
-  assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2 } } }), { blur: true, glow: false, soft: true, pr: 2 });
+  assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0, /);
+  const fn0 = new Function('P', 'SFX_MODES', sp.match(/const tuned = \(\) => \{[\s\S]*?: \{\}\) \}; \};/)[0] + 'return tuned();'), fn = P => fn0(P, ['one', 'pool', 'later', 'pool+later']);
+  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), { blur: false, glow: false, soft: false, pr: 0 });
+  assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2, sfx: 'pool' } } }), { blur: true, glow: false, soft: true, pr: 2, sfx: 'pool' });
   assert.deepEqual(fn({ settings: {} }), {});
   assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to normal settings</, 'a way back');
   assert.match(read('index.html'), /About 90 seconds, a few of them with sound/, 'the menu row says there is sound');
