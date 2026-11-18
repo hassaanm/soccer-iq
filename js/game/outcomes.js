@@ -601,12 +601,13 @@ export const outcomes = {
   },
   // The two parts of a shot he picked, each graded on its own: the target ("Shoot to the space!", v64 grades: low and
   // away from the keeper true, high and away or low beside him 'okay', at him or high beside him false) and the foot
-  // (the rule of "Inside or laces?": close, inside; the edge, laces). null for a part he did not pick.
+  // (the rule of "Inside or laces?": close, inside, with laces only 'okay' (v72: a hard low shot from close is a normal
+  // one); the edge and farther, laces, the inside false). null for a part he did not pick.
   shotPartGrades(opt) {
     if (!opt?.startsWith('shoot:')) return null;
     const [, sp, ft] = opt.split(':'), r = this.shotOf(opt), right = rightFoot(r.from), sc = this.sc;
     const g = sp === '*' || !r.K ? null : zoneGrade(r.from, sp, r.K, { stray: sc.stray ?? .35, defs: sc.shots ? sc.oppsTo.map(([x, y]) => ({ x, y })) : [] });
-    return { space: g == null ? null : g === 'best' ? true : g === 'okay' ? 'okay' : false, foot: ft === '*' ? null : ft === right, zone: sp };
+    return { space: g == null ? null : g === 'best' ? true : g === 'okay' ? 'okay' : false, foot: ft === '*' ? null : ft === right ? true : right === 'in' ? 'okay' : false, zone: sp };
   },
   // Where a shot he saves comes into his hands: never behind him (it would go through his legs to get there), at least a
   // step in front of where his save takes him.
@@ -620,8 +621,8 @@ export const outcomes = {
     if (sc.shots?.[opt] === 'blocked') return 'Too far to shoot. Get closer first!';
     if (sc.pattern === 'keeper-out') return 'The keeper came out! Go around him!';
     if (sc.pattern === 'keeper-friend') return 'No space to shoot. Pass it across!';
+    if (r.res === 'over') return 'Hard and high flies over! Keep it low.'; // (v72: only laces at the top from close go over in a lesson)
     if (g?.space === false) return r.rel === 'at' ? "That's right at him! Shoot low, to the big space!" : "That's near his hands. Shoot low, to the big space!";
-    if (r.res === 'over') return 'Laces from close fly high. Close? Inside, for control!';
     if (r.res === 'save' || r.res === 'cleared') return 'Too slow from out here. Far? Laces, for power!';
     return this.cue();
   },
@@ -634,11 +635,13 @@ export const outcomes = {
   },
   // A shot he picked that does not go in (it may still be only okay as a choice: then 1 star, never 2; v64 round 3).
   shotMissed(opt) { return !!opt?.startsWith('shoot:') && (this.sc.shots?.[opt] ?? this.shotOf(opt).res) !== 'goal'; },
-  // The tip for a shot that was only okay (2 stars): the target was not the best one, or the foot was wrong.
+  // The tip for a shot that was only okay (2 stars): the target was not the best one, or the foot was. Laces from close
+  // (v72): a goal is praised first, then the surer way; saved, the surer way.
   shotTip(opt) {
     const g = this.shotPartGrades(opt);
     if (g?.space === 'okay') return zone(g.zone).top ? 'Right side! But high can go over. Keep it low.' : 'He can reach that one. Find the big space.';
-    return 'Good space! ' + (this.shotOf(opt).res === 'over' ? 'Close? Inside, for control.' : 'Far? Laces, for power!');
+    if (g?.foot === 'okay') return this.shotMissed(opt) ? 'Close? Inside is safer.' : 'Goal! Close up, inside is safer.';
+    return 'Good space! Far? Laces, for power!';
   },
   // The lesson a missed shot belongs to (a match's miss count and its one spoken name): the target, else the foot.
   missIdea(opt) { const g = this.shotPartGrades(opt); return !g ? null : g.space === false ? 'shoot-space' : g.foot === false ? 'inside-laces' : null; },
@@ -650,7 +653,7 @@ export const outcomes = {
     const g = this.shotPartGrades(opt); if (!g || (g.space == null && g.foot == null)) return null;
     const out = [], end = this.realTime || 0, mid = this.shotT ?? this.decideReal ?? 0;
     if (g.space != null) out.push({ ...whole, id: 'shoot-space', grade: g.space === true ? 'best' : g.space === 'okay' ? 'okay' : 'miss', sec: mid - (this.decideReal ?? 0) });
-    if (g.foot != null) out.push({ ...whole, id: 'inside-laces', grade: g.foot ? 'best' : 'miss', sec: end - mid, looked: g.space != null ? null : whole.looked });
+    if (g.foot != null) out.push({ ...whole, id: 'inside-laces', grade: g.foot === true ? 'best' : g.foot === 'okay' ? 'okay' : 'miss', sec: end - mid, looked: g.space != null ? null : whole.looked });
     if (!['shoot-space', 'inside-laces'].includes(whole.id)) out.push(whole);
     return out;
   },

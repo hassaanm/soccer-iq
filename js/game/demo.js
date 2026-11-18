@@ -1,7 +1,7 @@
 // Lesson demos and replays: the game plays the move itself, and a hand shows the taps that make it.
 import { demoScenario, skillById } from '../skills.js';
 import { clamp, smooth } from '../geom.js';
-import { L, MATE, spotKind, wrap } from './shared.js';
+import { L, W, MATE, spotKind, wrap } from './shared.js';
 
 export const demo = {
   // In demos he really looks around: head up, turn left, then right (past his shoulder, so he can see behind),
@@ -12,6 +12,13 @@ export const demo = {
     this.hud.caption('👀 Look left…'); this.say('Look left.'); await turnTo(base + wide, 1.2);
     this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnTo(base - wide, 1.8);
     await turnTo(aim, 1.2);
+  },
+  // Before a shot he is clear for (v72): no look around for friends. One glance up at the goal (and the keeper), to pick
+  // a spot: his head and the view turn to the goal, from behind him, as his own view does when he taps LOOK UP there.
+  async glanceAtGoal(sec = .6) {
+    const h = this.sim.a('hero'); if (!h) return;
+    const y0 = this.yaw, d = wrap(Math.atan2(W / 2 - h.y, L - h.x) - y0);
+    if (Math.abs(d) > .05) await this.tween(sec, t => { this.yaw = y0 + d * smooth(t); });
   },
 
   // ---------- the teaching hand ----------
@@ -55,7 +62,7 @@ export const demo = {
       await this.tapAt('passBtn'); this.step = 'pass'; await this.delay(.3);
       await this.tapAt({ x: m.x, y: m.y, z: .9 });
     } else if (opt === 'shoot' || opt.startsWith('shoot:')) {
-      if (Math.abs(wrap(this.yaw)) > .5) await this.dragTo(0, .8);
+      await this.glanceAtGoal(.5); // (v72: his eyes on the goal, never a look left and right first)
       await this.tapAt('shootBtn');
       if (opt !== 'shoot') { // then the space in the goal, and the foot (v62)
         const [, sp, ft] = opt.split(':'), parts = this.shotParts();
@@ -88,12 +95,16 @@ export const demo = {
     const sc = demoScenario(skillId); this.load(sc);
     const hero = this.name('hero'), tip = skillById(skillId)?.tip || '', capTip = skillById(skillId)?.capTip; // capTip: a shorter caption for a long tip, so it covers no gold place (v64)
     const intro = this.talk(`Watch ${hero}.`, .2, `Watch ${hero}!`);
-    await this.pre(); await intro;
+    await this.pre();
+    // (v72) The window opens the moment the run-up ends, as in a round, and "Watch …" finishes over it. It used to open
+    // only after the line: meanwhile everyone ran on past where the window starts them, and they jumped back as it opened.
     this.phase = 'decide'; this.step = spotKind(sc) ? 'spot' : null; this.showing = true;
     this.openWindow(); // (v64: the demo talks over play going on in slow motion, as his own choices do)
+    await intro;
     await this.delay(.4);
+    const shot = !!sc.best?.startsWith('shoot');
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
-    else { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; }
+    else { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
     await this.delay(.9);
     await this.talk(tip, 1.8, capTip); // the lesson's one idea: let it sit before anything moves
     // He looks around first, so the choice doesn't come out of nowhere. For a pass he ends up facing the open
@@ -122,9 +133,12 @@ export const demo = {
       await this.lookAround(this.yaw, 1.1);
       const q = sc.run === 'follow' ? 'Where is the ball? 👀' : sc.run === 'goal' ? 'Where is the goal? 👀' : sc.kind === 'support' ? 'Where is the space? 👀' : 'See who is open? 👀';
       await this.talk(q.replace(/ 👀$/, ''), 1, q);
+    } else if (shot) { // clear on goal (v72): one look at the goal and the keeper, then the shot (the ball is his to look at)
+      const K = this.sim.keeper('them'), line = K ? 'Look at the goal. Where is the keeper?' : 'Look at the goal. Nobody in the way!';
+      await this.glanceAtGoal(.4); await this.talk(line, .6, line + (K ? ' 🧤' : ' 🥅'));
     } else {
       await this.lookAround(0);
-      const saw = sc.best?.startsWith('shoot') ? 'Goal ahead! 🥅' : sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
+      const saw = sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
       await this.talk(saw.replace(/ \S+$/u, ''), .8, saw);
     }
     this.hud.caption('');

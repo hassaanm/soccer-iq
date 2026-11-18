@@ -16,7 +16,9 @@ import { PITCH, gy0, gy1, W, L, clamp, closestOnLane, sizeOf } from './geom.js';
 export const GK = { reach: .8, react: .3, speed: 2.6, off: 1, down: .2, up: .1, catchR: .35 };
 // The two shots he can choose (no meters, no timing: a choice). Inside of the foot: slower, low, goes where it is aimed.
 // Laces: fast, but it strays: in a lesson `stray` m to the outside of the aim (fixed per scene); in a match up to
-// `wild` m either way (and its misses, CHANCE, are more). From close it flies over the bar (a lesson: always).
+// `wild` m either way. From close the inside is the surer shot, but a low laces shot is a normal one: hard and fast, it
+// goes in away from the keeper and is saved at him. Only a laces shot aimed at the top from close rises over the bar (a
+// lesson: always; a match: CHANCE). (v72: it used to fly over from close whatever the aim.)
 export const FOOT = { in: { speed: 8, arc: .06, wild: .12 }, las: { speed: 19, arc: .3, wild: .45 } };
 // Distances (m from where he strikes it to the middle of the goal): inside the box use the inside of the foot; the edge
 // of the box (CLOSE to EDGE) the laces; farther, get closer first ("too far to shoot", as grade() already says).
@@ -32,7 +34,7 @@ export const PLACED = { speed: 17, arc: .5, wild: 0 };
 export const CHANCE = {
   in: { close: { at: [.9, .02], besideL: [.45, .03], besideT: [.6, .15], awayL: [.05, .05], awayT: [.15, .2] },
     far: { at: [.95, .02], besideL: [.7, .03], besideT: [.8, .15], awayL: [.35, .05], awayT: [.45, .2] } },
-  las: { close: { at: [.75, .1], besideL: [.25, .25], besideT: [.3, .5], awayL: [.05, .3], awayT: [.05, .6] },
+  las: { close: { at: [.8, .03], besideL: [.35, .05], besideT: [.38, .3], awayL: [.05, .06], awayT: [.08, .35] }, // (v72: low, hardly more misses than the inside; high, more)
     far: { at: [.8, .08], besideL: [.35, .12], besideT: [.4, .3], awayL: [.05, .06], awayT: [.08, .3] } },
 };
 // A column counts as "beside him" when the ball's way passes within BESIDE m of his middle (his reach and a step); the
@@ -111,8 +113,8 @@ export function shotResult({ from, zone: zid = null, y: aimY = null, z: aimZ = L
     const [ps, pm] = CHANCE[foot][band][rel === 'at' ? 'at' : rel + (top ? 'T' : 'L')] || [0, 0], u = rand();
     const ballSide = Math.sign(y - k.y), wide = Math.abs(y - k.y) > GK.catchR;
     fate = u < pm ? 'miss' : guess ? (wide && ballSide === guess && rand() < GUESS_SAVE ? 'save' : 'goal') : u < pm + ps ? 'save' : 'goal';
-    if (fate === 'miss') { // over the bar (a high one, or laces from close), else wide of the post on its side
-      if (top || (foot === 'las' && band === 'close')) z = PITCH.gh + .35 + rand() * .3;
+    if (fate === 'miss') { // over the bar (a high one), else wide of the post on its side
+      if (top) z = PITCH.gh + .35 + rand() * .3;
       else y = Math.sign(y - mid || 1) * (gy1 - gy0) / 2 + mid + Math.sign(y - mid || 1) * (.3 + rand() * .3);
     }
   }
@@ -120,7 +122,7 @@ export function shotResult({ from, zone: zid = null, y: aimY = null, z: aimZ = L
   const base = { to, speed: F.speed, arc: F.arc, d, top, zone: zid, guess, held: false, by: null, rel };
   const fly = { ...base, t: d / F.speed, gap: 9, act: k ? 'watch' : 'none', dir: k ? Math.sign(y - k.y) || 1 : 1 };
   if (!force) {
-    if (!rand && foot === 'las' && band === 'close') return { ...fly, res: 'over' }; // a lesson: laces from close (as the rule for the foot measures it) rise over the bar
+    if (!rand && foot === 'las' && band === 'close' && top) return { ...fly, res: 'over' }; // a lesson: laces aimed at the top from close (as the rule for the foot measures it) rise over the bar
     if (z > PITCH.gh - .1) return { ...fly, res: 'over', act: guess ? 'wrong' : fly.act, dir: guess || fly.dir };
     if (y < gy0 + .1 || y > gy1 - .1) return { ...fly, res: 'wide', act: guess ? 'wrong' : fly.act, dir: guess || fly.dir };
   }
@@ -135,7 +137,7 @@ export function shotResult({ from, zone: zid = null, y: aimY = null, z: aimZ = L
   const at = c && { x: c.x, y: c.y, z: z * clamp(Math.hypot(c.x - from.x, c.y - from.y) / (d || 1), 0, 1) };
   let res = 'goal';
   if (k && force) res = force;
-  else if (k && !down && foot !== 'placed') res = fate ? fate : gap <= 0 || rel === 'at' ? 'save' : 'goal'; // (a lesson: inside his reach is a save, and so is a ball at him: he blocks it)
+  else if (k && !down && foot !== 'placed') res = fate ? fate : gap <= 0 || rel === 'at' || (foot === 'las' && band === 'close' && rel === 'beside') ? 'save' : 'goal'; // (a lesson: inside his reach is a save, and so is a ball at him: he blocks it; v72: a hard laces shot from close near his hands, beside him, he gets a hand to: only away from him does it go in)
   if (res === 'goal' && foot !== 'placed' && !force && fate !== 'goal') for (const o of defs) { // a defender running back gets to a slow shot before it is in
     const q = closestOnLane(o, from, to, .3), tb = Math.hypot(q.x - from.x, q.y - from.y) / F.speed, td = q.d / DEF_RUN + .2;
     if (td < tb - .1) return { ...base, res: 'cleared', at: { x: q.x, y: q.y, z: 0 }, t: tb, by: o, gap, act: k ? 'watch' : 'none', dir };

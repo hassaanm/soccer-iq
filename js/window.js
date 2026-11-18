@@ -10,7 +10,7 @@
 // and gets to it as the window ends: he takes it.
 import { dist, closestOnLane, interceptor, clamp, PITCH, dribbleEnd, BACKWARD } from './geom.js';
 import { grade, exploit, leadPoint, LEAD, DEF_RUN, HERO_RUN, pushEnd, takeOn } from './generate.js';
-import { resolve, bestSpaceY, spaceY, rightFoot } from './shot.js';
+import { resolve, bestSpaceY, rightFoot, shotResult, bestZone } from './shot.js';
 
 // ---------- how long ----------
 // Real seconds from when the choice opens to when the defender takes the ball, at the "Normal" thinking time (v64
@@ -200,12 +200,14 @@ function attackDis(sc, pos, { options, ball } = {}) {
   }
   return bad;
 }
-// A shot he picks (v62): from where he is now, at the keeper where he is now.
+// A shot he picks (v62): from where he is now, at the keeper where he is now. (v72: at its target as the scene grades it,
+// high or low, as generate.js finishShots does: a target's height matters for laces from close.)
 function shotNow(sc, o, h, k, defs) {
   const [, sp, ft] = o.split(':'), from = { x: h.x + .5, y: h.y }, K = k ? { x: k.x, y: k.y } : null;
-  const foot = ft === '*' ? rightFoot(from) : ft, y = sp === '*' ? bestSpaceY(from, K) : spaceY(sp);
+  const foot = ft === '*' ? rightFoot(from) : ft, zid = sp === '*' ? (K ? bestZone(from, K) : null) : sp;
   if (sc.shots[o] === 'blocked') return 'blocked';
-  return resolve(from, y, foot, K, { stray: sc.stray, defs }).res;
+  if (!zid) return resolve(from, bestSpaceY(from, K), foot, K, { stray: sc.stray, defs }).res;
+  return shotResult({ from, zone: zid, foot, k: K, stray: sc.stray, defs }).res;
 }
 // Defending: the rings go with the players they belong to ("in front of the ball", "guard him"), and each still leaves the
 // attackers a way through, or none, as it did.

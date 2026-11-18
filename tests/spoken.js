@@ -30,12 +30,12 @@ export function spokenLines() {
     'Pass and go! Run past him into the space.', 'Run to the goal, so your friend can pass to you!', 'Move to open space so your friend can pass to you!', 'Wait in front of him. Steal it when it rolls away from his feet!']) cues.add(c);
   const lines = [
     ...ALL_LESSONS.flatMap(s => [s.kid, s.tip]),
-    'Saved!', 'So close!', 'Good space! Close? Inside, for control.', 'Good space! Far? Laces, for power!', // shots (v62)
+    'Saved!', 'So close!', 'Good space! Far? Laces, for power!', 'Goal! Close up, inside is safer.', 'Close? Inside is safer.', // shots (v62; v72: laces from close, only okay)
     'Right side! But high can go over. Keep it low.', 'He can reach that one. Find the big space.', // only-okay targets (v64, outcomes.js shotTip)
     'Your turn!', TIMEOUT.first, TIMEOUT.again, ...['restart', 'defense', 'off', 'receive', 'follow'].flatMap(k => [TIMEOUT[k].first, TIMEOUT[k].again]), // (v64: the defender got there first; round 2: a restart played before he found his place)
     'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!',
     `Watch ${A}.`, `${A} looks up.`, `${A} is open!`, `${A} is running!`, 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
-    'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
+    'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Only one defender!', 'Space ahead!', 'Look at the goal. Where is the keeper?', 'Look at the goal. Nobody in the way!', // (v72: a clear shot's one look)
     'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
     "Today's training!", 'Training done!', 'Train first!', 'Start a new cup?', 'Match time!', 'The final!', 'You won the cup!', 'You won! On to the next round!', 'So close! Try again!',
     ...CUPS.map(c => c.name),

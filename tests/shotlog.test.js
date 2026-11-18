@@ -18,8 +18,8 @@ async function round(sc, opt, light = false) {
 
 test('each part of a shot goes in the log under its own lesson, with how long it took', async () => {
   const sc = scene('aim-open'), sp = sc.best.split(':')[1], other = sp === 'L' ? 'R' : 'L';
-  let { recs } = await round(sc, `shoot:${sp}:las`); // the right space, the wrong foot
-  assert.deepEqual(recs.map(r => [r.id, r.grade]), [['shoot-space', 'best'], ['inside-laces', 'miss']]);
+  let { recs } = await round(sc, `shoot:${sp}:las`); // the right space, laces from close: only okay (v72)
+  assert.deepEqual(recs.map(r => [r.id, r.grade]), [['shoot-space', 'best'], ['inside-laces', 'okay']]);
   assert.ok(recs.every(r => r.sec >= 0 && r.mode === 'lesson'));
   ({ recs } = await round(sc, `shoot:${other}:in`));  // the wrong space, the right foot
   assert.deepEqual(recs.map(r => [r.id, r.grade]), [['shoot-space', 'miss'], ['inside-laces', 'best']]);
@@ -29,14 +29,17 @@ test('each part of a shot goes in the log under its own lesson, with how long it
 
 test('"Inside or laces?" scenes log the foot once, under their own lesson', async () => {
   const sc = generate('inside-laces', 1, { pattern: 'foot-close' }), { recs } = await round(sc, 'shoot:*:las');
-  assert.deepEqual(recs.map(r => [r.id, r.grade]), [['inside-laces', 'miss']]);
+  assert.deepEqual(recs.map(r => [r.id, r.grade]), [['inside-laces', 'okay']], 'laces from close: only okay (v72)');
+  const edge = generate('inside-laces', 2, { pattern: 'foot-edge' }), { recs: r2 } = await round(edge, 'shoot:*:in');
+  assert.deepEqual(r2.map(r => [r.id, r.grade]), [['inside-laces', 'miss']], 'the inside from the edge: wrong');
 });
 
 test('a missed space or foot in a match counts for its lesson and its name is said once', () => {
   const { g } = makeGame(), sc = scene('aim-open'), sp = sc.best.split(':')[1], other = sp === 'L' ? 'R' : 'L';
   g.mode = 'free'; g.load(sc); g.skills = new Set(PATH.map(s => s.id));
   assert.equal(g.missIdea(`shoot:${other}:in`), 'shoot-space');
-  assert.equal(g.missIdea(`shoot:${sp}:las`), 'inside-laces');
+  assert.equal(g.missIdea(`shoot:${sp}:las`), null, 'laces from close: only okay, not a miss (v72)');
+  const edge = generate('inside-laces', 2, { pattern: 'foot-edge' }); g.load(edge); assert.equal(g.missIdea('shoot:*:in'), 'inside-laces', 'the inside from the edge'); g.load(sc);
   assert.equal(g.missIdea(sc.best), null);
   assert.equal(g.cueFor('inside-laces'), 'Inside or laces?'); assert.equal(g.cueFor('shoot-space'), 'Shoot to the space!');
 });

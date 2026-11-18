@@ -13,12 +13,13 @@ const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null
 const reload = p => { const st = mem(); save(p, st); return catchUp(load(st), PATH); };
 const at = id => PATH.findIndex(s => s.id === id);
 
-test('the shot rule: close, the inside of the foot goes where it is aimed and laces fly over; from the edge, the inside is slow', () => {
+test('the shot rule: close, the inside of the foot goes where it is aimed and low laces go in too; from the edge, the inside is slow', () => {
   setSize('5v5');
   const k = { x: PITCH.L - .7, y: 13 }, close = { x: PITCH.L - 6, y: 15 }, edge = { x: PITCH.L - 11, y: 13 };
   assert.equal(resolve(close, spaces()[1].y, 'in', k).res, 'save', 'at him: saved');
   assert.equal(resolve(close, spaces()[0].y, 'in', k).res, 'goal', 'the far space: in');
-  assert.equal(resolve(close, spaces()[0].y, 'las', k).res, 'over', 'laces from close: over the bar');
+  assert.equal(resolve(close, spaces()[0].y, 'las', k).res, 'goal', 'low laces from close, away from him: in (v72; they used to fly over)');
+  assert.equal(resolve(close, spaces()[1].y, 'las', k).res, 'save', 'low laces from close, at him: saved');
   assert.equal(resolve(edge, spaces()[0].y, 'las', k, { stray: .3 }).res, 'goal', 'laces from the edge: in');
   assert.equal(resolve(edge, spaces()[0].y, 'in', k).res, 'save', 'the inside from the edge: he gets across to it');
   assert.ok(FOOT.in.speed < FOOT.las.speed && CLOSE === 8 && GK.reach * 2 / (PITCH.gy1 - PITCH.gy0) > .3, 'he covers about a third of the goal');
@@ -33,7 +34,7 @@ for (const size of SIZE_IDS) test(`${size}: the shot lessons' scenes teach their
     const scs = allScenarios(sk); assert.ok(scs.length >= 8, sk);
     for (const sc of scs.slice(0, 4)) {
       assert.ok(sc.best && sc.cue, sc.id);
-      if (sc.pattern === 'foot-close') assert.equal(sc.best, 'shoot:*:in', sc.id);
+      if (sc.pattern === 'foot-close') { assert.equal(sc.best, 'shoot:*:in', sc.id); assert.equal(sc.shots['shoot:*:las'], 'goal', `${sc.id}: low laces from close go in`); assert.ok(sc.safe.includes('shoot:*:las'), `${sc.id}: laces from close: only okay`); }
       if (sc.pattern === 'foot-edge') assert.equal(sc.best, 'shoot:*:las', sc.id);
       if (sc.pattern === 'aim-open') { assert.match(sc.best, /^shoot:[LMR]:in$/, sc.id); assert.ok(sc.safe.includes(sc.best.replace(':in', ':las')), 'the right space with laces: 2 stars'); }
       for (const opt of optionsFor(sc)) { const r = await playOption(sc, opt), j = judge(r); assert.deepEqual(j, [], `${sc.id} ${opt}: ${j.join('; ')}`); }

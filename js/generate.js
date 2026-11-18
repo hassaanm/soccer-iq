@@ -2,7 +2,7 @@
 // with the same geometry the game uses. Anything unclear (a pass lane that is half open, a push the defender
 // might or might not win) is thrown away and rebuilt, so every round has a clear right answer.
 import { PITCH, L, W, closestOnLane, interceptor, dribbleEnd, rot, clamp, dist, lerp, shuffle, DRIBBLE_DIRS, BACKWARD, TEAM, sizeOf } from './geom.js';
-import { GK, resolve, placedAim, rightFoot, shotResult, ZONES, bestZone, zoneGrade } from './shot.js';
+import { GK, resolve, placedAim, rightFoot, shotResult, ZONES, bestZone, zoneGrade, zone } from './shot.js';
 
 const OPEN = 1.6, BLOCKED = .6;        // pass lanes: clearly open / clearly cut off (meters to nearest defender)
 const FREE = 2.2, MARKED = 1.3;        // receivers: nobody near / a defender right on him
@@ -1089,8 +1089,8 @@ function extraFollow(r, sc) {
   return { ...sc, mates: [...sc.mates, Fs], matesTo: [...sc.matesTo, F], opps: [...sc.opps, As], oppsTo: [...sc.oppsTo, A] };
 }
 // ---------- the shot as two decisions (v62): where, and which foot ----------
-// "Inside or laces?" (every size): close (in the box, at an angle): the inside of the foot places it (laces fly over the
-// bar); the edge of the box: the laces (the inside is slow: a defender running back clears it, or the keeper gets
+// "Inside or laces?" (every size): close (in the box, at an angle): the inside of the foot places it (best; laces, hard and
+// low away from the keeper, go in too, but are only okay: v72); the edge of the box: the laces (the inside is slow: a defender running back clears it, or the keeper gets
 // across to it); too far: get closer (shot-far). "Shoot to the space!" (5v5): close, the keeper off the middle (most
 // often toward the ball's side, sometimes the other way): the big space; the keeper rushing out: go round him; a sharp
 // angle with the keeper on his post and a friend free in front of the far post: pass across.
@@ -1146,19 +1146,20 @@ function finishShots(sc) {
   const g = grade(sc), goods = Object.keys(g).filter(k => g[k] === 'good' && !k.startsWith('push:')), keep = goods.filter(o => o.startsWith('drib:') || o.startsWith('pass:'));
   let best, ok = [], safe = [], cue;
   if (pat === 'foot-close') {
-    if (right !== 'in' || shots['shoot:*:in'] !== 'goal' || shots['shoot:*:las'] !== 'over' || g.shoot !== 'good') return null;
-    best = 'shoot:*:in'; safe = keep; cue = 'Close? Inside, for control!';
+    if (right !== 'in' || shots['shoot:*:in'] !== 'goal' || shots['shoot:*:las'] !== 'goal' || g.shoot !== 'good') return null;
+    best = 'shoot:*:in'; safe = ['shoot:*:las', ...keep]; cue = 'Close? Inside, for control!'; // (v72: laces, low and away, go in too: only okay)
   } else if (pat === 'foot-edge') {
     if (right !== 'las' || shots['shoot:*:las'] !== 'goal' || !['save', 'cleared'].includes(shots['shoot:*:in']) || g.shoot !== 'good') return null;
     best = 'shoot:*:las'; safe = keep; cue = 'From out here, laces, for power!';
   } else if (pat === 'aim-open') {
     // (v64) One low target goes in, the one away from him; every target at him or high beside him is saved; the high one
     // on the open side, if it goes in, is only okay (2 stars: it can fly over); a low one beside him that beats him too.
-    // Laces from this close go over, whatever the target.
+    // Laces from this close (v72): low and away it goes in (only okay: the inside is surer), at him it is saved, at the
+    // top it flies over; a wrong target never goes in with them either.
     const grades = Object.fromEntries(ZONES.map(z => [z, zoneGrade(from, z, K, { stray: sc.stray, defs, DEF_RUN })]));
     const wins = ZONES.filter(z => grades[z] === 'best');
-    if (wins.length !== 1 || ZONES.some(z => shots[`shoot:${z}:las`] !== 'over') || g.shoot !== 'good' || right !== 'in') return null;
-    if (ZONES.some(z => grades[z] === 'bad' ? shots[`shoot:${z}:in`] !== 'save' : shots[`shoot:${z}:in`] !== 'goal')) return null; // (a wrong target is saved; a good one goes in)
+    if (wins.length !== 1 || shots[`shoot:${wins[0]}:las`] !== 'goal' || ZONES.some(z => zone(z).top && shots[`shoot:${z}:las`] !== 'over') || g.shoot !== 'good' || right !== 'in') return null;
+    if (ZONES.some(z => grades[z] === 'bad' ? shots[`shoot:${z}:in`] !== 'save' || shots[`shoot:${z}:las`] === 'goal' : shots[`shoot:${z}:in`] !== 'goal')) return null; // (a wrong target is saved, with either foot; a good one goes in)
     best = `shoot:${wins[0]}:in`; const okay = ZONES.filter(z => grades[z] === 'okay');
     safe = [`shoot:${wins[0]}:las`, ...okay.flatMap(z => [`shoot:${z}:in`, `shoot:${z}:las`]), ...keep]; cue = 'Keeper in goal? Shoot low, to the big space!';
   } else if (pat === 'keeper-out') {
