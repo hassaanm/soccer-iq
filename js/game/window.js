@@ -58,6 +58,7 @@ export const moving = {
     const sc = this.sc;
     if (kindOf(sc) === 'tackle') return null;
     const st = live ? this.liveState() : this.sceneState(sc);
+    this.heavyAt = this.frameNo | 0; // (frame time: see view.js spotView)
     try {
       const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra });
       if (p) p.live = live;

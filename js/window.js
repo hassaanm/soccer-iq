@@ -132,9 +132,10 @@ const fits = (was, now) => (was === 'good' ? now === 'good' : was === 'safe' ? n
 // the lines moved TOL in its favour, and one graded wrong must still look wrong with them moved TOL against it.
 export const TOL = .3;
 // grade() (generate.js), its lines moved by k metres (k > 0: "open" is easier to be, "blocked" harder).
-export function gradeT(sc, k) {
+export function gradeT(sc, k, only = null) {
   const hero = P(sc.heroTo), ball = { x: hero.x + .5, y: hero.y }, opps = sc.opps.map((p, i) => P((sc.oppsTo || [])[i] || p)), out = {};
   sc.mates.forEach((m, i) => {
+    if (only && !only.has('pass:' + i)) return;
     const mate = P(m), d = interceptor(ball, mate, opps).d, mark = Math.min(...opps.map(o => dist(o, mate)));
     const byFriend = sc.mates.some((q, j) => j !== i && closestOnLane(P(q), ball, mate, .05).d < .8 - k && dist(P(q), mate) > 1);
     out['pass:' + i] = byFriend ? 'unclear' : d > 1.6 - k && mark > 2.2 - k ? 'good' : d < .6 - k || mark < 1.3 - k ? 'bad' : 'unclear';
@@ -144,6 +145,7 @@ export function gradeT(sc, k) {
   const onHim = opps.filter(o => dist(o, hero) < 2.6 - k).length, mates = sc.mates.map(P);
   const ontoFriend = (end, r) => mates.some(m => dist(m, end) < r - k || closestOnLane(m, hero, end, .2).d < .9 - k);
   for (const dir of DRIBS) {
+    if (only && !only.has('drib:' + dir) && !only.has('push:' + dir)) continue;
     const end = dribbleEnd(hero, dir, PITCH.L, PITCH.W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, .8 / 4.5).d)), t = takeOn(hero, dir, opps);
     out['drib:' + dir] = t ? (t.good ? 'good' : 'bad') : near < 1.8 - k || onHim >= 2 ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > 2.2 - k ? 'good' : 'unclear';
     if (out['drib:' + dir] === 'good' && ontoFriend(end, 2.2)) out['drib:' + dir] = 'safe';
@@ -181,15 +183,19 @@ function attackDis(sc, pos, { options, ball } = {}) {
   const h = pos('hero'), mates = ids('m', sc.mates.length).map(id => A(pos(id))), opps = ids('o', sc.oppsTo.length).map(id => A(pos(id)));
   const k2 = sc.gk?.them && pos('k2'), out = sc.pattern === 'keeper-out' && k2; // (the keeper rushing out counts as a defender)
   const live = { ...sc, heroTo: A(h), mates, opps: out ? [...opps, A(k2)] : opps, oppsTo: out ? [...opps, A(k2)] : opps };
-  const gl = gradeT(live, TOL), gt = gradeT(live, -TOL), g1 = grade(live), g0 = sc.grades || grade(sc), bad = [];
+  // (frame time) The grades with the lines moved are worked out only when a choice's grade has changed: most checks need neither.
+  // Only the choices offered are graded.
+  const list = options || attackOptions(sc), only = new Set(list);
+  let gl = null, gt = null; const g1 = grade(live, only), g0 = sc.grades || gP(sc), bad = [];
   const b = ball || { x: h.x + .5, y: h.y }, O = opps.map(P);
-  for (const o of options || attackOptions(sc)) {
+  for (const o of list) {
     if (o.startsWith('shoot:')) { if (sc.shots && shotNow(sc, o, h, k2, O) !== sc.shots[o]) bad.push(o); continue; }
-    const was = gradedAs(sc, o, g0), g = was === 'bad' ? gt : gl; // (in its favour, or against it)
+    const was = gradedAs(sc, o, g0);
     if ((!o.startsWith('pass:') || !sc.live) && g1[o] === g0[o]) continue; // (graded now just as it was: it agrees)
     if (!sc.live && gP(sc)[o] !== g0[o] && !o.startsWith('shoot:')) continue; // (a grade the scene set by hand, not from the picture alone: a dribble out over the line at a restart)
-    let now = cls(g[o]);
-    if (o.startsWith('pass:') && sc.live) now = livePass(b, P(mates[+o[5]]), O, was === 'bad' ? -TOL : TOL);
+    let now;
+    if (!(o.startsWith('pass:') && sc.live)) now = cls((was === 'bad' ? (gt ||= gradeT(live, -TOL, only)) : (gl ||= gradeT(live, TOL, only)))[o]); // (in its favour, or against it)
+    else now = livePass(b, P(mates[+o[5]]), O, was === 'bad' ? -TOL : TOL);
     if (!fits(was, now)) bad.push(o);
   }
   return bad;

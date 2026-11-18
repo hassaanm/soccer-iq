@@ -54,6 +54,10 @@ export const view = {
     const tw = hold ? s.time - (win ? win.t0 : plan.openAt ?? s.time) : 0, shift = spec => (D[0] || D[1] ? { eye: [spec.eye[0] + D[0] * tw, spec.eye[1] + D[1] * tw, spec.eye[2]], tgt: [spec.tgt[0] + D[0] * tw, spec.tgt[1] + D[1] * tw, spec.tgt[2]], Ff: spec.Ff, Fw: spec.Fw } : spec);
     const key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length} ${hold ? (hold.vid ||= ++this.vids) : sc.run === 'follow' ? 'f' : win ? Math.round(win.t0 * 1e3) : 0}`;
     if (this.spotFit?.key === key) return shift(this.spotFit.spec);
+    // (frame time) In a frame that has already made a window's plan, the camera keeps what it wanted the frame before and
+    // the fit is made in the next frame: the two heavy jobs never share a frame (the camera eases over anyway).
+    if (this.camAsk) { this.viewLate = true; return this.lastWant; }
+    this.viewLate = false;
     // Where everything is as the window opens (o) and, against the drift, as it ends (e).
     const P0 = !plan && sc.run === 'follow' ? this.sceneState(sc).at : null; // (after a shot: the scene's own places, where everyone is as the rebound stops)
     const o = id => (hold?.paths[id] ? pathAt(hold.paths[id], 0, {}) : P0?.[id] || s.a(id)), e = id => { if (!hold?.paths[id]) return o(id); const q = pathAt(hold.paths[id], G, {}); return { x: q.x - D[0] * G, y: q.y - D[1] * G }; };
@@ -99,16 +103,19 @@ export const view = {
     // The free part of the screen: under the prompt, in from the edges, and not where LOOK UP / HEAD DOWN sits (bottom
     // left; nothing else shows while he picks a spot).
     const Ff = .9, Fw = .45, F = Math.max(v.h * Ff, v.w * Fw), x0 = v.w * .05, x1 = v.w * .95, y0 = 104, y1 = v.h - 16, bx = 160, by = v.h - 150;
-    let fx, fy;
-    const fits = (pitch, d, { goal, ratio, heroMin }) => { // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
+    // (frame time) fits answers true or false; `why` says how it failed (2: the camera is off the pitch, 3: his player
+    // is too small, with `hgt` his height then), so that the search can stop going farther out when farther cannot fit.
+    let fx, fy, why = 0, hgt = 0, who = null, all = pts;
+    const fits = (pitch, d, { ratio, heroMin }) => {
+      why = 1; // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
       const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d, ez = Math.sin(pitch) * d;
-      if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) return false;
+      if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) { why = 2; return false; }
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
       const proj = (px, py, pz) => { const dx = px - ex, dy = py - ey, dz = pz - ez, z = dx * fwd[0] + dy * fwd[1] + dz * fwd[2]; return z < .5 ? null : [v.w / 2 + F * (dx * rt[0] + dy * rt[1] + dz * rt[2]) / z, v.h / 2 - F * (dx * up[0] + dy * up[1] + dz * up[2]) / z]; };
+      if (heroMin) for (const q of heroAt) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b) return false; if (a[1] - b[1] < heroMin) { why = 3; hgt = a[1] - b[1]; who = q; return false; } } // his player at least this tall, all through
       // (round 5) Nobody stands on the line from the camera to his player (as the window opens, or where he will be as it
       // ends): he and his ring are never behind somebody's back.
       for (const q of blockers) { const lx = h.x - ex, ly = h.y - ey, l2 = lx * lx + ly * ly || 1, t = ((q.x - ex) * lx + (q.y - ey) * ly) / l2; if (t > .12 && t < .94 && Math.hypot(q.x - ex - lx * t, q.y - ey - ly * t) < 1.2 && ez * (1 - t) + .5 * t < 2) return false; } // (1.2 m clear to each side: his ring too)
-      if (heroMin) for (const q of heroAt) { const a = proj(q.x, q.y, 0), b = proj(q.x, q.y, 1.85); if (!a || !b || a[1] - b[1] < heroMin) return false; } // his player at least this tall, all through
       // (A goal post may also sit up beside the prompt and the round dots, which are in the middle at the top, but not
       // under them, nor under the buttons in the top corners.)
       const inside = (px, py, pz, side = 0) => {
@@ -116,7 +123,7 @@ export const view = {
         const top = (side || even) && Math.abs(sx - v.w / 2) > 200 && sx > 80 && sx < v.w - 80 ? 64 : y0; // (these views: anything may sit up beside the prompt)
         return !(sx < x0 || sx > x1 || sy < top || sy > y1 || (sx < bx && sy > by));
       };
-      for (const [px, py, pz, side] of [...pts, ...(goal === 'all' ? goalAll : goal === 'near' ? goalNear : [])]) if (!inside(px, py, pz, side)) return false;
+      for (let i = 0; i < all.length; i++) { const q = all[i]; if (!inside(q[0], q[1], q[2], q[3])) return false; }
       if (even) { // each ring at the size it will be drawn
         const z = sp0.map(sp => (sp.x - ex) * fwd[0] + (sp.y - ey) * fwd[1] - ez * fwd[2]), near = Math.min(...z); // depth: the size on screen goes as 1 / depth
         // A ring far off is drawn bigger and one close by smaller (down to RING_SHRINK), but never so big that it would
@@ -130,12 +137,23 @@ export const view = {
     };
     // The way he faces first; turned a little either way only if that lets it come nearer (or fit at all).
     const search = rule => {
-      let best = null; pts = levels[rule.drop || 0];
+      let best = null; pts = levels[rule.drop || 0]; all = [...pts, ...(rule.goal === 'all' ? goalAll : rule.goal === 'near' ? goalNear : [])];
       for (const lean of even || rule.drop ? [0, .3, .55, .8] : [0]) {
         cx = lerp(mx, h.x, lean); cy = lerp(my, h.y, lean);
         for (const off of [0, .35, -.35, .7, -.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75]) {
           fx = Math.cos(yaw + off); fy = Math.sin(yaw + off);
-          for (let pitch = .55; pitch <= 1.31; pitch += .095) for (let d = 7; d <= 30; d += .5) if (fits(pitch, d, rule)) { const cost = d + 4 * Math.abs(off) + 2 * lean; if (!best || cost < best.cost) best = { pitch, d, off, cost, scales, cx, cy }; break; }
+          // (frame time) Farther out is not tried when it cannot win or cannot fit: a view that would cost more than the
+          // best so far; the camera gone off the pitch after being over it (it only goes farther off); his player too
+          // small and getting smaller (his size on screen rises at most once with distance, then only falls).
+          const more = 4 * Math.abs(off) + 2 * lean;
+          for (let pitch = .55; pitch <= 1.31; pitch += .095) { let over = false, last = 0, lastWho = null;
+            for (let d = 7; d <= 30; d += .5) {
+              if (best && d + more >= best.cost) break;
+              if (fits(pitch, d, rule)) { const cost = d + more; if (!best || cost < best.cost) best = { pitch, d, off, cost, scales, cx, cy }; break; }
+              if (why === 2) { if (over) break; last = 0; continue; }
+              over = true;
+              if (why === 3) { if (last && lastWho === who && hgt < last) break; last = hgt; lastWho = who; } else last = 0;
+            } }
         }
       }
       return best;
@@ -317,7 +335,8 @@ export const view = {
       f.x = lerp(f.x, b.x + ahead, k); f.y = lerp(f.y, lerp(b.y, W / 2, .4), k);
       f.yaw += (f.yawT - f.yaw) * (1 - Math.exp(-dt * 1.4));
     }
-    let want = this.camSpec(time);
+    this.camAsk = this.heavyAt === (this.frameNo |= 0) && !!this.lastWant; this.frameNo++;
+    let want = this.camSpec(time); this.camAsk = false; this.lastWant = want;
     // In a skill moment the view comes round to the skill camera and back on the same orbit, eased (no cut), and
     // follows it closely meanwhile.
     const sw = smooth(this.skCam || 0); if (sw > 0) want = this.skillView(want, sw, dt);
@@ -441,7 +460,7 @@ export const view = {
     if (back) ui.glow[back.id] = 1;
     ui.spots = deciding && this.step === 'spot' ? this.sc.spots : back ? (this.backRing?.sc === this.sc ? this.backRing.v : (this.backRing = { sc: this.sc, v: [{ id: 'back', x: back.x, y: back.y }] }).v) : NONE;
     ui.aims = deciding && this.step === 'aim' ? (this.aimList?.sc === this.sc ? this.aimList.v : (this.aimList = { sc: this.sc, v: this.aimSpots() }).v) : NONE; // the spaces in the goal (v62)
-    ui.spotScale = back ? BACK_SCALE : ui.spots !== NONE && (this.sc.run || this.sc.even) ? this.spotFit?.scales || null : null; // (see spotView; the passer's ring bigger, as he is farther off)
+    ui.spotScale = back ? BACK_SCALE : ui.spots !== NONE && (this.sc.run || this.sc.even) ? (this.viewLate ? null : this.spotFit?.scales) || null : null; // (see spotView; the passer's ring bigger, as he is farther off)
     // Staying is one of the choices: a badge floats over his head (and his ring stays under his feet). Tapping either picks it.
     const h = this.sim.a('hero'), st = ui.spots !== NONE && this.stayOffered() && h;
     if (st) { const a = (ui.stayAt ||= { x: 0, y: 0, z: STAY_Z }); a.x = h.x; a.y = h.y; } else ui.stayAt = null;

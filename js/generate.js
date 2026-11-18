@@ -59,11 +59,13 @@ export function takeOn(hero, dir, opps) {
 
 // Grades every attacking option at the freeze: 'good', 'bad', 'unclear', or 'safe' (a backward dribble into
 // open space: he keeps the ball but goes away from goal). `push:` options are big pushes into space.
-export function grade(sc) {
+// (`only`: a set of the choices wanted; the others are left out. For checks made many times a second: window.js.)
+export function grade(sc, only = null) {
   const hero = P(sc.heroTo), ball = { x: hero.x + .5, y: hero.y };
   const opps = sc.opps.map((p, i) => P((sc.oppsTo || [])[i] || p));
   const out = {};
   sc.mates.forEach((m, i) => {
+    if (only && !only.has('pass:' + i)) return;
     const mate = P(m), d = interceptor(ball, mate, opps).d, mark = Math.min(...opps.map(o => dist(o, mate)));
     const blockedByFriend = sc.mates.some((q, j) => j !== i && closestOnLane(P(q), ball, mate, .05).d < .8 && dist(P(q), mate) > 1);
     out['pass:' + i] = blockedByFriend ? 'unclear' : d > OPEN && mark > FREE ? 'good' : d < BLOCKED || mark < MARKED ? 'bad' : 'unclear';
@@ -78,6 +80,7 @@ export function grade(sc) {
   // nobody there, not even a friend. So at most "safe" (two stars).
   const mates = sc.mates.map(P), ontoFriend = (end, r) => mates.some(m => dist(m, end) < r || closestOnLane(m, hero, end, .2).d < .9);
   for (const dir of Object.keys(DRIBBLE_DIRS)) {
+    if (only && !only.has('drib:' + dir) && !only.has('push:' + dir)) continue;
     const end = dribbleEnd(hero, dir, L, W), near = Math.min(...opps.map(o => closestOnLane(o, hero, end, .8 / 4.5).d));
     const t = takeOn(hero, dir, opps);
     out['drib:' + dir] = t ? (t.good ? 'good' : 'bad') : near < PATH_HIT || onHim >= 2 ? 'bad' : BACKWARD.has(dir) ? 'safe' : near > PATH_FREE ? 'good' : 'unclear';
