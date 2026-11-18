@@ -29,7 +29,7 @@ test('the speed test is silent unless its sound box is ticked: no player can be 
 test('the speed test writes nothing to his save but settings.tuned', () => {
   const page = code('dev/speed.js');
   assert.equal(page.match(/REAL\.setItem\(/g)?.length, 1, 'one write to the real storage');
-  assert.match(page, /if \(tuned\) s\.settings\.tuned = tuned; else delete s\.settings\.tuned;\s*REAL\.setItem\(SAVE_KEY, JSON\.stringify\(s\)\);/, 'and it changes only settings.tuned');
+  assert.match(page, /if \(tuned\) save\.settings\.tuned = tuned; else delete save\.settings\.tuned;\s*REAL\.setItem\(SAVE_KEY, JSON\.stringify\(save\)\);/, 'and it changes only settings.tuned');
   assert.match(page, /globalThis\.SOCCER_THROWAWAY = \{ map \};/, 'the game sees a throwaway copy');
   assert.ok(page.indexOf('SOCCER_THROWAWAY') < page.indexOf("import('../js/"), 'set before any game module loads');
   assert.ok(!/if \(!swapped\)/.test(page), 'replacing window.localStorage is not required');
@@ -125,16 +125,26 @@ test('the game reaches the save only through js/storage.js', () => {
   for (const f of walk('js')) if (f !== join('js', 'storage.js')) assert.ok(!/\blocalStorage\b/.test(code(f)), f + ' uses localStorage directly');
 });
 
-test('tuned settings count only as true booleans and pixel ratios 2 or 3', () => {
+test('one standard look everywhere; a test result wins only with real values; the menu says what is in force', () => {
   const sp = code('js/ui/speed.js');
-  assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0, /);
-  const fn0 = new Function('P', 'SFX_MODES', sp.match(/const tuned = \(\) => \{[\s\S]*?: \{\}\) \}; \};/)[0] + 'return tuned();'), fn = P => fn0(P, ['one', 'pool', 'later', 'pool+later']);
-  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), { blur: false, glow: false, soft: false, pr: 0 });
-  assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2, sfx: 'pool' } } }), { blur: true, glow: false, soft: true, pr: 2, sfx: 'pool' });
-  assert.deepEqual(fn({ settings: {} }), {});
-  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to normal settings</, 'a way back');
-  assert.match(read('index.html'), /About 90 seconds, a few of them with sound/, 'the menu row says there is sound');
+  assert.match(sp, /export const graphics = \(\) => 'smooth';/, 'no Smooth or Pretty choice: a saved settings.graphics is ignored');
+  assert.match(sp, /export const STANDARD = \{ blur: true, glow: true, soft: true, pr: 0 \};/);
+  const src = sp.match(/export const tuned = \(\) => \{[\s\S]*?return o; \};/)[0].replace('export ', '');
+  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', src + 'return tuned();')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 });
+  assert.deepEqual(fn({ settings: {} }), { blur: true, glow: true, soft: true, pr: 0 }, 'the standard');
+  assert.deepEqual(fn({ settings: { graphics: 'pretty' } }), { blur: true, glow: true, soft: true, pr: 0 }, 'an old Pretty is ignored');
+  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), { blur: true, glow: true, soft: true, pr: 0 }, 'stray values leave the standard');
+  assert.deepEqual(fn({ settings: { tuned: { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' } } }), { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' });
+  const html = read('index.html');
+  assert.ok(!html.includes('gfxSel') && !/>Pretty</.test(html), 'no Smooth / Pretty row');
+  assert.match(html, /<small id="gfxNow">/); assert.match(html, /id="gfxResetRow"/); assert.match(html, /Run the speed test<small>About 100 seconds, some of it with sound/);
+  assert.match(sp, /if \(\$\('#gfxResetRow'\)\) \$\('#gfxResetRow'\)\.style\.display = w\.set \? '' : 'none';/, 'the reset row shows only with a test result');
+  const page = code('dev/speed.js');
+  assert.match(page, /\$\('#stMsg'\)\.textContent = `Green: as good as the standard runs\. \$\{applyBest\(b\)\}`;/, 'the test uses what it found, by itself');
+  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to standard settings</, 'and a way back');
+  assert.ok(!read('dev/speed.html').includes('stBest'), 'no separate best-settings button');
 });
+
 
 test('effects start in the way the speed test found best; two players for the frequent ones, never one still playing', () => {
   const s = code('js/sound.js');

@@ -214,7 +214,7 @@ function showResults(res) {
     b ? `best for this phone: ${words(b)}` : '',
   ].join('\n');
   $('#stText').value = report;
-  $('#stMsg').textContent = b ? `Green: as good as the standard runs. Best here: ${words(b)}.` : 'No result.';
+  $('#stMsg').textContent = `Green: as good as the standard runs. ${applyBest(b)}`;
   $('#st').className = ''; $('#stOut').hidden = false;
 }
 $('#stCopy').onclick = async () => {
@@ -225,20 +225,21 @@ $('#stCopy').onclick = async () => {
 // Writes only `settings.tuned` into his real save (the rest of it is left as it is); "Back to normal" takes it out again.
 function writeTuned(tuned) {
   const s = parse(realGet(SAVE_KEY), null);
-  if (!s || typeof s !== 'object') throw new Error('no save yet: play once first');
-  s.settings = s.settings || {};
-  if (tuned) s.settings.tuned = tuned; else delete s.settings.tuned;
-  REAL.setItem(SAVE_KEY, JSON.stringify(s));
+  const save = s && typeof s === 'object' ? s : { v: 1 }; // (no save yet: one with just this setting; the game fills in the rest)
+  save.settings = save.settings || {};
+  if (tuned) save.settings.tuned = tuned; else delete save.settings.tuned;
+  REAL.setItem(SAVE_KEY, JSON.stringify(save));
 }
+// (round 14) When the test finishes it uses what it found, by itself; "Back to standard settings" forgets it again.
 $('#stNormal').onclick = () => {
-  try { writeTuned(null); $('#stMsg').textContent = 'Back to normal: Smooth as shipped (no tuned settings).'; $('#stBest').disabled = false; }
+  try { writeTuned(null); $('#stMsg').textContent = 'Back to standard settings: sharpness 1.5, head-down blur on, glow on, soft shadow on.'; }
   catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
 };
-$('#stBest').onclick = () => {
-  if (!best) return;
+function applyBest(b) {
+  if (!b) return 'No result, so nothing changed.';
   try {
-    writeTuned({ blur: best.blur, glow: best.glow, soft: best.soft, pr: best.pr || 0, ...(best.sfx ? { sfx: best.sfx } : {}), at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
-    $('#stMsg').textContent = `Saved for this phone: ${words(best)}.`;
-    $('#stBest').disabled = true;
-  } catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
-};
+    const old = parse(realGet(SAVE_KEY), null)?.settings?.tuned, sfx = b.sfx || (old && typeof old.sfx === 'string' ? old.sfx : null); // (no sound runs: the last way found stays)
+    writeTuned({ blur: b.blur, glow: b.glow, soft: b.soft, pr: b.pr || 0, ...(sfx ? { sfx } : {}), at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
+    return `Now in use on this device: ${words({ ...b, sfx })}.`;
+  } catch (e) { return 'Could not save the settings: ' + (e?.message || e); }
+}
