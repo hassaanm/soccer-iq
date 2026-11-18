@@ -66,7 +66,7 @@ export function jockAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
   const a = jockPos(p, t - .01, {}), b = jockPos(p, t + .01, {}), c = jockPos(p, t, {});
   out.x = c.x; out.y = c.y; out.vx = (b.x - a.x) / .02; out.vy = (b.y - a.y) / .02; return out;
 }
-export const JOCK = { L: 1.5, r: [1.2, 1.6], rT: 1.2, amp: .36, per: 1.5, real: .5, F1: .9, R: 5 }; // rT: how near he has edged in when he goes; R: such a window is no longer than this (real s): its honest length, not time filled // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
+export const JOCK = { L: 1.5, r: [1.2, 1.6], rT: 1.2, amp: .36, per: 1.5, real: .5, F1: .9, R: 99 }; // rT: how near he has edged in when he goes; R: such a window's cap in real s (round 10: none: it is as long as the level's window, like every other scene's; he jockeys through it and goes in as the ring empties) // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
 // The game time of a jockey window's last JOCK.real s (the world speeds up from its pace f to F1 as he goes in), and
 // the pace f that makes a window of G s of play last R real seconds with it.
 export const jockPace = (G, R) => Math.max(PACE, (G - JOCK.real * JOCK.F1 / 3) / (R - JOCK.real / 3));
