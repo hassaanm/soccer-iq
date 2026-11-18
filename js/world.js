@@ -9,6 +9,7 @@ import { makeRig, RIM } from './pro/rig.js';
 import { animateRig } from './pro/motion.js';
 import { animateKeeper } from './pro/keeper.js';
 import { keeperKit } from './teams.js';
+import { mark } from './perf.js';
 import { makePost } from './pro/post.js';
 import { buildStadium, TOWERS, join } from './pro/stadium.js';
 import { buildPark, PARK } from './pro/park.js';
@@ -173,20 +174,27 @@ export class World {
   pace(ms) {
     const p = this.pacer; if (p.done || ms > 250) return; // a hidden tab or a long hitch tells nothing
     p.win.push(ms); if ((p.t += ms) < 1000 || p.win.length < 15) return;
-    const med = p.win.sort((a, b) => a - b)[p.win.length >> 1]; p.win.length = 0; p.t = 0;
+    const med = p.win.sort((a, b) => a - b)[p.win.length >> 1]; p.win0 = p.win[Math.floor(p.win.length * .2)]; p.win9 = p.win[Math.floor(p.win.length * .8)]; p.win.length = 0; p.t = 0;
     if (p.skip > 0) { p.skip--; return; }
-    if (med <= 22) { p.slow = 0; return; }
+    // (round 12) A screen held at 30 a second (an iPhone in Low Power Mode) is not a slow device: its frames are all one
+    // length, 33 ms. Stepping down for it resized the canvas three times in the first seconds of play (down, down, back up),
+    // each a blank frame and a long one.
+    if (med <= 22 || (med > 31.5 && med < 35.5 && p.win0 > 31 && p.win9 < 36)) { p.slow = 0; return; }
     if (++p.slow < 2) return;
     p.slow = 0; p.first ||= med;
-    if (p.steps >= 2 && med > p.first * .85) { this.setQuality(0); p.done = true; return; }
+    if (p.steps >= 2 && med > p.first * .85) { p.done = true; return; } // (two steps did not help: it stops there; round 12: no step back up, which was one more resize)
+    if (performance.now() - (p.changed ?? -1e9) < 60000) return; // (round 12: one change a minute at most)
     let next = this.level + 1; const same = (a, b) => Math.min(devicePixelRatio, a.pr) === Math.min(devicePixelRatio, b.pr) && a.bloom === b.bloom && a.shadow === b.shadow && a.detail === b.detail;
     while (next < QUALITY.length && same(QUALITY[next], QUALITY[this.level])) next++; // skip a step that changes nothing here (a 1x screen has no pixels to save)
     if (next >= QUALITY.length) { p.done = true; return; }
-    this.setQuality(next); p.steps++; p.skip = 1;
+    this.pending = next; p.changed = performance.now(); p.steps++; p.skip = 1; // (round 12: taken up at the next scene change or card, never in the middle of play: applyPending)
   }
   // (round 11) The grown-ups' "Graphics" setting: 'smooth' (the default on phones) draws without the glow pass and with
   // a smaller shadow map; 'pretty' is the full picture. The governor above still steps down from either.
   setGraphics(mode) { this.smooth = mode === 'smooth'; this.setQuality(this.level); }
+  // (round 12) A step the governor asked for is made only when the picture changes anyway (main.js calls this at a
+  // new scene and while nothing is played): a change resizes the canvas and remakes the shadow map.
+  applyPending() { if (this.pending == null) return; const i = this.pending; this.pending = null; mark(`quality ${this.level}>${i}`); this.setQuality(i); }
   setQuality(i) {
     const q0 = QUALITY[this.level = i], q = this.smooth ? { ...q0, bloom: 0, shadow: Math.min(q0.shadow, 1024) } : q0, l = this.keys[0].shadow;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr)); this.resized = true; // `render` sizes the picture again
