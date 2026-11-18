@@ -375,7 +375,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   }
   m.fb = damp(m.fb, fW, 12, rdt); m.fby = damp(m.fby, fW * (fLeg ? 1 : -1), 12, rdt); // his body's share of a busy foot, eased (its weight can start part way)
   const ox = .18 * K[9] * kw * sm(kt / .2) + .05 * rw * rx; // striking, he steps his hips in over the ball (and his feet stay where they are)
-  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .27 * fs * fe + .28 * rw * ry; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it)
+  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .36 * fs * fe + .28 * rw * ry; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it; round 10: his whole body steps 0.36 m to the side of the fake, drawn here: the game's own place for him, a.x, stays on the dribble's way)
   const hop = mood > 0 ? Math.abs(Math.sin(moodT * 7.5 + u.seed)) : 0, air = .3 * hop * mood;
   const q1 = m.ph, c1 = Math.cos(TAU * (q1 + .04)); // +1 as the left foot lands in front
   // The hips: lower when ready or sprinting, bobbing with each step (down as a running foot takes his weight).

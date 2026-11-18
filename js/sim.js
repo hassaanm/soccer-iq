@@ -309,6 +309,10 @@ export class Sim {
     // (The touch after the fake takes the ball on, a hand's width to one side or straight: never to the side of the fake.
     // If this touch's turn in the dribble would, the move waits a touch.)
     if (Math.sign(SIDE[(n + 1) % 3]) === fake) return;
+    // (round 10) Where he comes out of the move (a touch and a half past its start, a step to the side he goes) is not
+    // within 1.5 m of a second defender (anyone of theirs but the nearest to that place, the one the fake is for): no
+    // move, and no offer, into a second man.
+    { const ex = (n - n0 + 1.5) * 1.4, E = [a.x + ch * ex - sh * -fake * .4, a.y + sh * ex + ch * -fake * .4], ds = []; for (const o of this.agents.values()) if (o.team !== a.team && !o.gk) ds.push(Math.hypot(o.x - E[0], o.y - E[1])); ds.sort((p, q) => p - q); if (ds.length > 1 && ds[1] < 1.5) return; }
     const k = this.pickSkill(a, a.sp < 3.3 ? ['stepover', 'feint', 'scissors'] : ['stepover', 'feint'], 'run-at'); // two stepovers in one touch only at a jog
     if (k) a[tap ? 'offer' : 'skill'] = { k, n, fake, yaw: b.h, why: Math.abs(bend) > .2 ? 'bend' : Math.abs(fl) > .35 ? 'defender' : 'crowd', fl };
   }
