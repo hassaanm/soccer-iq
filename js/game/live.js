@@ -114,6 +114,7 @@ export const live = {
     if (c && c.team === 'us' && c.id !== 'hero') this.cameFrom = c.id; else if (!this.gotBack) this.cameFrom = null; this.gotBack = false;
     if (c && c.team === 'us') this.takeOver(c.id);
     const h = s.a('hero');
+    if (this.sc?.kind === 'defense' || this.sc?.kind === 'tackle') this.playLook = false; // (v78: we have just won it: a new spell of our ball starts head-down)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, yaw: 0 });
     h.face = [1, 0];
     if (this.sc?.kind === 'tackle') this.sc = { ...this.sc, kind: 'attack' }; // after winning a 1v1: back to the normal view and buttons
@@ -142,6 +143,7 @@ export const live = {
     const s = this.sim, c = s.a(s.ball.carrier);
     this.returns = 0; this.cameFrom = null; // (their ball: the move is over)
     const choose = this.has('get-goal-side'), guard = this.has('one-goes'); // (saves that had "Guard the open player" have "One goes, one guards": progress.js MERGED)
+    this.playLook = false; // (v78: their ball: defending starts head-down, game.js beginStep)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, roles: null, ai: true, scripted: new Set(['hero', c.id]), ballTeam: 'them' });
     const h = s.a('hero');
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };

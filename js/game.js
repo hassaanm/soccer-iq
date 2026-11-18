@@ -50,7 +50,7 @@ export class Game {
       ai: false, scripted: new Set(), ballTeam: 'us', follow: null, frozen: [], tk: null, yaw0: null, peeked: false, showing: false, handAt: null, lookedEarly: false, push: null });
   }
 
-  home() { this.mode = 'home'; this.reset(); this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
+  home() { this.mode = 'home'; this.reset(); this.playLook = this.carriedLook = false; this.sim.setup(demoScenario('look-up')); this.camMode = 'orbit'; this.cam = null; this.hud.caption(''); }
 
   setTeams(us, them) { this.us = us; this.them = them; this.world.setTeams(us, them); }
   name(id) {
@@ -71,7 +71,7 @@ export class Game {
 
   // ---------- scenario setup ----------
   load(sc) {
-    this.reset(); this.sc = sc = sc.spots ? { ...sc, spots: sc.spots.map(sp => ({ ...sp })) } : sc; // (v64: its own rings, which move in the window, so the scene itself is never changed)
+    this.reset(); this.playLook = this.carriedLook = false; /* (v78: a new scene starts head-down: beginStep) */ this.sc = sc = sc.spots ? { ...sc, spots: sc.spots.map(sp => ({ ...sp })) } : sc; // (v64: its own rings, which move in the window, so the scene itself is never changed)
     this.grades = null; this.sim.setup(sc); this.camMode = 'player'; this.cam = null; this.hud.bannerOff?.(); // (a new play: the last one's result words go)
     this.roster = { ...ROSTER }; this.world.resetRigs?.();
     this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; this.bounced = undefined; this.followRuns = []; this.followRacer = null; this.reshoot = null; // (v64: the rings' own places; the window's plan)
@@ -94,7 +94,13 @@ export class Game {
   }
   // The start of every new decision inside a play that is already running: back to the head-down phase, with
   // nobody scripted, no lines drawn and the player camera. `more` holds what else that decision resets.
-  beginStep(more) { this.hud.bannerOff?.(); Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null }, more); }
+  // (v78) Once he has looked up in a play (playLook: a scene, or a spell of our ball in a match), a later step of the same
+  // play starts with his head up (carriedLook): a give-and-go's return, the run after his pass, a pass back to him, the
+  // next choice on the ball. No head-down edge or blur, no LOOK UP to tap, and it counts as a look (scanned). The owner
+  // (v76): "in order to give the pass I had to look up, I shouldn't have to look up again." A new scene (load), or their
+  // ball, starts head-down.
+  beginStep(more) { this.hud.bannerOff?.(); Object.assign(this, { phase: 'pre', step: null, scripted: new Set(), lines: [], aimAt: null, ai: false, camMode: 'player', follow: null, grades: null }, more); this.carriedLook = !!this.playLook; if (this.carriedLook) this.keepLook(); }
+  keepLook() { this.lookUp = true; this.scanned = true; this.look = 1; }
   // Turns his body to where the view looks.
   faceYaw(h) { h.face = [Math.cos(this.yaw), Math.sin(this.yaw)]; }
 
@@ -194,6 +200,7 @@ export class Game {
     const s = this.sim, h = s.a('hero');
 
     this.look = clamp(this.look + (this.lookUp ? 1 : -1) * dt / .3, 0, 1);
+    if (this.lookUp && (this.phase === 'pre' || this.phase === 'decide')) this.playLook = true; // (v78: he has looked up in this play: beginStep)
     if (h) h.look = this.look; // his head in the picture (pro/motion.js): down over the ball until he looks up
     // While deciding with his head up, his body turns with his head (the ball stays at his feet).
     if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble' && this.sc?.kind !== 'receive') {
