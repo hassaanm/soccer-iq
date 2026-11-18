@@ -3,10 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
-import { Sim } from '../js/sim.js';
+import { Sim, EXIT_FREE } from '../js/sim.js';
 import { TEAMS } from '../js/teams.js';
 import { MOVE_NAME, MOVE_W } from '../js/flair.js';
-import { allScenarios } from '../js/skills.js';
+import { allScenarios, PATH } from '../js/skills.js';
 import { optionsFor, pictureU } from './harness.js';
 // Opens the choice and lets play go on (nothing tapped) until it is at the scene's own picture.
 const toPicture = g => { g.decide(); const w = g.win; if (!w) return; const u = pictureU(w); for (let i = 0; i < 6000 && g.win && (g.win.u ?? 0) < u; i++) g.tick(1 / 60, 0); };
@@ -95,7 +95,9 @@ test('asking ahead for a skill turn changes nothing in the sim', () => {
 // really changes direction. And no move is offered in a play that is going wrong (a dribble into their players).
 test('a skill move fits the play: the fake goes at the defender and away from where he goes; a turn only with a real change of direction', async () => {
   let runs = 0, turns = 0;
-  for (const sk of ['take-him-on', 'dribble-to-space', 'look-up']) for (const sc of allScenarios(sk)) for (const opt of optionsFor(sc).filter(o => /^(drib|push):/.test(o))) {
+  // (round 13: and the other lessons with a dribble in them: a move whose end would be by a second defender is not
+  // offered now, which leaves fewer in the first three)
+  for (const sk of ['take-him-on', 'dribble-to-space', 'look-up', 'see-the-trap', 'go-to-goal', 'won-it-go']) for (const sc of allScenarios(sk)) for (const opt of optionsFor(sc).filter(o => /^(drib|push):/.test(o))) {
     const r = await play(sc, opt, () => false);
     for (const o of r.offers) {
       assert.notEqual(o.good, false, `${sc.id} ${opt}: a move offered in a play that is going wrong`);
@@ -110,4 +112,43 @@ test('a skill move fits the play: the fake goes at the defender and away from wh
     }
   }
   assert.ok(runs > 3 && turns > 10, `offers came (run-at ${runs}, turns ${turns})`);
+});
+
+// (round 13) A skill move never ends by a second man of theirs. Where he comes out is judged where he really will be
+// as the move ends (on his own run), against where each of them will be by then (sim.js exitGap): a second defender
+// coming in, or one keeping up at his side, counts there even if he is far from that spot as the move is offered.
+test('a skill move\'s end is judged where everyone will be as it ends', () => {
+  const room = opps => { const s = new Sim(); s.setup({ hero: [10, 10], mates: [], opps: opps.map(o => o.at) });
+    const h = s.a('hero'); Object.assign(h, { tx: 28, ty: 10, speed: 4.5, sp: 4.5 });
+    opps.forEach((o, i) => { const a = s.a('o' + (i + 1)); Object.assign(a, { tx: o.to[0], ty: o.to[1], speed: o.v, sp: o.v, lv: [(o.to[0] - o.at[0]) / (Math.hypot(o.to[0] - o.at[0], o.to[1] - o.at[1]) || 1) * o.v, (o.to[1] - o.at[1]) / (Math.hypot(o.to[0] - o.at[0], o.to[1] - o.at[1]) || 1) * o.v] }); });
+    return s.exitGap(h, 2); };
+  const one = { at: [15, 10.8], to: [14, 10.6], v: 3 }, far = { at: [10, 2], to: [10, 2.5], v: 1 };
+  assert.ok(room([one, far]) >= EXIT_FREE, 'one defender in his way, the others far off: room to come out');
+  // a second one runs in from the side toward where he will be: he is 3.5 m from it now, there as the move ends
+  assert.ok(room([one, { at: [15.5, 13.5], to: [15.5, 10.4], v: 4.5 }]) < EXIT_FREE, 'a second one coming in to where the move ends');
+  // a second one at his side, keeping up with him
+  assert.ok(room([one, { at: [9.4, 11.5], to: [28, 11.5], v: 4.5 }]) < EXIT_FREE, 'a second one at his side, keeping up');
+});
+// In matches with a bot that taps every SKILL offer at once: no move ends with two of theirs within 1.5 m of his
+// player (measured as the move ends), in the matches where the round-10 rule let one through.
+test('in matches, no skill move ends by a second defender', async () => {
+  const D = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), real = Math.random; let moves = 0;
+  try {
+    for (const seed of [6, 10, 18, 20]) {
+      let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      const { g } = makeGame(gm => true); g.skills = new Set(PATH.map(k => k.id)); const s = g.sim; let skObj = null, skPh = null, done = false;
+      const p = g.match(PATH.map(k => k.id), [], 5, 'free'); p.then(() => { done = true; });
+      for (let i = 0; i < 60 * 600 && !done; i++) {
+        g.tick(1 / 60, i / 60);
+        const sk = g.sk, ph = sk?.phase ?? null;
+        if (skPh === 'move' && (sk !== skObj || ph !== 'move')) { moves++; const h = s.a('hero'), ds = s.team('them').filter(o => !o.gk).map(o => D(o, h)).sort((p, q) => p - q);
+          assert.ok(!(ds[1] < 1.5), `seed ${seed} t ${s.time.toFixed(2)}: a ${skObj.k} ends with a second defender ${ds[1].toFixed(2)} m from him`); }
+        skObj = sk; skPh = ph;
+        if (g.canAct && g._choose && (!g.win || (g.win.u || 0) >= .45)) { const sc = g.sc; const o = sc.kind === 'tackle' ? (g.tackleState() === 'good' ? sc.best : null) : sc.best || (sc.spots ? 'spot:' + sc.spots[0].id : 'drib:back'); if (o) { g.seen.add('m1'); g.seen.add('m2'); if (s.a('m3')) g.seen.add('m3'); g.choose(o); } }
+        await null;
+      }
+      assert.ok(done, `seed ${seed}: the match finished`);
+    }
+  } finally { Math.random = real; }
+  assert.ok(moves > 0, 'skill moves were made');
 });

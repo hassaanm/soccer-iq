@@ -5,7 +5,7 @@
 // goes on with the plain touch. The tests and audits leave `skillTaps` off, and every chance is taken by itself.
 // Slow motion only changes how much game time each frame steps; while play waits for a turn the sim is not stepped
 // at all, so the play goes on exactly as it would have.
-import { touchAt, TURN_SKILLS } from '../sim.js';
+import { touchAt, TURN_SKILLS, EXIT_FREE } from '../sim.js';
 import { JOCK } from '../window.js';
 import { MOVE_NAME } from '../flair.js';
 
@@ -28,6 +28,9 @@ export const skill = {
   // When a wait in the game's flow ends in a step (woke), the frame stops there: the code that waited runs before the
   // next step, as it would with any other frames, and the rest of the frame's time is stepped in the next frame.
   skillFrame(dt) {
+    // (round 13) The sim asks the job the team's rule gives each of the other team (sim.js exitGap: where they will be as
+    // a skill move ends): the one on the ball ('press'), one chasing it ('ball'), the one covering ('cover').
+    this.sim.jobOf ||= id => { const j = this.roles?.jobs?.[id]; return this.chaser?.id === id || j === 'chase' ? 'ball' : j === 'press' || j === 'cover' ? j : null; };
     this.acc = Math.min(.25, (this.acc || 0) + this.skillPace(dt)); this.woke = false;
     while (this.acc >= STEP) { if (this.skillHold()) { this.acc = 0; break; } this.acc -= STEP; this.gameTime(STEP); if (this.woke) break; }
     this.skillWatch(dt);
@@ -43,7 +46,9 @@ export const skill = {
     const s = this.sim, h = s.a('hero');
     if (h?.holdTurn && (s.time - this.skHoldT >= HOLD_G || this.phase !== 'outcome' || s.ball.carrier !== 'hero')) h.holdTurn = false; // (his turn starts on the next step)
     if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 2.4 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed()) return false;
-    const k = s.turnAhead('hero'); if (k) { this.skillOffer('turn', k); h.holdTurn = true; this.skHoldT = s.time; }
+    // (round 13) No skill turn on offer where it would end by a second man of theirs (sim.js exitRoom: he turns and is
+    // away about a metre in some 0.4 to 0.7 s).
+    const k = s.turnAhead('hero'); if (k && s.exitRoom(h, 1, .7, .35) >= EXIT_FREE) { this.skillOffer('turn', k); h.holdTurn = true; this.skHoldT = s.time; }
     return false;
   },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).

@@ -49,6 +49,7 @@ export function touchLen(sim, a) {
 export const longLead = (L, k) => { if (L <= 1.4) return 0; const u = 1 - k; return (L - 1.4) * .45 / .4725 * (u - u * u * u * u); };
 const HAND = 3.2, BALL_LOW = .12; // a keeper's hands with the ball (m/s); the ball's height as he bowls it along the grass
 const OFFER_END = -.3; // a skill offer (see Sim.taps) closes this far before its move starts (in dribble touches), so the move has a moment to set up
+export const EXIT_FREE = 1.7; // (round 13) room he needs where a skill move ends from anyone of theirs but the one he takes on: 1.5 m, judged ahead (see exitGap)
 const REACH = .8, CLOSE = .5; // a ball farther than REACH from his middle is out of reach of his feet; within CLOSE it is at his feet
 // The part of the gap that closes in `dt` seconds, for something that closes `k`/30 of it every 1/30 s: the same
 // motion at any frame rate (it was `min(1, dt * k)`, which is the same at 30 fps, the rate the tests and audits run at,
@@ -289,32 +290,90 @@ export class Sim {
     if (tap) { const far = o => { const f = (o.x - a.x) * Math.cos(this.ball.h) + (o.y - a.y) * Math.sin(this.ball.h) - 2.8, l = (o.y - a.y) * Math.cos(this.ball.h) - (o.x - a.x) * Math.sin(this.ball.h); return o.team !== a.team && !o.gk && f > 1.6 && f < 6 && Math.abs(l) < 2.5; };
       if (left < 2.8 + 1.4 * 1.3 + .3 || ![...this.agents.values()].some(far)) ahead = 1.4; if (left < ahead + 1.4 * 1.3 + .3) return; }
     const ch = Math.cos(b.h), sh = Math.sin(b.h), n0 = a.tN || 0; // (just after a touch: the next is chosen after this, and is 1.4 m if a skill comes)
-    // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
-    // for that, at this one
-    // (round 6: the nearest of them in his way, not the first one found)
-    const near = ahead => { let best = null, bf = 9; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > (tap && ahead < 2 ? .5 : 1.6) && f < 6 && Math.abs(l) < 2.5 && f < bf) { bf = f; best = l; } } return best; }; // (round 7: his own player, one touch ahead: a defender close in front counts too: the fake is made right at him)
-    let fl = near(ahead), n = n0 + ahead / 1.4; if (fl == null && !tap) { fl = near(0); n = n0; } // n: the touch the move starts at
-    if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too, if he is ahead of him (round 6: not one level with him or behind: a fake at nobody)
-      const f = (o.x - a.x) * ch + (o.y - a.y) * sh - (ahead - 1.4), l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1 && Math.abs(l) < f + 1 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + ahead / 1.4; break; }
-    }
-    if (fl == null) return;
-    // (round 6) A fake that makes sense: he fakes (or steps over) toward the side he will NOT take, and the ball leaves
-    // on the side he is going. Which side that is comes from the play, in this order: his run bends to one side after
-    // the move (he fakes the other way); the defender in his way stands to one side of his line (he fakes at him and
-    // goes by on the open side); the defender is dead ahead (he fakes to the side with more of their players, the
-    // crowded one). (The ball itself goes exactly as the dribble has it, a hand's width to either side: the fake is his body.)
-    const tb = Math.atan2(a.ty - a.y, a.tx - a.x) - b.h, bend = Math.hypot(a.tx - a.x, a.ty - a.y) > 2 ? Math.atan2(Math.sin(tb), Math.cos(tb)) : 0;
-    let crowd = 0; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 0 && f < 8 && Math.abs(l) > .3) crowd += Math.sign(l) / Math.max(1, Math.hypot(f, l)); }
-    const fake = Math.abs(bend) > .2 ? -Math.sign(bend) : Math.abs(fl) > .35 ? Math.sign(fl) : Math.abs(crowd) > .02 ? Math.sign(crowd) : fl >= 0 ? 1 : -1;
-    // (The touch after the fake takes the ball on, a hand's width to one side or straight: never to the side of the fake.
-    // If this touch's turn in the dribble would, the move waits a touch.)
-    if (Math.sign(SIDE[(n + 1) % 3]) === fake) return;
-    // (round 10) Where he comes out of the move (a touch and a half past its start, a step to the side he goes) is not
-    // within 1.5 m of a second defender (anyone of theirs but the nearest to that place, the one the fake is for): no
-    // move, and no offer, into a second man.
-    { const ex = (n - n0 + 1.5) * 1.4, E = [a.x + ch * ex - sh * -fake * .4, a.y + sh * ex + ch * -fake * .4], ds = []; for (const o of this.agents.values()) if (o.team !== a.team && !o.gk) ds.push(Math.hypot(o.x - E[0], o.y - E[1])); ds.sort((p, q) => p - q); if (ds.length > 1 && ds[1] < 1.5) return; }
+    // The move that would start `ahead` metres on (null when none fits there; `crowded` when its end would not be free).
+    const fit = ahead => {
+      // the defender in his way when the move would start: at the next touch (with a touch to set it up) or, too close
+      // for that, at this one
+      // (round 6: the nearest of them in his way, not the first one found)
+      let tgt = null; // (round 13: the one the fake is made at)
+      const near = ahead => { let best = null, bf = 9; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh - ahead, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > (tap && ahead < 2 ? .5 : 1.6) && f < 6 && Math.abs(l) < 2.5 && f < bf) { bf = f; best = l; tgt = o; } } return best; }; // (round 7: his own player, one touch ahead: a defender close in front counts too: the fake is made right at him)
+      let fl = near(ahead), n = n0 + ahead / 1.4; if (fl == null && !tap) { fl = near(0); n = n0; } // n: the touch the move starts at
+      if (fl == null && this.flair.by[a.id].sure) for (const o of this.agents.values()) { // told a defender is near his way: one beside him counts too, if he is ahead of him (round 6: not one level with him or behind: a fake at nobody)
+        const f = (o.x - a.x) * ch + (o.y - a.y) * sh - (ahead - 1.4), l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 1 && Math.abs(l) < f + 1 && Math.hypot(f, l) < 6 && Math.hypot(f, l) > 1.4) { fl = l; n = n0 + ahead / 1.4; tgt = o; break; }
+      }
+      if (fl == null) return null;
+      // (round 6) A fake that makes sense: he fakes (or steps over) toward the side he will NOT take, and the ball leaves
+      // on the side he is going. Which side that is comes from the play, in this order: his run bends to one side after
+      // the move (he fakes the other way); the defender in his way stands to one side of his line (he fakes at him and
+      // goes by on the open side); the defender is dead ahead (he fakes to the side with more of their players, the
+      // crowded one). (The ball itself goes exactly as the dribble has it, a hand's width to either side: the fake is his body.)
+      const tb = Math.atan2(a.ty - a.y, a.tx - a.x) - b.h, bend = Math.hypot(a.tx - a.x, a.ty - a.y) > 2 ? Math.atan2(Math.sin(tb), Math.cos(tb)) : 0;
+      let crowd = 0; for (const o of this.agents.values()) { const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (o.team !== a.team && !o.gk && f > 0 && f < 8 && Math.abs(l) > .3) crowd += Math.sign(l) / Math.max(1, Math.hypot(f, l)); }
+      const fake = Math.abs(bend) > .2 ? -Math.sign(bend) : Math.abs(fl) > .35 ? Math.sign(fl) : Math.abs(crowd) > .02 ? Math.sign(crowd) : fl >= 0 ? 1 : -1;
+      // (The touch after the fake takes the ball on, a hand's width to one side or straight: never to the side of the fake.
+      // If this touch's turn in the dribble would, the move waits a touch.)
+      if (Math.sign(SIDE[(n + 1) % 3]) === fake) return null;
+      // (round 13) Where he really comes out of the move is free: nobody of theirs but one within EXIT_FREE of him there,
+      // by where they will be by then (exitGap). Else no move, and no offer, into a second man.
+      const ex = this.exitGap(a, n);
+      return { n, fl, fake, bend, tgt, ex, crowded: ex < EXIT_FREE };
+    };
+    let m = fit(ahead);
+    // (round 13) His own player: a move two touches ahead that would end by a second man may still fit one touch ahead,
+    // where it ends sooner (a shorter moment to tap, rather than no offer).
+    if (m?.crowded && tap && ahead > 2 && left >= 1.4 + 1.4 * 1.3 + .3) m = fit(1.4);
+    if (!m || m.crowded) return;
+    const { n, fl, fake, bend, tgt, ex } = m;
     const k = this.pickSkill(a, a.sp < 3.3 ? ['stepover', 'feint', 'scissors'] : ['stepover', 'feint'], 'run-at'); // two stepovers in one touch only at a jog
-    if (k) a[tap ? 'offer' : 'skill'] = { k, n, fake, yaw: b.h, why: Math.abs(bend) > .2 ? 'bend' : Math.abs(fl) > .35 ? 'defender' : 'crowd', fl };
+    if (k) a[tap ? 'offer' : 'skill'] = { k, n, fake, yaw: b.h, why: Math.abs(bend) > .2 ? 'bend' : Math.abs(fl) > .35 ? 'defender' : 'crowd', fl, tgt: tgt?.id ?? null, ex };
+  }
+  // (round 13) How much room he has where he really comes out of a dribble move that starts at touch n: the second-
+  // nearest that anyone of theirs will be to him as it ends (metres; the nearest is the one he takes on). The move ends a
+  // touch and a bit past its start (game/skill.js: 1.15 touches, here up to 1.4) on his own run, at the speed he has:
+  // it never changes his way (the drawn step to the fake's side is back under him by then, pro/motion.js), so neither
+  // side of the fake comes out anywhere else. Each of theirs goes on as the team's rule moves him (game/team.js, by the
+  // job the game gives him: this.jobOf): the one on the ball keeps goal-side of it, a step or two off; one chasing it
+  // comes to it; the one covering stays between it and the goal, sticking with his place for a moment as he does; when
+  // the ball gets past the one on it, the next of them goal-side of it steps across to it at a run. Anyone else goes on
+  // to where he is going (one on a planned way, along it; one off balance after a missed tackle, to where he stops).
+  // Each from the velocity he has, changing it no faster than he can. And one at his side who can keep up with him stays
+  // about there. (Round 10 judged the planned end against where they stood at the offer: play goes on, and a second
+  // defender came in or stepped across. EXIT_FREE has 0.2 m over the 1.5 m for what this cannot know.)
+  exitGap(a, n) { const v = Math.max(1.5, a.sp || 0), now = touchAt(a), at = u => Math.max(0, n + u - now) * 1.4; return this.exitRoom(a, at(1.4), at(1.4) / v, at(1.15) / v); }
+  // The same for any move that ends `run` metres on along his way (toward a.tx, a.ty), T s from now, and may be over
+  // from T0 s (a skill turn: game/skill.js asks before it offers one).
+  exitRoom(a, run0, T, T0 = T) {
+    const v = Math.max(1, run0 / Math.max(T, .05)), dl = Math.hypot(a.tx - a.x, a.ty - a.y) || 1, ux = (a.tx - a.x) / dl, uy = (a.ty - a.y) / dl, run = Math.min(dl, run0);
+    const gx = a.team === 'us' ? PITCH.L : 0, gy = PITCH.W / 2, N = 16, dt = T / N, k0 = Math.max(1, Math.round(T0 / (dt || 1))), them = [];
+    for (const o of this.agents.values()) if (o.team !== a.team && !o.gk) { const beat = o.beat > this.time;
+      them.push({ o, x: o.x, y: o.y, v: Math.max(o.sp || 0, o.speed || 0), job: beat || o.track ? null : this.jobOf?.(o.id) ?? null, beat, near: 99, side: Math.hypot(o.x - a.x, o.y - a.y), tx: o.tx, ty: o.ty, cb: o.aic ? [o.aic.bx, o.aic.by] : [this.ball.x, this.ball.y], ct: o.aic?.t ?? this.time, vx: o.lv?.[0] || 0, vy: o.lv?.[1] || 0, acc: o.ease ? EASE : 12 }); }
+    let hx = a.x, hy = a.y, went = 0;
+    for (let k = 1; k <= N; k++) {
+      const st = Math.min(v * dt, run - went); hx += ux * st; hy += uy * st; went += st;
+      const bx = hx + ux * .5, by = hy + uy * .5, bg = Math.hypot(gx - bx, gy - by), pr = them.find(p => p.job === 'press');
+      if (pr && k * dt > .2 && bg < Math.hypot(gx - pr.x, gy - pr.y) - .4 && Math.hypot(pr.x - bx, pr.y - by) > 1.2) {
+        pr.job = 'ball'; const nx = them.filter(p => p.job !== 'ball' && !p.beat && !p.o.track && Math.hypot(gx - p.x, gy - p.y) < bg).sort((p, q) => Math.hypot(p.x - bx, p.y - by) - Math.hypot(q.x - bx, q.y - by))[0];
+        if (nx) { nx.job = 'press'; nx.v = Math.max(nx.v, 4.6); }
+      }
+      for (const p of them) {
+        if (p.o.track) { const q = p.o.track.at(this.time - p.o.track.t0 + dt * k); p.x = q.x; p.y = q.y; }
+        else {
+          let tx = p.o.tx, ty = p.o.ty;
+          if (p.job === 'ball') { tx = bx; ty = by; }
+          else if (p.job === 'press') { const kk = Math.min(1.9, Math.max(1, Math.hypot(p.x - bx, p.y - by))); tx = bx + (gx - bx) / (bg || 1) * kk; ty = by + (gy - by) / (bg || 1) * kk; }
+          else if (p.job === 'cover') { // (he sticks with his place until the ball has gone 2 m or 0.8 s has passed: team.js aiGo)
+            if (Math.hypot(bx - p.cb[0], by - p.cb[1]) > 2 || this.time + dt * k - p.ct > .8) { p.tx = bx + (gx - bx) * .4; p.ty = by + (gy - by) * .5; const d = Math.hypot(p.tx - bx, p.ty - by); if (d < 2.4 && d > .05) { p.tx = bx + (p.tx - bx) / d * 2.4; p.ty = by + (p.ty - by) / d * 2.4; } p.cb = [bx, by]; p.ct = this.time + dt * k; }
+            tx = p.tx; ty = p.ty; }
+          // (he changes his velocity no faster than he can: a child the team moves at EASE, one the play's script sends quicker)
+          const ex = tx - p.x, ey = ty - p.y, el = Math.hypot(ex, ey), w = Math.min(p.v, Math.sqrt(2 * p.acc * el)), wx = el > 1e-6 ? ex / el * w : 0, wy = el > 1e-6 ? ey / el * w : 0, dx = wx - p.vx, dy = wy - p.vy, dv = Math.hypot(dx, dy), lim = p.acc * dt;
+          if (dv > lim) { p.vx += dx / dv * lim; p.vy += dy / dv * lim; } else { p.vx = wx; p.vy = wy; }
+          p.x += p.vx * dt; p.y += p.vy * dt;
+        }
+        if (k >= k0) p.near = Math.min(p.near, Math.hypot(p.x - hx, p.y - hy));
+      }
+    }
+    const ds = them.map(p => Math.min(p.near, p.side < 2.5 && p.v >= .75 * v ? p.side * .75 : 99));
+    return ds.sort((p, q) => p - q)[1] ?? 99;
   }
   // The child tapped in time: the offered move is his (from the next moment; the picture eases into it). Returns its
   // name, or null when the offer is gone (the window has closed). Nothing in the game moves differently for it.
