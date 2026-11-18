@@ -16,6 +16,7 @@ import { view } from './game/view.js';
 import { skill } from './game/skill.js';
 import { keeper } from './game/keeper.js';
 import { moving } from './game/window.js';
+import { handover } from './game/handover.js';
 
 const SPEECH_CAP = 15; // seconds: the longest talk() waits for the voice beyond the time the line takes to read
 
@@ -215,7 +216,7 @@ export class Game {
 
 // The rest of Game lives in js/game/: each file holds the methods for one concern. They are copied onto the class
 // here, getters included. A name defined twice would silently replace the first one, so that is an error.
-for (const part of [rounds, outcomes, team, live, demo, input, view, skill, keeper, moving]) {
+for (const part of [rounds, outcomes, team, live, demo, input, view, skill, keeper, moving, handover]) {
   for (const name of Object.keys(part)) if (name in Game.prototype) throw new Error(`Game.${name} is defined twice`);
   Object.defineProperties(Game.prototype, Object.getOwnPropertyDescriptors(part));
 }

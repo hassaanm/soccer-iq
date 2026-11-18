@@ -10,7 +10,7 @@ export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds p
 
 export function defaultProgress() {
   return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1, log: { days: {}, weeks: {} },
-    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK)
+    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal', keeperPlay: 'off' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK); keeperPlay: he plays our keeper in matches (v67, saves.js KEEPER_PLAY)
 }
 
 export function load(storage = globalThis.localStorage) {
@@ -263,4 +263,14 @@ export function strength(e) {
   const W = { lesson: 1, training: 1.5, match: 2 }; let got = 0, all = 0, n = 0;
   for (const [m, v] of Object.entries(e.r)) { const w = W[m] || 1; got += w * (v[0] + v[1] / 2); all += w * (v[0] + v[1] + v[2]); n += v[0] + v[1] + v[2]; }
   return { score: all ? got / all : null, n };
+}
+
+// The keeper game (v67, saves.js): `keeper` in the save is { best: most saves in a round, plays: rounds played, last:
+// saves in the last round, day: when he last played it, stickers: rounds with a sticker }. A round of `of` shots with
+// `saves` saves updates it; a sticker comes with `stickerAt` saves or more. Returns { best (a new best), sticker, first }.
+export function keeperDone(p, saves, { of = 8, stickerAt = 6, day = today(), now = Date.now() } = {}) {
+  const k = p.keeper ||= { best: 0, plays: 0, last: 0, day: -1, stickers: 0 }, first = !k.plays;
+  const best = saves > k.best; k.best = Math.max(k.best, saves); k.plays++; k.last = saves; k.day = day;
+  const sticker = saves >= stickerAt; if (sticker) { k.stickers++; (p.stickers ||= []).push({ emoji: '🧤', skill: 'keeper', at: now }); }
+  return { best: best && !first, sticker, first, of };
 }

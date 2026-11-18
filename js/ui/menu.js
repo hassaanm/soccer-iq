@@ -31,6 +31,7 @@ function openMenu() {
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
   $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)} v ${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
   $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#thinkSel').value = P.settings.think || 'normal';
+  $('#keeperSel').value = P.settings.keeperPlay || 'off'; $('#keeperHint').textContent = sizeOf().keeper ? 'He plays the keeper when they shoot in matches: some of their shots, or all.' : 'Only in matches with keepers (5 v 5): at this size it does nothing.'; // (v67, ui/goalie.js)
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#recordedChk').checked = P.settings.recorded !== false;
@@ -38,12 +39,13 @@ function openMenu() {
     const st = P.skills[s.id];
     const status = !s.ready ? 'not built yet' : !st ? 'not started' : `Level ${level(P, s.id)} · ${plural(st.days || 1, 'day')} · ${st.firstTry}/${st.rounds} first try`;
     return `<div><span>${s.emoji} ${s.adult}</span><span>${status}</span></div>`;
-  }).join('') + `<div><span>Sessions played</span><span>${P.sessions}</span></div>`;
+  }).join('') + `<div><span>Sessions played</span><span>${P.sessions}</span></div>`
+    + (P.keeper?.plays ? `<div><span>🧤 Keeper game</span><span>best ${P.keeper.best} of 8 · ${plural(P.keeper.plays, 'round')}</span></div>` : '');
   show('#menu');
 }
 $('#menuClose').onclick = () => {
   const s = P.settings;
-  s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value; s.think = $('#thinkSel').value; // think: how long he has to choose (v64, window.js THINK)
+  s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value; s.think = $('#thinkSel').value; s.keeperPlay = $('#keeperSel').value; // keeperPlay: v67, saves.js KEEPER_PLAY // think: how long he has to choose (v64, window.js THINK)
   s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value;
   pickVoice(); applySound(); save();
   renderPickers(); show('#home');

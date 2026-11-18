@@ -70,9 +70,9 @@ function finish(said) {
 // short training is the natural next thing (play, practise, play).
 const ifOpen = t => (playOpen(P) ? t : null);
 // (v64 round 2) Not open yet: the tile stays, dimmed with a lock, and a tap says how to open it (gated), as on the home screen.
-const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
-const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
-function toLessons() {
+export const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
+export const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
+export function toLessons() {
   const hot = !playOpen(P);
   if (trainingNext()) return { icon: '💪', text: 'Training', label: P.openDay === today() ? 'AGAIN' : 'TODAY', go: runSession, hot }; // (v64 round 3: once today's is done, it does not say it is still to do)
   const sk = skillById(nextSkill(P, PATH));
@@ -88,7 +88,8 @@ function tomorrow() {
   focus(P, id); save();
   const k = skillById(id); return `Practice next: ${k.emoji} ${k.kid}`;
 }
-const scoreLine = (us, them, s) => `${us.short} ${s.us} – ${s.them} ${them.short}`;
+const scoreLine = (us, them, s) => `${us.short} ${s.us} – ${s.them} ${them.short}` + keeperLine(); // (v67: and his saves, when he played the keeper: game/handover.js)
+const keeperLine = () => { const n = game.keeperSaves?.() || 0; return n ? ` · 🧤 ${n} save${n > 1 ? 's' : ''}` : ''; };
 const outside = sk => (sk.outside ? `<b>🏡 Try it outside</b>${sk.outside}` : '');
 const countRight = results => `${results.filter(Boolean).length} of ${results.length} right on the first try`;
 
