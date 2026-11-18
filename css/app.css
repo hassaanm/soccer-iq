@@ -675,6 +675,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 /* The glove alone, a square button at the end of the row, so PLAY stays in the middle (its name is said the first time). */
 .freebox #keeperBtn{flex:none;width:54px;padding:0}.freebox #keeperBtn span{display:none}.freebox #keeperBtn .ico{font-size:30px}
 #keeperBtn.top{width:46px;padding:0}#keeperBtn.top span{display:none}
+/* (v72) The glove alone is centred: no gap after it for a name (.btn .ico's right margin). */
+.freebox #keeperBtn .ico,#keeperBtn.top .ico{margin-right:0}
 #keeperBtn.top{position:absolute;top:calc(12px + var(--safe-t, 0px));left:calc(68px + var(--safe-l, 0px));height:46px;padding:0 14px;border-radius:15px;font-size:17px}
 /* The shooter's eyes over his head (a tell: where he looks is where he shoots), and the glove on the target he picked. */
 #kEyes{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;gap:4px;padding:6px 9px 8px;margin-top:-14px;background:#fff;border-radius:22px;border:3px solid var(--ink);box-shadow:0 4px 10px rgba(0,0,0,.3);transform-origin:50% 100%}
