@@ -5,10 +5,12 @@
 // Off, it costs one check per call. Nothing here touches the game.
 const SLOW = 25, KEEP = 400, now = () => performance.now();
 export const rec = { on: false };
+// (v76) The play log (js/ui/playlog.js) sees every mark and every frame through these, while it records.
+export const hooks = { mark: null, frame: null };
 let limit = SLOW, frames = 0, over = [0, 0, 0], total = 0, t0 = 0, last = 0, marks = [], slow = [], sect = {}, gaps = [], longs = 0, info = null, seen = {}, obs = null, counts = {};
 
 // Something happened (kept 0.3 s, shown with the slow frames after it). Counted by its first word too.
-export function mark(label) { if (!rec.on) return; marks.push([now(), label]); const k = label.split(' ')[0]; counts[k] = (counts[k] || 0) + 1; }
+export function mark(label) { if (!rec.on) return; marks.push([now(), label]); const k = label.split(' ')[0]; counts[k] = (counts[k] || 0) + 1; hooks.mark?.(label); }
 // Times one part of the frame's work: const end = time('sim'); ...; end();
 const NOP = () => {};
 export function time(name) { if (!rec.on) return NOP; const a = now(); return () => { sect[name] = (sect[name] || 0) + now() - a; }; }
@@ -48,8 +50,15 @@ export function frame(t, g, r) {
     if (slow.length < KEEP) slow.push({ at: (t - t0) / 1000, ms, mode: st.mode, phase: st.phase, parts, before, calls: ri?.render?.calls, tris: ri?.render?.triangles });
   }
   sect = {}; while (marks.length && marks[0][0] < t - 1500) marks.shift();
+  hooks.frame?.(t);
 }
 
+// (v76) The speed record in short, for the play log: the totals and the six worst frames (each line cut to 220 letters).
+export function summary() {
+  if (!frames) return ['no frames recorded yet'];
+  const r = report().split('\n'), i = r.indexOf('-- ten worst --');
+  return [...r.slice(2, 6), ...r.slice(i + 1, i + 7)].map(l => (l.length > 220 ? l.slice(0, 217) + '...' : l));
+}
 export function report() {
   const pc = n => (frames ? (100 * n / frames).toFixed(1) : '0') + '%', g = [...gaps].sort((a, b) => a - b), med = g.length ? g[g.length >> 1] : 0;
   const line = s => `${s.at.toFixed(1)}s ${s.ms.toFixed(0)}ms ${s.mode || ''}/${s.phase || ''}${s.parts ? ' [' + s.parts + ']' : ''}${s.calls != null ? ` draw ${s.calls} tri ${s.tris}` : ''}${s.before.length ? ' <- ' + [...new Set(s.before)].join('; ') : ''}`;

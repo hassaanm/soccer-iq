@@ -53,6 +53,7 @@ async function playRounds(rounds, early, onRound, log = 'lesson') {
   const results = [];
   let misses = 0;
   hud.dots(results, rounds.length);
+  game.plog?.('rounds', { log, list: rounds.map(sc => sc.id).join(',') }); // (v76: the play log, ui/playlog.js)
   for (const [i, sc] of rounds.entries()) {
     const lv = level(P, sc.skill), r = await game.round(sc, { hint: i < early || misses >= 2, light: lv >= 2, level: lv, first: i === 0 && log === 'lesson' && !P.skills[sc.skill]?.sessions }), right = r.firstTry && r.stars === 3; // (first: a new idea's very first round has the longest window)
     results.push(right); misses = r.firstTry ? 0 : misses + 1; hud.dots(results, rounds.length);

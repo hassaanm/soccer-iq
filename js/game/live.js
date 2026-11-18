@@ -171,6 +171,7 @@ export const live = {
     this.missed = {}; this.misses = 0; this.timeoutsInMatch = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match'; this.firstRound = false; this.timeouts = 0;
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
+      if (i && !live) this.plog?.('fresh', { after: this.result, streak }); // (v76: the play log, ui/playlog.js: play starts again from a new situation)
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
         if (!(await this.continueDefense())) { tally(); streak = this.result === 'goalAgainst' ? 0 : streak + 1; live = streak > 0 && streak <= 4; continue; }
       } else if (live) await this.continueLive();

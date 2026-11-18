@@ -82,6 +82,7 @@ async function boot() {
   const { game, hud } = G;
   // (round 11) The frame recorder (js/perf.js) is always on here: "Speed record" below shows what it kept.
   G.perf = await import('../js/perf.js').catch(() => null); G.perf?.start(G.world?.renderer);
+  G.log = await import('../js/log.js'); // (v76: "Replay from a log", below)
   if (G.P.settings.size !== G.TEAM.size) throw new Error('The throwaway save and the pitch disagree on the team size.');
   G.levelOf0 = game.levelOf; G.thinkTime0 = game.thinkTime;
   // A result card from a round that was stopped never lets that round go on.
@@ -94,6 +95,8 @@ async function boot() {
   state.size = G.TEAM.size;
   const w = fromHash() || want0;
   setView(w ? (mine.prefs.view === 'min' ? 'min' : 'bar') : 'list');
+  const again0 = (() => { try { const x = JSON.parse(sessionStorage.getItem(REPLAY_KEY) || 'null'); sessionStorage.removeItem(REPLAY_KEY); return x; } catch { return null; } })();
+  if (again0?.text) { review.ready = true; readLog(again0.text, again0.pick); await replayLog(again0.text, again0.pick); return; } // (a replay at another size: the page reloaded for it)
   const first = start(w?.id || 'home', { seed: w?.seed, keepView: true });
   review.ready = true; // (the entry runs on: a round resolves only when it is over)
   await first;
@@ -102,7 +105,7 @@ async function boot() {
 // ---------- the state of the page ----------
 const state = { size: bootSize, level: LEVELS.includes(mine.prefs.level) ? mine.prefs.level : 1, think: THINKS.some(t => t[0] === mine.prefs.think) ? mine.prefs.think : 'normal', seed: 1, status: '' };
 let epoch = 0, cur = null, flowy = false, notice = '';
-export const review = { ready: false, guesses: 0, offers: 0, errors, entries: ENTRIES, start: (id, o) => start(id, o), again: () => again(), next: () => step(1), prev: () => step(-1), reached: () => reached(), act: () => act(), state: () => ({ id: cur?.id, ...state, notice, epoch }), copy: () => feedbackText() };
+export const review = { replay: (text, pick) => replayLog(text, pick), replayed: null, ready: false, guesses: 0, offers: 0, errors, entries: ENTRIES, start: (id, o) => start(id, o), again: () => again(), next: () => step(1), prev: () => step(-1), reached: () => reached(), act: () => act(), state: () => ({ id: cur?.id, ...state, notice, epoch }), copy: () => feedbackText() };
 window.__review = review;
 
 const levelOf = e => (e.pick?.includes('level') || !e.level ? state.level : e.level);
@@ -126,7 +129,7 @@ async function start(id, { seed = null, keepView = false } = {}) {
   } catch (err) { if (my === epoch) { fail(err); status('error'); } }
   if (my === epoch) render();
 }
-const again = () => cur && start(cur.id, { seed: state.seed });
+const again = () => (cur === REPLAY ? replayLog(lastReplay.text, lastReplay.pick) : cur && start(cur.id, { seed: state.seed })); // (a replay from a log: the same moment again)
 const step = d => { const i = ENTRIES.indexOf(cur); return start(ENTRIES[(i + d + ENTRIES.length) % ENTRIES.length].id, { seed: null }); };
 
 // A real flow (a lesson, match or cup) may be running: only a reload stops it.
@@ -309,6 +312,72 @@ function act() {
   if (cur?.act === 'shoot' && game.canAct) game.shoot();
 }
 
+// ---------- replay from a log (v76: js/log.js, written by "Record play") ----------
+// The decisions (and flags) of the log's last session in the list; a pick rebuilds that moment and plays the logged tap.
+const REPLAY_KEY = 'soccer-iq:review-replay';
+const REPLAY = { id: 'log-replay', group: 'Replay', title: 'Replay from a log', look: 'The logged moment, rebuilt; his logged choice is played at the logged moment of the window.', pick: [] };
+function logOut(t) { const o = document.getElementById('rvLogOut'); if (o) o.textContent = t; }
+function readLog(text, pick) {
+  const L = G?.log; if (!L) return [];
+  const recs = L.parse(text), ss = [...new Set(recs.map(r => r.s))], s = ss[ss.length - 1], ds = L.decisions(recs).filter(d => d.s === s);
+  const flags = recs.filter(r => r.s === s && r.type === 'FLAG').map(r => L.fields(r.rest).n);
+  const sel = document.getElementById('rvLogPick'); if (sel) {
+    sel.innerHTML = '';
+    for (const n of flags) sel.append(el('option', { value: 'flag:' + n }, `Flag ${n}`));
+    for (const d of ds) sel.append(el('option', { value: 'decision:' + d.n }, `${d.n}. ${d.scene?.mode || ''} ${d.kind} ${d.choose ? '→ ' + d.choose.opt : d.showing === '1' ? '(shown)' : '(no tap)'}${d.scene?.live === '1' || d.scene?.how ? ' · from live play' : ''}`));
+    if (pick) sel.value = pick;
+  }
+  if (text) { const box = document.getElementById('rvLog'); if (box && box.value !== text) box.value = text; }
+  logOut(recs.length ? `${ds.length} decisions and ${flags.length} flags in session ${s}.` : 'No play log lines found.');
+  return ds;
+}
+let lastReplay = { text: '', pick: '' };
+async function replayLog(text, pick = '') {
+  const L = G?.log; if (!L || !text) return null;
+  lastReplay = { text, pick };
+  const recs = L.parse(text), ss = [...new Set(recs.map(r => r.s))], s = ss[ss.length - 1], ds = L.decisions(recs).filter(d => d.s === s);
+  const [kind, num] = String(pick || '').split(':');
+  let d = kind === 'flag' ? (() => { const fr = recs.find(r => r.s === s && r.type === 'FLAG' && +L.fields(r.rest).n === +num); return fr ? [...ds].reverse().find(x => x.t <= fr.t + .5) : null; })() : ds.find(x => x.n === +num) || ds.find(x => x.choose);
+  if (!d) { logOut('No such decision in the log.'); return null; }
+  const head = L.fields(recs.find(r => r.s === s && r.type === 'LOG')?.rest || ''), size = d.scene?.size || head.size || '3v3';
+  if (size !== G.TEAM.size) { try { sessionStorage.setItem(REPLAY_KEY, JSON.stringify({ text, pick: 'decision:' + d.n })); } catch { logOut(`This one was played at ${size}: pick that size above, then replay it.`); return null; } return reloadTo(size); }
+  const made = L.sceneFor(d, { generate: G.generate, demoFor: G.demoFor, runsAt: G.runsAt });
+  if (!made) { logOut(`Decision ${d.n}: its scene (${d.scene?.id}) cannot be made again.`); return null; }
+  const my = ++epoch; cur = REPLAY; flowy = false; showErr(''); if (view === 'list') setView('bar');
+  stopAll(); resetSave(REPLAY); status('replaying decision ' + d.n); render();
+  const { game } = G, mode = d.scene?.mode === 'match' || d.scene?.mode === 'free' ? d.scene.mode : 'lesson';
+  const mt = [...recs].reverse().find(r => r.s === s && r.type === 'MATCH' && L.fields(r.rest).is === 'start' && r.t <= d.t);
+  setStage(mode === 'lesson' ? 'park' : 'crowd');
+  game.levelOf = () => (d.lv != null && d.lv !== '' ? +d.lv : null); game.thinkTime = () => d.think || 'normal';
+  game.mode = mode; game.skills = new Set(mt ? String(L.fields(mt.rest).lessons || '').split(',').filter(Boolean) : G.PATH.map(p => p.id));
+  Object.assign(game, { firstRound: d.first === '1', timeouts: +(d.retry || 0), toStreak: +(d.streak || 0) });
+  const out = { n: d.n, how: made.how, opt: d.choose?.opt || null };
+  try {
+    game.load(made.sc);
+    if (made.how === 'seed') await game.pre();
+    else { game.phase = 'pre'; L.placeFrom(game, d.at); game.yaw = (+d.camYaw || 0) * Math.PI / 180; }
+    if (my !== epoch) return null;
+    if (d.look === 'up') { game.lookUp = true; game.scanned = true; }
+    const decided = game.decide(); if (made.how === 'snapshot') out.followed = L.followRows(game, recs, d); out.atOpen = L.gap(game, d.at || L.rowAtTime(recs, s, +d.tt || d.t));
+    if (!d.choose) { out.note = 'no tap in the log: the window runs on'; logOut(replayText(out)); return (review.replayed = out); }
+    const gt = +d.choose.gt;
+    await new Promise(res => { const tick = () => { if (my !== epoch) return res(); const w = game.win; if (!w || game.sim.time - w.t0 >= gt - 1e-4) return res(); requestAnimationFrame(tick); }; tick(); });
+    if (my !== epoch) return null;
+    const row = L.rowAtTime(recs, s, +d.choose.tt || d.choose.t); out.atTap = row ? L.gap(game, row) : null;
+    if (d.choose.look === 'up' && !game.lookUp) { game.lookUp = true; game.scanned = true; }
+    for (const id of ['m1', 'm2', 'm3']) if (game.sim.a(id)) game.seen.add(id); if (d.choose.peeked === '1') game.peeked = true;
+    game.choose(d.choose.opt);
+    const opt = await decided; out.rating = game.rating(opt);
+    await game.outcome(opt, game.isGood(opt)); if (my !== epoch) return null;
+    out.result = game.result; out.logged = { rating: d.choose.rating, out: d.out?.title || null };
+    status('replayed: Replay again, or pick another'); logOut(replayText(out));
+  } catch (e) { if (my === epoch) { fail(e); status('error'); } }
+  render();
+  return (review.replayed = out);
+}
+const replayText = o => `Decision ${o.n} rebuilt from its ${o.how === 'seed' ? 'seed' : 'logged picture'}. At the open: largest gap ${o.atOpen ? o.atOpen.worst.toFixed(2) + ' m (' + (o.atOpen.who || '-') + ')' : '-'}.`
+  + (o.atTap ? ` At the tap: ${o.atTap.worst.toFixed(2)} m (${o.atTap.who}), against the log's 0.1 m rows.` : '') + (o.opt ? ` Tap ${o.opt}: ${o.rating} (logged ${o.logged?.rating}); the play ended ${o.result}${o.logged?.out ? ` (logged "${o.logged.out}")` : ''}.` : ` ${o.note || ''}`);
+
 // ---------- notes ----------
 const noteOf = id => mine.notes[id] || null;
 function setNote(patch) {
@@ -371,7 +440,13 @@ function buildBar() {
     el('div', { class: 'row' }, el('button', { type: 'button', id: 'rvCopy', onclick: copyFeedback }, 'Copy feedback'),
       el('button', { type: 'button', id: 'rvSpeed', onclick: () => { const out = document.getElementById('rvOut'), t = G?.perf ? G.perf.report() : 'No recorder in this build.'; out.value = t; out.hidden = false; out.focus(); out.select(); navigator.clipboard?.writeText(t).catch(() => {}); } }, 'Speed record')),
     el('div', { class: 'hint' }, 'Notes stay in this browser (not in the game\'s save). Copy feedback puts every note into the clipboard as plain text, with the size, level and seed in use, ready to paste into a chat. If the clipboard is blocked, copy it from the box.'),
-    el('textarea', { id: 'rvOut', readonly: '', hidden: '' })));
+    el('textarea', { id: 'rvOut', readonly: '', hidden: '' }),
+    el('h3', {}, 'Replay from a log'),
+    el('div', { class: 'hint' }, 'Paste a play log (the game\'s "Copy log"), read it, pick a decision or a flag, and the moment is rebuilt here and his logged choice played. A lesson\'s scene (or a match\'s fresh one) is made again from its seed: the same scene, to the centimetre. A choice in a match going on starts from the log\'s picture of the moment: close, not exact. The gaps to the log show below.'),
+    el('textarea', { id: 'rvLog', placeholder: 'Paste the play log here', spellcheck: 'false' }),
+    el('div', { class: 'row' }, el('button', { type: 'button', id: 'rvLogRead', onclick: () => readLog(document.getElementById('rvLog').value) }, 'Read the log'),
+      el('select', { id: 'rvLogPick' }), el('button', { type: 'button', id: 'rvLogPlay', onclick: () => replayLog(document.getElementById('rvLog').value, document.getElementById('rvLogPick').value) }, 'Replay')),
+    el('div', { class: 'hint', id: 'rvLogOut' })));
   root.append(handle, bar, list, el('div', { id: 'rvNotice' }));
   document.body.append(root);
   addEventListener('resize', place);

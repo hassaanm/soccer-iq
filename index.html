@@ -50,6 +50,7 @@
   <div id="kBadge" aria-label="You are the keeper"><span>🧤</span></div>
   <button class="btn btn-green btn-round" id="dribBtn"><i>👟</i><span>DRIBBLE</span></button>
 </div>
+<button id="logFlag" type="button" aria-label="Flag this moment for the play log">🚩</button>
 
 <section id="home" class="screen">
   <header class="brand"><svg class="logo" viewBox="0 0 100 100" aria-hidden="true"><defs><clipPath id="ballclip"><circle cx="50" cy="50" r="45"/></clipPath><radialGradient id="ballshade" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#fff"/><stop offset=".75" stop-color="#f1ece6"/><stop offset="1" stop-color="#d8d0c8"/></radialGradient></defs><circle cx="50" cy="50" r="45" fill="url(#ballshade)"/><g clip-path="url(#ballclip)"><polygon points="50.0,35.0 64.3,45.4 58.8,62.1 41.2,62.1 35.7,45.4" fill="#24193a"/><polygon points="50.0,27.0 36.7,17.3 41.8,1.7 58.2,1.7 63.3,17.3" fill="#24193a"/><polygon points="71.9,42.9 77.0,27.2 93.4,27.2 98.5,42.9 85.2,52.6" fill="#24193a"/><polygon points="63.5,68.6 80.0,68.6 85.1,84.3 71.7,93.9 58.4,84.3" fill="#24193a"/><polygon points="36.5,68.6 41.6,84.3 28.3,93.9 14.9,84.3 20.0,68.6" fill="#24193a"/><polygon points="28.1,42.9 14.8,52.6 1.5,42.9 6.6,27.2 23.0,27.2" fill="#24193a"/><g stroke="#24193a" stroke-width="2.4" stroke-linecap="round"><line x1="50.0" y1="35.0" x2="50.0" y2="27.0"/><line x1="63.3" y1="17.3" x2="77.0" y2="27.2"/><line x1="64.3" y1="45.4" x2="71.9" y2="42.9"/><line x1="85.2" y1="52.6" x2="80.0" y2="68.6"/><line x1="58.8" y1="62.1" x2="63.5" y2="68.6"/><line x1="58.4" y1="84.3" x2="41.6" y2="84.3"/><line x1="41.2" y1="62.1" x2="36.5" y2="68.6"/><line x1="20.0" y1="68.6" x2="14.8" y2="52.6"/><line x1="35.7" y1="45.4" x2="28.1" y2="42.9"/><line x1="23.0" y1="27.2" x2="36.7" y2="17.3"/></g></g><circle cx="50" cy="50" r="45" fill="none" stroke="#24193a" stroke-width="5"/></svg><h1>Heads Up! <span>Soccer</span></h1></header>
@@ -83,6 +84,7 @@
     </div>
   </div>
   <div id="version"></div>
+  <div id="logBar"><button id="logCopy" class="btn btn-blue btn-sm" type="button">📋 Copy log</button><button id="logClear" class="btn btn-ghost btn-sm" type="button">Clear</button></div>
   <div class="home-foot">
     <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
@@ -140,8 +142,8 @@
   <h3>Speed</h3>
   <label>Graphics <span class="pick"><select id="gfxSel"><option value="smooth">Smooth</option><option value="pretty">Pretty</option></select></span></label>
   <p class="hint">Smooth leaves out the glow and the blur so the game runs evenly on a phone. Pretty is the full picture.</p>
-  <label class="chk"><span>Record speed<small>Notes every slow moment while he plays</small></span><span class="sw"><input type="checkbox" id="recChk"><i></i></span></label>
-  <button id="recShow" class="btn btn-ghost btn-sm" type="button">Show the record</button> <button id="recCopy" class="btn btn-blue btn-sm" type="button" hidden>Copy</button>
+  <label class="chk"><span>Record play<small>Keeps a log of what happens in play, and every slow moment, to copy for the game's makers. In play, 🚩 marks an odd moment. Copy log is on the home screen.</small></span><span class="sw"><input type="checkbox" id="recChk"><i></i></span></label>
+  <button id="recShow" class="btn btn-ghost btn-sm" type="button">Show the log</button> <button id="recCopy" class="btn btn-blue btn-sm" type="button" hidden>Copy</button> <button id="logClearM" class="btn btn-ghost btn-sm" type="button">Clear log</button>
   <textarea id="recBox" readonly hidden rows="8" style="width:100%;font:11px/1.3 ui-monospace,monospace;margin-top:8px"></textarea>
   <label><span>Speed test<small>About 90 seconds, a few of them with sound: measures what this phone can draw</small></span><span class="pick"><button id="speedTestBtn" class="btn btn-blue btn-sm" type="button">Start</button></span></label>
   <h3>Voice</h3>
@@ -161,6 +163,8 @@
   <div id="reportBody"></div>
 </div></section>
 
+<div id="logSheet" class="hidden" role="dialog" aria-label="The play log"><p id="logNote"></p><textarea id="logText" readonly spellcheck="false"></textarea><div class="row"><button id="logSelect" class="btn btn-blue btn-sm" type="button">Select all</button><button id="logDone" class="btn btn-ghost btn-sm" type="button">Done</button></div></div>
+
 <div id="rotate"><div class="turn"><span class="phone">📱</span><span class="arrow">↻</span></div><p>Turn your phone sideways</p></div>
 <script>
 // Right after an update the phone can mix new files with cached old ones, and the game fails to start.
@@ -171,7 +175,7 @@ addEventListener('error', e => {
   const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'tex', 'pro/rig', 'pro/hair', 'pro/motion', 'pro/light', 'pro/sky', 'pro/grass', 'pro/post', 'pro/stadium', 'pro/park', 'pro/keeper', 'fx', 'sound', 'storage', 'voice', 'geom', 'teams', 'flair', 'version',
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
-    'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm', 'voicelines']
+    'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm', 'voicelines', 'log', 'ui/playlog']
     .map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });

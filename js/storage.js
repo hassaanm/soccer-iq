@@ -17,3 +17,6 @@ function inMemory(m) {
 }
 export const throwaway = !!(mem && typeof mem === 'object');
 export const storage = throwaway ? inMemory(mem) : (() => { try { return globalThis.localStorage || null; } catch { return null; } })();
+// (v76) The play log ("Record play", js/log.js) lives under its own key, never in the save. In the throwaway mode above
+// it is not kept at all.
+export const PLAY_LOG = 'soccer-iq:playlog';

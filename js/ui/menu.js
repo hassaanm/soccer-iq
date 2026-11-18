@@ -10,6 +10,7 @@ import { sizeOf, TEAM } from '../geom.js';
 import { openReport } from './report.js';
 import { PATH, skillById } from '../skills.js';
 import { nextSkill, level, graduated, defaultProgress } from '../progress.js';
+import { settingsChanged } from './playlog.js'; // ("Record play": the play log, and its buttons here and on the home screen)
 
 // A short tap on the gear only shows the "hold" tip; a 1.2-second hold opens the menu.
 const HOLD = 1200, gear = $('#gear');
@@ -49,7 +50,7 @@ $('#menuClose').onclick = () => {
   const s = P.settings;
   s.skill = $('#skillSel').value || null; s.alwaysOpen = $('#openChk').checked; s.rounds = +$('#roundsSel').value; s.think = $('#thinkSel').value; s.keeperPlay = $('#keeperSel').value; // keeperPlay: v67, saves.js KEEPER_PLAY // think: how long he has to choose (v64, window.js THINK)
   s.recorded = $('#recordedChk').checked; s.voiceName = $('#voiceSel').value;
-  pickVoice(); applySound(); save();
+  pickVoice(); applySound(); save(); settingsChanged();
   renderPickers(); show('#home');
   chooseSize($('#sizeSel').value); // (a size on another pitch reloads the page)
 };

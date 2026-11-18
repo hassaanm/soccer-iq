@@ -780,3 +780,18 @@ body.smooth:not(.v75look) #hud .btn{transition:transform .07s}
 #tunnel > img.edge{display:none}
 html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel{display:block;background:none}
 html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel > img.edge{display:block;position:absolute;inset:0;width:100%;height:100%;will-change:transform}
+/* (v76) The play log ("Record play", js/ui/playlog.js), shown only while it records (body.logon): the flag in play, top
+   right under the sound button (clear of the play buttons, the home button and a thumb), "Copy log" and "Clear" on the
+   home screen between the team size and PLAY, and the box to copy it from by hand when the clipboard says no. */
+#logFlag{display:none;position:absolute;z-index:6;top:70px;right:calc(17px + var(--safe-r));width:40px;height:40px;padding:0;border:0;border-radius:13px;background:rgba(36,25,58,.42);color:#fff;font-size:20px;line-height:40px;text-align:center;opacity:.8;touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+body.logon #hud:not(.hidden) ~ #logFlag{display:block}
+#logFlag.hit{opacity:1;background:#e5484d;box-shadow:0 0 0 3px #fff}
+#logFlag.hit::after{content:"flag " attr(data-n);position:absolute;right:46px;top:8px;white-space:nowrap;font-size:13px;line-height:1;padding:5px 9px;border-radius:999px;background:rgba(36,25,58,.82);color:#fff}
+#logBar{display:none;position:absolute;left:50%;bottom:calc(80px + var(--safe-b));transform:translateX(-50%);z-index:5;gap:6px;align-items:center}
+body.logon #logBar{display:flex}
+@media (max-width:720px){#logBar{bottom:calc(76px + var(--safe-b))}#logBar .btn-sm{font-size:12px;padding:4px 9px}}
+#logSheet{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;gap:8px;padding:12px calc(12px + var(--safe-r)) 12px calc(12px + var(--safe-l));background:rgba(20,16,32,.95);color:#fff}
+#logSheet.hidden{display:none}
+#logSheet p{margin:0;font-size:14px}
+#logSheet textarea{flex:1;min-height:0;width:100%;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#fff;padding:8px;font:11px/1.3 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}
+#logSheet .row{display:flex;gap:8px;justify-content:flex-end}
