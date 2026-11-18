@@ -75,7 +75,7 @@ test('voice clips load a few at a time, and a line that needs one now puts it fi
   // a clip already loading or loaded is only moved up the queue, never queued again with nothing to run
   assert.match(s, /return job\.p; \}\s*if \(!go\) return null;/);
   // and the queue itself, run here on its own: priority, the limit, and a second ask for a clip in flight
-  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip('));
+  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip(')).replace(/^export /gm, '');
   const q = new Function(src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')();
   const done = {}, go = f => () => new Promise(r => { done[f] = r; });
   for (const f of ['a', 'b', 'c', 'd', 'e', 'f']) q.queued(f, go(f), false);
@@ -163,4 +163,19 @@ test('a result builds no nodes: the big words, stars, dots and score reuse their
   assert.match(h, /if \(was && was\.teams === `\$\{us\.id\} \$\{them\.id\}` && ems\.length === 2\)/, 'the score changes only its numbers');
   assert.match(read('css/app.css'), /:is\(#banner,#skillName\) i\.off\{display:none\}/);
   assert.match(code('js/ui/results.js'), /requestAnimationFrame\(\(\) => \{ if \(tok === paperTok\) \{ el\.prepend\(box\);/, 'confetti one frame after the card');
+});
+
+test('the governor steps down only after five slow seconds in a row, never while voice clips load', () => {
+  const w = code('js/world.js');
+  const src = 'function ' + w.slice(w.indexOf('  pace(ms) {') + 2, w.indexOf("  // (round 11) The grown-ups' \"Graphics\" setting") > 0 ? w.indexOf("  // (round 11) The grown-ups' \"Graphics\" setting") : w.indexOf('  setGraphics('));
+  const QUALITY = eval(w.match(/const QUALITY = (\[[\s\S]*?\]);/)[1]);
+  let loading = 0;
+  const make = () => new Function('QUALITY', 'SLOW_SECONDS', 'clipsLoading', 'devicePixelRatio', 'performance', src + '; return pace;')(QUALITY, 5, () => loading, 3, { now: () => 1e9 });
+  const world = () => ({ level: 0, pacer: { win: [], t: 0, slow: 0, skip: 3, first: 0, steps: 0, done: false }, pending: null });
+  const run = (o, ms, secs) => { const pace = make(); for (let t = 0; t < secs * 1000; t += ms) pace.call(o, ms); };
+  let o = world(); run(o, 16.7, 60); assert.equal(o.pending, null, 'a steady 60 never steps');
+  o = world(); run(o, 19, 60); assert.equal(o.pending, null, 'about 52 a second never steps');
+  o = world(); run(o, 40, 7); assert.equal(o.pending, null, '4 slow seconds (after the first 3 not judged) are not enough');
+  o = world(); run(o, 40, 10); assert.equal(o.pending, 1, 'five slow seconds in a row step down once');
+  o = world(); loading = 5; run(o, 40, 20); assert.equal(o.pending, null, 'not while clips load'); loading = 0;
 });

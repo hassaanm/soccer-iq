@@ -10,6 +10,7 @@ import { animateRig } from './pro/motion.js';
 import { animateKeeper } from './pro/keeper.js';
 import { keeperKit } from './teams.js';
 import { mark } from './perf.js';
+import { clipsLoading } from './sound.js';
 import { makePost } from './pro/post.js';
 import { buildStadium, TOWERS, join } from './pro/stadium.js';
 import { buildPark, PARK } from './pro/park.js';
@@ -33,6 +34,7 @@ const LOOKS = {
 // `detail`: cloth bumps on the players and cloud shadows on the grass (small touches that cost a little on every pixel).
 const QUALITY = [{ pr: 1.5, bloom: 1, shadow: 2048, detail: 1 }, { pr: 1.25, bloom: 1, shadow: 2048, detail: 1 }, { pr: 1, bloom: 1, shadow: 2048, detail: 1 },
   { pr: 1, bloom: .5, shadow: 2048, detail: 0 }, { pr: 1, bloom: .5, shadow: 1024, detail: 0 }, { pr: 1, bloom: 0, shadow: 1024, detail: 0 }];
+const SLOW_SECONDS = 5; // (round 14) slow seconds in a row before the governor steps down (see pace)
 const SUN = [10, -28, 15], LAMP_Z = 26; // the sun is low on one side (late afternoon), measured from the middle of the pitch
 // What shiny things reflect, by day and by night (see pro/light.js).
 const ENV = {
@@ -180,14 +182,18 @@ export class World {
     // length, 33 ms. Stepping down for it resized the canvas three times in the first seconds of play (down, down, back up),
     // each a blank frame and a long one.
     if (med <= 22 || (med > 31.5 && med < 35.5 && p.win0 > 31 && p.win9 < 36)) { p.slow = 0; return; }
-    if (++p.slow < 2) return;
+    // (round 14) On the phone (v76 record) it stepped down twice, to pixel ratio 1, on a phone that holds 54 a second, where
+    // the speed test found 1.5 right: a mode's first seconds (its voice clips loading) are slow for a moment. So a second in
+    // which clips load is not judged, and only five slow seconds in a row (under about 45 a second all along) count.
+    if (clipsLoading() > 0) { p.slow = 0; return; }
+    if (++p.slow < SLOW_SECONDS) return;
     p.slow = 0; p.first ||= med;
     if (p.steps >= 2 && med > p.first * .85) { p.done = true; return; } // (two steps did not help: it stops there; round 12: no step back up, which was one more resize)
     if (performance.now() - (p.changed ?? -1e9) < 60000) return; // (round 12: one change a minute at most)
     let next = this.level + 1; const same = (a, b) => Math.min(devicePixelRatio, a.pr) === Math.min(devicePixelRatio, b.pr) && a.bloom === b.bloom && a.shadow === b.shadow && a.detail === b.detail;
     while (next < QUALITY.length && same(QUALITY[next], QUALITY[this.level])) next++; // skip a step that changes nothing here (a 1x screen has no pixels to save)
     if (next >= QUALITY.length) { p.done = true; return; }
-    this.pending = next; p.changed = performance.now(); p.steps++; p.skip = 1; // (round 12: taken up at the next scene change or card, never in the middle of play: applyPending)
+    this.pending = next; this.pendingWhy = med; p.changed = performance.now(); p.steps++; p.skip = 1; // (round 12: taken up at the next scene change or card, never in the middle of play: applyPending)
   }
   // (round 11) The grown-ups' "Graphics" setting: 'smooth' (the default on phones) draws without the glow pass and with
   // a smaller shadow map; 'pretty' is the full picture. The governor above still steps down from either.
@@ -198,7 +204,7 @@ export class World {
   setTest(o) { this.test = o || null; this.setQuality(this.level); this.renderer.shadowMap.autoUpdate = o?.shadowPass !== false; this.particles.mesh.visible = o?.particles !== false; }
   // (round 12) A step the governor asked for is made only when the picture changes anyway (main.js calls this at a
   // new scene and while nothing is played): a change resizes the canvas and remakes the shadow map.
-  applyPending() { if (this.pending == null) return; const i = this.pending; this.pending = null; mark(`quality ${this.level}>${i}`); this.setQuality(i); }
+  applyPending() { if (this.pending == null) return; const i = this.pending; this.pending = null; mark(`quality ${this.level}>${i} (median ${Math.round(this.pendingWhy || 0)} ms)`); this.setQuality(i); }
   setQuality(i) {
     const q0 = QUALITY[this.level = i], x = this.extra || {}, t = this.test || {}, l = this.keys[0].shadow;
     const q = { ...q0, ...(this.smooth ? { bloom: x.bloom || 0, shadow: Math.min(q0.shadow, 1024), pr: !i && x.pr > q0.pr ? x.pr : q0.pr } : {}), ...(t.pr ? { pr: t.pr } : {}), ...(t.bloom != null ? { bloom: t.bloom } : {}) };

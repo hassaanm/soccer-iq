@@ -273,6 +273,7 @@ export function trim(d) {
 // (round 13) At most LOADS clips are fetched and decoded at once. A mode starting asks for up to 194 together: all at once
 // they arrived in one burst of decoding and trimming over the first seconds of play. A clip a line needs now goes first.
 const LOADS = 4, waiting = []; let loading = 0;
+export const clipsLoading = () => loading + waiting.length; // (round 14: the slow-device governor does not judge frames while clips load: world.js pace)
 function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; job.go().finally(() => { loading--; nextLoad(); }); } }
 function queued(file, go, now) {
   let job = waiting.find(j => j.file === file);
