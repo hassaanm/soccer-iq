@@ -142,7 +142,11 @@ export const outcomes = {
   // moving freeze if they stand near the ball's path, so the team AI never walks anyone into (or through) it.
   // A player near the path of a kick stops; one right in it steps out of the way, to the side he is already on.
   giveWay(p, from, to, low = true) {
-    const c = closestOnLane(p, from, to, 0);
+    let c = closestOnLane(p, from, to, 0);
+    // (v78) One running across toward its line, told to stop, slows over a step or two (sim.js momentum) and drifted onto it:
+    // judged by where that drift takes him, he steps off it the other way instead.
+    const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0, dr = ls > 1.5 && p.mom && c.d >= .8 ? closestOnLane({ x: p.x + lv[0] * .35, y: p.y + lv[1] * .35 }, from, to, 0) : null;
+    if (low && dr && dr.d < .8) c = { ...closestOnLane(p, from, to, 0), d: dr.d };
     if (c.d < 1.1) p.mom = null; p.momOff = this.sim.time + .6; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
@@ -170,7 +174,7 @@ export const outcomes = {
     if (rl > .05 && (rx * kx + ry * ky) / (rl * kl) < Math.cos(PLANT)) s.stop(id);
   },
   *turnTo(id, x, y) {
-    const s = this.sim, a = s.a(id); if (id === 'hero') this.plantFor(id, x, y);
+    const s = this.sim, a = s.a(id); if (id === 'hero' && this.plantKick) this.plantFor(id, x, y); // (a pass or a shot: a big push he knocks on his run)
     // (v78) With nobody of theirs within PRESSURE of him, his own player turns the short way (sim.js turnSide calmTurn).
     if (id === 'hero' && a) a.calmTurn = !!this.calmKick; // (as he chose: outcome)
     const t = s.ball.carrier === id ? s.turn(id, x, y, 1.05) : 0; if (a) a.calmTurn = false;
@@ -190,7 +194,7 @@ export const outcomes = {
     // The foot follows the way the ball lies from him (his body may already face the target after a look around).
     const line = s.ball.carrier === id ? { x: a.x, y: a.y, face: [Math.cos(s.ball.h), Math.sin(s.ball.h)] } : a;
     const kind = (opts?.speed ?? 11) > 14 ? 'shot' : 'pass', foot = pickFoot(line, x, y, x > L - .5 || x < .5 ? 'shot' : kind, [...s.agents.values()].filter(o => o.team !== a.team)); // (at goal, the side's foot, also for a placed inside-foot shot: v64, he may come to it from any way he was carrying the ball)
-    if (id === 'hero' && s.ball.carrier === id) s.stop(id); // (v78: he plants his standing foot for the wind-up, so his body stays on the kick: it used to swing back to his run in it)
+    if (id === 'hero' && this.plantKick && s.ball.carrier === id) s.stop(id); // (v78: he plants his standing foot for the wind-up, so his body stays on the kick: it used to swing back to his run in it)
     faceTo(a, x, y); s.windup(id, kind, foot); yield .2;
     s.kick(x, y, opts); this.kicked = true;
   },
@@ -242,7 +246,10 @@ export const outcomes = {
       // (and one who is in the ball's way to that place gets round to its far side before it is played)
       { const bl = dist(s.ball, meet) || 1, far = { x: meet.x + (meet.x - s.ball.x) / bl * .6, y: meet.y + (meet.y - s.ball.y) / bl * .6 }; if (closestOnLane(marker, s.ball, meet, .1).d < .75 && dist(marker, far) > .7) { s.go(marker.id, far.x, far.y, 4.5); const t9 = s.time; yield () => dist(marker, far) < .5 || closestOnLane(marker, s.ball, meet, .1).d > .8 || s.time - t9 > .6; } }
       yield* this.strike('hero', meet.x, meet.y, { speed: 13, arc: .2 });
-      { const bl = dist(s.ball, meet) || 1; s.go(marker.id, meet.x + (meet.x - s.ball.x) / bl * .6, meet.y + (meet.y - s.ball.y) / bl * .6, 4.5); } // (round 7: to the far side of where it comes to: he is on the receiver, never in the ball's way)
+      { const bl = dist(s.ball, meet) || 1, ux = (meet.x - s.ball.x) / bl, uy = (meet.y - s.ball.y) / bl, c = closestOnLane(marker, s.ball, meet, 0), sd = Math.sign((marker.x - s.ball.x) * -uy + (marker.y - s.ball.y) * ux) || 1;
+        // (v78: one still on the near side of where it comes to, close to its line, goes round beside it, not across it ahead of the ball)
+        if (c.d < .9 && (marker.x - s.ball.x) * ux + (marker.y - s.ball.y) * uy < bl) { marker.mom = null; marker.momOff = s.time + .6; s.go(marker.id, meet.x - uy * sd * .8, meet.y + ux * sd * .8, 4.5); }
+        else s.go(marker.id, meet.x + ux * .6, meet.y + uy * .6, 4.5); } // (round 7: to the far side of where it comes to: he is on the receiver, never in the ball's way)
       yield () => s.ball.state === 'loose';
       // He controls it, but the defender is right there: the steal only happens once the defender reaches him.
       s.give(id); s.stop(id);
@@ -1134,7 +1141,8 @@ export const outcomes = {
     // (v78) A pass or a shot more than PLANT off the way he carries it: he stops where he is as he chooses it (plantFor),
     // not after a moment of play (a defender coming round, the friend getting ready) spent walking on.
     this.calmKick = !!h && this.sim.ball.carrier === 'hero' && !this.sim.team('them').some(o => !o.gk && dist(o, h) < PRESSURE); // (nobody on him as he chooses: turnTo)
-    if (/^(pass:|shoot|turn:B)/.test(opt) && this.sim.ball.carrier === 'hero') { const t = this.target(opt); if (t) this.plantFor('hero', t.x, t.y); }
+    this.plantKick = /^(pass:|shoot|turn:B)/.test(opt) && this.sim.ball.carrier === 'hero';
+    if (this.plantKick) { const t = this.target(opt); if (t) this.plantFor('hero', t.x, t.y); }
     await this.play(this.outcomeGen(opt, good));
   },
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
