@@ -15,6 +15,8 @@ import { mark } from './perf.js';
 export const SR = 48000; // every recording uses the phone's own output rate
 const MUSIC_VOL = .05, HUSH_RMS = .001, LEAD = .15, vol = { sfx: 1, music: 1, voice: 1 };
 let unlocked = false, enabled = true, musicOn = true, muted = false;
+// (round 13) The speed test (dev/speed.html) sets this before anything can unlock: no player is ever made, so nothing can sound.
+export const SILENT = { on: false };
 const OAC = () => window.OfflineAudioContext || window.webkitOfflineAudioContext;
 
 export function setSoundOn(on) { enabled = on; }
@@ -33,6 +35,7 @@ let bed = null, voiceEl = null;
 let silentUrl = null;
 function player() { const el = new Audio(silentUrl ||= wav(new Float32Array(SR / 10))); el.preload = 'auto'; el.play().catch(() => {}); return el; }
 export function unlock() {
+  if (SILENT.on) return;
   if (unlocked) { playBed(); return; } // also restarts the sound after a call, Siri or a CarPlay switch paused it
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* not supported */ }
   if (!OAC()) return;
@@ -172,7 +175,9 @@ export function sfx(name, arg) {
   const key = name === 'star' ? 'star:' + ([0, 1, 2].includes(arg) ? arg : 2) : name, el = fxEls.get(key);
   if (!el || !fxUrls.has(key)) return; // 'step', or not recorded yet
   mark('sound ' + key);
-  try { el.currentTime = 0; } catch { /* not loaded yet */ }
+  // (round 13) A player that has played to its end starts again from the start by itself on play(): the seek, a call into
+  // the phone's media player, is made only when the sound is cut off part way.
+  if (!el.ended && el.currentTime > 0) { try { el.currentTime = 0; } catch { /* not loaded yet */ } }
   el.play().catch(() => {});
 }
 
@@ -237,10 +242,23 @@ export function trim(d) {
 }
 // A clip that fails to load (a network blip, a bad file) is not kept: the next call fetches it again. Until a
 // load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
-function clip(key) {
+// (round 13) At most LOADS clips are fetched and decoded at once. A mode starting asks for up to 194 together: all at once
+// they arrived in one burst of decoding and trimming over the first seconds of play. A clip a line needs now goes first.
+const LOADS = 4, waiting = []; let loading = 0;
+function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; job.go().finally(() => { loading--; nextLoad(); }); } }
+function queued(file, go, now) {
+  let job = waiting.find(j => j.file === file);
+  if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); } return job.p; }
+  let res; const p = new Promise(r => { res = r; });
+  job = { file, p, go: () => { const q = go(); res(q); return q.catch(() => {}); } };
+  if (now) waiting.unshift(job); else waiting.push(job);
+  nextLoad(); return p;
+}
+function clip(key, now = true) {
   const file = voiceIndex?.clips[key]; if (!file || !OAC()) return null;
-  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim)
+  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, queued(file, () => fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim), now)
     .then(d => { mark('voice-decoded ' + key); clipFailed.delete(file); return d; }, () => { clipCache.delete(file); clipFailed.add(file); return null; })); }
+  else if (now) queued(file, null, true); // (still waiting: it moves to the front)
   return clipCache.get(file);
 }
 // True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
@@ -249,7 +267,7 @@ function clip(key) {
 export function canSpeak(keys) {
   if (!(unlocked && voiceIndex && keys.every(k => voiceIndex.clips[k]))) return false;
   const failed = keys.filter(k => clipFailed.has(voiceIndex.clips[k]));
-  failed.forEach(clip);
+  failed.forEach(k => clip(k));
   return !failed.length;
 }
 let voiceDone = null, voiceUrl = null; // voiceDone resolves the line that is playing now (when it ends, or is cut off)
@@ -272,7 +290,7 @@ let voiceToken = 0; const lineUrls = new Map();
 // say it another way. The clips are joined into one recording first, so the line plays in one go.
 export async function speakClips(keys) {
   const token = ++voiceToken; stopVoice();
-  const clips = await Promise.all(keys.map(clip));
+  const clips = await Promise.all(keys.map(k => clip(k)));
   if (token !== voiceToken) return;
   if (clips.some(d => !d)) return false;
   // (round 11) A line's recording is made once and kept (the 40 last used, at this volume): a line said again starts
@@ -288,4 +306,4 @@ export async function speakClips(keys) {
   return done;
 }
 // Preload a few clips (e.g. this team's names) so the first line plays without a pause. Decoding needs no tap.
-export function preloadClips(keys) { if (voiceIndex) keys.forEach(clip); }
+export function preloadClips(keys) { if (voiceIndex) keys.forEach(k => clip(k, false)); }

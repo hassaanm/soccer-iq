@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="robots" content="noindex">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- The speed test (round 13): one tap, then the real game plays the same short scene under each graphics switch, with
+  no sound, and a table shows how evenly each one drew. Opened from the grown-ups menu ("Speed test"). Everything below
+  resolves from the project folder (the <base>), so the game's own files load exactly as on its home page. -->
+<base href="../">
+<title>Heads Up! speed test</title>
+<link rel="stylesheet" href="css/app.css">
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<style>
+  #st { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; font: 14px/1.35 -apple-system, system-ui, sans-serif; color: #f3f1f7;
+    padding: 8px calc(10px + env(safe-area-inset-right, 0px)) 8px calc(10px + env(safe-area-inset-left, 0px)); background: rgba(20, 16, 32, .96); }
+  #st[hidden], #st [hidden] { display: none !important; }
+  #st.running { background: none; pointer-events: none; align-items: flex-start; justify-content: flex-start; }
+  #st button { font: inherit; font-weight: 700; color: #24193a; background: #ffd84d; border: 0; border-radius: 12px; min-height: 40px; padding: 0 16px; cursor: pointer; }
+  #st button.ghost { background: rgba(255, 255, 255, .14); color: #f3f1f7; }
+  #st .intro { max-width: 520px; text-align: center; }
+  #st .intro h1 { font-size: 22px; margin: 0 0 6px; }
+  #st .intro p { margin: 0 0 14px; color: #c9c2d8; }
+  #st .intro .go { font-size: 20px; min-height: 56px; padding: 0 40px; }
+  #stNow { background: rgba(20, 16, 32, .8); border-radius: 10px; padding: 5px 10px; font-size: 13px; }
+  #stOut { display: flex; gap: 10px; width: 100%; height: 100%; align-items: stretch; }
+  #stOut .tbl { flex: 1 1 auto; min-width: 0; overflow: auto; }
+  #stOut table { border-collapse: collapse; width: 100%; font-size: 11.5px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  #stOut th, #stOut td { padding: 1.5px 5px; text-align: right; white-space: nowrap; }
+  #stOut th:first-child, #stOut td:first-child { text-align: left; }
+  #stOut th { color: #ffd84d; font-weight: 600; border-bottom: 1px solid rgba(255, 255, 255, .2); }
+  #stOut tr.bad td { color: #ff9d8a; }
+  #stOut tr.good td { color: #8fe3a8; }
+  #stOut .side { flex: 0 0 min(40%, 330px); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  #stOut .side .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #stOut .side .row button { flex: 1 1 auto; min-height: 36px; padding: 0 10px; font-size: 13px; }
+  #stText { flex: 1 1 auto; min-height: 60px; width: 100%; box-sizing: border-box; font: 10px/1.25 ui-monospace, Menlo, monospace; color: #f3f1f7; background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .18); border-radius: 8px; padding: 6px; resize: none; }
+  #stMsg { font-size: 12px; color: #c9c2d8; min-height: 1em; }
+  /* Switches used only by the test (js/ui/speed.js has the game's own). */
+  body.nofx :is(#banner, #pop, #flash, #toast, #rate, #skillName, #skillTag, #seenNote, #confetti) { display: none !important; }
+  body.noedge #tunnel { display: none !important; }
+</style>
+</head>
+<body>
+<div id="st">
+  <div class="intro" id="stIntro">
+    <h1>Speed test</h1>
+    <p>The game plays one short scene 16 times, each time with one graphics switch changed, then shows a table. It takes about 90 seconds and makes no sound. Hold the phone sideways and don't touch the screen until the table shows.</p>
+    <button class="go" id="stGo" type="button">Start</button>
+    <p style="margin-top:12px"><button class="ghost" id="stBack" type="button">Back to the game</button></p>
+    <p id="stErr" style="color:#ff9d8a"></p>
+  </div>
+  <div id="stNow" hidden></div>
+  <div id="stOut" hidden>
+    <div class="tbl"><table id="stTable"></table></div>
+    <div class="side">
+      <div id="stMsg"></div>
+      <div class="row"><button id="stBest" type="button">Use the best settings for this phone</button></div>
+      <div class="row"><button id="stCopy" class="ghost" type="button">Copy</button><button id="stAgain" class="ghost" type="button">Run again</button><button id="stHome" class="ghost" type="button">Back to the game</button></div>
+      <textarea id="stText" readonly></textarea>
+    </div>
+  </div>
+</div>
+<script type="module" src="dev/speed.js"></script>
+</body>
+</html>

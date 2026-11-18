@@ -8,7 +8,7 @@ import { matchStrip } from './ui/strip.js';
 import { runSession, runFreePlay, openCups, gated } from './flows.js';
 import { goalie } from './ui/goalie.js'; // (v67: the keeper game; its own button)
 import { VERSION } from './version.js';
-import { smooth } from './ui/speed.js';
+import { smooth, TEST } from './ui/speed.js';
 import * as perf from './perf.js';
 import './ui/soundmenu.js';
 import './ui/menu.js';
@@ -32,11 +32,15 @@ let lastPhase = '';
 const FPS = +new URLSearchParams(location.search).get('fps') || 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const cap = FPS && FPS < 100 ? FPS : smooth() ? (game.phase === 'idle' && !goalie.on ? 30 : 60) : 0;
+  const cap = FPS && FPS < 100 ? FPS : smooth() && TEST.cap ? (game.phase === 'idle' && !goalie.on ? 30 : 60) : 0;
   if (cap && now - last < 1000 / cap - 3) return;
   const ms = now - last; last = now;
   if (FPS >= 100) { one(now - ms / 2, ms / 2, false); one(now, ms / 2, false); } else one(now, ms, !cap || cap === 60);
 }
+// (round 13) The strip under the page that iPadOS paints with the page's colour (ui/strip.js) is never there on an iPhone, so
+// an iPhone does not read the picture back for it: reading pixels makes the page wait for the graphics chip to finish
+// the frame, twice a second.
+const STRIP = !/iPhone|iPod/.test(navigator.userAgent);
 function one(now, ms, judge) { // judge: the slow-device governor looks at this frame's length (not when the loop is held back on purpose)
   const dt = Math.min(.05, ms / 1000); time += dt;
   try {
@@ -45,7 +49,8 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
     let end = perf.time('game');
     if (goalie.on) { goalie.tick(dt); end(); end = perf.time('draw'); world.render(goalie.sim, goalie.cam, goalie.ui, time); } // (the keeper game draws its own play: ui/goalie.js)
     else { goalie.tick(dt); game.tick(dt, time); end(); end = perf.time('draw'); world.render(game.sim, game.cam, game.ui, time); }
-    end(); end = perf.time('strip'); matchStrip(now); end();
+    end(); end = perf.time('strip'); if (TEST.strip ?? STRIP) matchStrip(now); end();
+    if (TEST.onFrame) TEST.onFrame(now);
     perf.frame(now, goalie.on ? { phase: 'keeper', mode: 'keeper' } : game, world.renderer);
   } catch (e) { console.error(e); }
 }

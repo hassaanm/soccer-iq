@@ -191,12 +191,17 @@ export class World {
   }
   // (round 11) The grown-ups' "Graphics" setting: 'smooth' (the default on phones) draws without the glow pass and with
   // a smaller shadow map; 'pretty' is the full picture. The governor above still steps down from either.
-  setGraphics(mode) { this.smooth = mode === 'smooth'; this.setQuality(this.level); }
+  // (round 13) `extra`: what the speed test found free on this phone, for Smooth: { bloom, pr } (js/ui/speed.js).
+  setGraphics(mode, extra = {}) { this.smooth = mode === 'smooth'; this.extra = extra || {}; this.setQuality(this.level); }
+  // (round 13) The speed test's switches (dev/speed.js), never saved: { pr, bloom, shadowPass: false, particles: false }.
+  // shadowPass false keeps the last shadow map and skips drawing a new one (no shader changes, so no compile in the test).
+  setTest(o) { this.test = o || null; this.setQuality(this.level); this.renderer.shadowMap.autoUpdate = o?.shadowPass !== false; this.particles.mesh.visible = o?.particles !== false; }
   // (round 12) A step the governor asked for is made only when the picture changes anyway (main.js calls this at a
   // new scene and while nothing is played): a change resizes the canvas and remakes the shadow map.
   applyPending() { if (this.pending == null) return; const i = this.pending; this.pending = null; mark(`quality ${this.level}>${i}`); this.setQuality(i); }
   setQuality(i) {
-    const q0 = QUALITY[this.level = i], q = this.smooth ? { ...q0, bloom: 0, shadow: Math.min(q0.shadow, 1024) } : q0, l = this.keys[0].shadow;
+    const q0 = QUALITY[this.level = i], x = this.extra || {}, t = this.test || {}, l = this.keys[0].shadow;
+    const q = { ...q0, ...(this.smooth ? { bloom: x.bloom || 0, shadow: Math.min(q0.shadow, 1024), pr: !i && x.pr > q0.pr ? x.pr : q0.pr } : {}), ...(t.pr ? { pr: t.pr } : {}), ...(t.bloom != null ? { bloom: t.bloom } : {}) };
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr)); this.resized = true; // `render` sizes the picture again
     this.post?.setBloom(q.bloom); RIM.detail.value = q.detail; TURF.uTurf.value.x = q.detail * this.look.turf[0];
     if (l.mapSize.x !== q.shadow) { l.mapSize.set(q.shadow, q.shadow); l.map?.dispose(); l.map = null; }
@@ -642,7 +647,7 @@ export class World {
     this.excite = Math.max(nearGoal, this.excite * Math.exp(-dt * .55));
     this.crowdU.uTime.value = time; this.crowdU.uExcite.value = this.excite; // the fans move in the shader (see pro/stadium.js)
     const fm = this.fanMeshes; fm.arms.count = this.excite > .34 ? fm.withArms.length : fm.nUp; // calm: only the scarf holders' arms are up, so only theirs are drawn
-    this.moveNets(dt); this.particles.update(dt, c);
+    this.moveNets(dt); if (this.particles.mesh.visible) this.particles.update(dt, c);
     this.boards.offset.x = time * .012; this.skyU.uTime.value = time; TURF.uTurf.value.y = time; PARK.uTime.value = time;
     for (let i = 0; i < this.flags.length; i++) this.flags[i].rotation.z = .6 + i * 1.3 + Math.sin(time * 3.1 + i) * .35 + Math.sin(time * 7.3 + i * 2) * .1;
     this.heroRing.scale.setScalar(1 + .05 * Math.sin(time * 4));
