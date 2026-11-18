@@ -249,6 +249,7 @@ function nextLoad() { while (loading < LOADS && waiting.length) { const job = wa
 function queued(file, go, now) {
   let job = waiting.find(j => j.file === file);
   if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); } return job.p; }
+  if (!go) return null; // (only moving a waiting clip up: it is loading or loaded already)
   let res; const p = new Promise(r => { res = r; });
   job = { file, p, go: () => { const q = go(); res(q); return q.catch(() => {}); } };
   if (now) waiting.unshift(job); else waiting.push(job);

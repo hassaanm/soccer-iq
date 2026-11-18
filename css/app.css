@@ -721,3 +721,7 @@ body.smooth.blur #tunnel{inset:0;will-change:auto;background:none;transform:none
   -webkit-mask:radial-gradient(ellipse 46% 52% at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
   mask:radial-gradient(ellipse 46% 52% at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
   -webkit-mask-composite:source-in;mask-composite:intersect}
+/* (round 13) The small words and stars that come and go over the field keep a layer of their own, so showing, hiding
+   or changing one never repaints the full-screen layer they sit on (the phone froze 100–300 ms about once a second in a
+   match, as these changed). The speed test's run "Pop-up layers as in v75" turns this off (body.v75layers). */
+body:not(.v75layers) #hud :is(#toast,#pop,#prompt,#seenNote,#skillTag,#caption){will-change:transform,opacity}

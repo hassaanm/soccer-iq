@@ -6,8 +6,11 @@
 // The child's save is never touched, except by that button, which writes only `settings.tuned`. Before any game module
 // loads, the page swaps the browser's localStorage, as the game sees it, for a throwaway copy in memory (as dev/review.js
 // does). Sound: the game's audio players are never made (sound.js SILENT), the voice is off in the throwaway save, and the
-// one run that measures audio players plays recordings of pure silence on muted players.
-const SAVE_KEY = 'soccer-iq:v1', RUN_MS = 4800, SKIP_MS = 600, LESSON = 'look-up';
+// run that measures bare audio players plays recordings of pure silence on muted players. Only with "Include the two runs
+// with sound" ticked (the page says they are heard) does the Start tap unlock the game's own players, and only those two
+// runs unmute them: the game's effects at their real rate, then the same with voice lines.
+const SAVE_KEY = 'soccer-iq:v1', RUN_MS = 4300, SKIP_MS = 600, LESSON = 'look-up';
+const LINES = ['Good defending!', 'Nice pass! You looked up!']; // (the voice run's lines)
 const $ = s => document.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const parse = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -45,6 +48,9 @@ const RUNS = [
   { id: 'nosoft', name: 'Big words: no soft shadow', body: ['nosoft'] },
   { id: 'nocap', name: '60 cap off', cap: false },
   { id: 'sound', name: 'Sound players (silent)', sound: true },
+  { id: 'sfx', name: 'Game sounds on (heard)', sfx: true },
+  { id: 'voice', name: 'Sounds + voice lines (heard)', sfx: true, voice: true },
+  { id: 'oldlayers', name: 'Pop-up layers as in v75', body: ['v75layers'] },
   { id: 'strip', name: 'iPad strip read on', strip: true },
   { id: 'noedge', name: 'Head-down edge off', body: ['noedge'] },
   { id: 'park', name: 'Training ground (day)', env: 'park' },
@@ -73,9 +79,15 @@ function makeQuiet() {
 let G = null;
 $('#stBack').onclick = $('#stHome').onclick = () => { location.href = 'index.html'; };
 $('#stAgain').onclick = () => location.reload();
+// The game loads behind the start screen, so the Start tap can unlock its sound players (the phone allows that only in a tap).
+let withSound = false;
+const booted = boot().then(() => { $('#stGo').disabled = false; $('#stGo').textContent = 'Start'; }, e => fail(e));
 $('#stGo').onclick = () => {
+  if (!G) return;
   $('#stGo').disabled = true; makeQuiet();
-  start().catch(e => fail(e));
+  withSound = !!$('#stSound')?.checked;
+  if (withSound) { try { G.sound.SILENT.on = false; G.sound.unlock(); G.sound.setMuted(true); } catch { withSound = false; } } // (unlocked, still muted)
+  booted.then(start).catch(e => fail(e));
 };
 function fail(e) { console.error(e); $('#st').className = ''; $('#stIntro').hidden = false; $('#stNow').hidden = true; $('#stErr').textContent = 'The test stopped: ' + (e?.message || e); }
 
@@ -85,9 +97,10 @@ async function boot() {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   for (const n of [...doc.body.childNodes]) if (n.nodeName !== 'SCRIPT') document.body.appendChild(document.adoptNode(n));
   const sound = await import('../js/sound.js'); sound.SILENT.on = true; // before anything can unlock a player
-  const [main, stage, hudM, screens, speed, skills, teams, version, geom] = await Promise.all(['../js/main.js', '../js/ui/stage.js', '../js/ui/hud.js', '../js/ui/screens.js',
-    '../js/ui/speed.js', '../js/skills.js', '../js/teams.js', '../js/version.js', '../js/geom.js'].map(p => import(p)));
-  G = { main, ...stage, ...hudM, ...screens, ...speed, ...skills, ...teams, ...version, TEAM: geom.TEAM, sound };
+  const [main, stage, hudM, screens, speed, skills, teams, version, geom, store, speech, voice] = await Promise.all(['../js/main.js', '../js/ui/stage.js', '../js/ui/hud.js', '../js/ui/screens.js',
+    '../js/ui/speed.js', '../js/skills.js', '../js/teams.js', '../js/version.js', '../js/geom.js', '../js/ui/store.js', '../js/ui/speech.js', '../js/voice.js'].map(p => import(p)));
+  G = { main, ...stage, ...hudM, ...screens, ...speed, ...skills, ...teams, ...version, TEAM: geom.TEAM, sound, P: store.P, say: speech.say, hush: speech.hush, pieces: voice.pieces, clipKey: voice.clipKey };
+  setTimeout(() => { try { sound.preloadClips([...new Set(LINES.flatMap(l => voice.pieces(l).map(voice.clipKey)))]); } catch { /* said by the phone's voice instead */ } }, 1500);
   const { world, game, show, teamById } = G;
   for (let i = 0; i < 60 && !world.post; i++) await sleep(50); // (the post passes load on their own)
   world.pacer.done = true; // the slow-device governor stays out of the test
@@ -126,6 +139,10 @@ function setRun(r, on) {
   if (r.test) world.setTest(on ? r.test : null);
   if (r.env) world.setEnv(on ? r.env : 'crowd');
   if (r.pretty) { if (on) { b.remove('smooth', 'blur'); world.setGraphics('pretty'); } else applyGraphics(); }
+  if (r.sfx && withSound) { // the game's own players, heard; muted again (everything paused) as the run ends
+    const { sound, P } = G; P.settings.voice = on && !!r.voice; P.settings.recorded = true; P.settings.muted = !on; // (P: the throwaway save's, in memory)
+    if (on) { sound.setSoundOn(true); sound.setMusicOn(child?.settings?.music !== false); sound.setMuted(false); } else { G.hush(); sound.setMuted(true); }
+  }
 }
 function playQuiet(t0, stop) { // the "sound" run: a silent effect every 0.4 s and a new silent line every 2 s, as the game starts its players
   if (!quiet) return;
@@ -141,11 +158,15 @@ async function run(r) {
   TEST.onFrame = t => { if (t - t0 >= SKIP_MS) times.push(t); };
   scene(my).catch(e => console.warn('scene', e));
   const at = (ms, f) => { const id = setTimeout(() => { if (my === epoch) { try { f(); } catch (e) { console.warn(e); } } }, ms); stop.push(() => clearTimeout(id)); };
-  at(1000, () => hud.toast('Good defending!'));
-  at(2000, () => hud.pop(3, null));
-  at(3000, () => { const b = world.sim?.ball || { x: 20, y: 12 }; world.particles.confetti(b.x, b.y, .4, ['#ffd23f', '#ffffff', '#5aa2ff'], 70); hud.banner('GOAL!', 'goal', { stars: 3, text: 'Great run! You looked up first.' }); });
-  at(4200, () => world.particles.sparks(world.sim?.ball?.x || 20, world.sim?.ball?.y || 12, .3, 18));
+  at(800, () => hud.toast('Good defending!'));
+  at(1500, () => hud.pop(3, null));
+  at(2200, () => { const b = world.sim?.ball || { x: 20, y: 12 }; world.particles.confetti(b.x, b.y, .4, ['#ffd23f', '#ffffff', '#5aa2ff'], 70); hud.banner('GOAL!', 'goal', { stars: 3, text: 'Great run! You looked up first.' }); });
+  at(3500, () => world.particles.sparks(world.sim?.ball?.x || 20, world.sim?.ball?.y || 12, .3, 18));
   if (r.sound) playQuiet(t0, stop);
+  if (r.sfx) { // on top of the scene's own (look up, the big words, the stars): kicks and a tap, about as often as in a match
+    for (const [ms, n] of [[700, 'kick'], [1300, 'kick'], [2900, 'click'], [3700, 'kick']]) at(ms, () => G.sound.sfx(n));
+    if (r.voice) { at(500, () => G.say(LINES[0])); at(2500, () => G.say(LINES[1])); }
+  }
   await sleep(RUN_MS);
   TEST.onFrame = null; stop.forEach(f => f()); epoch++;
   setRun(r, false); stopAll();
@@ -161,10 +182,10 @@ function stats(t) {
 // ---------- the whole test ----------
 async function start() {
   $('#stIntro').hidden = true; $('#st').className = 'running'; const now = $('#stNow'); now.hidden = false; now.textContent = 'Loading the game…';
-  await boot();
   await sleep(1500); // first pictures, shaders, the voice list
   const res = [];
   for (let i = 0; i < RUNS.length; i++) {
+    if (RUNS[i].sfx && !withSound) { res.push({ ...RUNS[i], fps: 0, med: 0, p95: 0, max: 0, over: 0, n: 0, err: 'skipped (sound not ticked)' }); continue; }
     now.textContent = `Speed test ${i + 1} of ${RUNS.length}: ${RUNS[i].name}. Don't touch the screen.`;
     let s; try { s = await run(RUNS[i]); } catch (e) { console.error(e); s = { fps: 0, med: 0, p95: 0, max: 0, over: 0, n: 0, err: String(e?.message || e) }; }
     res.push({ ...RUNS[i], ...s });

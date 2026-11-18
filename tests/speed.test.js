@@ -10,12 +10,18 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = f => readFileSync(join(root, f), 'utf8');
 const code = f => read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"])\/\/.*$/gm, '$1');
 
-test('the speed test is silent: no player can be made, and the game loads only after the switch is set', () => {
+test('the speed test is silent unless its sound box is ticked: no player can be made, and the game loads only after the switch is set', () => {
   const sound = code('js/sound.js'), page = code('dev/speed.js');
   assert.match(sound, /export function unlock\(\) \{\s*if \(SILENT\.on\) return;/, 'unlock() returns first thing when SILENT is on');
   const set = page.indexOf('SILENT.on = true'), main = page.indexOf("'../js/main.js'");
   assert.ok(set > 0 && main > set, 'SILENT is set before main.js is imported');
   assert.match(page, /muted: true, sound: false, music: false, voice: false/, 'the throwaway save has every sound off');
+  // the game's players are unlocked only in the Start tap, only with the box ticked, and muted again at once
+  assert.equal(page.match(/\.unlock\(\)/g)?.length, 1, 'one unlock');
+  assert.match(page, /withSound = !!\$\('#stSound'\)\?\.checked;\s*if \(withSound\) \{ try \{ G\.sound\.SILENT\.on = false; G\.sound\.unlock\(\); G\.sound\.setMuted\(true\);/);
+  assert.match(page, /if \(r\.sfx && withSound\)/, 'only the sound runs unmute');
+  assert.match(page, /else \{ G\.hush\(\); sound\.setMuted\(true\); \}/, 'and mute again as they end');
+  assert.match(read('dev/speed.html'), /you will <b>hear<\/b> the game's sounds/, 'the page says so');
   // the one audio run plays zeros on muted players
   assert.match(page, /el\.muted = true; el\.volume = 0;/);
   assert.match(read('dev/speed.js'), /new ArrayBuffer\(44 \+ n \* 2\), v = new DataView\(buf\); \/\/ the samples stay zero/, 'nothing is written into the samples');
@@ -31,7 +37,7 @@ test('the speed test writes nothing to his save but settings.tuned', () => {
 
 test('the speed test runs every switch the brief asks for', () => {
   const page = code('dev/speed.js'), runs = page.match(/const RUNS = \[([\s\S]*?)\n\];/)[1];
-  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'pretty: true', "id: 'base2'"])
+  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'sfx: true', 'voice: true', "body: ['v75layers']", 'pretty: true', "id: 'base2'"])
     assert.ok(runs.includes(want), want);
   assert.ok(read('js/ui/menu.js').length && read('index.html').includes('id="speedTestBtn"'), 'the grown-ups menu has the row');
   assert.match(code('js/ui/speed.js'), /speedTestBtn'\)\.onclick = \(\) => \{ location\.href = 'dev\/speed\.html'; \}/);
@@ -63,6 +69,17 @@ test('voice clips load a few at a time, and a line that needs one now puts it fi
   assert.match(s, /const LOADS = 4/);
   assert.match(s, /export function preloadClips\(keys\) \{ if \(voiceIndex\) keys\.forEach\(k => clip\(k, false\)\); \}/, 'preloads queue at the back');
   assert.ok(!/\.map\(clip\)|\.forEach\(clip\)/.test(s), 'clip is never passed straight to map/forEach (the index would be taken for `now`)');
+  // a clip already loading or loaded is only moved up the queue, never queued again with nothing to run
+  assert.match(s, /return job\.p; \}\s*if \(!go\) return null;/);
+  // and the queue itself, run here on its own: priority, the limit, and a second ask for a clip in flight
+  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip('));
+  const q = new Function(src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')();
+  const done = {}, go = f => () => new Promise(r => { done[f] = r; });
+  for (const f of ['a', 'b', 'c', 'd', 'e', 'f']) q.queued(f, go(f), false);
+  assert.deepEqual(q.state(), { loading: 4, waiting: ['e', 'f'] });
+  q.queued('f', null, true); assert.deepEqual(q.state().waiting, ['f', 'e'], 'a clip needed now goes first');
+  assert.equal(q.queued('a', null, true), null, 'a clip in flight is left alone');
+  assert.equal(q.state().loading, 4);
 });
 
 test('Smooth with the tuned blur uses the blurred edge; without it, the plain one', () => {
