@@ -85,18 +85,20 @@ async function boot() {
   hud.banner = function (...a) { const e = epoch; return banner0.apply(this, a).then(v => (e === epoch ? v : new Promise(() => {}))); };
   // Their keeper's wrong-way guesses are counted (for the "keeper guesses wrong" check).
   const guess0 = game.guessWrong; game.guessWrong = function (...a) { const r = guess0.apply(this, a); if (r) review.guesses++; return r; };
+  const offer0 = game.skillOffer; game.skillOffer = function (...a) { review.offers++; return offer0.apply(this, a); }; // (and skill moments offered)
   G.$('#homeBtn').onclick = () => start('home'); // the field's home button: the Home entry (the game itself reloads)
   state.size = G.TEAM.size;
   const w = fromHash() || want0;
   setView(w ? (mine.prefs.view === 'min' ? 'min' : 'bar') : 'list');
-  await start(w?.id || 'home', { seed: w?.seed, keepView: true });
-  review.ready = true;
+  const first = start(w?.id || 'home', { seed: w?.seed, keepView: true });
+  review.ready = true; // (the entry runs on: a round resolves only when it is over)
+  await first;
 }
 
 // ---------- the state of the page ----------
 const state = { size: bootSize, level: LEVELS.includes(mine.prefs.level) ? mine.prefs.level : 1, think: THINKS.some(t => t[0] === mine.prefs.think) ? mine.prefs.think : 'normal', seed: 1, status: '' };
 let epoch = 0, cur = null, flowy = false, notice = '';
-export const review = { ready: false, guesses: 0, errors, entries: ENTRIES, start: (id, o) => start(id, o), again: () => again(), next: () => step(1), prev: () => step(-1), reached: () => reached(), act: () => act(), state: () => ({ id: cur?.id, ...state, notice, epoch }), copy: () => feedbackText() };
+export const review = { ready: false, guesses: 0, offers: 0, errors, entries: ENTRIES, start: (id, o) => start(id, o), again: () => again(), next: () => step(1), prev: () => step(-1), reached: () => reached(), act: () => act(), state: () => ({ id: cur?.id, ...state, notice, epoch }), copy: () => feedbackText() };
 window.__review = review;
 
 const levelOf = e => (e.pick?.includes('level') || !e.level ? state.level : e.level);
@@ -206,7 +208,7 @@ async function run(e, my) {
   const lv = levelOf(e);
   if (e.round) {
     const { sc, seed } = scene(e.round, state.seed, lv, state.stepDir || 1); state.seed = seed; state.stepDir = 1; renderSeed();
-    setStage('park'); hud.dots([], 1);
+    setStage('park'); hud.dots([], 1); review.offers = 0;
     game.levelOf = () => lv; game.thinkTime = () => state.think; game.choiceLog = 'lesson';
     status('playing');
     const r = await game.round(sc, { hint: lv <= 1, light: lv >= 2, level: lv, first: !!e.round.first });
@@ -284,11 +286,11 @@ function reached() {
   if (r === 'decide') return game.phase === 'decide' && game.canAct;
   if (r === 'defend') return game.phase === 'decide' && game.canAct && game.sc?.kind === 'defense';
   if (r === 'timeout') return (game.lessonTimeouts || 0) > 0 && $('#rate').classList.contains('show');
-  if (r === 'skill') return !!game.sk || $('#hud').classList.contains('skilling');
+  if (r === 'skill') return review.offers > 0;
   if (r === 'guess') return review.guesses > 0;
   if (cur.results) return shown('#results');
   const sel = { home: '#home', sizes: '#sizePop', lessons: '#lessonSheet', menu: '#menu', report: '#report', cups: '#card' }[cur.screen];
-  if (sel) return shown(sel) && (cur.screen === 'home' || cur.screen === 'cups' || shown('#home'));
+  if (sel) return shown(sel) && (!['sizes', 'lessons', 'report'].includes(cur.screen) || shown('#home')); // (those three open over the home screen)
   if (cur.keeper) return G.goalie?.on || false;
   return false;
 }
