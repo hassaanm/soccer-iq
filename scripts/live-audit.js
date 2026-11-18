@@ -12,6 +12,7 @@
 //           is our nearest to it (by a metre), and to guard when a friend is (by a metre)
 //   passback after his pass in a match the friend never gives it back with a clear shot or open space ahead of him, and
 //           at most once in a move
+//   heading  (v76) as a choice opens with his player on the ball, the view and his body look the way he runs (HEADING, below)
 //   twoball after a defending play, never two of ours on the ball (within 2 m of their player on it, with the ball as
 //           their job: his own player, and a friend who is pressing, chasing or has no job) while another of theirs
 //           within 12 m of it has nobody of ours within 3 m
@@ -19,6 +20,30 @@
 import { PATH } from '../js/skills.js';
 import { SIZES, setSize } from '../js/geom.js';
 import { makeGame, drive, optionsFor } from '../tests/harness.js';
+import { pathAt } from '../js/window.js';
+
+// (v76) heading: as a choice opens with his own player on the ball (a lesson's scene after its run-up, a match's scene, the
+// next choice from live play), the view looks the way he runs, and so does his body: as the window opens, while he carries
+// the ball at HEADING.speed m/s or more, the angle between the view's heading (yaw) and his way, and between his body and
+// his way, is HEADING.lim degrees or less. (The owner, v75: the view faced the side line while he ran up the field across the screen, sideways, with nobody there.) Not counted, each with
+// its reason: a pass on its way to him (he faces the passer); a view from above that frames the rings (a lead pass, a
+// run: not a view from behind him).
+export const HEADING = { lim: 40, speed: .6 };
+const headingWhy = r => (r.kind === 'receive' ? 'a pass to him: he faces the passer' : r.spotView ? 'a view from above that frames the rings' : null);
+// A per-frame watcher: done(r) is called once per window, as it opens, with { kind, sc, view, body (degrees), speed, why (a
+// reason, or null), bad }. His way: his planned velocity as the window opens (window.js pathAt).
+export function headingWatch(g, done) {
+  let w = null;
+  const deg = a => Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) * 180 / Math.PI;
+  return () => {
+    const s = g.sim, h = s.a('hero');
+    if (!g.win || g.win === w || g.phase !== 'decide') return;
+    w = g.win; const p = w.plan?.paths?.hero; if (!p || !h || s.ball.carrier !== 'hero') return;
+    const q = pathAt(p, Math.max(0, s.time - w.t0)), sp = Math.hypot(q.vx, q.vy); if (sp < HEADING.speed) return;
+    const mv = Math.atan2(q.vy, q.vx), r = { sc: g.sc?.id, live: !!g.sc?.live, kind: g.sc?.kind || 'attack', spotView: !!(g.spotPre?.() || g.step === 'spot'), view: deg(g.yaw - mv), body: deg(Math.atan2(h.face[1], h.face[0]) - mv), speed: sp };
+    r.why = headingWhy(r); r.bad = !r.why && (r.view > HEADING.lim || r.body > HEADING.lim); done(r);
+  };
+}
 
 export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of choices where the bot taps a bad option (more defending choices and lost balls)
   setSize(size); const flags = [], real = Math.random, stat = { plays: 0, windows: 0, minWin: 9, hover: 0, yoyo: 0 };
@@ -28,6 +53,7 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
       let y = seed * 31337, lastW = null, pickW = null; const rnd = () => (y = (y * 48271) % 2147483647) / 2147483647;
       const { g } = makeGame(); g.skills = new Set(PATH.map(s => s.id)); const s = g.sim, rec = []; let last = null, nDec = 0, lastWin = null, defPlay = null, w0 = null, two = null, prevT = 0, move = null, lastCar = null, hp = null, hpNow = null, scId = null;
       const side = id => (id == null ? null : s.a(id)?.team || null);
+      const hw = headingWatch(g, r => { stat.heading = (stat.heading || 0) + 1; if (r.why) stat['heading exempt'] = (stat['heading exempt'] || 0) + 1; if (r.bad) flags.push(['heading', `${size} match ${seed} choice ${nDec} (${r.live ? 'live' : r.sc}): the view is ${Math.round(r.view)}° and his body ${Math.round(r.body)}° off the way he runs`]); });
       await drive(g, g.match(PATH.map(k => k.id), [], 5, 'free'), { maxSec: 9000,
         pick: gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
           if (gm._choose !== last) { last = gm._choose; nDec++; stat.plays++;
@@ -42,7 +68,7 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
             } }
           if (wrong && gm._choose !== lastW) { lastW = gm._choose; pickW = null; if (rnd() < wrong) { const bad = optionsFor(gm.sc).filter(o => !o.startsWith('then:') && gm.rating(o) === 'bad'); if (bad.length) pickW = bad[Math.floor(rnd() * bad.length)]; } }
           return pickW || gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); },
-        onFrame: gm => { const w = gm.win; const dtF = s.time - prevT; prevT = s.time;
+        onFrame: gm => { hw(); const w = gm.win; const dtF = s.time - prevT; prevT = s.time;
           if (w && gm.sc?.live && gm.sc.kind === 'defense' && w0?.w !== w) { const c1 = s.a(gm.sc.carrier) || (s.ball.carrier && s.a(s.ball.carrier)), h1 = s.a('hero'); if (c1 && h1) w0 = { w, dh: Math.hypot(h1.x - c1.x, h1.y - c1.y), dm: Math.min(99, ...s.team('us').filter(a => a.id !== 'hero' && !a.gk).map(a => Math.hypot(a.x - c1.x, a.y - c1.y))) }; }
           // twoball (round 7, as the verifier measures it): in the 4 s after a defending choice, two of ours within 2 m of
           // their player on the ball while another of theirs within 12 m of it has nobody of ours within 3 m, for more than 0.5 s on end
@@ -89,7 +115,7 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
     }
   } finally { Math.random = real; }
   stat.counts = { hover: stat.hover, yoyo: stat.yoyo, short: flags.filter(f => f[0] === 'short').length, noring: flags.filter(f => f[0] === 'noring').length, defbest: flags.filter(f => f[0] === 'defbest').length, twoball: flags.filter(f => f[0] === 'twoball').length, twice: flags.filter(f => f[0] === 'twice').length, returns: stat.returns || 0,
-    passback: flags.filter(f => f[0] === 'passback').length, ...Object.fromEntries(Object.entries(stat).filter(([k]) => k.startsWith('def') || k.startsWith('friend'))) };
+    passback: flags.filter(f => f[0] === 'passback').length, heading: `${flags.filter(f => f[0] === 'heading').length} of ${stat.heading || 0} (${stat['heading exempt'] || 0} with a reason)`, ...Object.fromEntries(Object.entries(stat).filter(([k]) => k.startsWith('def') || k.startsWith('friend'))) };
   return { flags, stat };
 }
 

@@ -466,7 +466,7 @@ function planHold0(sc, st, opts, kind) {
   // the goal they attack when that says nothing.
   let line = U([goal[0] - H[0], goal[1] - H[1]]);
   if (kind === 'defense') line = U([4.5 - H[0], PITCH.W / 2 + (H[1] - PITCH.W / 2) * .6 - H[1]]);
-  else if (live) { const v = [at[holder].vx || 0, at[holder].vy || 0]; if (len(v) > .4) line = U(v); }
+  else if (live || opts.from) { const v = [at[holder].vx || 0, at[holder].vy || 0]; if (len(v) > .4) line = U(v); } // (v76: also a picture from live play (`from`): he goes on the way he carries it (game/window.js settle), not turned at the goal as it opens)
   else if (holder === 'hero' && sc.hero && sc.heroTo && dd(sc.hero, sc.heroTo) > .3) line = U([sc.heroTo[0] - sc.hero[0], sc.heroTo[1] - sc.hero[1]]);
   const passer = kind === 'receive' ? at[sc.carrier || 'm1'] || st.ball : null;
   if (passer && Math.hypot(passer.x - H[0], passer.y - H[1]) > .5) line = U([passer.x - H[0], passer.y - H[1]]); // (a pass on its way to him: he steps to meet it, and the play shifts that way with him)

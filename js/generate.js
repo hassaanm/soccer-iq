@@ -1129,8 +1129,17 @@ function shotScene(r, pattern, runs) {
     else gk = { them: [x, clamp(y, PITCH.gy0 + .35, PITCH.gy1 - .35)] };
     gk.us = [.7, W / 2]; gk.f = .3; gk.off = .7;
   } else if (pattern === 'aim-open' || pattern === 'keeper-out' || pattern === 'keeper-friend') return null; // (5v5 only)
-  return { hero: [heroTo[0] - 3, hy], heroTo, mates, opps, oppsTo, gk, stray: .25 + r() * .2, spill: r() < .5, shotN: pattern === 'aim-open' && runs >= 4 ? 3 : 2, shotPlan: pattern,
+  // (v76) He carries the ball in toward the goal (and a friend of his close to it), not along the side line: his run and the
+  // view, which looks there (game.js load), agree, so he never crosses the screen sideways as the choice comes.
+  const look = shotLook(heroTo, mates), hero = [heroTo[0] - 3 * Math.cos(look), hy - 3 * Math.sin(look)];
+  return { hero, heroTo, mates, opps, oppsTo, gk, stray: .25 + r() * .2, spill: r() < .5, shotN: pattern === 'aim-open' && runs >= 4 ? 3 : 2, shotPlan: pattern,
     friend: mates[0], best: null, ok: [], safe: [], cue: '' }; // (finishShots fills in the answer once everyone is in the scene)
+}
+// (v76) Where a shot scene's view looks from his place (and his run in comes from): the goal, and any friend of his close
+// to it (a friend free at the far post), in the middle of them (game.js load).
+export function shotLook([hx, hy], mates) {
+  const pts = [[PITCH.L, PITCH.W / 2], ...mates.filter(m => Math.hypot(PITCH.L - m[0], PITCH.W / 2 - m[1]) < 9)];
+  return Math.atan2(pts.reduce((a, p) => a + p[1], 0) / pts.length - hy, pts.reduce((a, p) => a + p[0], 0) / pts.length - hx);
 }
 // What each shot he can pick does in this scene, now that everyone is in it (finishShots runs after the fourth pair and
 // the keepers are in): sc.shots { 'shoot:<space>:<foot>': result }, '*' the space picked for him (the biggest, for the

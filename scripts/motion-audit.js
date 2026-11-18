@@ -35,6 +35,8 @@
 //            taker may be still, and at least two others move 1.5 m or more
 //   gap      two players closer than 0.5 m
 //   late     the time-out happens when the ring is empty (u = 1)
+//   heading  (v76) as the window opens with his player carrying the ball, the view and his body look the way he runs: 40° or
+//            less off it (scripts/live-audit.js HEADING; the owner saw him run up the field across the screen, sideways)
 // An exemption names a pattern and a reason (EXEMPT, below), and every use of one is counted in the output.
 // Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--scene id] [--json out.json] [--notaps]
 import { PATH, allScenarios } from '../js/skills.js';
@@ -42,6 +44,7 @@ import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
 import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
+import { headingWatch, HEADING } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
@@ -87,7 +90,8 @@ async function play(sc, opt, u, act = null) { // (act(g): a step he takes early 
   const { g, events } = makeGame(); g.world.canvas = { clientWidth: VW, clientHeight: VH }; g.mode = 'lesson'; g.load(sc);
   const s = g.sim, rec = [], wins = [], flags = [], info = {};
   const snap = () => { const at = {}; for (const a of s.agents.values()) at[a.id] = [a.x, a.y]; return at; };
-  const onFrame = gm => { rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', pre: gm.phase === 'pre', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, bstate: s.ball.state,
+  const hw = headingWatch(g, h => { (info.heading ||= []).push(h); });
+  const onFrame = gm => { hw(); rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', pre: gm.phase === 'pre', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, bstate: s.ball.state,
     cam: gm.cam && { eye: [...gm.cam.eye], tgt: [...gm.cam.tgt], Ff: gm.cam.Ff, Fw: gm.cam.Fw }, left: gm.ui.timer?.left, wide: gm.ui.timer?.wide, u: gm.win?.u, step: gm.step, acted }); };
   let acted = false;
   await drive(g, g.pre(), { onFrame });
@@ -313,7 +317,7 @@ const all = [], counts = {}, mis = [], used = USED, stats = {};
 const mkShare = () => ({ n: 0, ok: 0, miss: [] });
 for (const size of sizes) {
   setSize(size);
-  const st = stats[size] = { size, comes: mkShare(), seen: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {}, cuts: [],
+  const st = stats[size] = { size, heading: { n: 0, why: {} }, comes: mkShare(), seen: mkShare(), arrive: mkShare(), closes: mkShare(), friends: mkShare(), grade: mkShare(), size_: { 844: { ...mkShare(), all: [] }, 667: { ...mkShare(), all: [] } }, f: [], G: [], cls: {}, cuts: [],
     use: e => used.set(e, (used.get(e) || 0) + 1) };
   for (const sk of PATH.filter(s => s.ready && (!only || s.id === only))) {
     const scs = [...allScenarios(sk.id), ...Array.from({ length: nGen }, (_, i) => generate(sk.id, 5001 + i, { even: true })).filter(Boolean).map(s => ({ ...s, id: s.id + 'e' }))];
@@ -329,6 +333,7 @@ for (const size of sizes) {
       }
       VW = 844; VH = 390;
       const r = await play(sc, null, 1), fl = timeout(r, sc, st); motion(r, sc);
+      for (const h of r.info.heading || []) { st.heading.n++; if (h.why) st.heading.why[h.why] = (st.heading.why[h.why] || 0) + 1; if (h.bad) fl.push(['heading', `as the choice opens the view is ${Math.round(h.view)}° and his body ${Math.round(h.body)}° off the way he runs (${HEADING.lim}° at most)`]); }
       for (const x of [...shape(r, sc, st), ...views(r, sc, st), ...after(r, sc)]) fl.push(x);
       VW = 667; VH = 375; { const r2 = await play(sc, null, 1); for (const x of views(r2, sc, st)) fl.push(x); } VW = 844; VH = 390;
       // every step view he can go to in this window, at both screens: his size, his ring, nobody in front of him
@@ -355,6 +360,7 @@ for (const [size, st] of Object.entries(stats)) {
   for (const [k, v] of Object.entries(st.cls)) console.log(`    ${k.padEnd(20)} ${v.length}${v.length < 7 ? '  ' + v.join(' ') : ''}`);
   const rows = [['comes', st.comes, 'the one who comes is the nearest free defender as it opens'], ['arrive', st.arrive, 'within 0.8 m as the ring empties, touch within 0.3 s'], ['grade', st.grade, 'the picture agrees with the grade at the tap'],
     ['size', st.size_[844], 'his player 60 px at 844x390'], ['size', st.size_[667], 'his player 48 px at 667x375'], ['friends', st.friends, 'friends neither go away from the ball nor leave the view'], ['closes', st.closes, 'the threat closes 2.5 m with the ball at his feet'], ['seen', st.seen, 'the one who comes is on the screen as the window opens']];
+  console.log(`  heading: ${st.heading.n} windows with his player carrying the ball as it opens (not counted, with a reason: ${Object.entries(st.heading.why).map(([k, v]) => `${k} ${v}`).join('; ') || 'none'}); a view or body off his way is a 'heading' flag`);
   console.log(`  windows shorter than asked (never under the floor: 6 s here): ${st.cuts.length}${st.cuts.length ? ': ' + st.cuts.map(c => c.replace(size + ' ', '')).join('; ') : ''}`);
   for (const [k, s, what] of rows) {
     const ok = !s.n || s.ok / s.n >= SHARE[k] - 1e-9; if (!ok) { fails++; counts[`${size} ${k}-share`] = 1; }

@@ -16,6 +16,8 @@ const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
 // The spot camera for runs to the goal and after a shot: a ring far from the eye is drawn up to RING_GROW times bigger
 // and one near it down to RING_SHRINK times, and the view is only taken if that leaves no ring more than RING_RATIO
 // times bigger on screen than another.
+const FIT_TRIES = 3000; // (v76) tries of a spot view's fit in one frame before its other tiers wait for the next frame (spotView)
+export const TURN_MAX = .6; // (v76) how far (rad) the view may turn off the way he runs, to show the one who comes (threatFit)
 const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
 // held sideways; if that cannot be had, a little less), so a child finds him at once (v60).
@@ -106,8 +108,9 @@ export const view = {
     // (frame time) fits answers true or false; `why` says how it failed (2: the camera is off the pitch, 3: his player
     // is too small, with `hgt` his height then), so that the search can stop going farther out when farther cannot fit.
     let fx, fy, why = 0, hgt = 0, who = null, all = pts;
+    let tries = 0;
     const fits = (pitch, d, { ratio, heroMin }) => {
-      why = 1; // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
+      tries++; why = 1; // camera d metres from the middle, looking down `pitch`, from over the pitch (not in the stands)
       const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d, ez = Math.sin(pitch) * d;
       if (ex < -.2 || ex > L + .2 || ey < -.2 || ey > W + .2) { why = 2; return false; }
       const fwd = [fx * Math.cos(pitch), fy * Math.cos(pitch), -Math.sin(pitch)], rt = [fy, -fx, 0], up = [rt[1] * fwd[2] - rt[2] * fwd[1], rt[2] * fwd[0] - rt[0] * fwd[2], rt[0] * fwd[1] - rt[1] * fwd[0]];
@@ -165,7 +168,17 @@ export const view = {
     const tiers = !even ? [...[1, .88, .78, .7].map(k => ({ goal: 'all', ratio: RING_RATIO, heroMin: hk(k) })), { goal: 'all', ratio: RING_RATIO, heroMin: floor, drop: 1 }, { goal: 'all', ratio: RING_RATIO, heroMin: floor, drop: 2 }]
       : [{ goal: 'all', ratio: RING_RATIO, heroMin: hm }, { goal: 'near', ratio: RING_RATIO, heroMin: hm }, ...[1, .88, .78, .66].map(k => ({ goal: 'near', ratio: RING_RATIO_MAX, heroMin: hk(k) })), { goal: 'none', ratio: RING_RATIO_MAX, heroMin: hk(.78) },
         { goal: 'near', ratio: RING_RATIO_MAX, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 1 }, { goal: 'none', ratio: 3, heroMin: floor, drop: 2 }, { goal: 'none', ratio: 9, heroMin: floor, drop: 2 }];
-    let best = null, rule = null; for (const t of tiers) if ((best = search(t))) { rule = t; break; }
+    // (v76, frame time) A fit that fails tier after tier is spread over frames: past FIT_TRIES tries in a frame, the tiers
+    // left wait for the next one (the camera keeps what it wanted meanwhile, as above). The same tiers in the same order:
+    // the same view, a frame or two later. (One in a live run's choice took some 12 000 tries in one frame: 13 ms here.)
+    const work = this.spotWork?.key === key ? this.spotWork : (this.spotWork = { key, tier: 0 });
+    let best = null, rule = null;
+    for (let ti = work.tier; ti < tiers.length; ti++) {
+      if ((best = search(tiers[ti]))) { rule = tiers[ti]; break; }
+      work.tier = ti + 1;
+      if (tries > FIT_TRIES && ti + 1 < tiers.length && this.lastWant) { this.viewLate = true; return this.lastWant; }
+    }
+    this.spotWork = null;
     // (nothing fits with him that size: a view of him and the rings' middle from as far as keeps him at the floor)
     // (round 5: looking at him, from a flat angle, so that he is at the floor size whatever else is lost)
     const dFloor = 1.85 * F * Math.cos(.62) / floor * .9;
@@ -302,7 +315,7 @@ export const view = {
   // (v66) The player view in which the one who comes is seen as the window opens: the head-down view, raised and drawn
   // back (k, as `wide` in camSpec) and turned (off, radians added to the way he looks) as little as shows the threat
   // where he starts, clear of the buttons, with his own player never under the size floor. { k, off, seen }.
-  threatFit(plan) {
+  threatFit(plan, turnMax = TURN_MAX) {
     const none = { k: plan?.wide ? 1 : 0, off: 0, seen: false }, v = this.viewSize(), th = plan?.threat?.id, tp = th && plan.paths[th], hp = plan?.paths.hero;
     if (!tp || !hp || !v.w || this.sc?.kind === 'receive') return none;
     const h = pathAt(hp, 0, {}), t = pathAt(tp, 0, {}), C = HEAD_DOWN, F = Math.max(v.h * C[6], v.w * C[7]), floor = HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 1;
@@ -319,7 +332,10 @@ export const view = {
       if (tp.jock) { const hm = proj(h.x, h.y, .9); if (!hm || !qm || Math.abs(qm[0] - hm[0]) < .5 * (a[1] - b[1])) return false; }
       return on(q0) && on(q1) && free(qm);
     };
-    const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
+    // (v76) Turned by TURN_MAX at most (turnMax): the view looks the way he runs. Turned farther (it was up to 70°) to show
+    // one coming from the side or behind, it faced the side line while he ran up the field across the screen, sideways.
+    // Raised and drawn back instead; where no such view shows him, he sets off from nearer (game/window.js plannedRunUp).
+    const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) if (Math.abs(off) <= turnMax + 1e-9) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
     tries.sort((p, q) => p.cost - q.cost);
     for (const c of tries) if (fit(c.k, c.off)) return { k: c.k, off: c.off, seen: true };
     return none;

@@ -3,6 +3,7 @@
 // methods for each concern live in js/game/ and are added to the class at the bottom of this file.
 import { Sim } from './sim.js';
 import { demoScenario } from './skills.js';
+import { shotLook } from './generate.js';
 import { clamp, closestOnLane, PITCH } from './geom.js';
 import { displayName } from './teams.js';
 import { MATES, ROSTER, DIRS, NONE, facesBall, wrap } from './game/shared.js';
@@ -76,10 +77,11 @@ export class Game {
     this.spot0Of = null; this.spotsReset(); this.wplan = null; this.win = null; this.timeouts = 0; this.bounced = undefined; this.followRuns = []; this.followRacer = null; this.reshoot = null; // (v64: the rings' own places; the window's plan)
     if (facesBall(sc)) { const h = this.sim.a('hero'), c = this.sim.a(sc.carrier); this.yaw = this.frameYaw(sc, h, c); this.faceYaw(h); }
     if (sc.kind === 'lead') { const [x, y] = sc.heroTo, [mx, my] = sc.moves.m1.at; this.yaw = this.frameYaw(sc, { x, y }, { x: mx, y: my }); } // the runner and the spots on screen
-    if (sc.shots) { // (v62) a shot lesson's scene: he faces the goal and anyone of his close to it (a friend free at the far post), so LOOK UP shows the goal and the keeper (v72: at every size, not only with a keeper)
-      const [hx, hy] = sc.heroTo, pts = [[PITCH.L, PITCH.W / 2], ...sc.mates.filter(m => Math.hypot(PITCH.L - m[0], PITCH.W / 2 - m[1]) < 9)];
-      this.yaw = Math.atan2(pts.reduce((a, p) => a + p[1], 0) / pts.length - hy, pts.reduce((a, p) => a + p[0], 0) / pts.length - hx);
-    }
+    // (v62) A shot lesson's scene: he faces the goal and anyone of his close to it (a friend free at the far post), so LOOK
+    // UP shows the goal and the keeper (v72: at every size, not only with a keeper). (v76) Only where his run in comes from
+    // there too (generate.js shotScene); "too far" (shot-far) runs straight up the field, so the view looks that way, and
+    // LOOK UP turns it to the goal (input.js faceGoal).
+    if (sc.shots && sc.shotPlan) this.yaw = shotLook(sc.heroTo, sc.mates);
   }
   // Which way he faces at the start of a spot round: toward the ball, turned so the ball and every spot are on
   // screen when they fit. Otherwise the right spot would often be the one he has to turn to find, and he could
@@ -104,7 +106,8 @@ export class Game {
   // however long the frames are. See game/skill.js skillFrame.)
   // (v64) A job made while a decision window is open runs on real time (`real`): it is the picture and the words (a
   // caption, the hand, the view swinging round, a demo's talk), which must not crawl with the slow motion of play.
-  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
+  // (v76) So is one made while `realJobs` is set (a demo's first line, said over the run-up and on into the window).
+  job(dur, f = null, until = null) { const t = { t: 0, dur, f, until, res: null, done: null, dead: false, real: !!this.win || !!this.realJobs }; t.done = new Promise(res => { t.res = () => { this.woke = true; res(); }; }); this.tweens.push(t); return t; }
   cancel(t) { if (t && !t.dead) { t.dead = true; t.res(); } }
   delay(sec) { return this.skipping ? Promise.resolve() : this.job(sec).done; }
   tween(sec, f) { if (this.skipping) { f(1); return Promise.resolve(); } return this.job(sec, f).done; }
