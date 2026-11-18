@@ -124,10 +124,25 @@ test('the game reaches the save only through js/storage.js', () => {
 test('tuned settings count only as true booleans and pixel ratios 2 or 3', () => {
   const sp = code('js/ui/speed.js');
   assert.match(sp, /return \{ blur: t\.blur === true, glow: t\.glow === true, soft: t\.soft === true, pr: t\.pr === 2 \|\| t\.pr === 3 \? t\.pr : 0 \};/);
-  const fn = new Function('P', sp.match(/const tuned = \(\) => \{[\s\S]*?: 0 \}; \};/)[0] + 'return tuned();');
+  const fn0 = new Function('P', 'SFX_MODES', sp.match(/const tuned = \(\) => \{[\s\S]*?: 0 \}; \};/)[0] + 'return tuned();'), fn = P => fn0(P, ['one', 'pool', 'later', 'pool+later']);
   assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3' } } }), { blur: false, glow: false, soft: false, pr: 0 });
   assert.deepEqual(fn({ settings: { tuned: { blur: true, glow: false, soft: true, pr: 2 } } }), { blur: true, glow: false, soft: true, pr: 2 });
   assert.deepEqual(fn({ settings: {} }), {});
   assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to normal settings</, 'a way back');
   assert.match(read('index.html'), /About 90 seconds, a few of them with sound/, 'the menu row says there is sound');
+});
+
+test('effects start in the way the speed test found best; two players for the frequent ones, never one still playing', () => {
+  const s = code('js/sound.js');
+  assert.match(s, /export const SFX = \{ mode: 'pool\+later' \};/);
+  assert.match(s, /const FREQ = new Set\(\['tap', 'click', 'kick', 'up', 'star:0', 'star:1', 'star:2'\]\), POOL = 2;/);
+  const src = s.slice(s.indexOf('function pick('), s.indexOf('function start('));
+  const fxEls = new Map(), fxNext = new Map(), pick = new Function('fxEls', 'fxNext', src + 'return pick;')(fxEls, fxNext);
+  const a = { paused: false, ended: false }, b = { paused: true, ended: false };
+  fxEls.set('tap', [a, b]); fxEls.set('goal', [a]);
+  assert.equal(pick('tap', true), b, 'the free one');
+  b.paused = false; assert.ok([a, b].includes(pick('tap', true)), 'both busy: the one started longest ago');
+  assert.equal(pick('tap', false), a, "'one' mode: always the first");
+  assert.equal(pick('goal', true), a);
+  assert.match(code('js/ui/speed.js'), /SFX\.mode = t\.sfx \|\| 'pool\+later';/);
 });

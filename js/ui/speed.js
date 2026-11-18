@@ -4,6 +4,7 @@ import { $ } from './dom.js';
 import { P, save } from './store.js';
 import { world } from './stage.js';
 import * as perf from '../perf.js';
+import { SFX, SFX_MODES } from '../sound.js';
 
 const phone = () => { try { return matchMedia('(pointer: coarse)').matches; } catch { return false; } };
 export const graphics = () => (P.settings.graphics === 'pretty' || P.settings.graphics === 'smooth' ? P.settings.graphics : phone() ? 'smooth' : 'pretty');
@@ -13,7 +14,7 @@ let mode = 'pretty';
 // settings" button: { blur, glow, pr, soft }. Smooth then puts back the head-down blur, the glow, or more pixels.
 // Only true counts as on, and only 2 or 3 as a pixel ratio: a stray value ("no", "1") changes nothing.
 const tuned = () => { const t = P.settings.tuned; if (!t || typeof t !== 'object') return {};
-  return { blur: t.blur === true, glow: t.glow === true, soft: t.soft === true, pr: t.pr === 2 || t.pr === 3 ? t.pr : 0 }; };
+  return { blur: t.blur === true, glow: t.glow === true, soft: t.soft === true, pr: t.pr === 2 || t.pr === 3 ? t.pr : 0, ...(SFX_MODES.includes(t.sfx) ? { sfx: t.sfx } : {}) }; };
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
@@ -21,6 +22,7 @@ export function applyGraphics() {
   document.body.classList.toggle('smooth', sm); document.body.classList.toggle('blur', sm && !!t.blur); // (blur: the head-down edge as in Pretty)
   document.body.classList.toggle('softwords', sm && !!t.soft); // (soft: the big words' soft shadow, css/app.css)
   world.setGraphics(mode, sm ? { bloom: t.glow ? 1 : 0, pr: t.pr } : {});
+  SFX.mode = t.sfx || 'pool+later'; // (round 14: how effects start, as the speed test found best here; sound.js)
 }
 // (round 13) Switches for the speed test only (dev/speed.js); nothing here is saved. cap: the 60-a-second cap (main.js);
 // strip: read the picture's bottom row for the iPad's strip colour even on an iPhone (null: as the device needs); onFrame:
