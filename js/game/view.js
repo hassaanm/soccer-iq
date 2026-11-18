@@ -314,6 +314,9 @@ export const view = {
       // (in the picture: clear of the edges, the top row, LOOK UP in the bottom left and the buttons in the bottom right)
       const on = q => !!q && q[0] > 26 && q[0] < v.w - 26 && q[1] > 62 && q[1] < v.h - 10, free = q => !(q[0] < 168 && q[1] > v.h - 156) && !(q[0] > v.w - 215 && q[1] > v.h - 262);
       const q0 = proj(t.x, t.y, .1), q1 = proj(t.x, t.y, 1.5), qm = proj(t.x, t.y, .9); // (his whole body in the picture; his middle not under a button)
+      // (round 7) One who jockeys a step off the ball is not behind his player's back as seen from here: his middle is
+      // well clear of his player's, to one side (the view turns a little for it).
+      if (tp.jock) { const hm = proj(h.x, h.y, .9); if (!hm || !qm || Math.abs(qm[0] - hm[0]) < .5 * (a[1] - b[1])) return false; }
       return on(q0) && on(q1) && free(qm);
     };
     const tries = []; for (const k of [0, .25, .5, .75, 1, 1.3, 1.6, 2, 2.4]) for (const off of [0, .2, -.2, .4, -.4, .6, -.6, .9, -.9, 1.2, -1.2]) tries.push({ k, off, cost: k + 2.2 * Math.abs(off) + (Math.abs(off) > .6 ? 1 : 0) });
