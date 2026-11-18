@@ -21,12 +21,9 @@ test('the speed test is silent unless its sound box is ticked: no player can be 
   assert.equal(page.match(/\.unlock\(\)/g)?.length, 1, 'one unlock');
   assert.match(page, /withSound = !!\$\('#stSound'\)\?\.checked;\s*if \(withSound\) \{ try \{ G\.sound\.SILENT\.on = false; G\.sound\.unlock\(\); G\.sound\.setMuted\(true\);/);
   assert.match(page, /if \(r\.sfx && withSound\)/, 'only the sound runs unmute');
-  assert.match(page, /else \{ G\.hush\(\); sound\.setMuted\(true\); \}/, 'and mute again as they end');
+  assert.match(page, /else \{ G\.hush\(\); sound\.setMuted\(true\); applyGraphics\(\); \}/, 'and mute again as they end');
   assert.match(read('dev/speed.html'), /you will <b>hear<\/b> the game's sounds/, 'the page says so');
-  // the one audio run plays zeros on muted players
-  assert.match(page, /el\.muted = true; el\.volume = 0;/);
-  assert.match(read('dev/speed.js'), /new ArrayBuffer\(44 \+ n \* 2\), v = new DataView\(buf\); \/\/ the samples stay zero/, 'nothing is written into the samples');
-  assert.ok(!/setInt16|Float32Array/.test(page.slice(page.indexOf('function silentWav'), page.indexOf('let quiet'))), 'no sample is ever set');
+  assert.ok(!/new Audio\(/.test(page), 'the page makes no player of its own');
 });
 
 test('the speed test writes nothing to his save but settings.tuned', () => {
@@ -38,10 +35,16 @@ test('the speed test writes nothing to his save but settings.tuned', () => {
   assert.ok(!/if \(!swapped\)/.test(page), 'replacing window.localStorage is not required');
 });
 
-test('the speed test runs every switch the brief asks for', () => {
+test('the speed test (version 2): the standard three times, the ways of starting a sound, the pop-ups, under two minutes', () => {
   const page = code('dev/speed.js'), runs = page.match(/const RUNS = \[([\s\S]*?)\n\];/)[1];
-  for (const want of ["id: 'base'", "body: ['blur']", 'bloom: 1', 'shadowPass: false', 'pr: 1 ', 'pr: 2 ', 'pr: 3 ', "body: ['nofx']", 'particles: false', 'cap: false', 'sound: true', 'sfx: true', 'voice: true', "body: ['v75look', 'v75layers']", "body: ['softwords']", 'pretty: true', "id: 'base2'"])
+  for (const want of ["id: 'base'", "id: 'base2'", "id: 'base3'", "sfx: 'one'", "sfx: 'pool'", "sfx: 'later'", "sfx: 'pool+later'", 'rebuild: true', "body: ['nofx']", "off: ['blur', 'softwords']", 'pr: 2 ', 'pretty: true'])
     assert.ok(runs.includes(want), want);
+  const n = (runs.match(/\{ id:/g) || []).length, heard = (runs.match(/sfx: '/g) || []).length;
+  const [RUN, HEARD] = page.match(/const RUN_MS = (\d+), HEARD_MS = (\d+)/).slice(1).map(Number);
+  assert.ok(((n - heard) * RUN + heard * HEARD) / 1000 + 6 < 120, 'under two minutes');
+  const first = runs.indexOf("id: 'base'"), second = runs.indexOf("id: 'base2'"), third = runs.indexOf("id: 'base3'");
+  assert.ok(first < second && second < third && runs.indexOf("'pretty'") < third, 'the standard runs spread through the test');
+  assert.match(page, /noise \(standard ×3\)/, 'the spread is printed');
   assert.ok(read('js/ui/menu.js').length && read('index.html').includes('id="speedTestBtn"'), 'the grown-ups menu has the row');
   assert.match(code('js/ui/speed.js'), /speedTestBtn'\)\.onclick = \(\) => \{ location\.href = 'dev\/speed\.html'; \}/);
 });
