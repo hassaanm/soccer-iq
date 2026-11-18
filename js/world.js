@@ -160,7 +160,7 @@ export class World {
     makePost(r, scene, this.camera).then(post => {
       if (!post) return;
       this.post = post; post.setSize(this.width, this.height); this.applyLook();
-      if (QUALITY[this.level].bloom < 1) post.setBloom(QUALITY[this.level].bloom);
+      this.setQuality(this.level);
     });
   }
   // The safety net for slow devices (a governor), called by main.js with the real time (ms) since the last frame.
@@ -184,8 +184,11 @@ export class World {
     if (next >= QUALITY.length) { p.done = true; return; }
     this.setQuality(next); p.steps++; p.skip = 1;
   }
+  // (round 11) The grown-ups' "Graphics" setting: 'smooth' (the default on phones) draws without the glow pass and with
+  // a smaller shadow map; 'pretty' is the full picture. The governor above still steps down from either.
+  setGraphics(mode) { this.smooth = mode === 'smooth'; this.setQuality(this.level); }
   setQuality(i) {
-    const q = QUALITY[this.level = i], l = this.keys[0].shadow;
+    const q0 = QUALITY[this.level = i], q = this.smooth ? { ...q0, bloom: 0, shadow: Math.min(q0.shadow, 1024) } : q0, l = this.keys[0].shadow;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr)); this.resized = true; // `render` sizes the picture again
     this.post?.setBloom(q.bloom); RIM.detail.value = q.detail; TURF.uTurf.value.x = q.detail * this.look.turf[0];
     if (l.mapSize.x !== q.shadow) { l.mapSize.set(q.shadow, q.shadow); l.map?.dispose(); l.map = null; }

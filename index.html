@@ -137,6 +137,12 @@
   <label>Play the keeper <span class="pick"><select id="keeperSel"><option value="off">Off</option><option value="sometimes">Sometimes</option><option value="always">Always</option></select></span></label>
   <p class="hint" id="keeperHint">In matches with keepers (5 v 5), he plays the keeper when they shoot: some of their shots, or all.</p>
   <label class="chk"><span>Match and Cup always open<small>Skips today's training</small></span><span class="sw"><input type="checkbox" id="openChk"><i></i></span></label>
+  <h3>Speed</h3>
+  <label>Graphics <span class="pick"><select id="gfxSel"><option value="smooth">Smooth</option><option value="pretty">Pretty</option></select></span></label>
+  <p class="hint">Smooth leaves out the glow and the blur so the game runs evenly on a phone. Pretty is the full picture.</p>
+  <label class="chk"><span>Record speed<small>Notes every slow moment while he plays</small></span><span class="sw"><input type="checkbox" id="recChk"><i></i></span></label>
+  <button id="recShow" class="btn btn-ghost btn-sm" type="button">Show the record</button> <button id="recCopy" class="btn btn-blue btn-sm" type="button" hidden>Copy</button>
+  <textarea id="recBox" readonly hidden rows="8" style="width:100%;font:11px/1.3 ui-monospace,monospace;margin-top:8px"></textarea>
   <h3>Voice</h3>
   <label class="chk"><span>Recorded voice<small>Loud and clear, even in the car</small></span><span class="sw"><input type="checkbox" id="recordedChk"><i></i></span></label>
   <label>Phone voice <span class="pick"><select id="voiceSel"></select><button id="voiceTest" class="btn btn-ghost btn-sm" type="button">▶ Test</button></span></label>

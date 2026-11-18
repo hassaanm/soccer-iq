@@ -1,4 +1,5 @@
 // The grown-ups menu: hold the gear on the home screen to open it.
+import { showSpeed } from './speed.js';
 import { $ } from './dom.js';
 import { P, save } from './store.js';
 import { voice, voices, pickVoice, say, SAMPLE } from './speech.js';
@@ -41,6 +42,7 @@ function openMenu() {
     return `<div><span>${s.emoji} ${s.adult}</span><span>${status}</span></div>`;
   }).join('') + `<div><span>Sessions played</span><span>${P.sessions}</span></div>`
     + (P.keeper?.plays ? `<div><span>🧤 Keeper game</span><span>best ${P.keeper.best} of 8 · ${plural(P.keeper.plays, 'round')}</span></div>` : '');
+  showSpeed();
   show('#menu');
 }
 $('#menuClose').onclick = () => {

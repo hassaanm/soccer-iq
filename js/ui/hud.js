@@ -46,6 +46,8 @@ export const hud = {
     // and the one who is coming (a clear patch over him). clear: { at: [x %, y %] | null, hole: [x px, y px, r px] | null }.
     if (o > 0) {
       const at = clear?.at, hole = clear?.hole, ka = at ? `${Math.round(at[0])} ${Math.round(at[1])}` : '', kh = hole ? `${Math.round(hole[0] / 3)} ${Math.round(hole[1] / 3)} ${Math.round(hole[2] / 4)}` : '';
+      // (round 11) Graphics on Smooth: a soft dark edge with no blur (css: body.smooth #tunnel), moved with a transform only.
+      if (document.body.classList.contains('smooth')) { if (changed('clearAt', ka)) ui.tunnel.style.transform = at ? `translate(${Math.round(at[0]) - 50}vw, ${Math.round(at[1]) - 64}vh)` : ''; return; }
       if (changed('clearAt', ka)) { ui.tunnel.style.setProperty('--tx', at ? Math.round(at[0]) + '%' : '50%'); ui.tunnel.style.setProperty('--ty', at ? Math.round(at[1]) + '%' : '64%'); }
       if (changed('clearHole', kh)) { ui.tunnel.style.setProperty('--hx', hole ? Math.round(hole[0]) + 'px' : '-999px'); ui.tunnel.style.setProperty('--hy', hole ? Math.round(hole[1]) + 'px' : '-999px'); ui.tunnel.style.setProperty('--hr', hole ? Math.round(hole[2]) + 'px' : '1px'); }
     }

@@ -1,6 +1,7 @@
 // The coach's voice: recorded clips first, the device's speech voice as the fallback.
 import { P } from './store.js';
 import { voiceVolume, loadVoice, canSpeak, speakClips, stopVoice } from '../sound.js';
+import { mark } from '../perf.js';
 import { pieces, clipKey } from '../voice.js';
 
 const synth = 'speechSynthesis' in window ? speechSynthesis : null;
@@ -28,9 +29,12 @@ export function say(text) {
   // Recorded clips first: they play through an audio player like the game sounds (loud in the car too).
   // If a clip turns out not to load (no signal), the device's voice says the line instead.
   const keys = pieces(line).map(clipKey);
-  if (P.settings.recorded !== false && canSpeak(keys)) { synth?.cancel(); return speakClips(keys).then(ok => (ok === false ? speak(line) : ok)); }
+  if (P.settings.recorded !== false && canSpeak(keys)) { if (spoke) { spoke = false; mark('speech cancel'); synth?.cancel(); } return speakClips(keys).then(ok => (ok === false ? speak(line) : ok)); }
   return speak(line);
 }
+// (round 11) The device's speech is only told to stop when it has been used since the last stop: with recorded clips
+// playing, no line of play calls into it at all (on an iPhone that call can hold the page up).
+let spoke = false;
 // Says a line with the device's speech voice.
 function speak(line) {
   if (!synth) return null;
@@ -39,11 +43,11 @@ function speak(line) {
   if (voice) u.voice = voice; u.rate = .92; u.pitch = 1.12; u.volume = voiceVolume();
   // iOS sometimes never fires onend, so a timeout (about the time the line takes) finishes it too.
   const done = new Promise(res => { u.onend = u.onerror = res; setTimeout(res, 1500 + line.length * 90); });
-  synth.cancel(); synth.speak(u);
+  mark('speech speak'); spoke = true; synth.cancel(); synth.speak(u);
   return done;
 }
 // Stops whatever is being said.
-export function hush() { stopVoice(); synth?.cancel(); }
+export function hush() { stopVoice(); if (spoke) { spoke = false; synth?.cancel(); } }
 // iOS only lets the speech voice talk after a tap has used it once, so a tap that starts a game says a silent line.
 export function unlockSpeech() {
   if (!synth || !P.settings.voice) return;
