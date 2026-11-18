@@ -12,6 +12,7 @@ const SHARED = ['{m0} was open!', 'That was a tough spot!', 'Lots of space! Push
   'Nobody was in front of the ball. Get in front!', 'Your friends had it covered. Stay close!', 'A friend was on the ball. Guard the open player!',
   'Pass and go! Run past him into the space.', 'Run to the goal, so your friend can pass to you!', 'Move to open space so your friend can pass to you!', 'Wait in front of him. Steal it when it rolls away from his feet!',
   'Saved!', 'So close!', 'Good space! Close? Inside, for control.', 'Good space! Far? Laces, for power!', 'Right side! But high can go over. Keep it low.', 'He can reach that one. Find the big space.',
+  'Goal! Close up, inside is safer.', 'Close? Inside is safer.', 'Look at the goal. Where is the keeper?', 'Look at the goal. Nobody in the way!', // (v73: the shooting lessons)
   'Your turn!', 'Mini match!', 'New in matches!', 'Watch this way!', 'Here is the 3-star play!', 'Watch {m0}.', '{m0} looks up.', '{m0} is open!', '{m0} is running!', 'Great pass!', 'And looks around for a friend.', 'Pass!', 'Look left.', 'Look right.',
   'See who is open?', 'Where is the space?', 'Where is the ball?', 'Where is the goal?', 'Off the post!', 'Blocked!', 'Goal ahead!', 'Only one defender!', 'Space ahead!',
   'You won the ball!', 'Watch the ball.', 'Now run past him!', 'Peek over your shoulder.', 'A defender is behind you! Turn away!', 'Nobody behind you! Turn and go!', 'Turn away from him!', 'Turn and go!',
