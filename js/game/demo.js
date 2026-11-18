@@ -5,6 +5,9 @@ import { L, W, MATE, spotKind, wrap } from './shared.js';
 
 // (v76) How long a line takes in talk() (game.js): the slow reading of it (the voice clips are all shorter), then the pause.
 const talkSec = (text, pause = 1.2) => .6 + text.length / 12 + pause;
+// (v76) The most real seconds the play after the hand's tap may take (the shot, the rebound, the run in, the result words)
+// before the demo ends it itself (demo.js within). The longest takes about 8 s, with the voice at up to three times its time.
+const PLAY_MAX = 40;
 const TAP = 1.2; // tapAt: the hand's move to the button and its tap
 // (v76) A demo's crawl while its idea is said: the slowest and the fastest share of play's speed, and the most of the
 // window's play it may use up (demo.js crawlFor).
@@ -164,10 +167,21 @@ export const demo = {
       if (t) await this.tapAt(t);
     }
   },
+  // (v76) A guard for a wait that depends on the play (a ball that has to come to rest, a player who has to get there): it
+  // has `sec` real seconds. If the play has not ended by then, it is stopped where it stands, so the demo goes on to its
+  // end in an orderly way and never stays on a frozen picture. Returns true if the play ended itself.
+  async within(work, sec) {
+    if (this.skipping) return work.then(() => true);
+    this.realJobs = true; const cap = this.job(sec); this.realJobs = false;
+    const ended = await Promise.race([work.then(() => true), cap.done.then(() => false)]);
+    this.cancel(cap);
+    if (!ended && !this.skipping) { this.sim.co = null; this._playRes?.(); this.closeWindow?.(); this.hud.caption(''); this.stalled = (this.stalled || 0) + 1; }
+    return ended;
+  },
   // Shows the taps, then plays the choice. Used by demos and by every replay of the better play.
   async showPlay(opt) {
     await this.showTaps(opt);
-    await this.outcome(opt, true);
+    await this.within(this.outcome(opt, true), PLAY_MAX);
     this.showing = false; this.handAt = null;
   },
 

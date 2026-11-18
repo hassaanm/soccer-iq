@@ -172,8 +172,11 @@ export const rounds = {
   // The shot's flight on from the strike and its bounce off the post, the keeper or the leg, as a job on game time.
   shotBounce(sh, from) {
     const s = this.sim, b = s.ball, hit = { x: sh.hit[0], y: sh.hit[1] }, l = dist(from, hit) || 1, d = { x: (hit.x - from.x) / l, y: (hit.y - from.y) / l };
-    let done = false;
-    this.job(8, () => {
+    // (v76) It waits for the ball however long that takes: the window may slow the shot to a crawl (a demo's), so the flight
+    // can last longer than any fixed time on this real clock. It used to give up after 8 s: the ball then came to rest at the
+    // post with no bounce, and the play after it waited for the bounce for good. A newer shot (a retry) takes over from it.
+    let done = false; const me = this.bounceJob = {};
+    this.job(1e9, () => {
       if (done || !(b.state !== 'flying' || (b.x - from.x) * d.x + (b.y - from.y) * d.y >= l)) return;
       done = true; this.bounced = s.time;
       Object.assign(b, { x: hit.x, y: hit.y }); // (the step can carry it a few cm past the post: it bounces off where it touched)
@@ -181,7 +184,7 @@ export const rounds = {
       if (sh.block) { const o = s.a(sh.block), k = Math.sign((sh.loose[0] - hit.x) * -d.y + (sh.loose[1] - hit.y) * d.x) || 1; s.go(o.id, o.x - d.x * .2 + d.y * k * .15, o.y - d.y * .2 - d.x * k * .15, .8); }
       const call = sh.block === 'k2' ? 'Saved!' : sh.block ? 'Blocked!' : 'Off the post!'; this.hud.caption(call); this.say(call);
       if (sh.cover && !this.followRuns?.some(f => f.id === sh.cover)) { const sc = this.sc, p = sc.oppsTo[+sh.cover[1] - 1], a = s.a(sh.cover), dd = Math.hypot(p[0] - a.x, p[1] - a.y); if (dd > .05) s.go(sh.cover, p[0], p[1], Math.max(.8, dd / (dist(hit, { x: sh.loose[0], y: sh.loose[1] }) / SHOT.out * SHOT.freeze))); }
-    }, () => done);
+    }, () => done || this.bounceJob !== me);
   },
   // The players running in a lead-pass round go on with their runs (also after a replay puts them back).
   leadRun() { for (const [id, mv] of Object.entries(this.sc.moves || {})) Object.assign(this.sim.a(id), { tx: mv.to[0], ty: mv.to[1], speed: mv.speed, sp: mv.speed }); },
