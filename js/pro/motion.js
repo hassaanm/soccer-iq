@@ -18,6 +18,7 @@ import { THIGH, SHIN, HALF } from './rig.js';
 import { turnFoot, turnSide, touchAt, touchLen, skillNow, longLead } from '../sim.js';
 import { PITCH as FIELD } from '../geom.js';
 
+const JAB = .34; // (round 13) how far a jockeying defender's weight goes in at the ball in a feint lunge (m)
 const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, SOFT = .04, BALL = .125; // BALL: the ball's radius (world.js)
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), damp = (v, to, rate, dt) => v + (to - v) * (1 - Math.exp(-rate * dt)), sat = (v, a) => a * Math.tanh(v / a); // sat: a soft limit
@@ -374,13 +375,16 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     if (q) { rw = (DRIB_SKILL[q.k] ? bump(q.c, .1, .5, 1.15) : bump(q.c, .03, Math.max(.2, q.at), q.at + .45) * (q.k === 'croqueta' || q.k === 'roll' ? .6 : 1)) * (1 - sm((dc - 3.5) / 2)); rx = q.fx * cyaw + q.fy * syaw; ry = q.fy * cyaw - q.fx * syaw; }
   }
   m.fb = damp(m.fb, fW, 12, rdt); m.fby = damp(m.fby, fW * (fLeg ? 1 : -1), 12, rdt); // his body's share of a busy foot, eased (its weight can start part way)
-  const ox = .18 * K[9] * kw * sm(kt / .2) + .05 * rw * rx; // striking, he steps his hips in over the ball (and his feet stay where they are)
-  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .36 * fs * fe + .28 * rw * ry; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it; round 10: his whole body steps 0.36 m to the side of the fake, drawn here: the game's own place for him, a.x, stays on the dribble's way)
+  // (round 13) A feint lunge by one who jockeys (window.js jockFeint): his weight goes in at the ball over his front foot,
+  // a long half-step's worth (JAB), and back out, quicker than the game moves his place (a.x goes on along his way).
+  const jf = a.track?.jf && !carrying ? a.track.jf(now - a.track.t0) : 0, jl = jf * JAB / Math.max(.3, bd);
+  const ox = .18 * K[9] * kw * sm(kt / .2) + .05 * rw * rx + jl * bf; // striking, he steps his hips in over the ball (and his feet stay where they are)
+  const oy = .03 * sway * idle * (1 - .5 * rd) - .08 * m.fby + .36 * fs * fe + .28 * rw * ry + jl * bl; // his body's shift to his left, over the leg that holds him (or to a fake: hips and shoulders sell it; round 10: his whole body steps 0.36 m to the side of the fake, drawn here: the game's own place for him, a.x, stays on the dribble's way)
   const hop = mood > 0 ? Math.abs(Math.sin(moodT * 7.5 + u.seed)) : 0, air = .3 * hop * mood;
   const q1 = m.ph, c1 = Math.cos(TAU * (q1 + .04)); // +1 as the left foot lands in front
   // The hips: lower when ready or sprinting, bobbing with each step (down as a running foot takes his weight).
   LIFT = -lerp(.012 + .075 * rd + .012 * bounce - .004 * breath, .02 + .04 * run + .08 * low, w) - w * lerp(-.012, .028, sm(run * 2)) * Math.cos(2 * TAU * (q1 - D / 2))
-    - .03 * K[9] * kw - .04 * m.fb - .03 * (fe + rw) + air - (mood > 0 ? .05 * (1 - hop) * mood : 0);
+    - .03 * K[9] * kw - .04 * m.fb - .03 * (fe + rw) - .06 * jf + air - (mood > 0 ? .05 * (1 - hop) * mood : 0);
   const PITCH = sat(m.acc * .02, .16) + .05 * run, roll = -m.bank * .6 + fs * .32 * fe + .24 * rw * ry;
   CP = Math.cos(PITCH); SP = Math.sin(PITCH); CR = Math.cos(roll); SR = Math.sin(roll);
   g.position.set(a.x + cyaw * ox - syaw * oy, a.y + syaw * ox + cyaw * oy, LIFT); g.rotation.set(roll, PITCH, u.yaw);

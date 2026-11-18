@@ -4,7 +4,7 @@
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
-import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, JOCK } from '../window.js';
+import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 import { SHOT } from '../generate.js';
@@ -213,7 +213,7 @@ export const moving = {
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
-      a.track = { at: t => pathAt(p, t), t0: s.time, watch: plan.watch.has(id) };
+      a.track = { at: t => pathAt(p, t), t0: s.time, watch: plan.watch.has(id), jf: p.jock ? t => jockFeint(p, t) : null }; // (jf: a jockey's feint lunges, drawn by pro/motion.js)
     }
   },
   // Each step of game time while it is open: the rings that belong to a player move with him, and when the threat gets
