@@ -54,9 +54,10 @@ export function pathAt(p, t, out = { x: 0, y: 0, vx: 0, vy: 0 }) {
 // ball).
 //   p.hp: the path of the player on the ball; p.bo: the ball from him; p.a0: the bearing he is on; p.amp, p.per: his
 //   steps to each side (m, s); p.rS: how far off he starts (he eases to rJ); p.E: where the lunge ends, from the ball.
-// (round 13) He works his way in over the whole window: from rJ (about 1.6 m) he closes in steps (p.steps: [start,
-// length, metres], game time; each a surge in and a settle, about 2 to 3 s on the screen at Level 1) to rE (about
-// 0.9 m) by the window's last second, and on the way he makes one or two feint lunges (p.feints: [middle, half-length],
+// (round 13) He works his way in over the whole window: from rJ (about 1.6 m) he closes in two steps (p.steps: [start,
+// length, metres], game time; each a surge in and a settle, about 3.5 s on the screen at Level 1) to rE (0.9 to 1 m
+// from the ball by the window's last second: nearer, and his lunge from there would be too short to read as one, the
+// motion audit's 'creep': 0.5 m/s on the screen), and on the way he makes one or two feint lunges (p.feints: [middle, half-length],
 // game time; jockFeint): a quick half-step in at the ball and back out, under 0.6 s on the screen, the kind that makes
 // the dribbler commit. The feint is his body's lunge over his front foot, drawn by pro/motion.js (his place, a.x, goes
 // on along this way): at the window's slow motion (about 0.2x at Level 1) a step in and out that quick is far beyond
@@ -66,7 +67,7 @@ const jockPos = (p, t, o) => {
   let rj = p.rJ;
   if (p.steps) { for (const [t0, D, d] of p.steps) { const u = Math.min(1, Math.max(0, (tt - t0) / D)); rj -= d * (u - Math.sin(2 * Math.PI * u) / (2 * Math.PI)); } }
   else rj += (p.rT - p.rJ) * Math.min(1, tt / Math.max(.01, p.tL)); // (a plan from before round 13: from rJ he edges in to rT by the time he goes)
-  const a = p.a0 + (p.amp / p.rJ) * Math.sin(2 * Math.PI * t / p.per), r = rj + (p.rS - p.rJ) * Math.exp(-tt / .35);
+  const r = rj + (p.rS - p.rJ) * Math.exp(-tt / .35), a = p.a0 + (p.amp / (p.steps ? r : p.rJ)) * Math.sin(2 * Math.PI * t / p.per); // (round 13: his steps to the side stay as long as he comes in)
   let x = bx + Math.cos(a) * r, y = by + Math.sin(a) * r;
   if (t > p.tL) { const q = Math.min(1, (t - p.tL) / Math.max(.01, p.G - p.tL)), w = Math.pow(q, 1.5); x += (bx + p.E[0] - x) * w; y += (by + p.E[1] - y) * w; }
   o.x = x; o.y = y; return o;
@@ -81,15 +82,15 @@ export function jockFeint(p, t) {
   for (const [c, w] of p.feints || []) { const u = (t - c + w) / (2 * w); if (u > 0 && u < 1) { const v = u < .4 ? u / .4 : 1 - (u - .4) / .6; return v * v * (3 - 2 * v); } }
   return 0;
 }
-// The radial plan of a jockey window (round 13): steps in from rJ to rE, ending one real second before the ring is
-// empty, and the feints between them. f: the world's pace in the window (game s per real s), R: its real length.
+// The radial plan of a jockey window (round 13): two steps in from rJ to rE, the second settling as he goes in (by the
+// last second he is within a few centimetres of rE), and the feints between them. f: the world's pace in the window (game s per real s), R: its real length.
 export function jockPlan(rJ, tL, f, R) {
-  const rE = Math.min(rJ, JOCK.rE), n = 2, t1 = Math.max(.2, tL - .5 * f), t0 = Math.min(.1, t1 / 4), D = (t1 - t0) / n, d = (rJ - rE) / n;
-  const steps = Array.from({ length: n }, (_, i) => [t0 + i * D, D, d]);
+  const rE = Math.min(rJ, JOCK.rE), n = 2, D = tL / n, d = (rJ - rE) / n; // (each step settles gently: by the last second he is all but in, and he goes in from there)
+  const steps = Array.from({ length: n }, (_, i) => [i * D, D, d]);
   const w = JOCK.feint / 2 * f, at = R >= 5 ? [.3, .64] : [.45]; // (two feints in a window of 5 s and more, one in a shorter one)
   return { rE, steps, feints: at.map(k => [k * tL, w]) };
 }
-export const JOCK = { L: 1.5, r: [1.2, 1.6], rT: 1.2, rE: .8, feint: .5, amp: .36, per: 1.5, real: .5, F1: .9, R: 99 }; // rE: how near he has worked in by the window's last second (round 13: on his way, from the ball as the plan has it; the ball itself rolls a little farther on, so about 0.9 m from it); feint: how long a feint lunge is on the screen (s); R: such a window's cap in real s (round 10: none: it is as long as the level's window, like every other scene's; he jockeys through it and goes in as the ring empties) // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
+export const JOCK = { L: 1.5, r: [1.2, 1.6], rT: 1.2, rE: .87, feint: .5, amp: .36, amp2: .32, per: 1.5, per2: 1.75, lunge: .53, real: .5, F1: .9, R: 99 }; // rE: how near he has worked in by the window's last second (round 13: from the ball as the plan has it; the ball itself rolls a little farther on, so 0.9 to 1 m from it); feint: how long a feint lunge is on the screen (s); amp2, per2: his steps to the side, round 13 (a little shorter and slower, as he also steps in); lunge: how near the ball his lunge ends (round 13: he goes in from nearer, so a little nearer, and it is still a lunge); R: such a window's cap in real s (round 10: none: it is as long as the level's window, like every other scene's; he jockeys through it and goes in as the ring empties) // a run-in shorter than L m is no run: he jockeys; the lunge: the last `real` s, the world speeding up to F1
 // The game time of a jockey window's last JOCK.real s (the world speeds up from its pace f to F1 as he goes in), and
 // the pace f that makes a window of G s of play last R real seconds with it.
 export const jockPace = (G, R) => Math.max(PACE, (G - JOCK.real * JOCK.F1 / 3) / (R - JOCK.real / 3));
@@ -691,7 +692,7 @@ function planHold0(sc, st, opts, kind) {
       // (where the lunge ends: CONTACT from the ball, on his side of it, not on top of the player on it)
       const fa = Math.atan2(line[1], line[0]), da = Math.atan2(Math.sin(a0 - fa), Math.cos(a0 - fa)), ea = fa + clamp(da, -1.4, 1.4), bc = [hG.x + line[0] * .45 - BG.x, hG.y + line[1] * .45 - BG.y];
       const Rj = Math.min(R, JOCK.R, (Gj - .1) / PACE + .1), f = jockPace(Gj, Rj), tL = Gj - jockLunge(f);
-      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, ...jockPlan(rJ, tL, f, Rj), amp: JOCK.amp, per: JOCK.per, G, tL, E: [bc[0] + Math.cos(ea) * CONTACT, bc[1] + Math.sin(ea) * CONTACT] };
+      best = b; G = Gj; best.paths[th] = { jock: true, hp, bo, a0, rS, rJ, ...jockPlan(rJ, tL, f, Rj), amp: JOCK.amp2, per: JOCK.per2, G, tL, E: [bc[0] + Math.cos(ea) * JOCK.lunge, bc[1] + Math.sin(ea) * JOCK.lunge] };
       r0 = rS; jock = true;
     }
   }

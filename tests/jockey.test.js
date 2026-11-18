@@ -25,10 +25,10 @@ for (const [skill, id, size] of [['see-the-trap', 'gen-trap-one-108', 3], ['take
     assert.equal(r.w.plan.cls, 'jockey', 'one defender already there: he jockeys');
     const { rec, R, path } = r, at = s => rec.reduce((b, x) => (Math.abs(x.real - s) < Math.abs(b.real - s) ? x : b));
     assert.ok(at(0).d > 1.35 && at(0).d < 1.75, `he starts about 1.6 m off the ball (${at(0).d.toFixed(2)})`);
-    const late = at(R - 1).d; assert.ok(late > .8 && late < 1.05, `about 0.9 m off it by the last second (${late.toFixed(2)})`);
+    const late = at(R - 1).d; assert.ok(late > .85 && late < 1.06, `about 0.9 to 1 m off it by the last second (${late.toFixed(2)})`);
     // in steps: the way in has a settle between two surges (his closing speed, over half-second spans, drops and rises again)
     const sp = []; for (let s = .25; s < R - 1.25; s += .5) sp.push((at(s - .25).d - at(s + .25).d) / .5);
-    const steps = sp.some((v, j) => v < .06 && sp.slice(0, j).some(u => u > .12) && sp.slice(j + 1).some(u => u > .12));
+    const steps = sp.some((v, j) => v < .03 && sp.slice(0, j).some(u => u > .07) && sp.slice(j + 1).some(u => u > .07));
     assert.ok(steps, `he closes in steps: a surge, a settle, a surge (closing speeds ${sp.map(v => v.toFixed(2)).join(' ')} m/s)`);
     // the feints: two in a window of 5 s and more, one in a shorter one; each under 0.6 s on the screen
     assert.equal(path.feints.length, R >= 5 ? 2 : 1, 'feint lunges');
