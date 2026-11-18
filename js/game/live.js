@@ -163,6 +163,7 @@ export const live = {
     this.mode = mode;
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
+    this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
     // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
     // Only a goal resets to a fresh situation, like a kickoff.
     // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.

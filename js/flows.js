@@ -15,6 +15,8 @@ import { CUPS, cupById, newCup, roundsOf, goalsToWin } from './cups.js';
 import { generate } from './generate.js';
 import { preloadClips } from './sound.js';
 import { pieces } from './voice.js';
+import { warmVoice } from './ui/voicewarm.js';
+game.warm = scenes => warmVoice(scenes); // (a match's round list: game/live.js match)
 import { shuffle } from './geom.js';
 import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
 
@@ -46,6 +48,7 @@ game.onChoice = rec => logChoice(P, rec);
 game.levelOf = id => (id ? level(P, id) : null); game.thinkTime = () => P.settings.think || 'normal';
 // Rounds of lessons he has at Level 2 or more: a right answer on the first try gets the light result (no card).
 async function playRounds(rounds, early, onRound, log = 'lesson') {
+  warmVoice(rounds); // (round 11: this round list's lines are loaded before its first choice)
   game.choiceLog = log; game.lessonTimeouts = 0;
   const results = [];
   let misses = 0;

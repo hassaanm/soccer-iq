@@ -137,6 +137,12 @@
   <label>Play the keeper <span class="pick"><select id="keeperSel"><option value="off">Off</option><option value="sometimes">Sometimes</option><option value="always">Always</option></select></span></label>
   <p class="hint" id="keeperHint">In matches with keepers (5 v 5), he plays the keeper when they shoot: some of their shots, or all.</p>
   <label class="chk"><span>Match and Cup always open<small>Skips today's training</small></span><span class="sw"><input type="checkbox" id="openChk"><i></i></span></label>
+  <h3>Speed</h3>
+  <label>Graphics <span class="pick"><select id="gfxSel"><option value="smooth">Smooth</option><option value="pretty">Pretty</option></select></span></label>
+  <p class="hint">Smooth leaves out the glow and the blur so the game runs evenly on a phone. Pretty is the full picture.</p>
+  <label class="chk"><span>Record speed<small>Notes every slow moment while he plays</small></span><span class="sw"><input type="checkbox" id="recChk"><i></i></span></label>
+  <button id="recShow" class="btn btn-ghost btn-sm" type="button">Show the record</button> <button id="recCopy" class="btn btn-blue btn-sm" type="button" hidden>Copy</button>
+  <textarea id="recBox" readonly hidden rows="8" style="width:100%;font:11px/1.3 ui-monospace,monospace;margin-top:8px"></textarea>
   <h3>Voice</h3>
   <label class="chk"><span>Recorded voice<small>Loud and clear, even in the car</small></span><span class="sw"><input type="checkbox" id="recordedChk"><i></i></span></label>
   <label>Phone voice <span class="pick"><select id="voiceSel"></select><button id="voiceTest" class="btn btn-ghost btn-sm" type="button">▶ Test</button></span></label>
@@ -164,7 +170,7 @@ addEventListener('error', e => {
   const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'tex', 'pro/rig', 'pro/hair', 'pro/motion', 'pro/light', 'pro/sky', 'pro/grass', 'pro/post', 'pro/stadium', 'pro/park', 'pro/keeper', 'fx', 'sound', 'voice', 'geom', 'teams', 'flair', 'version',
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
-    'saves', 'game/goalie', 'ui/goalie', 'game/handover']
+    'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm']
     .map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });

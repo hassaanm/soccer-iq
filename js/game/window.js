@@ -3,6 +3,7 @@
 // part, and the threat already running in from farther out); then play drops into slow motion and goes on until he
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
+import { time } from '../perf.js';
 import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
@@ -59,11 +60,12 @@ export const moving = {
     if (kindOf(sc) === 'tackle') return null;
     const st = live ? this.liveState() : this.sceneState(sc);
     this.heavyAt = this.frameNo | 0; // (frame time: see view.js spotView)
+    const timed = time('plan'); // (the frame recorder, perf.js)
     try {
       const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra });
       if (p) p.live = live;
       return p;
-    } catch (e) { console.error(e); return null; } // (never a stuck choice: without a plan the choice opens as before v64)
+    } catch (e) { console.error(e); return null; } finally { timed(); } // (never a stuck choice: without a plan the choice opens as before v64)
   },
 
   // (v66) A match's choice opens from play going on. Before its picture is taken, everyone comes over (T s, smoothly,

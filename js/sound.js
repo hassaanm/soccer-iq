@@ -11,6 +11,7 @@
 // Marking the page as media playback (iOS 16.4+) makes everything play even with the silent switch on.
 // Effects, music and voice each have their own volume; the mute-all switch turns off all three. iPhones ignore
 // `volume` on audio players, so each volume is part of its recordings: a new volume means new recordings.
+import { mark } from './perf.js';
 export const SR = 48000; // every recording uses the phone's own output rate
 const MUSIC_VOL = .05, HUSH_RMS = .001, LEAD = .15, vol = { sfx: 1, music: 1, voice: 1 };
 let unlocked = false, enabled = true, musicOn = true, muted = false;
@@ -49,13 +50,17 @@ export function pauseAll() { if (!unlocked) return; bed.pause(); stopVoice(); fx
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseAll(); else playBed(); });
 
 // Float samples (mono, SR) to a WAV file the audio players can play.
+const LE = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 export function wav(data, sr = SR) {
   const n = data.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
   const str = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
   str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
   v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
   str(36, 'data'); v.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 32767, true);
+  // (round 11: the samples are written through a typed array, many times faster than one DataView call each: a line
+  // of a few seconds is 150 000 samples, written in the frame it starts in. Little-endian machines only, as every phone is.)
+  if (LE) { const out = new Int16Array(buf, 44, n); for (let i = 0; i < n; i++) { const x = data[i]; out[i] = (x > 1 ? 1 : x < -1 ? -1 : x) * 32767; } }
+  else for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 32767, true);
   return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
 }
 const scaled = (d, g) => d.map(x => x * g);
@@ -166,6 +171,7 @@ export function sfx(name, arg) {
   if (fxTimer) encodeEffects(); // a volume change is waiting: record it now, so this sound plays at the new level
   const key = name === 'star' ? 'star:' + ([0, 1, 2].includes(arg) ? arg : 2) : name, el = fxEls.get(key);
   if (!el || !fxUrls.has(key)) return; // 'step', or not recorded yet
+  mark('sound ' + key);
   try { el.currentTime = 0; } catch { /* not loaded yet */ }
   el.play().catch(() => {});
 }
@@ -233,8 +239,8 @@ export function trim(d) {
 // load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
 function clip(key) {
   const file = voiceIndex?.clips[key]; if (!file || !OAC()) return null;
-  if (!clipCache.has(file)) clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim)
-    .then(d => { clipFailed.delete(file); return d; }, () => { clipCache.delete(file); clipFailed.add(file); return null; }));
+  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim)
+    .then(d => { mark('voice-decoded ' + key); clipFailed.delete(file); return d; }, () => { clipCache.delete(file); clipFailed.add(file); return null; })); }
   return clipCache.get(file);
 }
 // True if every piece has a recorded clip (and audio is unlocked), so the line can be played instead of spoken.
@@ -260,7 +266,7 @@ export function joinLine(clips, gain = 1) {
   for (const d of clips) { for (let i = 0; i < d.length; i++) line[at + i] = d[i] * gain; at += d.length + gap; }
   return line;
 }
-let voiceToken = 0;
+let voiceToken = 0; const lineUrls = new Map();
 // Plays a line from its clips; the promise resolves when the line has been said (or was cut off by another one).
 // It resolves with `false` when the line was not played because a clip could not be loaded, so the caller can
 // say it another way. The clips are joined into one recording first, so the line plays in one go.
@@ -269,8 +275,11 @@ export async function speakClips(keys) {
   const clips = await Promise.all(keys.map(clip));
   if (token !== voiceToken) return;
   if (clips.some(d => !d)) return false;
-  if (voiceUrl) URL.revokeObjectURL(voiceUrl);
-  voiceUrl = wav(joinLine(clips, vol.voice));
+  // (round 11) A line's recording is made once and kept (the 40 last used, at this volume): a line said again starts
+  // with no work at all in its frame.
+  const lk = vol.voice + '|' + keys.join('|'); voiceUrl = lineUrls.get(lk);
+  if (voiceUrl) { lineUrls.delete(lk); lineUrls.set(lk, voiceUrl); mark('voice-line kept'); }
+  else { mark('voice-line made'); voiceUrl = wav(joinLine(clips, vol.voice)); lineUrls.set(lk, voiceUrl); if (lineUrls.size > 40) { const [k0, u0] = lineUrls.entries().next().value; lineUrls.delete(k0); URL.revokeObjectURL(u0); } }
   const done = new Promise(res => { voiceDone = res; });
   const finish = () => { if (token === voiceToken && voiceDone) { voiceDone(); voiceDone = null; } };
   playBed(); // the open stream is running before the line starts
