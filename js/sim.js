@@ -125,6 +125,9 @@ export function skillNow(sim, id) {
 // the picture to ready the foot for a pass he will turn with.
 export function turnSide(sim, c, h, want) {
   if (c.openS) return c.openS;
+  // (v78) A calm turn (his own player playing it with nobody on him, game/outcomes.js turnTo): the short way round, never
+  // the long way for a defender who is not on him (and his body too turns its own short way: startTurn).
+  if (c.calmTurn) return Math.sign(wrapA(want - h)) || 1;
   const d = wrapA(want - h); if (Math.abs(d) <= 2.6) return Math.sign(d) || 1;
   const o = nearFoe(sim, c), ol = o ? (o.y - c.y) * Math.cos(h) - (o.x - c.x) * Math.sin(h) : 0;
   return o && Math.abs(ol) > .2 ? -Math.sign(ol) : Math.sign(d) || 1;
@@ -248,7 +251,7 @@ export class Sim {
     }
     if (dry) return null;
     if (tap) c.turnTap = null;
-    let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s) fd += s * 2 * Math.PI; // the body turns the same way round as the ball
+    let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s && !c.calmTurn) fd += s * 2 * Math.PI; // the body turns the same way round as the ball (v78: a calm turn: his body its own short way, to face the kick)
     b.move = { k, t0: this.time, a0: b.h, d, s, P, f0, fd, ...m };
     this.on('touch');
     return m.dur;
@@ -450,6 +453,9 @@ export class Sim {
       // the way it is going, at a walk, and the turn starts when the game lets it. Nothing else waits.
       const hold = a.holdTurn && has && !b.move && !b.reach && d > .02;
       if (hold) { dx = Math.cos(b.h) * 2; dy = Math.sin(b.h) * 2; d = 2; }
+      // (v78) Standing on the ball and nudged a few centimetres off his spot (two players stepping apart): he stays where he
+      // is. Stepping back onto the spot used to start a turn with the ball (below) toward it, a spin on the spot.
+      else if (has && !fetch && !b.move && d > .02 && d < .15 && a.sp < .3) { a.tx = a.x; a.ty = a.y; dx = dy = d = 0; }
       if (fetch) {
         const bx = b.x - a.x, by = b.y - a.y, bd = Math.hypot(bx, by);
         if (bd < REACH - .1) { // in reach: a foot takes it, onto the way he goes, or (standing) in to his feet

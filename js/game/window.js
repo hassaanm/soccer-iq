@@ -10,7 +10,7 @@ const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).
-const VIEW_OFF = .3, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+const VIEW_OFF = .3, CARRY_BACK = 1.4, ACROSS = 1.3, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
 import { SHOT } from '../generate.js';
 import { clamp } from '../geom.js';
@@ -87,6 +87,10 @@ export const moving = {
       if (d < 3.2) { // (away from him and across, toward the side with more room: he stays goal-side, a step or two farther off)
         const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
         if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9);
+        // (v78) The touch goes away from him across the pitch, never back toward his own goal: at most ACROSS off the way to
+        // their goal (the owner, v76: he walked back from their goal, facing his own, with nobody on him). Only one right on
+        // him (the touch across would take him past that player's shoulder) sends it straight away from him.
+        const ga0 = Math.atan2(g[1] - c.y, g[0] - c.x), da = wrapA(Math.atan2(dir[1], dir[0]) - ga0); if (Math.abs(da) > ACROSS) { const a = ga0 + Math.sign(da) * ACROSS; dir = [Math.cos(a), Math.sin(a)]; }
         { const k = 3.4 * .25 + 1.2 * (T - .25), ex = c.x + dir[0] * k - o.x, ey = c.y + dir[1] * k - o.y; if (Math.hypot(ex, ey) < 1.9) dir = [bx, by]; } } } // (round 6: never a touch that takes him past that player's shoulder: then straight away from him)
     // (v76) His own player carries it on toward their goal, the way the choice's plan then has him carry it (window.js
     // planHold: a picture from live play has him carry it at the goal), and the view looks that way (viewFor). He used to
@@ -101,7 +105,13 @@ export const moving = {
       const clear = u => !o || [.5, 1, 1.5, 2].every(t => Math.hypot(c.x + dir[0] * k0 + u[0] * v * t - o.x, c.y + dir[1] * k0 + u[1] * v * t - o.y) >= 2.2); // (two steps clear of that player as he stands)
       const ga = Math.atan2(g[1] - c.y, g[0] - c.x), to = a => [Math.cos(a), Math.sin(a)];
       cdir = to(ga);
-      if (burst && !clear(cdir)) { const a = Math.atan2(dir[1], dir[0]), d = wrapA(a - ga), u = to(ga + Math.sign(d) * Math.min(Math.abs(d), CARRY_BACK)); cdir = clear(u) ? u : dir; }
+      // (v78) Not clear at the goal: the least turn off it, on the side away from that player first, that is clear; none
+      // clear: of those, the one that keeps him farthest from that player. Never more than ACROSS off the way to their goal:
+      // he used to carry it on the touch's own way, back toward his own goal, for the whole window (16% of the windows on
+      // the ball in matches at 3v3, up to 2 m back).
+      if (burst && !clear(cdir)) { const sd = o ? Math.sign(wrapA(Math.atan2(c.y - o.y, c.x - o.x) - ga)) || 1 : 1, offs = [.35, .7, 1.05, ACROSS], tries = [...offs.map(a => ga + sd * a), ...offs.map(a => ga - sd * a)];
+        const room = u => Math.min(...[.5, 1, 1.5, 2].map(t => Math.hypot(c.x + dir[0] * k0 + u[0] * v * t - o.x, c.y + dir[1] * k0 + u[1] * v * t - o.y)));
+        const ok = tries.find(a => clear(to(a))); cdir = to(ok ?? tries.sort((p, q) => room(to(q)) - room(to(p)))[0]); }
       this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga); this.camTurn = this.clock + T + .8; // (view.js CAM_TURN: the camera is round by the time the choice opens)
       if (this.wplan?.sc === this.sc && spotKind(this.sc)) this.wplan = null; // (the last play's plan, a run to a ring or a defending choice: its view from above held on through these moments, and swung round as the choice opened)
     }
