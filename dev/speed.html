@@ -40,13 +40,17 @@
   /* Switches used only by the test (js/ui/speed.js has the game's own). */
   body.nofx :is(#banner, #pop, #flash, #toast, #rate, #skillName, #skillTag, #seenNote, #confetti) { display: none !important; }
   body.noedge #tunnel { display: none !important; }
+  /* The buttons' glow pulse (css/app.css nudge: a filter with a drop shadow, painted again every frame) and the lesson dot's ring. */
+  /* The big words' soft shadow (a blur under every letter, each letter its own layer while it drops in). */
+  body.nosoft #banner b, body.nosoft #skillName b { text-shadow: 0 .07em 0 var(--ink) !important; }
+  body.nopulse #hud :is(.nudge, .pointed, #skillBtn), body.nopulse #dots span.now { animation: none !important; }
 </style>
 </head>
 <body>
 <div id="st">
   <div class="intro" id="stIntro">
     <h1>Speed test</h1>
-    <p>The game plays one short scene 16 times, each time with one graphics switch changed, then shows a table. It takes about 90 seconds and makes no sound. Hold the phone sideways and don't touch the screen until the table shows.</p>
+    <p>The game plays one short scene 18 times, each time with one graphics switch changed, then shows a table. It takes about 90 seconds and makes no sound. Hold the phone sideways and don't touch the screen until the table shows.</p>
     <button class="go" id="stGo" type="button">Start</button>
     <p style="margin-top:12px"><button class="ghost" id="stBack" type="button">Back to the game</button></p>
     <p id="stErr" style="color:#ff9d8a"></p>

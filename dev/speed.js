@@ -7,7 +7,7 @@
 // loads, the page swaps the browser's localStorage, as the game sees it, for a throwaway copy in memory (as dev/review.js
 // does). Sound: the game's audio players are never made (sound.js SILENT), the voice is off in the throwaway save, and the
 // one run that measures audio players plays recordings of pure silence on muted players.
-const SAVE_KEY = 'soccer-iq:v1', RUN_MS = 5200, SKIP_MS = 600, LESSON = 'look-up';
+const SAVE_KEY = 'soccer-iq:v1', RUN_MS = 4800, SKIP_MS = 600, LESSON = 'look-up';
 const $ = s => document.querySelector(s);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const parse = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -29,7 +29,7 @@ let swapped = false;
 try { Object.defineProperty(window, 'localStorage', { configurable: true, enumerable: true, get: () => shim }); swapped = window.localStorage === shim; } catch { swapped = false; }
 
 // ---------- what each run changes ----------
-// body: classes on <body> (blur: the old head-down blur in Smooth; nofx and noedge: dev/speed.html's style).
+// body: classes on <body> (blur: the old head-down blur in Smooth; nofx, nopulse, nosoft and noedge: dev/speed.html's style).
 // test: world.setTest (pr, bloom, shadowPass, particles). cap: the 60 cap. strip: the iPad strip's pixel read.
 const RUNS = [
   { id: 'base', name: 'Smooth as shipped (px 1.5)' },
@@ -41,6 +41,8 @@ const RUNS = [
   { id: 'pr3', name: 'Pixel ratio 3', test: { pr: 3 } },
   { id: 'nofx', name: 'Pop-ups, stars off', body: ['nofx'] },
   { id: 'noparts', name: 'Particles off', test: { particles: false } },
+  { id: 'nopulse', name: 'Button glow pulse off', body: ['nopulse'] },
+  { id: 'nosoft', name: 'Big words: no soft shadow', body: ['nosoft'] },
   { id: 'nocap', name: '60 cap off', cap: false },
   { id: 'sound', name: 'Sound players (silent)', sound: true },
   { id: 'strip', name: 'iPad strip read on', strip: true },
