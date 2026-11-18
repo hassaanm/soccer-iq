@@ -14,15 +14,19 @@ export const graphics = () => 'smooth';
 export const smooth = () => mode === 'smooth';
 let mode = 'smooth';
 export const STANDARD = { blur: true, glow: true, soft: true, pr: 0 };
+export const TUNED_VERSION = 2; // (the speed test's version that wrote `settings.tuned`: an older result, as v76's, is ignored)
 // What the speed test (dev/speed.html) chose for this device, kept in the save when it finishes: { blur, glow, soft, pr, sfx,
 // at }. Each value wins over the standard only when it is a real one: true or false, a pixel ratio of 2 or 3, a known way of
 // starting sounds; anything else ("no", "1") leaves the standard.
-export const tuned = () => { const t = P.settings.tuned, o = { ...STANDARD }; if (!t || typeof t !== 'object') return o;
-  for (const k of ['blur', 'glow', 'soft']) if (typeof t[k] === 'boolean') o[k] = t[k];
-  if (t.pr === 2 || t.pr === 3) o.pr = t.pr;
-  if (SFX_MODES.includes(t.sfx)) o.sfx = t.sfx;
+// A result from another version of the test, or one with no valid value at all, reads as the standard (fromTest false).
+export const tuned = () => { const t = P.settings.tuned, o = { ...STANDARD, fromTest: false }; if (!t || typeof t !== 'object' || t.tv !== TUNED_VERSION) return o;
+  let n = 0;
+  for (const k of ['blur', 'glow', 'soft']) if (typeof t[k] === 'boolean') { o[k] = t[k]; n++; }
+  if (t.pr === 2 || t.pr === 3 || t.pr === 0) { if (t.pr) o.pr = t.pr; n++; }
+  if (SFX_MODES.includes(t.sfx)) { o.sfx = t.sfx; n++; }
+  if (!n) return { ...STANDARD, fromTest: false };
   if (typeof t.at === 'string') o.at = t.at;
-  return o; };
+  o.fromTest = true; return o; };
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
@@ -49,7 +53,7 @@ if ($('#recChk')) {
 if ($('#speedTestBtn')) $('#speedTestBtn').onclick = () => { location.href = 'dev/speed.html'; }; // (round 13: dev/speed.html)
 // (round 14) The Graphics area says in words what is in force; "Back to standard settings" shows only when a test result is.
 export function graphicsWords() {
-  const t = tuned(), set = !!P.settings.tuned && typeof P.settings.tuned === 'object';
+  const t = tuned(), set = t.fromTest;
   const facts = `sharpness ${t.pr || 1.5}, head-down blur ${t.blur ? 'on' : 'off'}, glow ${t.glow ? 'on' : 'off'}, soft shadow ${t.soft ? 'on' : 'off'}`;
   return { set, text: (set ? `Set by the speed test${t.at ? ' on ' + t.at : ''}` : 'Standard settings') + ': ' + facts };
 }

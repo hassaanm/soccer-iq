@@ -130,17 +130,22 @@ test('one standard look everywhere; a test result wins only with real values; th
   assert.match(sp, /export const graphics = \(\) => 'smooth';/, 'no Smooth or Pretty choice: a saved settings.graphics is ignored');
   assert.match(sp, /export const STANDARD = \{ blur: true, glow: true, soft: true, pr: 0 \};/);
   const src = sp.match(/export const tuned = \(\) => \{[\s\S]*?return o; \};/)[0].replace('export ', '');
-  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', src + 'return tuned();')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 });
-  assert.deepEqual(fn({ settings: {} }), { blur: true, glow: true, soft: true, pr: 0 }, 'the standard');
-  assert.deepEqual(fn({ settings: { graphics: 'pretty' } }), { blur: true, glow: true, soft: true, pr: 0 }, 'an old Pretty is ignored');
-  assert.deepEqual(fn({ settings: { tuned: { blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), { blur: true, glow: true, soft: true, pr: 0 }, 'stray values leave the standard');
-  assert.deepEqual(fn({ settings: { tuned: { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' } } }), { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' });
+  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', 'TUNED_VERSION', src + 'return tuned();')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 }, 2);
+  const std = { blur: true, glow: true, soft: true, pr: 0, fromTest: false };
+  assert.deepEqual(fn({ settings: {} }), std, 'the standard');
+  assert.deepEqual(fn({ settings: { graphics: 'pretty' } }), std, 'an old Pretty is ignored');
+  assert.deepEqual(fn({ settings: { tuned: { pr: 3 } } }), std, "v76's result (no version) is ignored");
+  assert.deepEqual(fn({ settings: { tuned: { tv: 1, blur: false, pr: 2 } } }), std, 'another version is ignored');
+  assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), std, 'every value invalid: the standard, and the menu says so');
+  assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' } } }), { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18', fromTest: true });
+  assert.match(sp, /const t = tuned\(\), set = t\.fromTest;/, 'the menu calls it a test result only when one is in force');
+  assert.match(code('dev/speed.js'), /writeTuned\(\{ tv: G\.TUNED_VERSION,/, 'the test stamps its results');
   const html = read('index.html');
   assert.ok(!html.includes('gfxSel') && !/>Pretty</.test(html), 'no Smooth / Pretty row');
   assert.match(html, /<small id="gfxNow">/); assert.match(html, /id="gfxResetRow"/); assert.match(html, /Run the speed test<small>About 100 seconds, some of it with sound/);
   assert.match(sp, /if \(\$\('#gfxResetRow'\)\) \$\('#gfxResetRow'\)\.style\.display = w\.set \? '' : 'none';/, 'the reset row shows only with a test result');
   const page = code('dev/speed.js');
-  assert.match(page, /\$\('#stMsg'\)\.textContent = `Green: as good as the standard runs\. \$\{applyBest\(b\)\}`;/, 'the test uses what it found, by itself');
+  assert.match(page, /\$\('#stMsg'\)\.textContent = `Green: as good as the standard runs\. \$\{applyBest\(b\)\}/, 'the test uses what it found, by itself');
   assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to standard settings</, 'and a way back');
   assert.ok(!read('dev/speed.html').includes('stBest'), 'no separate best-settings button');
 });
@@ -191,4 +196,30 @@ test('the governor steps down only after five slow seconds in a row, never while
   o = world(); run(o, 40, 7); assert.equal(o.pending, null, '4 slow seconds (after the first 3 not judged) are not enough');
   o = world(); run(o, 40, 10); assert.equal(o.pending, 1, 'five slow seconds in a row step down once');
   o = world(); loading = 5; run(o, 40, 20); assert.equal(o.pending, null, 'not while clips load'); loading = 0;
+});
+
+test('the speed test changes a setting only when the evidence is outside the noise of the three standard runs', () => {
+  const page = code('dev/speed.js'), bestOf = new Function(page.match(/function bestOf\(res\) \{[\s\S]*?\n\}\n/)[0] + 'return bestOf;')();
+  const run = (id, fps, p95, slow, extra = {}) => ({ id, name: id, fps, p95, slow, max: 40, n: 300, ...extra });
+  const base = (a = 0) => [run('base', 54 + a, 26, 6, { base: true }), run('base2', 55, 25, 5, { base: true }), run('base3', 53, 33, 8, { base: true })];
+  const sounds = (one, pool, later, pl) => [run('one', ...one, { sfx: 'one' }), run('pool', ...pool, { sfx: 'pool' }), run('later', ...later, { sfx: 'later' }), run('poollater', ...pl, { sfx: 'pool+later' })];
+  // all equal: nothing moves away from the standard (except a ratio 2 that is no worse on every measure)
+  let b = bestOf([...base(), ...sounds([54, 26, 6], [54, 26, 6], [54, 26, 6], [54, 26, 6]), run('plain', 55, 25, 5), run('pr2', 54, 26, 6)]);
+  assert.equal(b.sfx, null); assert.ok(b.blur && b.glow && b.soft); assert.equal(b.pr, 2);
+  assert.ok(b.why.some(w => /no clear difference, kept standard/.test(w)), 'says so');
+  // within the noise (3 slow frames of spread): still the standard
+  b = bestOf([...base(), ...sounds([54, 26, 4], [54, 26, 5], [54, 26, 6], [54, 26, 6]), run('plain', 56, 25, 4), run('pr2', 42, 30, 6)]);
+  assert.equal(b.sfx, null, 'one or two slow frames fewer is noise'); assert.ok(b.blur, 'a small gain is noise'); assert.equal(b.pr, 0, 'ratio 2 at 42 a second loses');
+  // one clearly better: it wins
+  b = bestOf([...base(), ...sounds([54, 26, 14], [54, 26, 2], [54, 26, 12], [54, 26, 12]), run('plain', 59, 19, 0), run('pr2', 54, 34, 6)]);
+  assert.equal(b.sfx, 'pool'); assert.ok(!b.blur && !b.glow && !b.soft, 'off when clearly better without them'); assert.equal(b.pr, 0, 'ratio 2 worse on the 95th percentile');
+  // no sound runs (box unticked)
+  b = bestOf([...base(), run('pr2', 54, 26, 6)]); assert.equal(b.sfx, null); assert.equal(b.measuredSfx, false);
+  assert.ok(b.why.length >= 4 && b.why.every(w => typeof w === 'string'), 'each decision says what it compared');
+});
+
+test('a voice clip fetch that never ends does not stop the governor for good', () => {
+  const s = code('js/sound.js');
+  assert.match(s, /export const clipsLoading = \(\) => \(performance\.now\(\) - moved < STUCK \? loading \+ waiting\.length : 0\);/);
+  assert.match(s, /setTimeout\(\(\) => ctl\.abort\(\), 20000\)/, 'a fetch is given up after 20 s');
 });

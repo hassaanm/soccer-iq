@@ -272,9 +272,11 @@ export function trim(d) {
 // load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
 // (round 13) At most LOADS clips are fetched and decoded at once. A mode starting asks for up to 194 together: all at once
 // they arrived in one burst of decoding and trimming over the first seconds of play. A clip a line needs now goes first.
-const LOADS = 4, waiting = []; let loading = 0;
-export const clipsLoading = () => loading + waiting.length; // (round 14: the slow-device governor does not judge frames while clips load: world.js pace)
-function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; job.go().finally(() => { loading--; nextLoad(); }); } }
+const LOADS = 4, waiting = [], STUCK = 10000; let loading = 0, moved = 0;
+// (round 14) Clips still to load, for the slow-device governor (world.js pace: it does not judge while they load). When no
+// clip has started or finished for 10 s (a fetch that never ends), it counts as nothing loading, so the governor goes on.
+export const clipsLoading = () => (performance.now() - moved < STUCK ? loading + waiting.length : 0);
+function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; moved = performance.now(); job.go().finally(() => { loading--; moved = performance.now(); nextLoad(); }); } }
 function queued(file, go, now) {
   let job = waiting.find(j => j.file === file);
   if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); } return job.p; }
@@ -284,9 +286,15 @@ function queued(file, go, now) {
   if (now) waiting.unshift(job); else waiting.push(job);
   nextLoad(); return p;
 }
+// A clip's bytes; a fetch that has not ended after 20 s is given up (the clip is fetched again when next needed), so it
+// never holds one of the LOADS places for good.
+function fetchClip(url) {
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null, t = ctl && setTimeout(() => ctl.abort(), 20000);
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined).then(r => r.arrayBuffer()).finally(() => clearTimeout(t));
+}
 function clip(key, now = true) {
   const file = voiceIndex?.clips[key]; if (!file || !OAC()) return null;
-  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, queued(file, () => fetch(voiceIndex.base + file).then(r => r.arrayBuffer()).then(decode).then(trim), now)
+  if (!clipCache.has(file)) { mark('voice-fetch ' + key); clipCache.set(file, queued(file, () => fetchClip(voiceIndex.base + file).then(decode).then(trim), now)
     .then(d => { mark('voice-decoded ' + key); clipFailed.delete(file); return d; }, () => { clipCache.delete(file); clipFailed.add(file); return null; })); }
   else if (now) queued(file, null, true); // (still waiting: it moves to the front)
   return clipCache.get(file);

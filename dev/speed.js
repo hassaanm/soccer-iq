@@ -180,21 +180,43 @@ async function start() {
   now.hidden = true; G.show('#home'); showResults(res);
 }
 
-// What the test found for this phone. The standard runs give the noise (their spread); a change counts only beyond it.
+// What the test found for this phone (round 14, rule 2). A setting moves away from the standard only when the evidence is
+// clearly outside the noise, the spread of the three standard runs (at least 1 on each measure):
+//  - sound start: the standard way ('pool+later') stays unless another way beats its run by more than the noise;
+//  - sharpness: 1.5 stays unless the ratio-2 run is no worse than the worst standard run on every measure;
+//  - blur, glow, soft shadow (on in the standard): off only when the run without them beats the standard by more than the noise.
+// `why` says, for each decision, what it compared. Self-contained, so the tests can run it on made-up tables.
 function bestOf(res) {
   const by = id => res.find(r => r.id === id), base = res.filter(r => r.base && r.n);
   if (!base.length) return null;
-  const lo = k => Math.min(...base.map(r => r[k])), hi = k => Math.max(...base.map(r => r[k]));
-  const asGood = r => !!(r && r.n && r.fps >= lo('fps') - 1 && r.p95 <= hi('p95') + 2 && r.slow <= hi('slow') + 2);
-  const better = r => !!(r && r.n && r.fps > hi('fps') + 2 && r.slow < lo('slow'));
-  const heard = res.filter(r => r.sfx && r.n).sort((a, b) => a.slow - b.slow || a.max - b.max);
-  const plain = better(by('plain'));
-  return { blur: !plain, glow: !plain, soft: !plain, pr: asGood(by('pr2')) ? 2 : 0, sfx: heard[0]?.sfx || null, asGood,
-    spread: `fps ${lo('fps').toFixed(0)}–${hi('fps').toFixed(0)}, 95% ${lo('p95').toFixed(0)}–${hi('p95').toFixed(0)} ms, slow frames ${lo('slow')}–${hi('slow')}` };
+  const lo = k => Math.min(...base.map(r => r[k])), hi = k => Math.max(...base.map(r => r[k])), mean = k => base.reduce((a, r) => a + r[k], 0) / base.length;
+  const noise = k => Math.max(1, hi(k) - lo(k)), n0 = v => Math.round(v * 10) / 10;
+  // clearly better than `ref` (a run, or the standard's mean): more pictures a second, or fewer slow frames, by more than the
+  // noise, and not worse on the other measure
+  const beats = (r, ref) => !!(r && r.n && ((r.fps - ref.fps > noise('fps') && r.slow <= ref.slow) || (ref.slow - r.slow > noise('slow') && r.fps >= ref.fps - noise('fps'))));
+  const stdRef = { fps: mean('fps'), slow: mean('slow') }, why = [];
+  why.push(`noise (standard ×3): pictures/s ${n0(lo('fps'))}–${n0(hi('fps'))}, 95% ${n0(lo('p95'))}–${n0(hi('p95'))} ms, slow frames ${lo('slow')}–${hi('slow')}`);
+  // sound start
+  const std = by('poollater'), others = res.filter(r => r.sfx && r.n && r.sfx !== 'pool+later'), win = std?.n ? others.filter(r => beats(r, std)).sort((a, b) => a.slow - b.slow || b.fps - a.fps)[0] : null;
+  const sfx = win ? win.sfx : null;
+  why.push(!std?.n ? 'sound start: not measured (no sound runs), kept as it was'
+    : `sound start: standard (two players, later) ${n0(std.fps)}/s, ${std.slow} slow; ` + others.map(r => `${r.sfx} ${n0(r.fps)}/s, ${r.slow} slow`).join('; ')
+      + (win ? ` → ${win.sfx}: better by more than the noise` : ' → no clear difference, kept standard'));
+  // sharpness
+  const p2 = by('pr2'), pr = p2?.n && p2.fps >= lo('fps') && p2.p95 <= hi('p95') && p2.slow <= hi('slow') ? 2 : 0;
+  why.push(!p2?.n ? 'sharpness: not measured, kept 1.5'
+    : `sharpness: ratio 2 ${n0(p2.fps)}/s, 95% ${n0(p2.p95)} ms, ${p2.slow} slow against the worst standard ${n0(lo('fps'))}/s, ${n0(hi('p95'))} ms, ${hi('slow')} slow → ${pr ? '2 (no worse on any measure)' : 'kept 1.5'}`);
+  // blur, glow, soft shadow
+  const plain = by('plain'), off = beats(plain, stdRef);
+  why.push(!plain?.n ? 'blur, glow, soft shadow: not measured, kept on'
+    : `blur, glow, soft shadow: without them ${n0(plain.fps)}/s, ${plain.slow} slow against the standard ${n0(stdRef.fps)}/s, ${n0(stdRef.slow)} slow → ${off ? 'off: better by more than the noise' : 'kept on (no clear gain)'}`);
+  const asGood = r => !!(r && r.n && r.fps >= lo('fps') - noise('fps') && r.p95 <= hi('p95') + noise('p95') && r.slow <= hi('slow') + noise('slow'));
+  return { blur: !off, glow: !off, soft: !off, pr, sfx, asGood, why, measuredSfx: !!std?.n,
+    spread: `fps ${n0(lo('fps'))}–${n0(hi('fps'))}, 95% ${n0(lo('p95'))}–${n0(hi('p95'))} ms, slow frames ${lo('slow')}–${hi('slow')}` };
 }
 let best = null, report = '';
 const pct = v => Math.round(v * 100) + '%';
-function words(b) { return `sharpness ${b.pr || 1.5}, head-down blur ${b.blur ? 'on' : 'off'}, glow ${b.glow ? 'on' : 'off'}, soft shadow ${b.soft ? 'on' : 'off'}${b.sfx ? ', sounds: ' + b.sfx : ''}`; }
+function words(b) { return `sharpness ${b.pr || 1.5}, head-down blur ${b.blur ? 'on' : 'off'}, glow ${b.glow ? 'on' : 'off'}, soft shadow ${b.soft ? 'on' : 'off'}, sounds: ${b.sfx || 'standard'}`; }
 function showResults(res) {
   const f = (v, d = 0) => (v ? v.toFixed(d) : '-');
   const b = best = bestOf(res);
@@ -210,11 +232,11 @@ function showResults(res) {
     `screen ${screen.width}x${screen.height} dpr ${devicePixelRatio} · canvas ${c.width}x${c.height} · home-screen app ${navigator.standalone ? 'yes' : 'no'} · size ${G.TEAM?.size || JSON.parse(map[SAVE_KEY]).settings.size}`,
     `run | pics/s | median | 95% | worst | frames >34 ms | >50 ms | events followed by a slow frame | by event (slow/n)`,
     ...res.map(r => `${r.name} | ${f(r.fps)} | ${f(r.med, 1)} | ${f(r.p95, 1)} | ${f(r.max)} | ${r.n ? r.slow : '-'} | ${r.n ? r.over : '-'} | ${r.n ? pct(r.after) : '-'} | ${Object.entries(r.kinds || {}).map(([k, o]) => `${k} ${o.slow}/${o.n}`).join(', ')}${r.err ? ' | ' + r.err : ''}`),
-    b ? `noise (standard ×3): ${b.spread}` : 'no standard run',
-    b ? `best for this phone: ${words(b)}` : '',
+    ...(b ? b.why : ['no standard run']),
+    b ? `in use now: ${words(b)}` : '',
   ].join('\n');
   $('#stText').value = report;
-  $('#stMsg').textContent = `Green: as good as the standard runs. ${applyBest(b)}`;
+  $('#stMsg').textContent = `Green: as good as the standard runs. ${applyBest(b)}${b && b.measuredSfx && !b.sfx ? ' Sounds: no clear difference, kept standard.' : ''}`;
   $('#st').className = ''; $('#stOut').hidden = false;
 }
 $('#stCopy').onclick = async () => {
@@ -238,8 +260,9 @@ $('#stNormal').onclick = () => {
 function applyBest(b) {
   if (!b) return 'No result, so nothing changed.';
   try {
-    const old = parse(realGet(SAVE_KEY), null)?.settings?.tuned, sfx = b.sfx || (old && typeof old.sfx === 'string' ? old.sfx : null); // (no sound runs: the last way found stays)
-    writeTuned({ blur: b.blur, glow: b.glow, soft: b.soft, pr: b.pr || 0, ...(sfx ? { sfx } : {}), at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
+    const old = parse(realGet(SAVE_KEY), null)?.settings?.tuned, oldOk = old && old.tv === G.TUNED_VERSION;
+    const sfx = b.measuredSfx ? b.sfx : oldOk && typeof old.sfx === 'string' ? old.sfx : null; // (no sound runs: the last way found stays)
+    writeTuned({ tv: G.TUNED_VERSION, blur: b.blur, glow: b.glow, soft: b.soft, pr: b.pr || 0, ...(sfx ? { sfx } : {}), at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
     return `Now in use on this device: ${words({ ...b, sfx })}.`;
   } catch (e) { return 'Could not save the settings: ' + (e?.message || e); }
 }
