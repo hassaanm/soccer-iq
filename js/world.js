@@ -286,7 +286,7 @@ export class World {
       this.nets.push({ mesh: back, base: back.geometry.attributes.position.array.slice(), dir, x: gx, t: 9, y: 0, z: 0 });
       // The two side nets and the roof net are one mesh (one draw); their picture repeats every 20 cm.
       const sheet = (w, h, rx, x, y, z) => { const g = new THREE.PlaneGeometry(w, h); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / .2, uv.getY(i) * h / .2); if (rx) g.rotateX(Math.PI / 2); return [g.translate(x, y, z)]; };
-      add(new THREE.Mesh(join([sheet(depth, gh, 1, 0, gy0 - CY, 0), sheet(depth, gh, 1, 0, gy1 - CY, 0), sheet(depth, gw, 0, 0, 0, gh / 2)]), netMat(.2, .2)), gx + dir * depth / 2, CY, gh / 2);
+      this.nets.at(-1).sides = add(new THREE.Mesh(join([sheet(depth, gh, 1, 0, gy0 - CY, 0), sheet(depth, gh, 1, 0, gy1 - CY, 0), sheet(depth, gw, 0, 0, 0, gh / 2)]), netMat(.2, .2)), gx + dir * depth / 2, CY, gh / 2); // (sides: the keeper game sizes our goal, ui/goalie.js)
     }
     // Corner flags that wave a little (the four poles are one mesh).
     const poleM = M('#fff8e8'), flagM = new THREE.MeshLambertMaterial({ color: '#ff6b5e', side: THREE.DoubleSide }), poles = [];
@@ -296,7 +296,7 @@ export class World {
       const flag = new THREE.Mesh(flagG, flagM); flag.position.set(x, y, 0); flag.castShadow = true;
       this.scene.add(flag); return flag;
     });
-    for (const [m, list] of [...bars, [poleM, poles]]) { const o = merged(list, m); o.castShadow = true; this.scene.add(o); }
+    this.bars = []; for (const [m, list] of [...bars, [poleM, poles]]) { const o = merged(list, m); o.castShadow = true; this.scene.add(o); this.bars.push(o); }
   }
   // A shot that hits the net pushes it out around the ball; it swings back and settles.
   moveNets(dt) {

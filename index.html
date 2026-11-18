@@ -45,6 +45,8 @@
   <button class="btn btn-gold btn-round" id="skillBtn"><svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47"/></svg><i>⚡</i><span></span></button>
   <div id="skillName"><b></b></div>
   <div id="skillTag"></div>
+  <div id="kEyes" aria-hidden="true"><i></i><i></i></div>
+  <div id="kGlove" aria-hidden="true">🧤</div>
   <button class="btn btn-green btn-round" id="dribBtn"><i>👟</i><span>DRIBBLE</span></button>
 </div>
 
@@ -83,7 +85,7 @@
   <div class="home-foot">
     <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
-    <div class="freebox"><button id="freeBtn" class="btn btn-blue"><i class="ico">⚽</i>Match</button><button id="cupBtn" class="btn btn-gold"><i class="ico">🏆</i>Cup</button></div>
+    <div class="freebox"><button id="freeBtn" class="btn btn-blue"><i class="ico">⚽</i>Match</button><button id="cupBtn" class="btn btn-gold"><i class="ico">🏆</i>Cup</button><button id="keeperBtn" class="btn btn-keeper" aria-label="Keeper game"><i class="ico">🧤</i><span>Keeper</span></button></div>
   </div>
 </section>
 
@@ -158,7 +160,8 @@ addEventListener('error', e => {
   try { if (sessionStorage.getItem('healed')) return; sessionStorage.setItem('healed', '1'); } catch { return; }
   const files = ['main', 'flows', 'game', 'skills', 'cups', 'generate', 'progress', 'sim', 'world', 'tex', 'pro/rig', 'pro/hair', 'pro/motion', 'pro/light', 'pro/sky', 'pro/grass', 'pro/post', 'pro/stadium', 'pro/park', 'pro/keeper', 'fx', 'sound', 'voice', 'geom', 'teams', 'flair', 'version',
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
-    'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot']
+    'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
+    'saves', 'game/goalie', 'ui/goalie']
     .map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });

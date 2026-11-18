@@ -656,3 +656,22 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
   #flash.go{animation:none}
   #rotate .turn span{animation:none}
 }
+
+/* ---------- the keeper game (v67, ui/goalie.js) ---------- */
+/* The glove button: orange, a keeper's colour that is neither Match's blue nor Cup's gold. */
+.btn-keeper{--top:#ff9447;--bot:#e8691e;--edge:#b24f12}
+#keeperBtn{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+#keeperBtn .ico{font-size:22px;line-height:1}
+.freebox #keeperBtn{min-width:0;padding-left:14px;padding-right:14px}
+/* The glove alone, a square button at the end of the row, so PLAY stays in the middle (its name is said the first time). */
+.freebox #keeperBtn{flex:none;width:54px;padding:0}.freebox #keeperBtn span{display:none}.freebox #keeperBtn .ico{font-size:30px}
+#keeperBtn.top{width:46px;padding:0}#keeperBtn.top span{display:none}
+#keeperBtn.top{position:absolute;top:calc(12px + var(--safe-t, 0px));left:calc(68px + var(--safe-l, 0px));height:46px;padding:0 14px;border-radius:15px;font-size:17px}
+/* The shooter's eyes over his head (a tell: where he looks is where he shoots), and the glove on the target he picked. */
+#kEyes{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;gap:4px;padding:6px 9px 8px;margin-top:-14px;background:#fff;border-radius:22px;border:3px solid var(--ink);box-shadow:0 4px 10px rgba(0,0,0,.3);transform-origin:50% 100%}
+#kEyes.show{display:flex}
+#kEyes::after{content:"";position:absolute;left:50%;bottom:-9px;width:12px;height:12px;margin-left:-8px;background:#fff;border:3px solid var(--ink);border-top:0;border-left:0;transform:rotate(45deg)}
+#kEyes i{position:relative;width:19px;height:25px;border-radius:50%;background:#fff;border:3px solid var(--ink);box-sizing:border-box}
+#kEyes i::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:var(--ink);left:calc(50% - 5px + var(--dx, 0) * 3.5px);top:calc(50% - 5px + var(--dy, 0) * 5.5px)}
+#kGlove{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;font-size:44px;line-height:1;filter:drop-shadow(0 3px 0 rgba(36,25,58,.6))}
+#kGlove.show{display:block;animation:popIn .25s var(--bounce)}

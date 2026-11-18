@@ -70,9 +70,9 @@ function finish(said) {
 // short training is the natural next thing (play, practise, play).
 const ifOpen = t => (playOpen(P) ? t : null);
 // (v64 round 2) Not open yet: the tile stays, dimmed with a lock, and a tap says how to open it (gated), as on the home screen.
-const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
-const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
-function toLessons() {
+export const toMatch = () => (matchOpen(P) ? { icon: '⚽', text: 'Match', go: runFreePlay } : { icon: '⚽', text: 'Match', locked: true, go: () => gated(runFreePlay) });
+export const toCup = () => (playOpen(P) ? { icon: '🏆', text: 'Cup', go: openCups } : { icon: '🏆', text: 'Cup', locked: true, go: () => gated(openCups) });
+export function toLessons() {
   const hot = !playOpen(P);
   if (trainingNext()) return { icon: '💪', text: 'Training', label: P.openDay === today() ? 'AGAIN' : 'TODAY', go: runSession, hot }; // (v64 round 3: once today's is done, it does not say it is still to do)
   const sk = skillById(nextSkill(P, PATH));

@@ -6,6 +6,7 @@ import { hush } from './ui/speech.js';
 import { renderPickers } from './ui/home.js';
 import { matchStrip } from './ui/strip.js';
 import { runSession, runFreePlay, openCups, gated } from './flows.js';
+import { goalie } from './ui/goalie.js'; // (v67: the keeper game; its own button)
 import { VERSION } from './version.js';
 import './ui/soundmenu.js';
 import './ui/menu.js';
@@ -26,7 +27,12 @@ function frame(now) {
   const ms = now - last, dt = Math.min(.05, ms / 1000);
   last = now; time += dt;
   requestAnimationFrame(frame);
-  try { world.pace(ms); game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); matchStrip(now); } catch (e) { console.error(e); }
+  try {
+    world.pace(ms);
+    if (goalie.on) { goalie.tick(dt); world.render(goalie.sim, goalie.cam, goalie.ui, time); } // (the keeper game draws its own play: ui/goalie.js)
+    else { goalie.tick(dt); game.tick(dt, time); world.render(game.sim, game.cam, game.ui, time); }
+    matchStrip(now);
+  } catch (e) { console.error(e); }
 }
 requestAnimationFrame(frame);
 
