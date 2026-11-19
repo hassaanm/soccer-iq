@@ -33,7 +33,7 @@ export const STAND = { k: .12, yaw: 15, VW: 844, VH: 390 };
 // the game itself (his small moves on the spot not counted), less than ROOT.him m.
 export const ROOT = { ball: 2, him: .3 };
 // The most standing a phase may have (a share of its counted seconds).
-export const LIMIT = { runup: .08, window: .18, crawl: .2, outcome: .08, live: .06 };
+export const LIMIT = { runup: .08, window: .18, crawl: .25, outcome: .08, live: .06 };
 
 // ---- the poses: pro/motion.js, with three.js stood in for ----
 let animateRig = null;

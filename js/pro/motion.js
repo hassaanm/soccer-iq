@@ -397,7 +397,8 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   // (alive-shape) His own small moves off the ball (ALIVE): AX, AY, the drawn offset (world metres) from where the game has him.
   const alive = a.id !== 'hero' && !a.gk && !carrying && !mood && !a.track?.comer && !passIn && kt > .7 && !(act && act.k === 'trap');
   m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 2.2), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 5, rdt); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out)
-  let AX = 0, AY = 0;
+  let AX = 0, AY = 0, TX = 0, TY = 0; // (TX, TY: where his move now takes him, drawn: game/window.js aliveGuard grades it ahead of time)
+  m.cap = damp(m.cap ?? 1, (sim.aliveCap ?? 1) * (a.aliveK ?? 1), 12, rdt); // (the window's own check may make everyone's moves smaller: game/window.js aliveGuard)
   if (m.al > .002) {
     // (in a choice's slow motion the picture's clock runs at a third of real time: there his moves come a little quicker
     // by it, about one a second on the screen; sim.prate, set by game/window.js)
@@ -414,12 +415,12 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
       m.at = [tx, ty];
     }
     const e = sm((ph - n) / .6); m.ao = [m.af[0] + (m.at[0] - m.af[0]) * e, m.af[1] + (m.at[1] - m.af[1]) * e];
-    AX = m.ao[0] * m.al; AY = m.ao[1] * m.al;
+    const k = m.al * m.cap; AX = m.ao[0] * k; AY = m.ao[1] * k; TX = m.at[0] * k; TY = m.at[1] * k;
     // a defender marking a man (nearer him than the ball, within 2.6 m, and not the one on it) goes with that man's moves
     const man = defending && foe && foe !== carrier && fd < 2.6 && fd < bd ? OFF.get(foe) : null;
-    if (man) { AX = man[0] + AX * ALIVE.mark; AY = man[1] + AY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own)
+    if (man) { AX = man[0] + AX * ALIVE.mark; AY = man[1] + AY * ALIVE.mark; TX = man[2] + TX * ALIVE.mark; TY = man[3] + TY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own)
   }
-  { let o = OFF.get(a); if (!o) OFF.set(a, o = [0, 0]); o[0] = AX; o[1] = AY; }
+  { let o = OFF.get(a); if (!o) OFF.set(a, o = [0, 0, 0, 0]); o[0] = AX; o[1] = AY; o[2] = TX; o[3] = TY; a.alive = o; }
   m.ax = AX; m.ay = AY; // (read by scripts/stand-audit.js and scripts/motion-audit.js: the grade of what is drawn)
   m.puff = damp(m.puff, run, run > m.puff ? .5 : .1, rdt); m.br += rdt * (2 + 2.5 * m.puff);
   const rd = m.ready * (.85 + .3 * m.se), breath = Math.sin(m.br) * (1 + 2 * m.puff), sway = Math.sin(T * .8 + u.seed * 2) + .5 * Math.sin(T * .33 + u.seed);
