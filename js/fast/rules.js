@@ -68,7 +68,7 @@ export function naturalYaw(me, ball, hasBall, L, W) {
 // The camera behind and above him, by how far his head is up (look, 0 head down … 1 up), as the game's own player view
 // does it (js/game/view.js; ported in the Lab's eyes.js): back, to the side, height, ahead, toward the ball, target
 // height, focal lengths (height, width).
-export const DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], UP = [5.4, .3, 3.1, 9, 0, .5, .86, .5];
+export const DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], UP = [5.4, .3, 4.4, 7.5, 0, 0, .86, .5]; // (head up: higher and looking down onto the play, so the pitch fills the picture and the stands are a strip at the top)
 export function camSpec(me, ball, carried, yaw, look) {
   const k = sm(look), C = DOWN;
   const [bx, by] = rot(-lerp(C[0], UP[0], k), lerp(C[1], UP[1], k), yaw), [fx, fy] = rot(UP[3], 0, yaw);

@@ -16,6 +16,7 @@ import './ui/input.js';
 import { held, share, easing } from './pause.js';
 import { pauseFrame, stillView, easeMark, easeDraw } from './ui/pause.js';
 import { fast } from './fast/fast.js'; // (v84: Fast mode; it gets the frames while it plays)
+fast.goalie = goalie; // (v84: in a Fast match at 5v5 he plays our keeper for their clear shots, with the keeper game's moment)
 
 $('#playBtn').onclick = () => runSession();
 $('#freeBtn').onclick = () => gated(runFreePlay);

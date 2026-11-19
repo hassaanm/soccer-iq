@@ -878,3 +878,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 .fChip .pic svg{display:block}
 .fChip .ptr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-7px 0 0 -7px;border:7px solid transparent;border-left:9px solid #fff;transform:rotate(var(--a,0deg)) translateX(28px)}
 .fChip.gold .ptr{border-left-color:var(--gold)}
+#fFoot.show{display:flex}
+#fCue{position:absolute;left:50%;top:64px;transform:translateX(-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
+#fCue i{font-style:normal}
+#fCue.show{opacity:1;transform:translateX(-50%) scale(1)}
