@@ -418,7 +418,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     const k = m.al * m.cap; AX = m.ao[0] * k; AY = m.ao[1] * k; TX = m.at[0] * k; TY = m.at[1] * k;
     // a defender marking a man (nearer him than the ball, within 2.6 m, and not the one on it) goes with that man's moves
     const man = defending && foe && foe !== carrier && fd < 2.6 && fd < bd ? OFF.get(foe) : null;
-    if (man) { AX = man[0] + AX * ALIVE.mark; AY = man[1] + AY * ALIVE.mark; TX = man[2] + TX * ALIVE.mark; TY = man[3] + TY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own)
+    if (man) { const c = m.cap; AX = man[0] * c + AX * ALIVE.mark; AY = man[1] * c + AY * ALIVE.mark; TX = man[2] * c + TX * ALIVE.mark; TY = man[3] * c + TY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own; the window's check makes all of it smaller)
   }
   { let o = OFF.get(a); if (!o) OFF.set(a, o = [0, 0, 0, 0]); o[0] = AX; o[1] = AY; o[2] = TX; o[3] = TY; a.alive = o; }
   m.ax = AX; m.ay = AY; // (read by scripts/stand-audit.js and scripts/motion-audit.js: the grade of what is drawn)
