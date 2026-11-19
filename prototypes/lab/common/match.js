@@ -29,20 +29,20 @@ export class Match {
     const rows = n === 3 ? [[1.2, .5], [5, .22], [5, .78]] : [[1.2, .5], [5, .2], [5, .8], [9, .5]];
     return rows.map(([d, f], i) => [c + s * (i === 0 && kick === team ? .7 : d + (kick !== team && i === 0 ? 3 : 0)), W * f]);
   }
-  setup(kick = 'us') {
+  setup(kick = 'us', taker = null) {
     const us = this.formation('us', kick), th = this.formation('them', kick);
-    this.sim.setup({ hero: us[0], mates: us.slice(1), opps: th, carrier: kick === 'us' ? 'hero' : 'o1' });
+    this.sim.setup({ hero: us[0], mates: us.slice(1), opps: th, carrier: taker || (kick === 'us' ? 'hero' : 'o1') });
     for (const a of this.sim.agents.values()) a.face = [a.team === 'us' ? 1 : -1, 0];
     this.flight = null; this.jobs.length = 0; this.cmd.clear(); this.lastTeam = kick;
   }
   // Everyone walks back to his place for a kick-off (no cut): `team` kicks off once they are there.
-  kickoff(team, done) {
+  kickoff(team, done, taker = null) {
     const us = this.formation('us', team), th = this.formation('them', team);
     const all = [...this.usIds.map((id, i) => [id, us[i]]), ...this.themIds.map((id, i) => [id, th[i]])];
     for (const [id, p] of all) if (this.sim.a(id)) { this.sim.go(id, p[0], p[1], 5); this.cmd.set(id, 99); }
     const b = this.sim.ball; Object.assign(b, { state: 'loose', carrier: null, x: this.L / 2, y: this.W / 2, z: 0, move: null, hidden: false, reach: null });
     this.flight = null; this.dead = true; this.restart = null;
-    this.after(1.9, () => { this.cmd.clear(); this.dead = false; const k = team === 'us' ? 'hero' : 'o1'; this.giveTo(k, 'kickoff'); done?.(); });
+    this.after(1.9, () => { this.cmd.clear(); this.dead = false; const k = taker || (team === 'us' ? 'hero' : 'o1'); this.giveTo(k, 'kickoff'); done?.(); });
   }
   // ---------- small queries ----------
   team(id) { return id && (id[0] === 'o' ? 'them' : 'us'); }
@@ -240,7 +240,7 @@ export class Match {
     if (this.freeze || this.hold) { s.go(id, a.x + dx * .3, a.y, 1); return; }
     const shot = this.shotCheck(id); if (shot.good && Math.random() < .8) { this.shoot(id, shot); return; }
     const press = this.foes(team).some(o => dist(o, a) < 2.4);
-    const opts = this.ids(team).filter(m => m !== id).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open).sort((p, q) => q.fwd - p.fwd);
+    const opts = this.ids(team).filter(m => m !== id).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open && (!this.canPass || this.canPass(id, o.m))).sort((p, q) => q.fwd - p.fwd);
     const pref = this.prefer?.(id, opts);
     if (pref) { this.pass(id, pref); return; }
     if (opts.length && (press || (opts[0].fwd > 5 && Math.random() < .35))) { this.pass(id, opts[0].m); return; }

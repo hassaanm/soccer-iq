@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a1230">
+<title>Lab C · Keep it</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../lab.css">
+<!-- The game's save is never read or written here: every game module this page loads keeps its save in this
+     throwaway copy (js/storage.js), which also sets the team size for this page. -->
+<script>globalThis.SOCCER_THROWAWAY = { map: { 'soccer-iq:v1': JSON.stringify({ settings: { size: '4v4' } }) } };</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<script type="module" src="c.js"></script>
+</body>
+</html>
