@@ -6,7 +6,8 @@ import { hush } from './ui/speech.js';
 import { renderPickers } from './ui/home.js';
 import { matchStrip } from './ui/strip.js';
 import { runSession, runFreePlay, openCups, gated } from './flows.js';
-import { goalie } from './ui/goalie.js'; // (v67: the keeper game; its own button)
+import { goalie } from './ui/goalie.js'; // (v67: the keeper game; v87: whichever mini game is on the stage, ui/goalie.js onStage)
+import './mini/chooser.js'; // (v87: the Mini games screen, on the home screen's mini games button)
 import { VERSION } from './version.js';
 import { smooth, TEST } from './ui/speed.js';
 import * as perf from './perf.js';

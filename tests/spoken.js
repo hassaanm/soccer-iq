@@ -8,6 +8,7 @@ import { MOVE_NAME } from '../js/flair.js';
 import { EXPLAIN, SKILL_TIP, SAW } from '../js/game/skill.js';
 import { TIMEOUT } from '../js/game/rounds.js';
 import { SAVED, WHY, SAID } from '../js/saves.js';
+import { miniLines } from '../js/voicelines.js';
 
 const A = 'Saka', B = 'Rice';
 const fill = t => t.replaceAll('{m0}', A).replaceAll('{m1}', B).replaceAll('{m2}', A); // ({m2}: the third friend, at 4v4)
@@ -44,6 +45,7 @@ export function spokenLines() {
     'You looked up!', 'You looked early!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
     ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, SKILL_TIP, SAW, // (v78: and after the move to the wrong side, a lesson's card)
     SAVED, ...Object.values(WHY), ...Object.values(SAID), // the keeper game (v67, saves.js)
+    ...miniLines(), // the mini games (v87: the screen, the end of a run, penalties)
     ...Object.values(OKAY), ...Object.values(BAD), // only-okay runs (v60), and why some wrong runs lost it (v64) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];
   for (const c of cues) {

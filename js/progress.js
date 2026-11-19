@@ -275,3 +275,24 @@ export function keeperDone(p, saves, { of = 8, stickerAt = 6, day = today(), now
   const sticker = saves >= stickerAt; if (sticker) { k.stickers++; (p.stickers ||= []).push({ emoji: '🧤', skill: 'keeper', at: now }); }
   return { best: best && !first, sticker, first, of };
 }
+
+// ---------- mini games (v87: mini/rules.js) ----------
+// `mini` in the save: { [game id]: { best, plays, last, day, at } }: his best score in each mini game (an endless run with
+// two lives), how many runs, the last score, the day of the last run and when the best was set. A run that scores more
+// than the best so far is a new best (his first run too, when it scores at all).
+export const miniBest = (p, id) => p.mini?.[id]?.best || 0;
+export function miniDone(p, id, score, { day = today(), now = Date.now(), sticker = null } = {}) {
+  const m = (p.mini ||= {})[id] ||= { best: 0, plays: 0, last: 0, day: -1, at: 0 }, was = m.best;
+  const best = score > was; if (best) { m.best = score; m.at = now; }
+  m.plays++; m.last = score; m.day = day;
+  // A sticker for a good run (the keeper game: 6 saves or more, as a round of 8 gave one): { at, emoji, skill }.
+  const got = !!sticker && score >= sticker.at;
+  if (got) { (p.stickers ||= []).push({ emoji: sticker.emoji, skill: sticker.skill, at: now }); if (sticker.skill === 'keeper' && p.keeper) p.keeper.stickers = (p.keeper.stickers || 0) + 1; }
+  return { best, first: m.plays === 1, was, score, sticker: got };
+}
+// (v87) The keeper game was a round of 8 shots (best: saves of 8, keeper.best); now it is endless. That old best is a
+// different score, so it is not his new best: the results card shows it once, as "old best", and it stays in the save.
+export function oldKeeperBest(p) {
+  const k = p.keeper; if (!k?.best || k.oldShown) return null;
+  k.oldShown = true; return k.best;
+}

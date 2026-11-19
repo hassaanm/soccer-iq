@@ -84,6 +84,21 @@ export class Goalie {
     this.phase = 'idle';
     return this.results;
   }
+  // (v87) The mini game: shots one after another, each from next(i) (saves.js endlessShot), until next gives none (his
+  // second goal against: mini/rules.js). onShot(result, i) as each result happens (the save, or the ball in the net), so
+  // the page counts it then. Resolves the results.
+  async endless(next, { onShot, first = false } = {}) {
+    this.on = true; this.results = [];
+    try {
+      for (let i = 0; ; i++) {
+        const spec = next(i); if (!spec) break;
+        this.onResult = r => onShot?.(r, i);
+        this.results.push(await this.shot(spec, { hint: first && i === 0 }));
+      }
+    } finally { this.onResult = null; }
+    this.phase = 'idle';
+    return this.results;
+  }
   // The scene of one shot: him in the middle of his goal on the line, the shooter at the start of his run with the ball,
   // a friend coming across (too late to help) and one of theirs following the play.
   setup(spec) {
@@ -168,6 +183,7 @@ export class Goalie {
     const arrive = this.strike(spec, r, at);
     await this.wait(99, () => s.time >= arrive);
     if (r.res === 'save') this.saved(r); else this.conceded(r);
+    this.onResult?.(this.result); // (v87: the mini game counts it now)
     await this.wait(AFTER[r.res]);
     this.hud.caption?.('');
     return this.result;
@@ -260,7 +276,7 @@ export class Goalie {
     const t = this.tell; ui.tell = null; ui.lines = NONE;
     if (t && o) {
       // His eyes (drawn over his head by ui/goalie.js): clear on the first shots, a moment only later, none at the end.
-      const age = this.ui.clock - this.diveT0, show = t.level >= 2 ? 1 : t.level === 1 ? clamp(1.6 - age, 0, 1) : 0;
+      const age = this.ui.clock - this.diveT0, show = t.level >= 2 ? 1 : t.level === 1 ? clamp((t.flash ?? 1.6) - age, 0, 1) : 0;
       if (show > 0) ui.tell = { x: o.x, y: o.y, z: 1.75, dx: t.col === 'L' ? -1 : t.col === 'R' ? 1 : 0, dy: t.top ? -1 : .7, big: t.level >= 3, alpha: show };
       // His standing foot points at it (level 3: an arrow on the grass from his foot, so the first shots teach what to watch).
       if (t.level >= 3) { const a = this.w({ x: 0, u: t.at.u }), dx = a.x - o.x, dy = a.y - o.y, l = Math.hypot(dx, dy); ui.lines = [{ a: { x: o.x + dx / l * .5, y: o.y + dy / l * .5 }, b: { x: o.x + dx / l * 2.6, y: o.y + dy / l * 2.6 }, color: '#ffd23f' }]; }

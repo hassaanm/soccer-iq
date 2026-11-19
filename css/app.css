@@ -905,3 +905,60 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fNext{position:absolute;left:calc(26px + var(--safe-l));top:70px;display:flex;align-items:center;gap:2px;padding:5px 10px;border-radius:999px;background:rgba(36,25,58,.7);color:#fff;font:700 22px/1 var(--font);opacity:0;transition:opacity .3s;pointer-events:none}
 #fNext i{font-style:normal}
 #fNext.show{opacity:1}
+/* ---------- mini games (v87: js/mini/) ---------- */
+/* Only transform and opacity animate here; no filters, no blurred shadows that change (painting stays cheap on the phone). */
+/* The bar along the top in a run: two hearts, the score, his best. */
+#miniBar{display:flex;align-items:center;gap:12px;background:rgba(36,25,58,.8);color:#fff;padding:5px 16px;border-radius:999px;font-weight:700;line-height:1}
+#miniBar.hidden{display:none}
+#miniBar.shake{animation:miniShake .45s ease-out}
+@keyframes miniShake{20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}}
+#miniBar .lives{display:flex;gap:5px}
+#miniBar .heart{position:relative;display:block;width:30px;height:28px}
+#miniBar .heart span{position:absolute;inset:0;display:block}
+#miniBar .heart svg{display:block;width:100%;height:100%;overflow:visible}
+#miniBar .heart .bg path{fill:rgba(255,255,255,.1);stroke:rgba(255,255,255,.5);stroke-width:1.8}
+#miniBar .heart .fg path{fill:#ff4d6d;stroke:#fff;stroke-width:1.6}
+#miniBar .heart.lost .fg{animation:heartLose 1s ease-out forwards}
+@keyframes heartLose{0%{transform:scale(1);opacity:1}22%{transform:scale(1.5);opacity:1}100%{transform:translateY(12px) scale(.3);opacity:0}}
+#miniBar.last .heart:not(.lost) .fg{animation:heartBeat 1.2s ease-in-out infinite}
+@keyframes heartBeat{0%,100%{transform:scale(1)}50%{transform:scale(1.13)}}
+#miniBar .sc{display:flex;align-items:center;gap:6px;font-size:28px}
+#miniBar .sc .u{font-style:normal;font-size:22px}
+#miniBar .sc b{display:inline-block;min-width:1.1em;text-align:center}
+#miniBar .sc b.bump{animation:miniBump .45s var(--bounce)}
+@keyframes miniBump{40%{transform:scale(1.55)}}
+#miniBar .best{display:flex;align-items:center;gap:3px;font-size:17px;opacity:.8;padding-left:10px;border-left:2px solid rgba(255,255,255,.25)}
+#miniBar .best.none{display:none}
+#miniBar .best i{font-style:normal}
+#miniBar .best.beat{color:var(--gold);opacity:1;animation:miniBump .5s var(--bounce)}
+/* Penalties: the ball on the target he picked (as the keeper game's glove). */
+#pMark{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;font-size:40px;line-height:1;text-shadow:0 3px 0 rgba(36,25,58,.6)}
+#pMark.show{display:block;animation:popIn .25s var(--bounce)}
+/* The Mini games screen: one big tile per game (a picture, its name, his best). */
+#minis{display:flex;flex-wrap:wrap;justify-content:center;gap:clamp(12px,3vw,24px);padding:8px 4px 4px;max-height:calc(92dvh - 64px);overflow-y:auto}
+#minis .tile.mini{display:flex;flex-direction:column;align-items:center;gap:4px;width:min(250px,38vw);padding:10px 10px 10px;border:0;border-radius:20px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;box-shadow:inset 0 -4px 0 rgba(36,25,58,.14),0 3px 0 rgba(36,25,58,.12)}
+#minis .tile.mini:active{transform:translateY(2px)}
+#minis .tile .pic{display:block;width:100%}
+#minis .tile .pic svg{display:block;width:100%;height:auto}
+#minis .tile .k{font-size:clamp(17px,2.6vw,22px);font-weight:700}
+#minis .tile .st{display:flex;align-items:center;gap:4px;font-size:clamp(20px,3vw,26px);font-weight:700;color:var(--gold-e)}
+#minis .tile .st i{font-style:normal}
+#minis .tile .st.none{visibility:hidden}
+.sheet #miniClose{display:block;position:absolute;top:8px;right:12px;padding:11px 18px;min-height:44px;margin:0;z-index:1}
+@media (max-height:500px){#minis .tile.mini{width:min(230px,34vw);padding:8px}#minis{padding-top:4px}}
+/* The results card of a run: his score, big; his best; "New best!" when he beat it. */
+#results.mini :is(.roundsrow,.roundsnote,.levelup,p){display:none}
+.miniEnd{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 22px;margin:2px 0 6px}
+.miniEnd .score{display:flex;align-items:center;gap:8px;font-size:52px;font-weight:700;line-height:1}
+.miniEnd .score i{font-style:normal;font-size:38px}
+.miniEnd .best{display:flex;align-items:center;gap:4px;font-size:26px;font-weight:700;color:var(--gold-e)}
+.miniEnd .best i{font-style:normal}
+.miniEnd .newbest{flex-basis:100%;display:flex;justify-content:center}
+.miniEnd .newbest span{display:inline-block;padding:6px 20px;border-radius:999px;background:var(--gold);color:var(--ink);font-size:28px;font-weight:700;box-shadow:inset 0 -4px 0 var(--gold-d);animation:newBest .7s var(--bounce) both,heartBeat 1.6s .8s ease-in-out infinite}
+@keyframes newBest{0%{transform:scale(.2) rotate(-8deg);opacity:0}100%{transform:scale(1);opacity:1}}
+.miniEnd .old{flex-basis:100%;text-align:center;font-size:13px;color:var(--ink-soft)}
+@media (prefers-reduced-motion:reduce){#miniBar .heart.lost .fg{animation:none;opacity:0}#miniBar.last .heart .fg,.miniEnd .newbest span{animation:none}}
+
+
+/* (v87) The Slow / Fast picker stays hidden until Fast mode has passed its review. Remove this rule to show it. */
+#modePick{display:none!important}

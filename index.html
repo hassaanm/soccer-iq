@@ -107,7 +107,7 @@
   <div class="home-foot">
     <div class="lessonbox"><button id="lessonBtn" class="btn btn-glass"><span class="le"></span><span class="ln"><small>Lesson</small><b></b></span><span class="caret">▾</span></button></div>
     <button id="playBtn" class="btn btn-green btn-xl">PLAY</button>
-    <div class="freebox"><button id="freeBtn" class="btn btn-blue"><i class="ico">⚽</i>Match</button><button id="cupBtn" class="btn btn-gold"><i class="ico">🏆</i>Cup</button><button id="keeperBtn" class="btn btn-keeper" aria-label="Keeper game"><i class="ico">🧤</i><span>Keeper</span></button></div>
+    <div class="freebox"><button id="freeBtn" class="btn btn-blue"><i class="ico">⚽</i>Match</button><button id="cupBtn" class="btn btn-gold"><i class="ico">🏆</i>Cup</button><button id="keeperBtn" class="btn btn-keeper" aria-label="Mini games"><i class="ico">🕹️</i><span>Mini games</span></button></div>
   </div>
 </section>
 
@@ -197,7 +197,7 @@ addEventListener('error', e => {
     'ui/dom', 'ui/store', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
     'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm', 'voicelines', 'log', 'ui/playlog', 'pause', 'ui/pause',
-    'fast/state', 'fast/rules', 'fast/match', 'fast/marks', 'fast/fast']
+    'fast/state', 'fast/rules', 'fast/match', 'fast/marks', 'fast/fast', 'mini/rules', 'mini/games', 'mini/pens', 'mini/penalty', 'mini/run', 'mini/pens-ui', 'mini/chooser']
     .map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());
 });
