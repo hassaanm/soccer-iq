@@ -39,7 +39,7 @@ test('the best score per game: kept, a new best only when beaten, across a reloa
 });
 
 test('the Mini games list: every game has a name, a spoken name, a picture and its own id', () => {
-  assert.deepEqual(MINI.map(g => g.id), ['keeper', 'pens']);
+  assert.deepEqual(MINI.map(g => g.id).slice(0, 2), ['keeper', 'pens']); assert.ok(miniById('attack'), 'score attack (v88)');
   for (const g of MINI) { assert.ok(g.name && g.say && g.unit && /^<svg/.test(g.pic)); assert.equal(miniById(g.id), g); }
 });
 

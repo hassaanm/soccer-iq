@@ -9,6 +9,7 @@ import { PIC } from './pics.js'; // (v88: the tiles' pictures, one look for all:
 export const MINI = [
   { id: 'keeper', name: 'Goalkeeper', say: 'Goalkeeper!', unit: '🧤', pic: PIC.keeper },
   { id: 'pens', name: 'Penalties', say: 'Penalties!', unit: '⚽', pic: PIC.pens },
+  { id: 'attack', name: 'Score attack', say: 'Score attack!', unit: '⚽', pic: PIC.attack },
 ];
 export const miniById = id => MINI.find(g => g.id === id);
 // What the mini games say (spoken: tests/spoken.js; loaded as a game starts: voicelines.js miniLines).
