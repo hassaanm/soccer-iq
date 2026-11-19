@@ -204,9 +204,13 @@ export const live = {
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
     // Whether play goes on from where it is (true), or a new situation comes in (a goal: the cut; else a bridge).
     const goOn = () => !isGoal() && (this.realTime || 0) - since < (this.stallAfter ?? STALL) && (this.result !== 'won' || this.has('won-it-go')); // (play on after winning it: Won it? Go!) (stallAfter: tests)
-    // (v82) As a goal goes in, the next scene's plan is made over the celebration's frames, not after them on a still picture.
+    // (v82) As a goal goes in: the score shows it with the banner (it used to change only after the celebration, as the
+    // next scene cut in), and the next scene's plan is made over the celebration's frames, not after them on a still picture.
     const goalWatch = () => this.job(1e9, null, () => { if (!isGoal()) return false;
-      const nx = rounds[next % rounds.length]; early = { nx, p: this.prePlan(nx) };
+      const now = { us: score.us + (this.result === 'goal' ? 1 : 0), them: score.them + (this.result === 'goalAgainst' ? 1 : 0) };
+      this.hud.score(now, this.us, this.them);
+      if (now.us >= toWin || now.them >= toWin) this.fullTime(now); // (the goal that ends it: the final whistle with its celebration)
+      else { const nx = rounds[next % rounds.length]; early = { nx, p: this.prePlan(nx) }; }
       return true; });
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       let bridged = false;
@@ -239,6 +243,9 @@ export const live = {
     }
     return score;
   },
+  // (v82) The end of a match: as the goal that ends it goes in, the final whistle and the words with the score bumped in
+  // the corner, over that goal's own celebration (nothing is added to the match: the results follow as before).
+  fullTime(score) { this.sfx('whistle'); this.hud.caption(score.us > score.them ? '🏆 Full time!' : 'Full time!'); },
 
   // ---------- a new situation from play going on (v82, see STALL) ----------
   // The scene to bring in, from where everyone is now: of the scenes that can be reached from play (bridgeable), the one
