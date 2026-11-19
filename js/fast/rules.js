@@ -159,9 +159,12 @@ export const headDownOn = (id, me, how) => id === me && RECEIVE.has(how);
 
 // ---------- a press: a tap or a hold ----------
 // A finger that lifts within HOLD_S s without sliding is a tap (it acts); one held longer, or slid, is a hold (it slows
-// the world and looks round), wherever it went down: on the grass, a spot, a friend or a button.
-export const HOLD_S = .25, SLIDE_PX = 12;
+// the world and looks round), wherever it went down: on the grass, a spot, a friend or a button. A child's slow tap
+// still acts (v86): one that lifts within SLOW_TAP s without sliding acts on the lift too, after the world slowed a
+// moment (pressActs).
+export const HOLD_S = .25, SLIDE_PX = 12, SLOW_TAP = .6;
 export const pressKind = (secs, slid) => (slid || secs > HOLD_S ? 'hold' : 'tap');
+export const pressActs = (secs, slid) => !slid && secs <= SLOW_TAP;
 
 // ---------- friends he cannot see: chips at the edge of the screen ----------
 // friends: [{ id, seenAt (when he last had him on screen, s), on (on screen now) }]. A chip for each friend off screen
@@ -177,6 +180,22 @@ export function edgeAt(q, behind, w, h, m = 34) {
   let x = q[0], y = q[1]; if (behind) { x = w - x; y = h + Math.abs(h - y); }
   const cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy, k = Math.min(Math.abs(dx) > 1e-6 ? (cx - m) / Math.abs(dx) : 1e9, Math.abs(dy) > 1e-6 ? (cy - m) / Math.abs(dy) : 1e9);
   return k >= 1 ? [clamp(x, m, w - m), clamp(y, m, h - m)] : [cx + dx * k, cy + dy * k];
+}
+
+// ---------- where a small hint sits (the scan reminder, the hold hint) ----------
+// Never over a goal or a player he needs: of the places it may sit (HINT_AT, as shares of the screen: low in the
+// middle, low left and right of it, high in the middle, halfway up on either side), the one whose box (HINT_BOX px)
+// is farthest from every point in `avoid` (screen points: his player, the ball, the goals, his friends, theirs near
+// him). Returns [x, y], the box's middle.
+export const HINT_AT = [[.5, -44], [.33, -44], [.67, -44], [.5, 96], [.27, .5], [.73, .5]], HINT_BOX = [150, 52];
+export function hintSpot(avoid, w, h) {
+  let best = null, bd = -1;
+  for (const [fx, fy] of HINT_AT) {
+    const x = fx * w, y = fy < 0 ? h + fy : fy > 1 ? fy : fy * h, bx = HINT_BOX[0] / 2, by = HINT_BOX[1] / 2;
+    const d = avoid.reduce((m, p) => (p ? Math.min(m, Math.hypot(Math.max(0, Math.abs(p[0] - x) - bx), Math.max(0, Math.abs(p[1] - y) - by))) : m), 1e9);
+    if (d > bd + 20) { bd = d; best = [x, y]; } // (the first places win a near tie: low in the middle where it was)
+  }
+  return best;
 }
 
 // ---------- the pitch fills the picture ----------
@@ -208,21 +227,90 @@ export function pitchShare(cam, w, h, L, W, n = 24, cols = 9) {
 }
 // The camera made to fill the picture with the pitch (FILL of the rows): its eye brought back over the pitch along the
 // line to him (never past him), then raised and tipped down step by step until the pitch fills it, as long as his player
-// and the points in `keep` (the ball) stay on screen. Changes and returns `cam`.
-export const FILL = .8, SHARE = .78; // (SHARE: of the whole picture, as the owner sees it)
-export function fitPitch(cam, me, w, h, L, W, keep = []) {
+// and the points in `keep` (the ball) stay on screen and it never looks down more steeply than TILT_MAX (never a view
+// from the top). `pull` (0 … 1): how far the eye is brought in over the pitch first (1: all the way; 0: it may stay out
+// over a line, looking in). Changes and returns `cam`.
+export const FILL = .85, SHARE = .86, TILT_MAX = 1.1; // (SHARE: of the whole picture, as the owner sees it; TILT_MAX: rad below level, 63°: before v86 it went to 75°)
+const tilt = c => Math.atan2(c.eye[2] - c.tgt[2], Math.hypot(c.tgt[0] - c.eye[0], c.tgt[1] - c.eye[1]));
+export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
   const e = cam.eye, t = cam.tgt, m = .3, inside = () => e[0] >= m && e[0] <= L - m && e[1] >= m && e[1] <= W - m;
-  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); // (the ball on screen, not at its very edge)
-  if (!inside()) { const s0 = [...e]; e[0] = clamp(e[0], m, L - m); e[1] = clamp(e[1], m, W - m); if (!ok()) e.splice(0, 3, ...s0); } // (moved in over the line, if he stays in view)
-  for (let i = 0; i < 12 && !inside() && Math.hypot(e[0] - me.x, e[1] - me.y) > 3; i++) { const s0 = [...e], k = .9; e[0] = me.x + (e[0] - me.x) * k; e[1] = me.y + (e[1] - me.y) * k; if (!ok()) { e.splice(0, 3, ...s0); break; } }
-  cam.best = rowsOnPitch(cam, w, h, L, W) + pitchShare(cam, w, h, L, W, 12, 7);
-  for (let i = 0; i < 40 && (rowsOnPitch(cam, w, h, L, W) < FILL || pitchShare(cam, w, h, L, W, 12, 7) < SHARE); i++) {
+  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)) && tilt(cam) <= TILT_MAX; // (the ball on screen, not at its very edge)
+  if (pull > 0) {
+    const o = [...e];
+    if (!inside()) { const s0 = [...e]; e[0] = clamp(e[0], m, L - m); e[1] = clamp(e[1], m, W - m); if (!ok()) e.splice(0, 3, ...s0); } // (moved in over the line, if he stays in view)
+    for (let i = 0; i < 12 && !inside() && Math.hypot(e[0] - me.x, e[1] - me.y) > 3; i++) { const s0 = [...e], k = .9; e[0] = me.x + (e[0] - me.x) * k; e[1] = me.y + (e[1] - me.y) * k; if (!ok()) { e.splice(0, 3, ...s0); break; } }
+    if (pull < 1) { e[0] = o[0] + (e[0] - o[0]) * pull; e[1] = o[1] + (e[1] - o[1]) * pull; }
+  }
+  // (the ball not on screen, as while the view is still turning to it: back and up a little at a time until it is)
+  for (let i = 0; i < 16 && !keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); i++) { const fx = t[0] - e[0], fy = t[1] - e[1], fl = Math.hypot(fx, fy) || 1; e[0] -= fx / fl * .4; e[1] -= fy / fl * .4; e[2] = Math.min(10, e[2] + .2); }
+  const score = () => rowsOnPitch(cam, w, h, L, W, 20) + pitchShare(cam, w, h, L, W, 10, 7);
+  cam.best = score();
+  for (let i = 0; i < 40 && (rowsOnPitch(cam, w, h, L, W, 20) < FILL || pitchShare(cam, w, h, L, W, 10, 7) < SHARE); i++) {
     const s0 = [...e], t0 = [...t];
     if (e[2] < 9) e[2] += .25; t[2] -= .3; t[0] = me.x + (t[0] - me.x) * .96; t[1] = me.y + (t[1] - me.y) * .96;
-    const score = rowsOnPitch(cam, w, h, L, W) + pitchShare(cam, w, h, L, W, 12, 7);
-    if (!ok() || score < (cam.best ?? -1) - 1e-6) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; } cam.best = score; // (a step that loses him or the ball, or shows less pitch, is taken back)
+    const sc = score();
+    if (!ok() || sc < (cam.best ?? -1) - 1e-6) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; } cam.best = sc; // (a step that loses him or the ball, looks down too steeply, or shows less pitch, is taken back)
   }
   return cam;
+}
+// ---------- the default view near the lines (v86) ----------
+// The view he does not steer: camSpec at a yaw, the eye moved `side` m sideways (toward the middle of the pitch) and
+// brought in over the pitch by `pull`, then fitted (fitPitch). Where the natural view (naturalYaw, side 0, pull 1) shows
+// less than SHARE of pitch (near a side line, a goal line, a corner), viewPick tries others close to it: the yaw turned
+// up to VIEW_SPAN rad along the pitch, the eye up to 4 m in from the line, or left out over the line looking in, and
+// keeps the one that shows the most pitch for the least change (VIEW_COST per rad turned), always with him and the ball
+// on screen, clear of the bar along the top; in a corner also close behind him and lower, looking into the pitch (`close`). fast.js eases to it (the
+// turn capped at TURN_MAX rad/s, the side, the pull and the closeness at their own rates).
+export const VIEW_SPAN = .9, VIEW_COST = .25, VIEW_SIDES = [0, 2, 4];
+export const CLOSE = [3, 4, 4, -1], CLOSE_B = [5, 4, 0, -2.5]; // (the close view in a corner: back, height, ahead, target height; `close` 0 … 1 to CLOSE, 1 … 2 on to CLOSE_B, looking down at him from over the line)
+export function viewCam(me, ball, has, v, look, w, h, L, W, keep = [ball]) {
+  const c = camSpec(me, ball, has, v.yaw, look), sd = v.side || 0, k = v.close || 0;
+  if (k) { const C = k <= 1 ? CLOSE : CLOSE.map((v, i) => lerp(v, CLOSE_B[i], Math.min(1, k - 1))), kk = Math.min(1, k), cx = Math.cos(v.yaw), cy = Math.sin(v.yaw), E = [me.x - cx * C[0], me.y - cy * C[0], C[1]], T = [me.x + cx * C[2], me.y + cy * C[2], C[3]]; for (let i = 0; i < 3; i++) { c.eye[i] = lerp(c.eye[i], E[i], kk); c.tgt[i] = lerp(c.tgt[i], T[i], kk); } }
+  if (sd) { const px = -Math.sin(v.yaw), py = Math.cos(v.yaw), sg = Math.sign((W / 2 - me.y) * py + (L / 2 - me.x) * px) || 1; c.eye[0] += px * sd * sg; c.eye[1] += py * sd * sg; }
+  return fitPitch(c, me, w, h, L, W, keep, v.pull ?? 1);
+}
+// (viewSearch yields after each try, so fast.js can spread the search over frames, about 1 ms a frame; viewPick runs it
+// through at once, for the tests and the tools.)
+export function* viewSearch(me, ball, has, look, w, h, L, W, nat = naturalYaw(me, ball, has, L, W)) {
+  let best = { yaw: nat, rel: 0, side: 0, pull: 1, close: 0 }; const c0 = viewCam(me, ball, has, best, look, w, h, L, W);
+  let bs = pitchShare(c0, w, h, L, W, 10, 7); best.share = bs; if (bs >= SHARE) return best;
+  // (him and the ball clear of the score bar along the top and the buttons along the bottom)
+  const safe = q => !!q && q[0] > w * .06 && q[0] < w * .94 && q[1] > h * .2 && q[1] < h * .9, seen = c => safe(project(c, ball, w, h)) && safe(project(c, { x: me.x, y: me.y, z: .9 }, w, h)), tryV = (v, cost) => { const c = viewCam(me, ball, has, v, look, w, h, L, W); if (!seen(c)) return; const s = pitchShare(c, w, h, L, W, 10, 7); if (s - cost > bs) { bs = s - cost; best = { ...v, share: s }; } };
+  for (const side of VIEW_SIDES) for (let d = -VIEW_SPAN; d <= VIEW_SPAN + 1e-9; d += .15) if (side || Math.abs(d) > 1e-6) { tryV({ yaw: wrap(nat + d), rel: d, side, pull: 1, close: 0 }, VIEW_COST * Math.abs(d) + .02 * side); yield; }
+  const toC = Math.atan2(W / 2 - me.y, L / 2 - me.x); // (the eye out over the line, looking into the pitch; and, in a corner, close behind him and lower: CLOSE)
+  const ys = []; for (let d = -1; d <= 1 + 1e-9; d += .2) ys.push(wrap(toC + d));
+  for (const [near, a] of [[me.x, 0], [L - me.x, Math.PI], [me.y, Math.PI / 2], [W - me.y, -Math.PI / 2]]) if (near < 5) ys.push(a); // (straight in from a line he is near)
+  if (Math.min(me.x, L - me.x) < 5 && Math.min(me.y, W - me.y) < 5) for (const d of [-.6, -.3, 0, .3, .6]) { tryV({ yaw: wrap(nat + d), rel: d, side: 0, pull: 0, close: 2 }, VIEW_COST * Math.abs(d) + .07); yield; } // (in a corner, looking at the ball steeply from in front of the line)
+  for (const y of ys) { const dy = VIEW_COST * .5 * Math.abs(wrap(y - nat)); tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 0 }, dy + .03); yield; tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 1 }, dy + .05); yield; if (Math.min(me.x, L - me.x) < 5 && Math.min(me.y, W - me.y) < 5) { tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 2 }, dy + .07); yield; } }
+  return best;
+}
+export function viewPick(...a) { const g = viewSearch(...a); for (;;) { const r = g.next(); if (r.done) return r.value; } }
+// One frame of the view he does not steer, for fast.js and the tools alike. st: { yaw, side, pull, close } (kept between
+// frames; the search too). o: { me, ball, has, look, w, h, L, W, nat (where he looks by himself), drag (the yaw his
+// finger holds, or null), still (true: leave the yaw where it is, a moment after a drag) }. The target (viewSearch, again
+// every VIEW_EVERY s, at most `ms` of it a frame): its yaw relative to `nat` while it is one of those, so it follows him;
+// the yaw eased to it no faster than TURN_MAX rad/s; the side, the pull and the closeness at VIEW_RATE a second.
+export const TURN_MAX = 2.5, VIEW_EVERY = .2, VIEW_RATE = { side: 3, pull: 1.5, close: 1.5 };
+export function viewStep(st, o, dt, ms = 1, now = () => performance.now()) {
+  const { me, ball, has, look, w, h, L, W, nat } = o;
+  st.t = (st.t || 0) + dt;
+  if (!st.gen && st.t - (st.at ?? -9) >= VIEW_EVERY) { st.gen = viewSearch(me, ball, has, look, w, h, L, W, nat); st.at = st.t; }
+  if (st.gen) { const t0 = now(); for (;;) { const r = st.gen.next(); if (r.done) { st.tv = r.value; st.gen = null; break; } if (now() - t0 > ms) break; } }
+  const tv = st.tv || { rel: 0, side: 0, pull: 1, close: 0 }, aim = tv.rel != null ? wrap(nat + tv.rel) : tv.yaw;
+  const free = o.drag == null, goal = free ? tv : { side: 0, pull: 1, close: 0 };
+  st.yaw ??= aim;
+  if (!free) st.yaw = o.drag;
+  else if (!o.still) { // (eased, and never faster than TURN_MAX rad/s: the ball changing sides does not whip the view round; a long turn goes the way that looks less into the stands)
+    let d = wrap(aim - st.yaw);
+    if (Math.abs(d) > .5) { const low = dd => { let m = 99; for (let i = 1; i < 8; i++) m = Math.min(m, reachOut(me, st.yaw + dd * i / 8, L, W)); return m; }, o2 = d - Math.sign(d) * 2 * Math.PI; if (low(o2) > low(d) + 1.5) d = o2; }
+    if (st.turn != null && Math.abs(d) > .5 && Math.sign(st.turn) !== Math.sign(d) && Math.abs(wrap(d)) > 2.6) d = d - Math.sign(d) * 2 * Math.PI; // (keeps turning the way it started)
+    st.turn = Math.abs(d) > .5 ? d : null;
+    st.yaw = wrap(st.yaw + clamp(d * (1 - Math.exp(-dt * 2.4)), -TURN_MAX * dt, TURN_MAX * dt));
+  }
+  if (!free || o.still) st.yaw = clampYaw(me, st.yaw, L, W, Math.min(LOOK_MIN, reachOut(me, st.yaw, L, W))); // (his own look: never off the pitch)
+  else if (Math.abs(wrap(aim - st.yaw)) < .05) st.yaw = clampYaw(me, st.yaw, L, W, Math.min(LOOK_MIN, reachOut(me, aim, L, W))); // (there: never off the pitch; the ball or the goal near a line still in view)
+  for (const k of ['side', 'pull', 'close']) { const v = st[k] ?? (k === 'pull' ? 1 : 0), g = goal[k] ?? (k === 'pull' ? 1 : 0), r = VIEW_RATE[k] * dt; st[k] = v + clamp(g - v, -r, r); }
+  return viewCam(me, ball, has, st, look, w, h, L, W, free ? [ball] : []);
 }
 
 // ---------- the shot view (SHOOT) ----------
