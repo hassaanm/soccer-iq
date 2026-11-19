@@ -96,3 +96,62 @@ capture caught before they were drawn, not a real fade.)
    with no final whistle and no look at the final score.
 9. **Small leftovers:** the comment "Only a goal resets to a fresh situation" is out of date; `i >= toWin * 25` caps a
    match by loop turns, not time.
+
+# v82: what changed, and the numbers after
+
+**No new situation starts with a cut any more, except after a goal and at the start.** Play goes on 60 s without a goal
+(it was 5 plays, about 30 s) before the game brings in a new situation. Then, and when he wins the ball before "Won it?
+Go!", a short piece of soccer with the same players carries it in, on screen, in 2 to 4 s.
+
+## The new rule (`js/game/live.js`)
+
+- **When:** `STALL = 60` real seconds since the situation began without a goal (`goOn`). Why 60: the old count fired at a
+  median of 31–34 s, about 4 decisions in, which cut into play that was going fine. Goals come every 20–30 s, so 60 s
+  only catches play that really goes round in circles (0.05 to 0.6 times a match now), and fresh lesson scenes still
+  come after every goal.
+- **Which scene:** of the next 4 in the match's own order, the quickest to reach (`bridgePick`): each team's players go to
+  the nearest free place of their team (the longest run as short as possible, at most 10.5 m). 1v1s, passes to him and
+  lead passes can be reached too, so the mix of situations stays the match's. Not: a kick-off (only after a goal), a
+  "Won it? Go!" intro, a "Follow your shot!" rebound.
+- **The event** (`bridgeEvent`), on the old picture, by who has the ball now and in the new scene:
+  - their ball → ours, for a pass-in from the side: the ball goes out off one of theirs; whistle, "Our ball!";
+  - their ball near our goal → a goal kick: their pass or shot goes wide of our post; whistle, "Goal kick!";
+  - their shot → our keeper's ball (5v5): our keeper catches it; "Saved!";
+  - our ball → ours, one of theirs just went in: a foul; whistle, "Free kick!";
+  - a change of team: the other team's nearest player wins it ("They got it!", "You won the ball!");
+  - otherwise: a pass on, with no stop.
+- **The run** (`adopt`, `bridgeRun`): the new scene is set up around everyone where he is (the bodies, the roster and the
+  camera are kept), and everyone runs on a smooth path to his place as the new choice opens, no faster than 5.4 m/s. The
+  ball is carried, passed, rolled or picked up on the line. The camera comes round behind his player and follows him; the
+  head-down edge comes on only in the last 0.8 s. Players not in the event set off during it.
+- **If its plan is not ready** when the event ends, nothing is brought in: play goes on from the event (a free kick
+  taken, their ball). Rare: a scene whose plan was slow once is not picked again in that match.
+
+## Also changed
+
+- The score changes as the goal goes in, with the GOAL! banner (it changed after the celebration, as the next scene cut in).
+- The goal that ends a match brings the final whistle and "Full time!" over its own celebration.
+- The next scene's plan is made over the goal's celebration. A plan that is still not ready 0.8 s after it swaps the
+  scene with the next one (one scene, `gen-shot-open-110`, needed 60 s of frames: a frozen picture for a minute after a
+  goal in v81).
+- A 1v1 won before "Won it? Go!" holds 0.7 s like any won ball in a match (`MATCH_HOLD`), not 1.3 s: the new
+  situation follows from there. With "Won it? Go!" (and in lessons) it stays 1.3 s.
+
+## Before and after (the same bot and seeds; v82 = this branch)
+
+| | decisions/min v81 → v82 | waiting % | cuts with no reason, per match | longest still, s | stall: s after the situation began |
+|---|---|---|---|---|---|
+| 3v3 Matches (60) | 8.65 → 8.90 | 13.7 → 10.5 | 0.92 → 0 | 61.7 → 9.8 | 32 → 64 |
+| 4v4 Matches (60) | 8.60 → 8.74 | 12.8 → 10.5 | 1.10 → 0 | 7.8 → 7.7 | 31 → 71 |
+| 5v5 Matches (60) | 8.43 → 8.69 | 10.3 → 8.1 | 2.55 → 0 | 33.2 → 9.5 | 34 → 63 |
+| 3v3 mini (100) | 8.43 → 8.84 | 16.8 → 8.7 | 2.30 → 0 | 7.0 → 8.1 | — |
+| 4v4 mini (100) | 8.09 → 8.31 | 16.8 → 9.5 | 2.09 → 0 | 8.6 → 6.9 | — |
+| 5v5 mini (100) | 7.77 → 7.97 | 13.8 → 8.4 | 3.04 → 0 | 8.1 → 6.0 | — |
+
+A new situation that is not after a goal now takes 2.6–3.2 s from the end of the play to the next choice (it was
+2.1–2.4 s of hold, frozen picture and run-up, with a cut). New situations brought in from play: 0.1–0.6 a match in
+Matches (after 60 s without a goal), 3.6–4.4 in a mini match before "Won it? Go!" (after a won ball). One player alone can still be pushed more than 0.8 m in a
+frame when two overlap (`sim.js` SPACE, about once in 50 matches); that is not a new situation and was there in v81.
+
+The check: `tests/match-flow.test.js` and the `cut` line of `scripts/live-audit.js` (in `audit:motion`). Both fail on
+v81 and pass on v82.

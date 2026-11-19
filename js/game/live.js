@@ -4,7 +4,7 @@ import { pickRounds, skillById } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
 import { L, W, gy0, gy1, MATES, ROSTER, wrap, faceTo } from './shared.js';
-import { planHold, rolesOf, pathAt, hermAt, kindOf } from '../window.js';
+import { planHold, planSteps, rolesOf, pathAt, hermAt, kindOf } from '../window.js';
 // His friends' and their players' places, m1 m2 (m3) and o1 o2 o3 (o4): as many as the team size has.
 const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y]), foes = s => s.team('them').map(a => [a.x, a.y]);
 
@@ -18,7 +18,7 @@ const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y
 // to his place in the new picture and the camera follows. Only a goal (and the start) still cuts, to the next scene.
 export const STALL = 60;
 const BRIDGE = { vMax: 5.4, T: [1, 2.8], run: 10.5, wait: .15, max: 4, min: 2, ahead: 4 }; // the run to the new picture: fastest drawn speed (m/s), its length (s), the farthest anyone runs (m); how long it waits for its plan after the event (s); the longest and shortest it all takes (s); how many of the next scenes it picks from
-const PLAN_WAIT = .8; // (see nextPlanned)
+const PLAN_WAIT = .8, FRAME_STEPS = 60; // (see nextPlanned; planFrames: steps of these plans a frame, 0.01 to 0.05 ms each here, never 3 ms in all: a scene with rings takes 2 to 1850 steps)
 export const SIDE_IN = new Set(['side-in', 'side-take', 'side-pass', 'side-two']);
 // A scene that can be reached from play: one whose run-up is a planned one (game/window.js plannedRunUp: with a pass to
 // him, a friend's run for a pass in front), or a 1v1 (everyone to his place, the attacker on the ball). Not one with an
@@ -211,7 +211,7 @@ export const live = {
       const now = { us: score.us + (this.result === 'goal' ? 1 : 0), them: score.them + (this.result === 'goalAgainst' ? 1 : 0) };
       this.hud.score(now, this.us, this.them);
       if (now.us >= toWin || now.them >= toWin) this.fullTime(now); // (the goal that ends it: the final whistle with its celebration)
-      else { const nx = rounds[next % rounds.length]; early = { nx, p: this.prePlan(nx) }; }
+      else { const nx = rounds[next % rounds.length]; early = { nx, p: this.planAhead(nx) }; }
       return true; });
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       let bridged = false;
@@ -259,7 +259,7 @@ export const live = {
     let best = null; const n = rounds.length, seen = new Set();
     // (the next BRIDGE.ahead scenes of the match's own order first, so the mix of situations stays the match's; then any)
     for (let j = 0; j < n; j++) { if (j === BRIDGE.ahead && best) break; const i = (next + j) % n, sc = rounds[i];
-      if (seen.has(sc) || !bridgeable(sc)) continue; seen.add(sc);
+      if (seen.has(sc) || !bridgeable(sc) || this.slowScenes?.has(sc)) continue; seen.add(sc);
       const P = this.sceneState(sc).at, T = sceneTeam(sc), cid = sc.carrier || 'hero', ball = P[cid]; if (!P.hero || !ball || usIds.some(id => !P[id]) || themIds.some(id => !P[id])) continue;
       const db = Math.hypot(b.x - ball.x, b.y - ball.y);
       let ev = null;
@@ -294,25 +294,42 @@ export const live = {
   // early). A plan that takes more than PLAN_WAIT s more (a few do: one took 60 s of frames on a still picture after a
   // goal) is left to finish on its own, and that scene changes places with the next one; three tries, then it waits.
   async nextPlanned(rounds, i, early) {
-    const n = rounds.length, k = i % n, ready = p => Promise.race([p.then(() => true), this.delay(PLAN_WAIT).then(() => false)]);
-    let p = early?.nx === rounds[k] ? early.p : this.prePlan(rounds[k]);
-    for (let j = 1; j < Math.min(4, n); j++) { if (await ready(p)) break; const m = (i + j) % n; [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; p = this.prePlan(rounds[k]); }
+    const n = rounds.length, k = i % n, ready = p => Promise.race([p.then(() => true), this.delay(PLAN_WAIT).then(() => false)]), slow = this.slowScenes ||= new Set();
+    for (let j = 1; j < n && slow.has(rounds[k]); j++) { const m = (k + j) % n; if (!slow.has(rounds[m])) [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; } // (one found slow before: not again)
+    let p = early?.nx === rounds[k] ? early.p : this.planAhead(rounds[k]);
+    for (let j = 1; j < Math.min(4, n); j++) { if (await ready(p)) break; p.stop?.(); slow.add(rounds[k]); const m = (i + j) % n; [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; p = this.planAhead(rounds[k]); }
     await p; return rounds[k];
+  },
+  // (v82) game/window.js prePlan, which can be stopped: a plan given up on stops stepping (nothing goes on planning in
+  // the frames of play). It plans as the game it is called on, with its own `skipping`.
+  planAhead(sc) {
+    const game = this, ctl = { off: false }, me = Object.create(this, { skipping: { get: () => game.skipping || ctl.off } });
+    const p = this.prePlan.call(me, sc); p.stop = () => { ctl.off = true; }; return p;
+  },
+  // (v82) The plan of a scene that prePlan leaves to the frame it is set up in (rings, a pass to him, a lead pass, "Won it?
+  // Go!"), made over the frames after it is set up instead, FRAME_STEPS steps a frame, and kept: the run-up finds it made (one,
+  // a scene with rings, took 13 ms in its frame here: 53 ms on a phone). As game/window.js plannedRunUp asks for it.
+  async planFrames() {
+    const sc = this.sc; if (!sc || sc.kind === 'tackle' || sc.run === 'follow' || (!sc.spots && sc.kind !== 'receive' && sc.kind !== 'lead' && sc.intro !== 'won')) return;
+    const extra = sc.kind === 'receive' ? this.passInRun() : sc.kind === 'lead' ? this.runInRun() : sc.intro === 'won' ? { never: ['o1'] } : {};
+    let r = { done: false, it: null }; const [s0, st, opts] = this.planArgs(false, extra);
+    try { do { this.realJobs = true; const j = this.job(0); this.realJobs = false; await j.done; r = planSteps(s0, st, opts, FRAME_STEPS, r.it); } while (!r.done); } catch (e) { console.error(e); }
   },
   // false: its plan was not made in time (BRIDGE.wait): nothing more is brought in, and play goes on from where the event
   // left it (a free kick taken, their ball after their tackle). A restart from out of play waits for its plan first.
   async bridgeTo(pick) {
     const s = this.sim, sc = pick.sc, h = s.a('hero');
-    const planning = this.prePlan(sc), ready = () => Promise.race([planning.then(() => true), this.delay(BRIDGE.wait).then(() => false)]); // (made over the event's frames: game/window.js)
-    if ((pick.ev.kind === 'out' || pick.ev.kind === 'keeper') && !(await ready())) { this.plog?.('stall', { why: `${sc.pattern || sc.id}: its plan was not ready, play goes on` }); return false; }
+    const planning = this.planAhead(sc), ready = () => Promise.race([planning.then(() => true), this.delay(BRIDGE.wait).then(() => false)]); // (made over the event's frames: game/window.js)
+    const notReady = () => { planning.stop(); (this.slowScenes ||= new Set()).add(sc); this.plog?.('stall', { why: `${sc.pattern || sc.id}: its plan was not ready, play goes on` }); return false; };
+    if ((pick.ev.kind === 'out' || pick.ev.kind === 'keeper') && !(await ready())) return notReady();
     this.closeWindow?.();
     Object.assign(this, { phase: 'outcome', step: null, ai: false, scripted: new Set([...s.agents.keys()]), camMode: 'follow', lines: [], aimAt: null, teamJob: null, roles: null });
     this.follow ||= { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     s.untrackAll(); for (const a of s.agents.values()) { a.mom = null; a.ease = false; }
     this.bridging = true;
     const t0 = s.time; try { await this.play(this.bridgeEvent(pick));
-      if (!(await ready())) { this.plog?.('stall', { why: `${sc.pattern || sc.id}: its plan was not ready, play goes on` }); return false; }
-      this.adopt(sc, pick.map); await this.bridgeRun(pick, BRIDGE.max - (s.time - t0), BRIDGE.min - (s.time - t0)); } finally { this.bridging = false; }
+      if (!(await ready())) return notReady();
+      this.adopt(sc, pick.map); await this.planFrames(); await this.bridgeRun(pick, BRIDGE.max - (s.time - t0), BRIDGE.min - (s.time - t0)); } finally { this.bridging = false; }
     return true;
   },
   // The event, on the old picture. It ends with the ball still, with the player who has it (or on the line for a restart).
@@ -365,7 +382,7 @@ export const live = {
   // The new scene, set up around everyone where he is now: the same players (each of a team to the place picked for him,
   // map), the ball where it is, the camera where it is. Nobody moves and nothing cuts.
   adopt(sc, map) {
-    const s = this.sim, keepF = ['x', 'y', 'face', 'lv', 'dist', 'd0', 'tA', 'tL', 'tN', 'gkm', 'upUntil', 'beat', 'tk'], was = {};
+    const s = this.sim, keepF = ['x', 'y', 'tx', 'ty', 'speed', 'sp', 'face', 'lv', 'dist', 'd0', 'tA', 'tL', 'tN', 'gkm', 'upUntil', 'beat', 'tk'], was = {};
     for (const a of s.agents.values()) was[map[a.id] || a.id] = Object.fromEntries(keepF.map(k => [k, Array.isArray(a[k]) ? [...a[k]] : a[k]]));
     const ball = { ...s.ball, carrier: s.ball.carrier ? map[s.ball.carrier] || s.ball.carrier : null }, roster = { ...this.roster }, cam = this.cam, follow = this.follow;
     // Which body each id has: ours by the roster (takeOver swaps the two together), theirs their own.
@@ -374,7 +391,7 @@ export const live = {
     const now = {}; for (const id of s.agents.keys()) now[id] = id in ROSTER ? 'u' + ROSTER[id] : id;
     for (const id of Object.keys(want)) { if (now[id] === want[id]) continue; const o = Object.keys(now).find(k => now[k] === want[id]); if (!o) continue; this.world.swapRigs?.(id, o); [now[id], now[o]] = [now[o], now[id]]; }
     this.roster = Object.fromEntries(Object.keys(ROSTER).map(id => [id, now[id] ? +now[id].slice(1) : ROSTER[id]]));
-    for (const a of s.agents.values()) { const w = was[a.id]; if (!w) continue; Object.assign(a, w, { tx: w.x, ty: w.y, speed: 0, sp: 0, track: null }); }
+    for (const a of s.agents.values()) { const w = was[a.id]; if (!w) continue; Object.assign(a, w, { track: null }); } // (each goes on as he was going: the run's own paths take over from there)
     Object.assign(s.ball, ball, { move: null, reach: null });
     this.cam = cam; this.follow = follow; this.camMode = 'follow'; this.phase = 'outcome'; // (load's reset made it 'idle': play is going on)
   },
