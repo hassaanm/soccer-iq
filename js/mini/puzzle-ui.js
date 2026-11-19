@@ -317,7 +317,7 @@ export async function runPuzzles() {
   try {
     const first = !P.mini?.puzzles?.plays, r = rng(Math.floor(Math.random() * 2 ** 31)), seeds = () => Math.floor(r() * 2 ** 31);
     game.mode = 'puzzles'; hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'puzzles' }); hud.dots([], 0);
-    stage.setup(); onStage(stage); stage.on = true; layer.classList.remove('hidden');
+    stage.setup(); onStage(stage); stage.on = true; stage.covers = true; layer.classList.remove('hidden'); // (covers: the board hides the 3D picture, so main.js does not draw it: v89 integration)
     const run = startRun('puzzles');
     let p = forced() || makePuzzle(run.level, seeds()); show(null); showPuzzle(p);
     if (first) await card({ emoji: '🧩', title: PZ_SAID.intro, sub: 'Tap a friend to pass. Tap next to the ball to dribble. Tap the goal to shoot.', button: 'Play' });
@@ -334,7 +334,7 @@ export async function runPuzzles() {
   } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 function end() {
-  stage.on = false; phase = 'off'; pz = null; board = null; gen.it = null; gen.jobs = []; onEnd = null; hint = null;
+  stage.on = false; stage.covers = false; phase = 'off'; pz = null; board = null; gen.it = null; gen.jobs = []; onEnd = null; hint = null;
   stage.tw.length = 0; hud.hand(null); hud.caption(''); layer.classList.add('hidden'); onStage(null); game.home();
 }
 addEventListener('resize', () => { if (pz && stage.on) { layout(pz); drawAll(); drawHints(phase === 'wait'); } });

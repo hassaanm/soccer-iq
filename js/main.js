@@ -60,7 +60,7 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
     const go = dt || !eased; if (eased && go) easeMark(fast.on ? fast : goalie.on ? goalie : game, time - dt);
     let end = perf.time('game');
     if (fast.on) { if (go) fast.tick(dt); end(); end = perf.time('draw'); easeDraw(fast, time); } // (v84: Fast mode, js/fast/fast.js)
-    else if (goalie.on) { if (go) goalie.tick(dt); end(); end = perf.time('draw'); easeDraw(goalie, time); } // (the keeper game draws its own play: ui/goalie.js)
+    else if (goalie.on) { if (go) goalie.tick(dt); end(); end = perf.time('draw'); if (!goalie.covers) easeDraw(goalie, time); } // (the keeper game draws its own play: ui/goalie.js; a mini game whose board covers the screen, `covers`, has no 3D picture drawn under it: mini/puzzle-ui.js)
     else { if (go) { goalie.tick(dt); game.tick(dt, time); } end(); end = perf.time('draw'); easeDraw(game, time); }
     end(); end = perf.time('strip'); if (TEST.strip ?? STRIP) matchStrip(now); end();
     if (TEST.onFrame) TEST.onFrame(now);
@@ -72,7 +72,7 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
 function still(now, ms) {
   perf.idle(now); pauseFrame();
   if (!stillView(Math.min(.05, ms / 1000)) && !world.resized) return;
-  try { if (fast.on) world.render(fast.sim, fast.cam, fast.ui, time); else if (goalie.on) world.render(goalie.sim, goalie.cam, goalie.ui, time); else world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
+  try { if (fast.on) world.render(fast.sim, fast.cam, fast.ui, time); else if (goalie.on) { if (!goalie.covers) world.render(goalie.sim, goalie.cam, goalie.ui, time); } else world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
 }
 requestAnimationFrame(frame);
 
