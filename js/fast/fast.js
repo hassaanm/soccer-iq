@@ -133,7 +133,7 @@ class Fast {
     const m = this.m, c = m.count, all = Object.values(c.touches).reduce((a, b) => a + b, 0);
     return { score: { ...m.score }, touches: c.touches[this.me] || 0, teamTouches: all, share: all ? +((c.touches[this.me] || 0) / all).toFixed(2) : 0, passes: c.passes, good: c.arrived, cut: c.cut, goals: c.goals, steals: c.steals, lost: c.lost,
       time: Math.round(this.stats.played), actions: this.stats.actions, shots: this.stats.shots, skills: this.stats.skills, stealMiss: this.stats.stealMiss, keeperTurns: this.stats.keeperTurns, saves: this.stats.saves, cues: this.stats.cues, chipPasses: this.stats.chipPasses, holds: this.stats.holds, slowS: +this.stats.slowT.toFixed(1), looks: this.stats.looks,
-      share: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
+      pitch: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
       camBall: this.stats.camN ? +(this.stats.camBall / this.stats.camN).toFixed(3) : null, camGoal: this.stats.camN ? +(this.stats.camGoal / this.stats.camN).toFixed(3) : null };
   }
   // ---------- events ----------
