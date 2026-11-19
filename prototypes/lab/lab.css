@@ -78,21 +78,21 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0a1230;color:var(--in
 
 /* ---------- the chooser page ---------- */
 body.chooser{background:linear-gradient(180deg,#ffd9b5,#ffc89a);overflow:auto;touch-action:manipulation}
-.chooser main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px calc(16px + var(--sr)) calc(12px + var(--sb)) calc(16px + var(--sl))}
+.chooser main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px calc(16px + var(--sr)) calc(12px + var(--sb)) calc(16px + var(--sl))}
 .chooser h1{margin:0 0 4px;font-size:24px}
 .chooser .sub{margin:0 0 12px;font-size:14px;color:#6b5e7b;text-align:center;max-width:720px}
-.tiles{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
-.tile{display:flex;flex-direction:column;align-items:center;width:250px;text-decoration:none;color:var(--ink);background:var(--cream);border-radius:24px;padding:10px 12px 12px;
+.tiles{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.tile{display:flex;flex-direction:column;align-items:center;width:190px;text-decoration:none;color:var(--ink);background:var(--cream);border-radius:24px;padding:10px 12px 12px;
   box-shadow:0 6px 0 rgba(36,25,58,.25);transition:transform .07s}
 .tile:active{transform:translateY(4px)}
 .tile .let{font-size:34px;font-weight:700;width:54px;height:54px;border-radius:14px;background:#24193a;color:var(--gold);display:grid;place-items:center;margin-top:-2px}
-.tile svg{width:200px;height:96px;margin:6px 0}
+.tile svg{width:170px;height:82px;margin:5px 0}
 .tile b{font-size:21px}
 .tile p{margin:4px 0 0;font-size:12.5px;line-height:1.3;color:#5a4d6a;font-weight:500;text-align:center}
 .tile p i{font-style:normal;font-weight:700;color:#24193a}
 .chooser .back{margin-top:10px;text-decoration:none;font-size:15px;padding:7px 16px}
 .chooser .foot{margin-top:8px;font-size:11px;color:#6b5e7b}
-@media (max-height:460px){ .tile svg{height:72px} .tile{width:240px;padding:8px 10px} .chooser h1{font-size:20px} .chooser .sub{font-size:12.5px;margin-bottom:8px} .tile p{font-size:12px} .chooser .back{margin-top:8px} }
+@media (max-height:460px){ .tile svg{height:64px} .tile{width:190px;padding:8px 9px} .chooser h1{font-size:20px} .chooser .sub{font-size:12.5px;margin-bottom:8px} .tile p{font-size:12px} .chooser .back{margin-top:8px} }
 
 /* ---------- round 2: the player view ---------- */
 /* the head-down edge (as css/app.css body.smooth #tunnel): a plain dark ring on a layer twice the screen, moved by transform */

@@ -1,4 +1,4 @@
-// The lab (prototypes/lab/): the chooser and each prototype's page and scripts exist and parse, every import points at a
+// The lab (prototypes/lab/): the chooser (round 2 first) and each prototype's page and scripts exist and parse, every import points at a
 // file that exists and a name it exports, each page keeps the game's save out of reach (the throwaway save is set before
 // any module loads, and nothing imports js/storage.js itself), and the grown-ups menu has its row.
 import test from 'node:test';
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..'), lab = join(root, 'prototypes/lab');
-const PROTOS = ['a', 'b', 'c'];
+const PROTOS = ['d', 'e', 'h', 'i', 'a', 'b', 'c']; // (round 2: D, E, H, I, one match in his own view; round 1: A, B, C, top view)
 const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.js') ? [join(dir, e.name)] : []));
 const exportsName = (src, name) => src.split('\n').some(l => l.startsWith('export') && new RegExp(`(^|[^\\w$])${name}([^\\w$]|$)`).test(l));
 
@@ -42,6 +42,14 @@ test('every lab script parses, and its imports exist and export what it takes', 
     const list = text.match(/\[([^\]]*)\]\.map\(m => import\(`\.\.\/\.\.\/\.\.\/js\/\$\{m\}\.js`\)\)/);
     if (list) for (const n of list[1].match(/'([^']+)'/g).map(s => s.slice(1, -1))) assert.ok(existsSync(join(root, 'js', n + '.js')), `js/${n}.js exists`);
   }
+});
+
+test('the chooser shows round 2 first and keeps round 1 under its own heading', () => {
+  const chooser = readFileSync(join(lab, 'index.html'), 'utf8'), at = p => chooser.indexOf(`href="${p}/index.html"`), head = chooser.indexOf('Earlier tries (top view)');
+  assert.ok(head > 0, 'the earlier tries have their heading');
+  for (const p of ['d', 'e', 'h', 'i']) assert.ok(at(p) > 0 && at(p) < head, `${p} is above the earlier tries`);
+  for (const p of ['a', 'b', 'c']) assert.ok(at(p) > head, `${p} is under the earlier tries`);
+  assert.ok(!existsSync(join(lab, 'f')), 'F (the rondo) is not in the lab');
 });
 
 test('the grown-ups menu opens the lab', () => {
