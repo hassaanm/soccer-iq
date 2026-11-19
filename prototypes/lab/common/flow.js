@@ -27,7 +27,7 @@ export async function onePlayer(cfg) {
   m.favor = me; m.favorW = FAVOR; m.manual = me; lab.__m = m; // (for the checks)
   m.tackleT = { us: .4, them: .7 }; m.aiSpeed = { them: 2.7 }; // (a slight tilt to his team: his friends win it back sooner, so he gets more of the ball)
   m.setup('us');
-  lab.base = lab.slowTo = cfg.base;
+  lab.base = lab.slowTo = cfg.base; lab.canHold = !!cfg.hold;
   const view = eyes(lab, { me, hold: cfg.hold, natural: () => { const h = sim.a(me), b = sim.ball; if (!h) return null; return m.owner() === me ? Math.atan2(W / 2 - h.y, L - h.x) : Math.atan2(b.y - h.y, b.x - h.x); } });
   const av = avatar(lab, IDS, me, id => setMe(id));
   const touches = Object.fromEntries(IDS.map(id => [id, 0]));
