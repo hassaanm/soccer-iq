@@ -11,7 +11,7 @@ export const PASS = 2 / 3; // right on the first try in at least 4 of 6 rounds p
 
 export function defaultProgress() {
   return { v: 1, us: 'barca', them: 'madrid', sessions: 0, skills: {}, stickers: [], pick: null, trophies: [], cup: null, openDay: -1, log: { days: {}, weeks: {} },
-    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal', keeperPlay: 'off' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK); keeperPlay: he plays our keeper in matches (v67, saves.js KEEPER_PLAY)
+    settings: { voice: true, sound: true, rounds: 6, skill: null, alwaysOpen: false, size: '3v3', think: 'normal', keeperPlay: 'off', mode: 'slow' } }; // size: see geom.js SIZES; think: how long he has to choose (v64, window.js THINK); keeperPlay: he plays our keeper in matches (v67, saves.js KEEPER_PLAY); mode: how a Match plays, 'slow' (stops to choose) or 'fast' (real time; v84, js/fast/)
 }
 
 export function load(storage = STORE) {

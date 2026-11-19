@@ -12,7 +12,7 @@ import { held, setPause, onPause, easing } from '../pause.js';
 import { holdMusic } from '../sound.js';
 import { mark } from '../perf.js';
 
-const PLAY = new Set(['lesson', 'demo', 'match', 'free', 'keeper']);
+const PLAY = new Set(['lesson', 'demo', 'match', 'free', 'keeper', 'fast']); // (v84: fast, js/fast/fast.js)
 const BARS = '<svg class="bars" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="5.5" y="4.5" width="4.4" height="15" rx="1.6" fill="currentColor"/><rect x="14.1" y="4.5" width="4.4" height="15" rx="1.6" fill="currentColor"/></svg>';
 const TRI = '<svg class="tri" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M8 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L9.5 3.94A1 1 0 0 0 8 4.8Z" fill="currentColor"/></svg>';
 // The nodes, made once.

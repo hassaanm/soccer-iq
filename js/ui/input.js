@@ -2,6 +2,7 @@
 import { $, onPress } from './dom.js';
 import { canvas, game } from './stage.js';
 import { held } from '../pause.js';
+import { FAST } from '../fast/state.js'; // (v84: a Fast match takes its own touches: js/fast/fast.js)
 
 // A touch only picks a player, spot or arrow if the finger lifts without sliding; any slide is a look-around drag.
 // Only the finger that started the touch counts: a second finger (or a resting palm) changes nothing.
@@ -9,6 +10,7 @@ const SLIDE = 12; // pixels a finger may wobble and still count as a tap
 let press = null;
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
+  if (FAST.on) return;
   if (press && !e.isPrimary) return;
   if (held.on && !game.lookUp) return; // (v79: paused, only a look around with his head already up: ui/pause.js)
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };

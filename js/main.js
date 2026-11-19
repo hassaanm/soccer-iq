@@ -15,6 +15,8 @@ import './ui/menu.js';
 import './ui/input.js';
 import { held, share, easing } from './pause.js';
 import { pauseFrame, stillView, easeMark, easeDraw } from './ui/pause.js';
+import { fast } from './fast/fast.js'; // (v84: Fast mode; it gets the frames while it plays)
+fast.goalie = goalie; // (v84: in a Fast match at 5v5 he plays our keeper for their clear shots, with the keeper game's moment)
 
 $('#playBtn').onclick = () => runSession();
 $('#freeBtn').onclick = () => gated(runFreePlay);
@@ -34,7 +36,7 @@ let lastPhase = '';
 const FPS = +new URLSearchParams(location.search).get('fps') || 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const cap = FPS && FPS < 100 ? FPS : smooth() && TEST.cap ? (game.phase === 'idle' && !goalie.on ? 30 : 60) : 0;
+  const cap = FPS && FPS < 100 ? FPS : smooth() && TEST.cap ? (game.phase === 'idle' && !goalie.on && !fast.on ? 30 : 60) : 0;
   if (cap && now - last < 1000 / cap - 3) return;
   const ms = now - last; last = now;
   if (held.on) { still(now, ms); return; } // (v79: paused, js/pause.js)
@@ -53,14 +55,15 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
   pauseFrame();
   try {
     if (judge) world.pace(ms);
-    if (world.pending != null && (goalie.on ? false : game.phase === 'idle' || (game.phase === 'pre' && lastPhase !== 'pre'))) world.applyPending(); lastPhase = game.phase;
-    const go = dt || !eased; if (eased && go) easeMark(goalie.on ? goalie : game, time - dt);
+    if (world.pending != null && (fast.on ? fast.calm : goalie.on ? false : game.phase === 'idle' || (game.phase === 'pre' && lastPhase !== 'pre'))) world.applyPending(); lastPhase = game.phase;
+    const go = dt || !eased; if (eased && go) easeMark(fast.on ? fast : goalie.on ? goalie : game, time - dt);
     let end = perf.time('game');
-    if (goalie.on) { if (go) goalie.tick(dt); end(); end = perf.time('draw'); easeDraw(goalie, time); } // (the keeper game draws its own play: ui/goalie.js)
+    if (fast.on) { if (go) fast.tick(dt); end(); end = perf.time('draw'); easeDraw(fast, time); } // (v84: Fast mode, js/fast/fast.js)
+    else if (goalie.on) { if (go) goalie.tick(dt); end(); end = perf.time('draw'); easeDraw(goalie, time); } // (the keeper game draws its own play: ui/goalie.js)
     else { if (go) { goalie.tick(dt); game.tick(dt, time); } end(); end = perf.time('draw'); easeDraw(game, time); }
     end(); end = perf.time('strip'); if (TEST.strip ?? STRIP) matchStrip(now); end();
     if (TEST.onFrame) TEST.onFrame(now);
-    perf.frame(now, goalie.on ? { phase: 'keeper', mode: 'keeper' } : game, world.renderer);
+    perf.frame(now, fast.on ? { phase: 'fast', mode: 'fast' } : goalie.on ? { phase: 'keeper', mode: 'keeper' } : game, world.renderer);
   } catch (e) { console.error(e); }
 }
 // (v79) A frame while paused: no game time, no real-time jobs, nothing for the governor or the speed record. The picture
@@ -68,7 +71,7 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
 function still(now, ms) {
   perf.idle(now); pauseFrame();
   if (!stillView(Math.min(.05, ms / 1000)) && !world.resized) return;
-  try { if (goalie.on) world.render(goalie.sim, goalie.cam, goalie.ui, time); else world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
+  try { if (fast.on) world.render(fast.sim, fast.cam, fast.ui, time); else if (goalie.on) world.render(goalie.sim, goalie.cam, goalie.ui, time); else world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
 }
 requestAnimationFrame(frame);
 

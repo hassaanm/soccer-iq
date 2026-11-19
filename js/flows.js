@@ -18,6 +18,8 @@ import { pieces } from './voice.js';
 import { warmVoice } from './ui/voicewarm.js';
 game.warm = scenes => warmVoice(scenes); // (a match's round list: game/live.js match)
 import { shuffle } from './geom.js';
+import { fast } from './fast/fast.js';
+import { FAST_GOALS } from './fast/state.js';
 import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
 
 // ---------- shared steps ----------
@@ -197,6 +199,7 @@ export const runSession = () => (trainingNext() ? runTraining() : runLesson());
 // First to 5 goals (v64; 3 before: with good choices that was over in 6 to 10 decisions), mixing every lesson he has
 // passed (attack and defense). MATCH_GOALS is the one place to change it.
 export const runFreePlay = flow(async () => {
+  if (P.settings.mode === 'fast') return playFast(); // (v84: the Fast way to play a match; below)
   const ids = matchSkills(), us = teamById(P.us), them = teamById(P.them);
   setStage(us, them, 'crowd');
   await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${MATCH_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
@@ -275,4 +278,25 @@ export async function gated(run) {
   if (isMatch ? matchOpen(P) : playOpen(P)) return run();
   const r = await card({ emoji: '🔒', title: 'Train first!', sub: isMatch ? 'Pass your first lesson to open Match.' : `Do today's ${graduated(P, PATH) ? 'training' : 'lesson'} to open the Cup.`, button: '💪 Train', alt: 'Not now' });
   if (r === 'main') runSession();
+}
+
+// ---------- a Fast match (v84) ----------
+// With Fast picked on the home screen (P.settings.mode), Match plays in real time (js/fast/fast.js): he picks his player
+// (his team's shirts), plays first to FAST_GOALS, and the results card shows his counts.
+async function playFast() {
+  const us = teamById(P.us), them = teamById(P.them);
+  setStage(us, them, 'crowd'); game.home();
+  await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${FAST_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  hud.caption(''); await fast.pick(us);
+  const c = await fast.play({ us, them }), won = c.score.us > c.score.them;
+  if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
+  save();
+  const mm = Math.floor(c.time / 60), ss = String(c.time % 60).padStart(2, '0');
+  const counts = [['🙋', c.touches, 'touches'], ['⚽', c.passes, 'passes'], ['👍', c.good, 'good passes'], ['🥅', c.goals, 'goals'], ['🦶', c.steals, 'steals'], ['⏱', `${mm}:${ss}`, 'time']];
+  fillResults({
+    emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: `${us.short} ${c.score.us} – ${c.score.them} ${them.short}`,
+    extra: `<div class="fCounts">${counts.map(([i, n, w]) => `<span><i>${i}</i><b>${n}</b><small>${w}</small></span>`).join('')}</div>`,
+    match: toMatch(), cup: toCup(), lesson: toLessons(), paper: won ? 70 : 0,
+  });
+  finish(won ? 'You won the match!' : 'Good game!');
 }
