@@ -72,7 +72,7 @@ export function endRun(run, { again, sticker = null, title = null } = {}) {
     + `<div class="best"><i>⭐</i><b>${miniBest(P, run.id)}</b></div>${d.best ? '<div class="newbest"><span>New best!</span></div>' : ''}`
     + (old ? `<div class="old">Old best: ${old} of 8</div>` : '') + '</div>';
   fillResults({
-    emoji: g.unit, sticker: d.sticker ? sticker.emoji : null, title: d.best ? 'New best!' : (title || 'Good game!'), line: '', rounds: [], note: '', news: '', extra,
+    emoji: g.unit, sticker: d.sticker ? sticker.emoji : null, title: g.name, line: '', rounds: [], note: '', news: '', extra, // (the title: the game's name; "New best!" has its own badge under the score)
     lesson: { icon: '🔁', text: 'Again', label: '', go: () => again?.() },
     match: { icon: '🕹️', text: 'Mini games', go: () => { show('#home'); hooks.open?.(); } }, cup: null, again: null,
     paper: d.best ? 90 : d.sticker ? 60 : 0,

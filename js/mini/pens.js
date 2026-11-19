@@ -2,8 +2,8 @@
 // where he will go (a step to that side, his eyes looking there, and at the kick a lean into his dive); he taps one of
 // the six targets in the goal. A kick to the side the keeper leaves scores; one where the keeper goes is saved, and so
 // is one down the middle (the keeper's body is there: "He can reach that one"). The decision: look at the keeper, then
-// choose. The tell is honest: where the keeper shows last is always where he goes (tests/pens.test.js). From level 9 he
-// sometimes fakes: he steps one way first, then clearly steps across to the side he will go, in time to see it.
+// choose. The tell is honest: where the keeper shows last is always where he goes (tests/mini.test.js). After level 8
+// he sometimes fakes: he steps one way first, then at his usual time clearly steps across to the side he will go.
 // Nothing here is chance once a kick is planned, and nothing needs a page: mini/penalty.js plays it, the tests and the
 // bots use it as it is. The goal is the 5v5 goal at every size (saves.js GOAL), our end of the pitch (x = 0).
 import { GOAL } from '../saves.js';
@@ -27,13 +27,14 @@ export const sideU = side => (side === 'L' ? -1 : 1); // the side he sees, as th
 //   stepT   the share of the window his step takes (quicker keeper)
 //   eyes    picture seconds his eyes show after a step (99: the whole time, until level 4; then shorter, toward 0.25)
 //   arrow   a gold arrow on the grass from his feet to his side (the first few kicks: it teaches what to watch)
-//   fake    the chance he fakes (from level 9, up to 0.35); `sw`: the share of the time left when he steps back across
+//   fakeP   the chance he fakes (from level 8, rising to 0.35): a first step the other way, at `early` of his usual
+//           time; his true step comes at the usual time, so the true tell is there as long as without a fake
 export function penLevel(L) {
   L = Math.max(0, L);
   return {
-    win: ease(4.2, 1, 7)(L), at: .1 + ramp(0, .03, .5)(L), step: ease(1.1, .25, 6)(L), stepT: ease(.24, .1, 8)(L),
+    win: ease(4.2, 1, 8)(L), at: .1 + ramp(0, .025, .5)(L), step: ease(1.1, .25, 6)(L), stepT: ease(.24, .1, 8)(L),
     eyes: L < 4 ? 99 : ease(1.4, .25, 6)(L - 4), big: L < 2, arrow: L < 1.5,
-    fake: L < 9 ? 0 : Math.min(.35, .03 * (L - 8)), sw: .45,
+    fakeP: ramp(8, .03, .35)(L), early: .45,
   };
 }
 // One kick at `level`: where the keeper goes (side), whether he fakes first (fake: the side he shows first, or null),
@@ -43,15 +44,15 @@ export function penKick(level, r, n = 0, last = []) {
   const D = penLevel(level), run = last.slice(-3);
   let side = r() < .5 ? 'L' : 'R';
   if (run.length === 3 && run.every(s => s === side)) side = other(side);
-  const fake = r() < D.fake ? other(side) : null;
-  return { n, level, side, fake, ...D, fakeStep: D.step * .7 };
+  const fake = r() < D.fakeP ? other(side) : null;
+  return { ...D, n, level, side, fake, fakeStep: D.step * .7 };
 }
 // The keeper's steps before the kick: [{ f: when (share of the window), u: where he steps to (m across), side }]. The
 // last one is always the side he goes.
 export function tellSteps(k) {
   const real = { side: k.side, u: sideU(k.side) * k.step };
   if (!k.fake) return [{ f: k.at, ...real }];
-  return [{ f: k.at, side: k.fake, u: sideU(k.fake) * k.fakeStep }, { f: k.at + (1 - k.at) * k.sw, ...real }];
+  return [{ f: k.at * k.early, side: k.fake, u: sideU(k.fake) * k.fakeStep }, { f: k.at, ...real }];
 }
 // The side he shows at a share f of the window (null before his first step).
 export const showing = (k, f) => { let s = null; for (const t of tellSteps(k)) if (f >= t.f) s = t.side; return s; };
