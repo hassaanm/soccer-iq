@@ -160,14 +160,6 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 #hud:is([data-mode=lesson],[data-mode=match],[data-mode=free],.showing)[data-phase=decide][data-kind=tackle] #stealBtn{display:flex}
 #hud.showing[data-kind=tackle] #stealBtn{display:flex}
 #hud.shoot #shootBtn{display:flex}
-/* The skill moment (game/skill.js): SKILL in the thumb corner where STEAL sits (the two never show together: STEAL only
-   while he decides, SKILL only while a play runs). The ring around it runs down with the time left to tap. */
-#skillBtn{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:118px;height:118px;font-size:12px;line-height:1.05;text-align:center;--left:1}
-#skillBtn i{font-size:40px}
-#skillBtn span{max-width:92px}
-#skillBtn .ring{position:absolute;left:-14px;top:-14px;width:146px;height:146px;transform:rotate(-90deg);pointer-events:none;overflow:visible}
-#skillBtn .ring circle{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round;stroke-dasharray:295.3;stroke-dashoffset:calc(295.3 * (1 - var(--left)));filter:drop-shadow(0 0 3px rgba(255,190,0,.9))}
-#hud.skilling #skillBtn{display:flex;animation:popIn .28s var(--bounce) backwards,nudge .7s ease-in-out infinite}
 /* The move he did, in big letters for a moment (high up under the score or the dots, clear of him: the skill camera keeps him lower in the picture); someone else's: a small tag. */
 #skillName{position:absolute;top:62px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .4s;pointer-events:none;z-index:3}
 #skillName.show{opacity:1;transition:none}
@@ -734,10 +726,6 @@ body.smooth:not(.v75look) #rate .stars span.on.pop{filter:none;text-shadow:0 2px
 body.smooth:not(.v75look) #kGlove{filter:none;text-shadow:0 3px 0 rgba(36,25,58,.6)}
 /* - The pointing hand: its white edge and its shadow as text shadows, not three chained filters. */
 body.smooth:not(.v75look) #hand span{filter:none;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 6px 6px rgba(0,0,0,.4)}
-/* - The SKILL ring drains every frame: its glow is a wider soft-gold ring under it, not a blur filter redrawn each frame. */
-#skillBtn .ring circle.glow{display:none}
-body.smooth:not(.v75look) #skillBtn .ring circle{filter:none}
-body.smooth:not(.v75look) #skillBtn .ring circle.glow{display:inline;stroke:rgba(255,190,0,.45);stroke-width:10}
 /* - The big words and the caption keep their stroke and hard shadow; the soft blurred shadow under every letter is left
      out (each letter is its own layer while it drops in, so each paid for its own blur). The speed test's best settings
      can put it back (body.softwords). */
@@ -753,18 +741,15 @@ body.smooth:not(.v75look):not(.softwords) #caption{text-shadow:0 3px 0 rgba(36,2
 @keyframes nudgeLift{0%,100%{opacity:0}50%{opacity:.18}}
 body.smooth:not(.v75look) .nudge{animation-name:nudgeS}
 body.smooth:not(.v75look) #hud .pointed{animation-name:nudgeS}
-body.smooth:not(.v75look) #hud .btn-round:is(.nudge,.pointed),body.smooth:not(.v75look) #hud.skilling #skillBtn{animation-name:popIn,nudgeS}
+body.smooth:not(.v75look) #hud .btn-round:is(.nudge,.pointed){animation-name:popIn,nudgeS}
 body.smooth:not(.v75look) #hud .howpick .btn.pointed{animation-name:fromLeft,nudgeS}
 body.smooth:not(.v75look) #hud .howpick .btn + .btn.pointed{animation-name:fromRight,nudgeS}
-body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+body.smooth:not(.v75look) #hud :is(.nudge,.pointed)::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:linear-gradient(180deg,var(--top),var(--bot));mix-blend-mode:plus-lighter;opacity:0;animation:nudgeLift .9s ease-in-out infinite}
-body.smooth:not(.v75look) #hud :is(.nudge,.pointed,#skillBtn)::after{content:"";position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;
+body.smooth:not(.v75look) #hud :is(.nudge,.pointed)::after{content:"";position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;
   box-shadow:0 2px 14px 2px rgba(255,246,176,.95);opacity:0;animation:nudgeGlow .9s ease-in-out infinite}
 body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{inset:0 0 -5px}
-body.smooth:not(.v75look) #hud.skilling #skillBtn::before,body.smooth:not(.v75look) #hud.skilling #skillBtn::after{animation-duration:.7s}
 body.smooth:not(.v75look) #hud .howpick .btn.pointed::before,body.smooth:not(.v75look) #hud .howpick .btn.pointed::after{animation-duration:.8s}
-body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::before,body.smooth:not(.v75look) #hud #skillBtn:not(.nudge,.pointed)::after{display:none}
-body.smooth:not(.v75look) #hud.skilling #skillBtn::before,body.smooth:not(.v75look) #hud.skilling #skillBtn::after{display:block}
 /* - The lesson's dot for this round: v75's ring (3 px, strong) and its wider soft ring (5 px, faint) as two layers that
      cross-fade (opacity), not an animated box shadow. */
 body.smooth:not(.v75look) #dots span.now{position:relative;animation:none;box-shadow:none}
@@ -798,3 +783,23 @@ body.logon #logBar{display:flex}
 #logSheet p{margin:0;font-size:14px}
 #logSheet textarea{flex:1;min-height:0;width:100%;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#fff;padding:8px;font:11px/1.3 ui-monospace,Menlo,monospace;-webkit-user-select:text;user-select:text}
 #logSheet .row{display:flex;gap:8px;justify-content:flex-end}
+
+/* (v78) The skill moment (game/skill.js): two moves to pick from, as two big round buttons where PASS and DRIBBLE sit
+   (neither shows while a play runs), each with its move's picture (index.html #skillPics). A ring on each drains with
+   the time left to pick. Once he picks, his move stays lit with its ring full and the other fades. Painted cheaply:
+   the pulse is a scale, the fades are opacity and transform, the ring's glow is a wider soft ring under it (no filter,
+   no blurred shadow redrawn each frame). The pointing hand's .pointed pulse also uses scale only. */
+#skillPics{position:absolute;width:0;height:0;overflow:hidden}
+.skillPick{position:absolute;bottom:calc(18px + var(--safe-b));width:112px;height:112px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;--left:1}
+#skillA{right:calc(150px + var(--safe-r))}
+#skillB{right:calc(22px + var(--safe-r))}
+.skillPick .pic{width:88px;height:88px;pointer-events:none}
+.skillPick .ring{position:absolute;left:-12px;top:-12px;width:136px;height:136px;transform:rotate(-90deg);pointer-events:none;overflow:visible}
+.skillPick .ring circle{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round;stroke-dasharray:295.3;stroke-dashoffset:calc(295.3 * (1 - var(--left)))}
+.skillPick .ring circle.glow{stroke:rgba(255,190,0,.45);stroke-width:10}
+#hud.skilling .skillPick{display:flex;animation:popIn .28s var(--bounce) backwards,nudgeS 1.2s ease-in-out .3s infinite}
+#hud.skilling.armed .skillPick{animation:none;transition:opacity .25s,transform .25s}
+#hud.skilling.armed .skillPick.off{opacity:.15;transform:scale(.8)}
+#hud.skilling.armed .skillPick.on{transform:scale(1.12)}
+#hud.skilling.armed .skillPick.on .ring circle{stroke-dashoffset:0}
+body.smooth:not(.v75look) .skillPick .ring circle{filter:none}

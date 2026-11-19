@@ -27,7 +27,7 @@
 //     size    a fixed team size, when the entry only exists at one size ('5v5')
 //     level / think / seed   defaults for the choosers (level 1, 'normal', seed 1)
 //     reach   what "it is up" means for the page's own check (tests and the walk script): 'decide' (a choice is open),
-//             'defend' (a defending choice is open), 'timeout' (the "He got there!" card), 'skill' (the SKILL button),
+//             'defend' (a defending choice is open), 'timeout' (the "He got there!" card), 'skill' (the skill moment's two buttons),
 //             'guess' (their keeper guessed), 'shown:#id' (that screen is showing). Default: 'decide' for rounds and
 //             matches, the screen for screens.
 //     act     what the walk script does once it is up, before checking `reach`: 'best' picks the best choice, 'shoot' taps
@@ -91,8 +91,12 @@ export const ENTRIES = [
     look: 'Tap DRIBBLE, then an arrow: two buttons come up, Small touches and Big push. Lots of space ahead: the big push.' },
   { id: 'take-on', group: DRIB, title: 'Take him on', pick: ALL, round: { lesson: 'take-him-on', pattern: 'trap-one' },
     look: 'Only one defender: dribble past him (the arrow beside him, not into him).' },
-  { id: 'skill', group: DRIB, title: 'A skill moment (the gold SKILL button)', pick: ALL, reach: 'skill', act: 'best', round: { lesson: 'take-him-on', pattern: 'trap-one' },
-    look: 'Dribble past him: as he gets close the gold SKILL button comes up and play slows; tap it for the move. Not every shape offers one: step the seed if none comes.' },
+  { id: 'skill', group: DRIB, title: 'A skill moment: two tricks to pick from (v78)', pick: ALL, reach: 'skill', act: 'best', round: { lesson: 'take-him-on', pattern: 'trap-one' },
+    look: 'Dribble past him: as he sets off, two gold buttons with pictures come up where PASS and DRIBBLE were, play slows (about 3 s, the rings drain). Tap the one going to the space: it stays lit, its name is said, it plays slowly with its name up. Seed 3 offers; step the seed if none comes.' },
+  { id: 'skill-wrong', group: DRIB, title: 'A skill moment: the trick toward him', pick: ALL, reach: 'skill', round: { lesson: 'take-him-on', pattern: 'trap-one' },
+    look: 'As the two tricks come up, tap the one whose arrow goes toward the defender: he does not buy it, steps across and stops you (Kept the ball!, 2 stars and why).' },
+  { id: 'skill-run', group: DRIB, title: 'A skill moment while running at a defender who is still coming', pick: ALL, match: { goals: 5 },
+    look: 'In a match, dribble at a defender who is still a few metres off: two tricks come up early; tap one, and it starts by itself as he gets close. Rare: play on until one comes (at most one every 20 s).' },
 
   // ---------- restarts ----------
   { id: 'side-in', group: RESTART, title: 'In from the side line (off the ball)', pick: ALL, round: { lesson: 'spread-out', pattern: 'side-in' },

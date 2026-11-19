@@ -28,7 +28,7 @@ addEventListener('blur', () => { if (press) { press = null; game.lookEnd(); } })
 
 const BUTTONS = {
   '#lookBtn': () => game.toggleLook(), '#passBtn': () => game.pass(), '#dribBtn': () => game.dribble(), '#shootBtn': () => game.shoot(),
-  '#stealBtn': () => game.stealTap(), '#skillBtn': () => game.skillTap(), '#touchSmall': () => game.touch('small'), '#touchBig': () => game.touch('big'),
+  '#stealBtn': () => game.stealTap(), '#skillA': () => game.skillTap(0), '#skillB': () => game.skillTap(1), '#touchSmall': () => game.touch('small'), '#touchBig': () => game.touch('big'),
   '#footIn': () => game.foot('in'), '#footLaces': () => game.foot('las'),
 };
 // (round 2) Play moves while he chooses: a friend he is passing to can run under a button. A press on the button right

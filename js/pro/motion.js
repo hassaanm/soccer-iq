@@ -143,9 +143,13 @@ function bootOut(J, dx, dy, bz, fl) {
 //             the first foot takes the ball away.
 //   feint:    the body feint: the foot on the fake side steps out wide without going over the ball and plants, his
 //             hips and the shoulder go that way (a quarter of a metre: round 7), then the outside of the other foot takes it away.
+//   fakeshot: (v78, the child's own player) the foot on the fake side plants beside the ball as for a shot, the other
+//             draws back and swings through and stops short of the ball, his weight going over the planted foot; then
+//             the outside of that foot takes the ball away the other way.
 // A path is keys [c, x, y, z]: x metres ahead of the ball (B) or of his hips (H), y to the fake side of the ball's line.
 const B = 0, H = 1, OVER = [[.16, B, -.34, -.04, .2], [.3, B, -.04, -.02, .37], [.4, B, .13, .17, .27], [.5, B, .03, .32, .11]]; // in behind, over the front, down outside
-const WIDE = [[.2, B, -.42, .3, .11], [.36, B, -.25, .6, .05]]; // (round 7: a real step out to the fake side: he plants it there)                                                               // a step out wide, short of the ball
+const WIDE = [[.2, B, -.42, .3, .11], [.36, B, -.25, .6, .05]];
+const SHOT = [[.12, H, -.55, .04, .3], [.32, H, -.42, .04, .32], [.46, B, -.3, .02, .17], [.52, B, -.24, .0, .15]]; // (v78) the fake shot's swing: back, through, and stopped short of the ball // (round 7: a real step out to the fake side: he plants it there)                                                               // a step out wide, short of the ball
 const cr = (a, b, c, d, t) => .5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
 const PT = [0, 0, 0];
 // Where a foot is at `c` on a path of keys [c, x, y, z] (already in his hip frame), through the keys on a smooth curve.
@@ -174,6 +178,12 @@ function dribbleSkillFeet(k, c, ball, bl, fk, TL = 1.4) {
     if (c > 1) { t[0] = ball(c) - BALL - .12; t[2] = .1 + (c - 1) * .2; }
     set(i, t, c > c0 ? .1 : 0, fk * .42 * sm((c - c0) / (1 - c0)), 1);
   };
+  if (k === 'fakeshot') { // S plants beside the ball (the standing foot of a shot); K draws back, swings, stops short of the ball; then K's outside takes it away
+    const sL = land(.3, fk, .3), kF = [ball(.6) - .26, bl - fk * .12, .15];
+    if (c < .3) set(S, key(WIDE, fk, 0, .3, [-.3, bl + fk * .12, .08], sL), 0, fk * .2, 1); else set(S, pl(sL[0], .3, sL[1]), 0, fk * .15, 1);
+    if (c < .6) set(K, key(SHOT, -fk, 0, .6, pl(.32, 0, bl - fk * .13), kF), c > .1 && c < .38 ? -.5 : -.12, 0, 1); else take(K, .6, kF.slice());
+    return;
+  }
   if (k === 'scissors') { // A (K) goes over first, away from the fake; B (S) second, to the fake; A takes it away
     const a0 = [.3, bl - fk * .13, ANKLE], aL = land(.36, -fk, .34), b0 = pl(.3, 0, bl + fk * .13), bL = land(.68, fk, .34);
     if (c < .36) set(K, key(OVER, -fk, 0, .36, [-.25, bl - fk * .13, .1], aL), c > .3 ? 0 : -.2, -fk * .5, 1); else if (c < .7) set(K, pl(aL[0], .36, aL[1]), 0, -fk * .3, 1); else take(K, .7, pl(aL[0], .36, aL[1]).slice());
@@ -188,8 +198,8 @@ function dribbleSkillFeet(k, c, ball, bl, fk, TL = 1.4) {
 // How much his weight goes to the fake side (0 to 1, signed for the scissors' first fake) at c through a dribble skill.
 const bump = (c, a, b, d) => sm((c - a) / (b - a)) * (1 - sm((c - b) / (d - b)));
 // Then his weight goes the other way, after the ball (minus): the fake, then the go, so the move reads from far away.
-const dropOf = (k, c) => k === 'scissors' ? bump(c, .4, .62, .9) - .8 * bump(c, .05, .3, .45) - .5 * bump(c, .85, 1.02, 1.3) : k === 'feint' ? 1.6 * bump(c, .08, .42, .8) - .6 * bump(c, .62, .9, 1.25) : bump(c, .15, .45, .78) - .6 * bump(c, .62, .9, 1.25);
-const DRIB_SKILL = { stepover: 1, scissors: 1, feint: 1 };
+const dropOf = (k, c) => k === 'fakeshot' ? .9 * bump(c, .1, .4, .72) - .6 * bump(c, .66, .92, 1.25) : k === 'scissors' ? bump(c, .4, .62, .9) - .8 * bump(c, .05, .3, .45) - .5 * bump(c, .85, 1.02, 1.3) : k === 'feint' ? 1.6 * bump(c, .08, .42, .8) - .6 * bump(c, .62, .9, 1.25) : bump(c, .15, .45, .78) - .6 * bump(c, .62, .9, 1.25);
+const DRIB_SKILL = { stepover: 1, scissors: 1, feint: 1, fakeshot: 1 };
 
 // `time` is the clock of the picture, which keeps running when the game stops its own clock (`sim.time`).
 export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
@@ -372,7 +382,9 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   let rx = 0, ry = 0, rw = 0;
   if (defending && carrier && !carrying && dc < 5.5) {
     const q = skillNow(sim, carrier.id);
-    if (q) { rw = (DRIB_SKILL[q.k] ? bump(q.c, .1, .5, 1.15) : bump(q.c, .03, Math.max(.2, q.at), q.at + .45) * (q.k === 'croqueta' || q.k === 'roll' ? .6 : 1)) * (1 - sm((dc - 3.5) / 2)); rx = q.fx * cyaw + q.fy * syaw; ry = q.fy * cyaw - q.fx * syaw; }
+    if (q) { rw = (DRIB_SKILL[q.k] ? bump(q.c, .1, .5, 1.15) : bump(q.c, .03, Math.max(.2, q.at), q.at + .45) * (q.k === 'croqueta' || q.k === 'roll' ? .6 : 1)) * (1 - sm((dc - 3.5) / 2)); rx = q.fx * cyaw + q.fy * syaw; ry = q.fy * cyaw - q.fx * syaw;
+      // (v78) The child's own move: the better one he buys plainly (more than for anyone else's, so it reads); the one to the wrong side he does not buy at all.
+      if (!q.good) rw = 0; else if (q.tap > -9 && carrier.id === 'hero') rw *= 1.5; }
   }
   m.fb = damp(m.fb, fW, 12, rdt); m.fby = damp(m.fby, fW * (fLeg ? 1 : -1), 12, rdt); // his body's share of a busy foot, eased (its weight can start part way)
   // (round 13) A feint lunge by one who jockeys (window.js jockFeint): his weight goes in at the ball over his front foot,

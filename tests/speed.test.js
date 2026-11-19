@@ -97,7 +97,7 @@ test('Smooth with the tuned blur uses the blurred edge; without it, the plain on
 
 test('Smooth paints what shows in play the cheap way; Pretty and the speed test\'s v75 run keep the old way', () => {
   const css = read('css/app.css'), tail = css.slice(css.indexOf('(round 13) Graphics on Smooth: what shows or moves in play'));
-  for (const sel of ['#rate .stars span.on.pop', '#kGlove', '#hand span', '#skillBtn .ring circle'])
+  for (const sel of ['#rate .stars span.on.pop', '#kGlove', '#hand span', '.skillPick .ring circle'])
     assert.match(tail, new RegExp('body\\.smooth:not\\(\\.v75look\\) ' + sel.replace(/[.#()]/g, m => '\\' + m) + '\\{filter:none'), sel);
   assert.match(tail, /@keyframes nudgeS\{0%,100%\{scale:1\}50%\{scale:1\.07\}\}/, 'the pulse keeps its size change');
   assert.match(tail, /#tunnel > img\.edge\{display:block/, 'the edge picture');
