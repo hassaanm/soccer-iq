@@ -23,9 +23,9 @@ export const SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45,
 // to a pass line, how hard they pass, how often and from how far they shoot, how often their first touch runs loose, and
 // how well their keeper (5 v 5) follows the ball across his goal. The default makes his team win about two matches in
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
-export const LEVELS = { '3v3': -.85, '4v4': -.5, '5v5': -.5 }, FIND = 16, FIND_P = .85; // (where his level starts at each team size: the tuning runs, v86; level.js moves it with his results)
+export const LEVELS = { '3v3': -2, '4v4': -.95, '5v5': -.95 }, FIND = 16, FIND_P = .85; // (where his level starts at each team size: a sensible child, the 70% bot, wins about two in three first matches: the tuning runs, v89 integration; level.js moves it with his results)
 export let LEVEL = .5;
-export const LEVEL_MIN = -1.2, LEVEL_MAX = 1; // (below 0: gentler still, for a child just starting or having a hard time: v86)
+export const LEVEL_MIN = -2.4, LEVEL_MAX = 1; // (below 0: gentler still, for a child just starting or having a hard time: v86; v89: 3 v 3 starts at -2, so the floor is a little under it)
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   // Below 0 only what does not judge his choices gets gentler (how fast they dribble, how often and how well they shoot,
   // their first touch, their keeper, the steal's glow); what punishes a poor choice (a pass into a closed line, standing

@@ -33,16 +33,21 @@ export function pauseFrame() {
   if (c !== can) { can = c; hudEl.classList.toggle('canpause', c); }
 }
 // Where the big triangle goes as it pauses: low in the middle, or in the very middle (css: #hud.playmid), whichever is
-// farther from his player and the ball on the screen (his head down, he is in the middle; head up, low). The same in
-// Fast mode (its own sim and his player there: Score attack too) and in the mini games on the stage (penalties, the
-// rondos: v89 integration). In the keeper game, always the middle: his goal, its gold spots and the hand are low.
-const R = 58;
+// farther from his player and the ball on the screen (his head down, he is in the middle; head up, low); when both are
+// on him (the view from behind him puts him low in the middle), halfway up on the left or the right (#hud.playL,
+// .playR), the one farther from him. The same in Fast mode (its own sim and his player there: Score attack too) and in
+// the mini games on the stage (penalties, the rondos: v89 integration). In the keeper game, always the middle: his
+// goal, its gold spots and the hand are low.
+const R = 58, CLEAR = R + 16, SIDE = .2;
 function place() {
   const g = fast.on ? fast : goalie.on ? goalie : game, s = g.sim, h = s?.a?.(g === fast ? fast.me || 'hero' : 'hero'), b = s?.ball, w = innerWidth, ht = innerHeight;
-  const pts = []; try { if (h) pts.push(world.project(h.x, h.y, 0), world.project(h.x, h.y, 1.8)); if (b) pts.push(world.project(b.x, b.y, b.z || 0)); } catch { /* no picture yet */ }
+  const pts = []; try { if (h) pts.push(world.project(h.x, h.y, 0), world.project(h.x, h.y, .9), world.project(h.x, h.y, 1.8)); if (b) pts.push(world.project(b.x, b.y, b.z || 0)); } catch { /* no picture yet */ }
   const near = (cx, cy) => Math.min(...pts.filter(Boolean).map(p => Math.hypot(p[0] - cx, p[1] - cy)), 1e9);
-  const low = near(w / 2, ht - 14 - R), mid = near(w / 2, ht / 2);
-  hudEl.classList.toggle('playmid', (goalie.on && goalie === keeperGame && !fast.on) || mid > low);
+  const keeper = goalie.on && goalie === keeperGame && !fast.on;
+  const opts = [['', near(w / 2, ht - 14 - R)], ['playmid', near(w / 2, ht / 2)]].sort((p, q) => q[1] - p[1]);
+  let pick = keeper ? 'playmid' : opts[0][0];
+  if (!keeper && opts[0][1] < CLEAR) { const l = near(w * SIDE, ht / 2), r = near(w * (1 - SIDE), ht / 2); pick = l >= r ? 'playL' : 'playR'; }
+  for (const c of ['playmid', 'playL', 'playR']) hudEl.classList.toggle(c, c === pick || (c === 'playmid' && pick !== ''));
 }
 onPress(btn, () => { if (held.on) setPause(false); else if (inPlay()) setPause(true, 'button'); });
 onPress(big, () => setPause(false));

@@ -67,21 +67,31 @@ function hideCue() { if (ring) ring.visible = false; fast.ui.lines = null; }
 // starts. For the first START_S real s the camera is tipped up (its target raised, a step at a time) until the bar's
 // two ends and the keeper's head are KEEP_PX px inside the top, as long as his own feet stay on screen; over the next
 // FADE_S s the tip goes, and the Fast camera eases back to its own view. (fast.camNow is wrapped on the instance while
-// a run plays: js/fast is not changed.)
-const START_S = 1.6, FADE_S = .8, KEEP_PX = 20, STEP_Z = .12;
+// a run plays: js/fast is not changed.) The tip is kept apart from Fast's own camera (v89 integration): taken off
+// before Fast eases its camera and put back after, itself eased, so the two never fight (before, Fast's easing pulled
+// the raised target down every frame and the tip pushed it up again: the view shook up and down a little).
+const START_S = 1.6, FADE_S = .8, KEEP_PX = 20, STEP_Z = .12, TIP_RATE = 8;
 const baseCam = Object.getPrototypeOf(fast).camNow;
 function camNow(snap, dt) {
+  const c = this.cam; c.tgt[2] -= this.tipZ || 0; // (Fast eases its own camera, without the tip)
   baseCam.call(this, snap, dt);
-  const m = this.m, t = this.real || 0, k = t < START_S ? 1 : 1 - (t - START_S) / FADE_S; if (k <= 0 || !m?.sim || this.aiming) return;
-  const c = this.cam, W = world.width || 932, H = world.height || 430, kp = m.sim.a('k2'), h = m.sim.a(m.me); if (!h) return;
-  const pts = [{ x: m.L, y: m.gy0, z: m.gh }, { x: m.L, y: m.gy1, z: m.gh }, ...(kp ? [{ x: kp.x, y: kp.y, z: 1.8 }] : [])];
-  const top = cam => Math.min(...pts.map(p => project(cam, p, W, H)?.[1] ?? -1e9));
-  const tip = { ...c, eye: [...c.eye], tgt: [...c.tgt] }; let dz = 0;
-  for (let i = 0; i < 24 && top(tip) < KEEP_PX; i++) {
-    tip.tgt[2] += STEP_Z; const f = project(tip, { x: h.x, y: h.y, z: 0 }, W, H);
-    if (!f || f[1] > H - 12) { tip.tgt[2] -= STEP_Z; break; } dz += STEP_Z;
+  const m = this.m, t = this.real || 0, k = t < START_S ? 1 : 1 - (t - START_S) / FADE_S;
+  let want = 0;
+  if (k > 0 && m?.sim && !this.aiming) {
+    const W = world.width || 932, H = world.height || 430, kp = m.sim.a('k2'), h = m.sim.a(m.me);
+    if (h) {
+      const pts = [{ x: m.L, y: m.gy0, z: m.gh }, { x: m.L, y: m.gy1, z: m.gh }, ...(kp ? [{ x: kp.x, y: kp.y, z: 1.8 }] : [])];
+      const top = cam => Math.min(...pts.map(p => project(cam, p, W, H)?.[1] ?? -1e9));
+      const tip = { ...c, eye: [...c.eye], tgt: [...c.tgt] }; let dz = 0;
+      for (let i = 0; i < 24 && top(tip) < KEEP_PX; i++) {
+        tip.tgt[2] += STEP_Z; const f = project(tip, { x: h.x, y: h.y, z: 0 }, W, H);
+        if (!f || f[1] > H - 12) { tip.tgt[2] -= STEP_Z; break; } dz += STEP_Z;
+      }
+      want = dz * k;
+    }
   }
-  c.tgt[2] += dz * k;
+  this.tipZ = snap ? want : (this.tipZ || 0) + (want - (this.tipZ || 0)) * (1 - Math.exp(-(dt || 0) * TIP_RATE));
+  c.tgt[2] += this.tipZ;
 }
 // Confetti from the last goal is cleared as the next attempt starts (a new scene: it would fall on it).
 function clearFx() {
@@ -141,5 +151,5 @@ export async function runAttack(opts) {
   } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 function planned(p, r, n) { let sc = null; for (let i = 0; i < 400; i++) { sc = attackScene(p.level ?? 0, r, 1 + i, []); if (sc.kind === p.kind && (!p.style || sc.style === p.style)) break; } sc.n = n; return sc; }
-function end() { hideCue(); fast.ui.timer = null; delete fast.camNow; fast.stop(); undress(); hudEl.classList.remove('fattack'); game.home(); }
+function end() { hideCue(); fast.ui.timer = null; delete fast.camNow; fast.cam.tgt[2] -= fast.tipZ || 0; fast.tipZ = 0; fast.stop(); undress(); hudEl.classList.remove('fattack'); game.home(); }
 if (typeof window !== 'undefined') window.__attack = { runAttack, fast };

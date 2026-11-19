@@ -68,7 +68,7 @@ class Fast {
     canvas.addEventListener('pointerdown', e => this.down(e));
     // a touch the page lost (the app hidden, the window left): drop it, so the next one works
     const lost = () => this.dropFinger(); addEventListener('blur', lost); addEventListener('pagehide', lost); document.addEventListener('visibilitychange', lost);
-    onPause(on => { if (on && this.on) { this.resetTransient(); this.placePlay(); } });
+    onPause(on => { if (on && this.on) this.resetTransient(); }); // (the big play button is placed by js/ui/pause.js place, clear of his player: v89 integration)
     this.dom.pic = $('#fPic');
     addEventListener('pointermove', e => this.move(e));
     addEventListener('pointerup', e => this.up(e));
@@ -208,12 +208,6 @@ class Fast {
     this.dropFinger(); this.holding = false; this.holdYaw = null; this.holdT = 0; this.dom.box.classList.remove('slowing');
     if (this.aiming) this.endAim(); this.slowTo = BASE; this.warnAt = null; this.goAt = null; this.hinted = null; this.hintCounted = false; this.lastAct = this.real || 0;
     this.dom.cue.classList.remove('show'); hudEl.classList.remove('faiming');
-  }
-  // The big play button while paused: low in the middle, or in the very middle, whichever is farther from his player and
-  // the ball on the screen (as js/ui/pause.js place does for the Slow game's player).
-  placePlay() {
-    try { const s = this.sim, h = s.a(this.me), b = s.ball, W = innerWidth, H = innerHeight, pts = [h && world.project(h.x, h.y, 0), h && world.project(h.x, h.y, 1.8), b && world.project(b.x, b.y, b.z || 0)].filter(Boolean);
-      const near = (x, y) => Math.min(...pts.map(p => Math.hypot(p[0] - x, p[1] - y)), 1e9); hudEl.classList.toggle('playmid', near(W / 2, H / 2) > near(W / 2, H - 72)); } catch { /* no picture yet */ }
   }
   // A small picture over the play for a moment (a skill move's picture, a pass cut out): no words to read.
   showPic(html) { const p = this.dom.pic; p.innerHTML = html; p.classList.remove('show'); void p.offsetWidth; p.classList.add('show'); clearTimeout(this.picT); this.picT = later(() => p.classList.remove('show'), 1500); }
