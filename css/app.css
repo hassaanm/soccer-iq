@@ -822,3 +822,59 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #hud.paused #pausePlay{display:flex;animation:pausePulse 1.6s ease-in-out infinite;animation-play-state:running!important}
 #hud.paused :is(.btn-round,.skillPick,.howpick .btn,#skipBtn,#rate .btn){opacity:.45!important;pointer-events:none!important}
 @media (prefers-reduced-motion:reduce){#hud.paused #pausePlay{animation:none}}
+
+/* ---------- Fast mode (v84, js/fast/) ----------
+   The home screen's picker under the team-size chip: Slow (tortoise) or Fast (lightning), the one on ringed in gold.
+   In play: the avatar (his player's shirt, top right: pause and change player), LOOK UP when his head is down, the one
+   action button bottom right, a small hand-and-timer hint (hold to slow) at the start, and the sheet of shirts. While a
+   finger is held the world is slow: a faint cool tint and two sliding chevrons at the top (drag to look). Friends he saw
+   who are off screen: chips at the edge (gold when he has the ball: a tap passes). All on
+   the HUD's layer; nothing over the picture changes but transform and opacity. */
+.modepick{display:flex;gap:6px}
+.modepick .btn{width:40px;height:32px;padding:0;border-radius:11px;display:grid;place-items:center;border:2.5px solid transparent;box-shadow:0 3px 0 rgba(36,25,58,.25)}
+.modepick .btn svg{width:30px;height:23px;display:block}
+.modepick .btn.on{border-color:var(--gold);background:#fff6d6;box-shadow:0 3px 0 var(--gold-e)}
+.modepick .btn:not(.on){opacity:.72}
+#fastHud{display:none}
+#fastHud.on{display:block}
+#hud[data-mode=fast] #dots{display:none}
+#fAvatar{position:absolute;top:12px;right:calc(70px + var(--safe-r));pointer-events:auto;padding:0;display:grid;place-items:center}
+#fAvatar svg{display:block}
+#fLook{left:calc(26px + var(--safe-l));bottom:calc(20px + var(--safe-b));width:96px;height:96px;pointer-events:auto}
+#fLook i{font-size:38px}
+#fLook.show{display:flex}
+#fAct{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
+#fAct i{font-size:42px}
+#fAct.show{display:flex}
+#fAct.glow{--top:#fff2b8}
+#fHold{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
+#fHold i,#fHold b{font-style:normal;font-weight:400}
+#fHold.show{opacity:1}
+#fSheet{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(36,25,58,.5);pointer-events:auto}
+#fSheet.hidden{display:none}
+#fSheet .fCard{background:rgba(255,250,242,.96);border-radius:24px;padding:16px 18px;box-shadow:0 10px 30px rgba(36,25,58,.35)}
+#fSheet .fRow{display:flex;gap:12px}
+#fSheet .fPick{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border-radius:18px;font-size:14px;color:var(--ink);border:3px solid transparent}
+#fSheet .fPick.me{border-color:var(--gold)}
+#hud.fpicking #pausePlay{display:none!important}
+.fCounts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 14px;margin-top:6px}
+.fCounts span{display:grid;justify-items:center;min-width:56px}
+.fCounts i{font-style:normal;font-size:22px;line-height:1.1}
+.fCounts b{font-size:20px;line-height:1.1}
+.fCounts small{font-size:11px;opacity:.75}
+#fSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none}
+.fChev{position:absolute;top:70px;color:#fff;font:700 30px/1 var(--font);opacity:0;transition:opacity .25s;pointer-events:none;text-shadow:0 1px 0 rgba(36,25,58,.6)}
+#fChevL{left:calc(26px + var(--safe-l))}
+#fChevR{right:calc(26px + var(--safe-r))}
+#fastHud.slowing #fSlow{opacity:1}
+#fastHud.slowing .fChev{opacity:.85}
+#fastHud.slowing #fChevL{animation:fChevL 1s ease-in-out infinite}
+#fastHud.slowing #fChevR{animation:fChevR 1s ease-in-out infinite}
+@keyframes fChevL{50%{transform:translateX(-10px)}}
+@keyframes fChevR{50%{transform:translateX(10px)}}
+#fastHud.slowing #fHold{opacity:0}
+.fChip{position:absolute;left:0;top:0;width:48px;height:48px;padding:0;border:3px solid rgba(255,255,255,.85);border-radius:50%;background:rgba(36,25,58,.62);opacity:0;pointer-events:none;will-change:transform,opacity;display:grid;place-items:center}
+.fChip.gold{border-color:var(--gold);background:rgba(36,25,58,.78)}
+.fChip .pic svg{display:block}
+.fChip .ptr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-7px 0 0 -7px;border:7px solid transparent;border-left:9px solid #fff;transform:rotate(var(--a,0deg)) translateX(28px)}
+.fChip.gold .ptr{border-left-color:var(--gold)}

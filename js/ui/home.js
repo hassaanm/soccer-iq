@@ -134,3 +134,11 @@ function renderAlbum() {
 }
 $('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
 wireSheet('#albumSheet', '#albumClose');
+
+// ---------- how a match plays (v84) ----------
+// Under the team-size chip: Slow (a tortoise: play stops at each choice) or Fast (a hare: real time, js/fast/).
+// Kept in the settings (P.settings.mode); Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
+const modeBtns = $$('#modePick button');
+function renderMode() { const m = P.settings.mode === 'fast' ? 'fast' : 'slow'; for (const b of modeBtns) { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); } }
+for (const b of modeBtns) b.onclick = () => { P.settings.mode = b.dataset.mode; save(); renderMode(); };
+renderMode();
