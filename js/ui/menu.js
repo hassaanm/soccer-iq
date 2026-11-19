@@ -57,7 +57,6 @@ $('#menuClose').onclick = () => {
 $('#voiceSel').onchange = () => { P.settings.voiceName = $('#voiceSel').value; pickVoice(); say(SAMPLE); };
 $('#voiceTest').onclick = () => say(SAMPLE);
 $('#reportBtn').onclick = openReport;
-$('#labBtn').onclick = () => { location.href = 'prototypes/lab/index.html'; }; // (the lab: prototypes of new ways a match could play, on their own pages)
 // Reset keeps the two teams he picked and wipes the rest.
 $('#resetBtn').onclick = () => {
   if (!confirm('Reset all progress and stickers?')) return;
