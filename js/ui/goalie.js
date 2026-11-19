@@ -1,30 +1,34 @@
-// The keeper game on the page (v67): the glove button on the home screen starts a round (game/goalie.js) in the stadium;
-// this puts his keeper's body and the 5v5 goal in the 3D world, draws the shooter's eyes and the glove he picked over the
-// picture, takes his taps, and fills the results card. Open from the start, at every team size.
+// The keeper game on the page (v67): a mini game (v87: Mini games on the home screen, mini/chooser.js) in the stadium,
+// endless with two lives (mini/run.js); this puts his keeper's body and the 5v5 goal in the 3D world, draws the shooter's
+// eyes and the glove he picked over the picture and takes his taps. Open from the start, at every team size.
 import { $ } from './dom.js';
 import { P, save } from './store.js';
 import { hud } from './hud.js';
 import { say, unlockSpeech } from './speech.js';
 import { world, game, canvas } from './stage.js';
 import { show, card } from './screens.js';
-import { fillResults } from './results.js';
-import { renderPickers } from './home.js';
 import { teamById, keeperKit } from '../teams.js';
 import { makeRig } from '../pro/rig.js';
 import { PITCH, sizeOf } from '../geom.js';
 import { generate } from '../generate.js';
 import { PATH } from '../skills.js';
 import { Goalie } from '../game/goalie.js';
-import { roundPlan, SHOTS, STICKER_AT, GOAL, SAID } from '../saves.js';
-import { keeperDone } from '../progress.js';
-import { toMatch, toCup, toLessons, ASK } from '../flows.js';
+import { STICKER_AT, GOAL, SAID, endlessShot } from '../saves.js';
+import { stream } from '../shot.js';
 import { sfx } from '../sound.js';
+import { startRun, runStep, endRun, runOff } from '../mini/run.js';
 import { warmKeeper } from './voicewarm.js';
 import { held, later } from '../pause.js';
 
-export const goalie = new Goalie({ world, hud, say, sfx });
-// Said the first time, on the card that opens it; and the headline on the results card, by how many he saved.
-const INTRO = SAID.intro, HEADLINE = SAID;
+export const keeperGame = new Goalie({ world, hud, say, sfx });
+// (v87) The mini game on the stage: the keeper game, or while penalties play, theirs (mini/penalty.js, the same
+// machinery). main.js runs and draws whichever it is, ui/pause.js pauses it, and a tap on the field goes to it (below):
+// an export that changes, so those files need no change for a new mini game on this machinery. onStage(null) puts the
+// keeper game back.
+export let goalie = keeperGame;
+export function onStage(g) { goalie = g || keeperGame; if (typeof window !== 'undefined') window.__keeper = goalie; }
+// Said the first time, on the card that opens it.
+const INTRO = SAID.intro;
 
 // ---------- his body and his goal ----------
 // He plays as his team's keeper (the fifth player, in a keeper's colours that are neither team's, with gloves).
@@ -39,12 +43,12 @@ function undress() { if (rig) world.scene.remove(rig); world.resetRigs(); }
 // out and up and its nets stretch to 5 m by 1.8 m (world.js built them once, from the size the page loaded with), and it
 // is put back after. The net behind him is fainter, so the picture through it stays clear.
 let sized = false;
-function sizeGoal(on) {
+export function sizeGoal(on, faint = true) { // (faint: the targets' discs, so his body shows through: the keeper game; penalties keep them as in the lessons)
   if (sized === on) return; sized = on;
   const CY = PITCH.W / 2, half = (PITCH.gy1 - PITCH.gy0) / 2, dy = GOAL.half - half, dz = GOAL.gh - PITCH.gh, sg = on ? 1 : -1;
   const net = world.nets?.find(n => n.x === 0);
   if (net) { net.mesh.material.opacity = on ? .45 : 1; net.sides.material.opacity = on ? .45 : 1; }
-  aimLook(on);
+  aimLook(on && faint);
   if (!dy && !dz) return;
   for (const o of world.bars || []) {
     const pos = o.geometry.attributes.position, a = pos.array;
@@ -80,7 +84,7 @@ function ghost(g) {
   ghostK += ((g.ui.ghost ? .35 : 1) - ghostK) * .2; if (ghostK > .99) ghostK = 1;
   opacity(rig, ghostK);
 }
-goalie.onFrame = g => {
+keeperGame.onFrame = g => {
   const t = g.ui.tell, q = t && world.project(t.x, t.y, t.z);
   eyes.classList.toggle('show', !!q);
   if (q) { // (over his head; when that would cover the dots or the score at the top, beside his head instead)
@@ -99,37 +103,31 @@ goalie.onFrame = g => {
 // A touch on the field picks a spot or a target as the finger goes down (no dragging to look around in goal).
 canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary || held.on) return; const r = canvas.getBoundingClientRect(); goalie.tapAt(e.clientX - r.left, e.clientY - r.top); });
 
-// ---------- a round ----------
+// ---------- a run (v87: endless, two lives: mini/run.js) ----------
 let busy = false;
 export async function runKeeper(opts) {
   warmKeeper(); // (round 11: the keeper game's lines are loaded as it starts)
   return runKeeper0(opts);
 }
-async function runKeeper0(opts) { // (opts.plan: a round of one's own, for the review tools; a tap passes an event)
+async function runKeeper0(opts) { // (opts.plan: shots of one's own, for the review tools, played until two go in or the plan ends)
   if (busy) return; busy = true; unlockSpeech();
   try {
-    const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays, plan = Array.isArray(opts?.plan) ? opts.plan : roundPlan(Math.floor(Math.random() * 1e9));
+    const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays && !P.mini?.keeper?.plays, plan = Array.isArray(opts?.plan) ? opts.plan : null;
+    const r = stream(Math.random());
     game.setTeams(us, them); game.mode = 'keeper'; world.setEnv('crowd');
-    hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'keeper' });
-    dress(us, them); sizeGoal(true);
-    goalie.on = true; goalie.setup(plan[0]); show(null); hud.dots([], SHOTS);
+    hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'keeper' }); hud.dots([], 0);
+    dress(us, them); sizeGoal(true); onStage(null);
+    const run = startRun('keeper'), next = i => (run.over ? null : plan ? plan[i] || null : endlessShot(run.level, r, i));
+    const s0 = next(0); keeperGame.on = true; keeperGame.setup(s0); show(null);
     if (first) await card({ emoji: '🧤', title: INTRO, sub: 'Tap a gold spot to stand. Then tap where he shoots!', button: 'Play' });
-    const res = await goalie.round(plan, { first }), saves = res.filter(r => r.res === 'save').length;
-    const k = keeperDone(P, saves, { of: SHOTS, stickerAt: STICKER_AT }); save();
+    const res = await keeperGame.endless(i => (i ? next(i) : s0), { first, onShot: (x, i) => runStep(run, x.res === 'save', { level: x.spec.level, kind: x.spec.kind, zone: x.spec.zone, spot: x.spot, tap: x.tap, res: x.res, why: x.why }) });
+    const saves = res.filter(x => x.res === 'save').length;
     end();
-    const head = saves >= STICKER_AT ? HEADLINE.top : saves >= 4 ? HEADLINE.good : HEADLINE.try;
-    fillResults({
-      emoji: '🧤', sticker: k.sticker ? '🧤' : null, trophy: saves === SHOTS, title: saves >= STICKER_AT ? 'Super keeper!' : head,
-      line: `🧤 ${saves} of ${SHOTS} saved`, rounds: res.map(r => r.res === 'save'), note: k.best ? `⭐ New best: ${saves}!` : `Best: ${P.keeper.best} of ${SHOTS}`,
-      news: saves < STICKER_AT ? `Save ${STICKER_AT} for a sticker!` : '',
-      lesson: toLessons(), match: toMatch(), cup: toCup(), again: { text: '🧤 Again', go: runKeeper }, paper: saves >= STICKER_AT ? 70 : 0,
-    });
-    show('#results'); renderPickers();
-    say(head)?.then(() => setTimeout(() => { if (!$('#results').classList.contains('hidden')) say(ASK); }, 300));
-  } catch (e) { console.error(e); end(); show('#home'); } finally { busy = false; }
+    endRun(run, { saves, sticker: saves >= STICKER_AT ? { emoji: '🧤', skill: 'keeper' } : null, again: runKeeper });
+  } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 // Back to the game's own world: his outfield body, the goal as it was, the home scene.
-function end() { goalie.on = false; hud.hand(null); for (const el of [eyes, glove, badge]) el.classList.remove('show'); undress(); sizeGoal(false); game.home(); }
+function end() { keeperGame.on = false; hud.hand(null); for (const el of [eyes, glove, badge]) el.classList.remove('show'); undress(); sizeGoal(false); game.home(); }
 export const keeperOn = () => goalie.on;
 
 // ---------- in a match (v67) ----------
@@ -143,10 +141,9 @@ game.keeperMoment = (spec, shooter) => {
   k.turns = (k.turns || 0) + 1; save();
   if (k.turns <= TOLD) { hud.caption('🧤 ' + YOURE); say(YOURE); later(() => { if (hud.busy?.()) hud.caption(''); }, 1800); }
   aimLook(true);
-  return goalie.inMatch(game, spec, shooter).finally(() => aimLook(false));
+  return keeperGame.inMatch(game, spec, shooter).finally(() => aimLook(false));
 };
-$('#keeperBtn').onclick = () => runKeeper();
-window.__keeper = goalie; // (for debugging in the console, as window.__game)
+window.__keeper = keeperGame; // (for debugging in the console, as window.__game; the mini game on the stage: onStage)
 
 // For the review page (dev/review.js): a keeper moment at once, as in a 5v5 Match: their player through on our goal with
 // the ball, then the hand-over (game/handover.js keeperShot) and play going on after it. `seed` picks the scene.

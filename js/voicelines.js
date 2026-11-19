@@ -5,6 +5,8 @@ import { MOVE_NAME } from './flair.js';
 import { EXPLAIN, SKILL_TIP, SAW } from './game/skill.js';
 import { TIMEOUT } from './game/rounds.js';
 import { SAVED, WHY, SAID } from './saves.js';
+import { MINI, MINI_SAID } from './mini/games.js';
+import { PEN_SAID, PEN_WHY } from './mini/pens.js';
 
 export const clean = t => t.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '').trim();
 export const fill = t => t.replaceAll('{m0}', 'Saka').replaceAll('{m1}', 'Rice').replaceAll('{m2}', 'Saka'); // (a friend's name is its own clip, loaded with the teams: flows.js setStage)
@@ -28,4 +30,6 @@ export function linesFor(scenes = []) {
   for (const s of ALL_LESSONS) if (ids.has(s.id)) lines.push(s.kid, s.tip);
   return lines;
 }
-export const keeperLines = () => [SAVED, ...Object.values(WHY), ...Object.values(SAID), 'What do you want to play?', 'You won! You got a new sticker!', 'Great try! You got a new sticker!'];
+export const keeperLines = () => [SAVED, ...Object.values(WHY), ...Object.values(SAID), 'What do you want to play?', 'You won! You got a new sticker!', 'Great try! You got a new sticker!', ...miniLines()];
+// (v87) The mini games' own lines (the screen, the end of a run, penalties): loaded with the keeper game's.
+export const miniLines = () => [...MINI.map(g => g.say), ...Object.values(MINI_SAID), ...Object.values(PEN_SAID), ...Object.values(PEN_WHY)];

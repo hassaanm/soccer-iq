@@ -125,7 +125,7 @@ function renderAlbum() {
   const sticker = (lv, emoji, name, under) => `<div class="st ${lv ? 'l' + lv : 'none'}"><div class="f">${emoji}</div><span class="nm">${name}</span><span class="lv">${under}</span></div>`;
   const lesson = l => { const lv = level(P, l.id), n = count(l.id); return sticker(lv, l.emoji, l.kid, `${lv ? '★'.repeat(lv) : ''}${n ? ' ×' + n : ''}`); };
   // (v67) The keeper game: its sticker (6 saves or more in a round), with how many he has and his best round.
-  const keeper = () => { const k = P.keeper, n = count('keeper'); return sticker(n ? 3 : k?.plays ? 1 : 0, '🧤', 'Keeper', n ? `×${n}` : k?.plays ? `best ${k.best}` : ''); };
+  const keeper = () => { const k = P.keeper, n = count('keeper'), m = P.mini?.keeper, played = k?.plays || m?.plays; return sticker(n ? 3 : played ? 1 : 0, '🧤', 'Keeper', n ? `×${n}` : played ? `best ${m?.best ?? k.best}` : ''); }; // (v87: the mini game's best, saves in a run)
   const cup = c => { const n = (P.trophies || []).filter(t => t.cup === c.id).length; return sticker(n ? 3 : 0, c.emoji, c.name, n ? '🏆' + (n > 1 ? ' ×' + n : '') : ''); };
   $('#album').innerHTML = chapters(lesson)
     + `<div class="chap"><div class="cn"><b>🏆</b>Cups</div><div class="row cups">${CUPS.map(cup).join('')}</div></div>`

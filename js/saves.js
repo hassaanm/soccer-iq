@@ -5,6 +5,7 @@
 // Places are in the goal's own frame: x metres out from our goal line, u metres across from the goal's middle (+u: his
 // left as he faces the shooter, the left of the screen behind him). game/goalie.js plays it in the 3D world.
 import { FOOT, LOW_Z, CLOSE, stream } from './shot.js';
+import { ease, ramp } from './mini/rules.js';
 
 // The 5v5 goal (geom.js SIZES), at every team size: 5 m wide, 1.8 m high.
 export const GOAL = { half: 2.5, gh: 1.8 };
@@ -84,7 +85,7 @@ export const SAID = { intro: 'You are the keeper! Stop his shots!', top: 'Super 
 // standing foot; 2 his eyes; 1 his eyes for a moment (his body says it all the time). Seen from his goal the shooter is
 // small, so his eyes never go altogether.
 export const TELL = [3, 3, 2, 2, 2, 1, 1, 1];
-export const tellOf = shot => { const Z = zoneAt(shot.zone); return { col: Z.col, top: Z.top, foot: shot.foot, level: shot.tell, at: { u: Z.u, z: Z.z } }; };
+export const tellOf = shot => { const Z = zoneAt(shot.zone); return { col: Z.col, top: Z.top, foot: shot.foot, level: shot.tell, at: { u: Z.u, z: Z.z }, flash: shot.flash ?? 1.6 }; }; // (flash: v87, the mini game's later shots show his eyes for less time)
 // How long he has to choose, real seconds: where to stand (the shooter's run-up) and where to dive (the wind-up and the
 // strike, in slow motion). A little quicker as the round goes on.
 export const windows = n => ({ stand: 3.8 - .15 * n, dive: 3.6 - .12 * n });
@@ -116,6 +117,39 @@ export function roundPlan(seed = 1) {
     makeShot(7, 'pen', { x: 7, u: 0 }, pick(['L', 'R', 'M'])),                                         // the penalty
   ];
 }
+// ---------- the mini game (v87): endless, two lives ----------
+// The keeper mini game is no longer a round of eight: shots keep coming until two go in (mini/rules.js), and each save
+// makes the next shots a little harder. keeperLevel says how hard at a level (a third of a level a save): the one place
+// to tune it. The tells stay honest at every level (his eyes, his body, his standing foot): only how long they show and
+// how long he has to choose change, and the shots come from harder places.
+//   stand, dive   real seconds to pick where to stand and where to dive (3.9 and 3.7 at first, toward 0.8 and 0.75)
+//   tell          3: his eyes and an arrow from his foot; 2: his eyes the whole time; 1: his eyes for `flash` s, then his body only
+//   flash         (tell 1) how long his eyes show, in the picture's seconds
+//   side, far, v1, pen   the share of shots from the side, from far out (laces: they can go high), 1v1s and penalties
+//   top           of the far shots, the share aimed at the top corners
+//   speed         the shot's speed, times the foot's own (after he has chosen: it only looks and feels quicker)
+export function keeperLevel(L) {
+  L = Math.max(0, L);
+  return {
+    stand: ease(3.9, .8, 7)(L), dive: ease(3.7, .75, 7)(L),
+    tell: L < 1 ? 3 : L < 3 ? 2 : 1, flash: ease(1.6, .3, 9)(Math.max(0, L - 3)),
+    side: ramp(.5, .1, .45)(L), far: ramp(2, .07, .4)(L), v1: ramp(4, .04, .2)(L), pen: L < 1 ? 0 : .06,
+    top: ramp(3, .07, .7)(L), speed: 1 + Math.min(.3, .015 * L),
+  };
+}
+// One shot of the endless game at `level` (n: how many came before it; r: a stream of numbers 0..1, shot.js stream).
+export function endlessShot(level, r, n = 0) {
+  const D = keeperLevel(level), side = r() < .5 ? 1 : -1, pick = a => a[Math.floor(r() * a.length) % a.length];
+  const low = s => (s > 0 ? 'L' : 'R'), lowFar = s => (s > 0 ? 'R' : 'L'), top = s => (s > 0 ? 'TL' : 'TR');
+  const u = r(); let sh;
+  if (u < D.pen) sh = makeShot(n, 'pen', { x: 7, u: 0 }, pick(['L', 'R']));
+  else if (u < D.pen + D.v1) sh = makeShot(n, '1v1', { x: 5.5, u: side * (.5 + r() * .5) }, pick([lowFar(side), low(side)]), { x: 15, u: 3 * side });
+  else if (u < D.pen + D.v1 + D.far) { const at = { x: 10.5 + r() * 1.5, u: side * r() * 2.5 }; sh = makeShot(n, 'shot', at, r() < D.top ? pick([top(side), top(-side)]) : pick([low(side), lowFar(side)])); }
+  else if (u < D.pen + D.v1 + D.far + D.side) sh = makeShot(n, 'shot', { x: 6 + r() * .6, u: side * (2.4 + r() * .8) }, pick([lowFar(side), low(side)]));
+  else sh = makeShot(n, 'shot', { x: 6.5 + r(), u: side * r() * .6 }, pick([low(side), low(-side)])); // (close, in front: the first shots)
+  return { ...sh, tell: D.tell, flash: D.flash, stand: D.stand, dive: D.dive, speed: sh.speed * D.speed, level };
+}
+
 // The score after a round: saves of SHOTS, and the stars on the card (3: STICKER_AT or more, 2: four or more, 1: some).
 export const starsFor = saves => (saves >= STICKER_AT ? 3 : saves >= 4 ? 2 : saves > 0 ? 1 : 0);
 
