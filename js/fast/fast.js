@@ -26,7 +26,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const SCAN_T = 10, CUE_EVERY = 25, NEXT_WINS = 300, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
+export const SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 300, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -221,11 +221,11 @@ class Fast {
   // ---------- the scan reminder ----------
   // He has not looked round (a hold, a drag, LOOK UP) for SCAN_T s, and someone who matters is out of his view: a friend
   // within 14 m of him or one of theirs within 4 m (behind him, say). A small picture (eyes, a turn) and a spoken word;
-  // at most every CUE_EVERY s (first runs: about 30 a match at 14 s, too many). It goes as soon as he looks.
+  // at most every CUE_EVERY s and CUES times a match (first runs: about 30 a match at 14 s, 3 to 11 at 25 s). It goes as soon as he looks.
   scanCue(h) {
     const s = this.sim, m = this.m, c = this.dom.cue; if (!h || m.dead || this.real - this.cueT > 4) { if (c.classList.contains('show')) c.classList.remove('show'); if (!h || m.dead) return; }
     if (this.real - this.lastScan < 1) { if (c.classList.contains('show')) c.classList.remove('show'); return; }
-    if (this.real - this.lastScan < SCAN_T || this.real - this.cueT < CUE_EVERY || this.aiming) return;
+    if (this.real - this.lastScan < SCAN_T || this.real - this.cueT < CUE_EVERY || this.aiming || this.stats.cues >= CUES) return; // (at most CUES a match: at a 25 s gap it came 3 to 11 times)
     const near = (team, r) => (team === 'us' ? m.usIds.filter(id => id !== this.me) : m.themIds).map(id => s.a(id)).filter(a => a && Math.hypot(a.x - h.x, a.y - h.y) < r);
     const unseen = [...near('us', 14), ...near('them', 4)].some(a => !this.seen1(a, .9) && !this.seen1(a, 0));
     if (!unseen) return;
