@@ -871,7 +871,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fAct.spent i,#fAct.spent span{opacity:.55}
 #fAct.nope{animation:fNope .35s ease-out}
 @keyframes fNope{25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
-#fHold{position:absolute;left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
+#fHold{position:absolute;left:0;top:0;transform:translate(var(--hx,50vw),var(--hy,calc(100vh - 44px))) translate(-50%,-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
 #fHold i,#fHold b{font-style:normal;font-weight:400}
 #fHold.show{opacity:1}
 #fSheet{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(36,25,58,.5);pointer-events:auto}
@@ -881,11 +881,32 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fSheet .fPick{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border-radius:18px;font-size:14px;color:var(--ink);border:3px solid transparent}
 #fSheet .fPick.me{border-color:var(--gold)}
 #hud.fpicking #pausePlay{display:none!important}
-.fCounts{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 14px;margin-top:6px}
-.fCounts span{display:grid;justify-items:center;min-width:56px}
-.fCounts i{font-style:normal;font-size:22px;line-height:1.1}
-.fCounts b{font-size:20px;line-height:1.1}
-.fCounts small{font-size:11px;opacity:.75}
+/* The results card (v86, js/fast/level.js endCard): the score big with the two shirts and a star for a win, a ball for
+   each of his goals, his level stars (the new ones pop in), then the counts for a grown-up, small and faded. */
+.fEnd{display:flex;flex-direction:column;align-items:center;gap:2px}
+.fScore{display:flex;align-items:center;gap:10px;font-size:44px;font-weight:700;line-height:1}
+.fScore img{width:40px;height:40px;object-fit:contain}
+.fScore i{font-style:normal;opacity:.5}
+.fScore .fWin{font-style:normal;font-size:38px;margin-left:4px;animation:fPop .6s .3s var(--bounce) both}
+.fMine{display:flex;gap:4px;font-size:26px;line-height:1.1}
+.fMine i{font-style:normal;animation:fPop .45s var(--bounce) both}
+.fMine i:nth-child(2){animation-delay:.12s}.fMine i:nth-child(3){animation-delay:.24s}.fMine i:nth-child(n+4){animation-delay:.36s}
+.fLevel{display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:999px;background:#24193a;color:#fff;line-height:1;vertical-align:middle}
+.fLevel .stars{display:flex;gap:2px}
+.fLevel .stars i{font-style:normal;font-size:22px;color:rgba(255,255,255,.25)}
+.fLevel .stars i.on{color:var(--gold)}
+.fLevel .stars i.new{animation:fPop .55s calc(.5s + var(--i,0) * .18s) var(--bounce) both}
+.fLevel .med{font-size:20px;font-weight:400}
+.fLevel .med small{font-size:13px;font-weight:700;margin-left:1px}
+.fLevel .lv{font-size:11px;font-weight:700;opacity:.65;letter-spacing:.04em}
+.fLvCard{display:block;margin-top:8px}
+@keyframes fPop{0%{transform:scale(.2);opacity:0}100%{transform:scale(1);opacity:1}}
+.fCounts{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 12px;margin-top:6px;opacity:.7}
+.fCounts span{display:grid;justify-items:center;min-width:48px}
+.fCounts i{font-style:normal;font-size:16px;line-height:1.1}
+.fCounts b{font-size:15px;line-height:1.1}
+.fCounts small{font-size:10px;opacity:.8}
+@media (prefers-reduced-motion:reduce){.fScore .fWin,.fMine i,.fLevel .stars i.new{animation:none}}
 #fSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none}
 .fChev{position:absolute;top:70px;color:#fff;font:700 30px/1 var(--font);opacity:0;transition:opacity .25s;pointer-events:none;text-shadow:0 1px 0 rgba(36,25,58,.6)}
 #fChevL{left:calc(26px + var(--safe-l))}
@@ -903,9 +924,9 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 .fChip .ptr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-7px 0 0 -7px;border:7px solid transparent;border-left:9px solid #fff;transform:rotate(var(--a,0deg)) translateX(28px)}
 .fChip.gold .ptr{border-left-color:var(--gold)}
 #fFoot.show{display:flex}
-#fCue{position:absolute;left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
+#fCue{position:absolute;left:0;top:0;transform:translate(var(--hx,50vw),var(--hy,calc(100vh - 44px))) translate(-50%,-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
 #fCue i{font-style:normal}
-#fCue.show{opacity:1;transform:translateX(-50%) scale(1)}
+#fCue.show{opacity:1;transform:translate(var(--hx,50vw),var(--hy,calc(100vh - 44px))) translate(-50%,-50%) scale(1)}
 #fNext{position:absolute;left:calc(26px + var(--safe-l));top:70px;display:flex;align-items:center;gap:2px;padding:5px 10px;border-radius:999px;background:rgba(36,25,58,.7);color:#fff;font:700 22px/1 var(--font);opacity:0;transition:opacity .3s;pointer-events:none}
 #fNext i{font-style:normal}
 #fNext.show{opacity:1}

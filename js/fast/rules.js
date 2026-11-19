@@ -159,9 +159,12 @@ export const headDownOn = (id, me, how) => id === me && RECEIVE.has(how);
 
 // ---------- a press: a tap or a hold ----------
 // A finger that lifts within HOLD_S s without sliding is a tap (it acts); one held longer, or slid, is a hold (it slows
-// the world and looks round), wherever it went down: on the grass, a spot, a friend or a button.
-export const HOLD_S = .25, SLIDE_PX = 12;
+// the world and looks round), wherever it went down: on the grass, a spot, a friend or a button. A child's slow tap
+// still acts (v86): one that lifts within SLOW_TAP s without sliding acts on the lift too, after the world slowed a
+// moment (pressActs).
+export const HOLD_S = .25, SLIDE_PX = 12, SLOW_TAP = .6;
 export const pressKind = (secs, slid) => (slid || secs > HOLD_S ? 'hold' : 'tap');
+export const pressActs = (secs, slid) => !slid && secs <= SLOW_TAP;
 
 // ---------- friends he cannot see: chips at the edge of the screen ----------
 // friends: [{ id, seenAt (when he last had him on screen, s), on (on screen now) }]. A chip for each friend off screen
@@ -177,6 +180,22 @@ export function edgeAt(q, behind, w, h, m = 34) {
   let x = q[0], y = q[1]; if (behind) { x = w - x; y = h + Math.abs(h - y); }
   const cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy, k = Math.min(Math.abs(dx) > 1e-6 ? (cx - m) / Math.abs(dx) : 1e9, Math.abs(dy) > 1e-6 ? (cy - m) / Math.abs(dy) : 1e9);
   return k >= 1 ? [clamp(x, m, w - m), clamp(y, m, h - m)] : [cx + dx * k, cy + dy * k];
+}
+
+// ---------- where a small hint sits (the scan reminder, the hold hint) ----------
+// Never over a goal or a player he needs: of the places it may sit (HINT_AT, as shares of the screen: low in the
+// middle, low left and right of it, high in the middle, halfway up on either side), the one whose box (HINT_BOX px)
+// is farthest from every point in `avoid` (screen points: his player, the ball, the goals, his friends, theirs near
+// him). Returns [x, y], the box's middle.
+export const HINT_AT = [[.5, -44], [.33, -44], [.67, -44], [.5, 96], [.27, .5], [.73, .5]], HINT_BOX = [150, 52];
+export function hintSpot(avoid, w, h) {
+  let best = null, bd = -1;
+  for (const [fx, fy] of HINT_AT) {
+    const x = fx * w, y = fy < 0 ? h + fy : fy > 1 ? fy : fy * h, bx = HINT_BOX[0] / 2, by = HINT_BOX[1] / 2;
+    const d = avoid.reduce((m, p) => (p ? Math.min(m, Math.hypot(Math.max(0, Math.abs(p[0] - x) - bx), Math.max(0, Math.abs(p[1] - y) - by))) : m), 1e9);
+    if (d > bd + 20) { bd = d; best = [x, y]; } // (the first places win a near tie: low in the middle where it was)
+  }
+  return best;
 }
 
 // ---------- the pitch fills the picture ----------

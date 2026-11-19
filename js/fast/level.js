@@ -27,3 +27,15 @@ export function badge(best, size, fresh = 0) {
   const row = Array.from({ length: ROW }, (_, i) => `<i class="${i < on ? 'on' : ''}${i >= from && i < on ? ' new' : ''}" style="--i:${i - from}">★</i>`).join('');
   return `<span class="fLevel" role="img" aria-label="Level ${s.lv}">${s.medals ? `<b class="med">🏅${s.medals > 1 ? `<small>×${s.medals}</small>` : ''}</b>` : ''}<span class="stars">${row}</span><small class="lv">Lv ${s.lv}</small></span>`;
 }
+// The results card of a Fast match, for flows.js: what a child cares about first (the score, big, with the two shirts
+// and a star for a win; a ball for each goal of his; his stars, the new one popping in), then the counts for a grown-up,
+// small. c: fast.js counts; img: { us, them } shirt pictures; best, fresh: his stars after the match and how many are new.
+export function endCard({ c, img, best, size, fresh = 0 }) {
+  const won = c.score.us > c.score.them, mm = Math.floor(c.time / 60), ss = String(c.time % 60).padStart(2, '0');
+  const counts = [['🙋', c.touches, 'touches'], ['⚽', c.passes, 'passes'], ['👍', c.good, 'good passes'], ['🦶', c.steals, 'steals'], ['⏱', `${mm}:${ss}`, 'time']];
+  const mine = Math.min(c.goals, 8);
+  return `<div class="fEnd${won ? ' won' : ''}"><div class="fScore"><img src="${img.us}" alt=""><b>${c.score.us}</b><i>–</i><b>${c.score.them}</b><img src="${img.them}" alt="">${won ? '<em class="fWin" aria-label="You won">⭐</em>' : ''}</div>`
+    + (mine ? `<div class="fMine" aria-label="Your goals: ${c.goals}">${'<i>⚽</i>'.repeat(mine)}</div>` : '')
+    + `<div class="fLv">${badge(best, size, fresh)}</div>`
+    + `<div class="fCounts">${counts.map(([i, n, w]) => `<span><i>${i}</i><b>${n}</b><small>${w}</small></span>`).join('')}</div></div>`;
+}

@@ -296,3 +296,16 @@ export function oldKeeperBest(p) {
   const k = p.keeper; if (!k?.best || k.oldShown) return null;
   k.oldShown = true; return k.best;
 }
+
+// (v86) Fast mode's level, his own at each team size: `fastLevel` in the save, { [size]: { level, best, n } }: the other
+// team's strength now (js/fast/match.js oppOf; js/fast/level.js moves it a small step after each match), the highest it
+// has been (the stars he sees: they never go down) and how many Fast matches at that size. A size he has not played
+// starts at `start` (js/fast/level.js startLevel).
+export function fastLevel(p, size, start) {
+  const e = p.fastLevel?.[size];
+  return e && Number.isFinite(e.level) ? { level: e.level, best: Math.max(Number.isFinite(e.best) ? e.best : e.level, e.level), n: e.n || 0 } : { level: start, best: start, n: 0 };
+}
+export function fastLevelDone(p, size, start, level) {
+  const e = fastLevel(p, size, start);
+  return ((p.fastLevel ||= {})[size] = { level, best: Math.max(e.best, level), n: e.n + 1 });
+}

@@ -17,10 +17,11 @@ import { preloadClips } from './sound.js';
 import { pieces } from './voice.js';
 import { warmVoice } from './ui/voicewarm.js';
 game.warm = scenes => warmVoice(scenes); // (a match's round list: game/live.js match)
-import { shuffle } from './geom.js';
+import { shuffle, TEAM } from './geom.js';
 import { fast } from './fast/fast.js';
 import { FAST_GOALS } from './fast/state.js';
-import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals } from './progress.js';
+import { startLevel, levelAfter, stars, badge, endCard } from './fast/level.js';
+import { nextSkill, reviewsDue, finishSession, reviewed, level, skills, graduated, playOpen, matchOpen, TRAINING_ROUNDS, TRAINING_IDEAS, trainingPlan, trained, note, today, passed, focus, logChoice, logTotals, fastLevel, fastLevelDone } from './progress.js';
 
 // ---------- shared steps ----------
 // One flow runs at a time. If one breaks, he lands back on the home screen instead of a stuck field.
@@ -284,18 +285,17 @@ export async function gated(run) {
 // With Fast picked on the home screen (P.settings.mode), Match plays in real time (js/fast/fast.js): he picks his player
 // (his team's shirts), plays first to FAST_GOALS, and the results card shows his counts.
 async function playFast() {
-  const us = teamById(P.us), them = teamById(P.them);
+  const us = teamById(P.us), them = teamById(P.them), size = TEAM.size, start = startLevel(size), was = fastLevel(P, size, start);
   setStage(us, them, 'crowd'); game.home();
-  await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${FAST_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  await card({ emoji: '⚽', title: 'Match time!', html: `First to ${FAST_GOALS} goals. ${us.name} vs ${them.name}<span class="fLvCard">${badge(was.best, size)}</span>`, button: 'Kick off' });
   hud.caption(''); await fast.pick(us);
-  const c = await fast.play({ us, them }), won = c.score.us > c.score.them;
+  const c = await fast.play({ us, them, level: was.level }), won = c.score.us > c.score.them;
   if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
+  const now = fastLevelDone(P, size, start, levelAfter(was.level, c.score)), fresh = stars(now.best, size).n - stars(was.best, size).n; // (v86: the level follows him: js/fast/level.js)
   save();
-  const mm = Math.floor(c.time / 60), ss = String(c.time % 60).padStart(2, '0');
-  const counts = [['🙋', c.touches, 'touches'], ['⚽', c.passes, 'passes'], ['👍', c.good, 'good passes'], ['🥅', c.goals, 'goals'], ['🦶', c.steals, 'steals'], ['⏱', `${mm}:${ss}`, 'time']];
   fillResults({
     emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: `${us.short} ${c.score.us} – ${c.score.them} ${them.short}`,
-    extra: `<div class="fCounts">${counts.map(([i, n, w]) => `<span><i>${i}</i><b>${n}</b><small>${w}</small></span>`).join('')}</div>`,
+    extra: endCard({ c, img: { us: shirtImg(us), them: shirtImg(them) }, best: now.best, size, fresh }),
     match: toMatch(), cup: toCup(), lesson: toLessons(), paper: won ? 70 : 0,
   });
   finish(won ? 'You won the match!' : 'Good game!');

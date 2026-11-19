@@ -391,9 +391,9 @@ export class Match {
     const sup = this.ids(team).filter(x => x !== this.owner() && x !== this.me), use = sup.length <= 1 ? [b.y < W / 2 ? 0 : 1] : sup.length === 2 ? [0, 1] : deep ? [0, 1, 3] : [0, 1, 2];
     // (his player holds a place too: the role nearest him is his, so nobody runs to where he is)
     const meA = team === 'us' ? s.a(this.me) : null, mine = meA ? anchors.map((a, i) => [i, Math.hypot(meA.x - a[0], meA.y - a[1])]).sort((p, q) => p[1] - q[1])[0][0] : -1;
-    const key = sup.join() + deep + mine;
+    const cramped = anchors.map(a => Math.hypot(clamp(a[0], 2, L - 2) - b.x, clamp(a[1], 1.5, W - 1.5) - b.y) < 4.5), key = sup.join() + deep + mine + cramped.join(); // (v86: a wide place squeezed against a side line is no place: next to the ball, it would crowd the carrier)
     if (!this.roles || this.roles.team !== team || this.roles.key !== key) {
-      const map = {}, left = new Set(sup), order = [...use.filter(i => i !== mine), ...[0, 1, 2, 3].filter(i => !use.includes(i) && i !== mine)];
+      const ok = i => !cramped[i], map = {}, left = new Set(sup), order0 = [...use.filter(i => i !== mine), ...[0, 1, 2, 3].filter(i => !use.includes(i) && i !== mine)], order = [...order0.filter(ok), ...order0.filter(i => !ok(i))];
       for (const i of order) { let pick = null, pd = 1e9; for (const x of left) { const q = s.a(x), d = Math.hypot(q.x - anchors[i][0], q.y - anchors[i][1]); if (d < pd) { pd = d; pick = x; } } if (pick) { map[pick] = i; left.delete(pick); } }
       for (const x of left) map[x] = 3;
       this.roles = { team, map, key };
@@ -426,7 +426,7 @@ export class Match {
       this.shoot(id, res); return;
     }
     const press = this.foes(team).some(o => dist(o, a) < 2.4);
-    const opts = this.ids(team).filter(m => m !== id).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open).sort((p, q) => q.fwd - p.fwd);
+    const opts = this.ids(team).filter(m => m !== id && dist(s.a(m), a) > 3.5).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open).sort((p, q) => q.fwd - p.fwd); // (v86: never a pass to one right beside him: he is no option, only a crowd)
     // his player: they count him open a little sooner than anyone else (a gap of 0.55 m on the line and 1.1 m of room),
     // but never with a defender on his line
     if (team === 'us' && this.favor && this.favor !== id && !opts.some(o => o.m === this.favor)) {

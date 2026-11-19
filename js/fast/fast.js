@@ -93,12 +93,13 @@ class Fast {
   drawAvatar() { this.dom.avatar.innerHTML = shirt(this.us, this.player(this.me).num, 40); }
 
   // ---------- a match ----------
-  // opts: { us, them }. Resolves with the counts when one side has GOALS.
-  play({ us, them }) {
+  // opts: { us, them, level (the other team's strength, his own: js/fast/level.js; none: match.js LEVELS) }. Resolves
+  // with the counts when one side has GOALS.
+  play({ us, them, level }) {
     this.build(); this.us = us; this.them = them;
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
-    const m = this.m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, fx: ev => world.fx(ev), sfx: n => sfx(n) });
+    const m = this.m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, level, fx: ev => world.fx(ev), sfx: n => sfx(n) });
     m.me = m.favor = this.me || 'hero'; this.me = m.me;
     m.setup('us'); m.kickoff('us');
     this.real = 0; this.slow = this.slowTo = BASE; this.look = 1; this.up1 = true; this.yaw = 0; this.holdYaw = null; this.holdT = 0; this.finger = null; this.holding = false;
@@ -118,7 +119,7 @@ class Fast {
     m.on.cutOut = f => { if (f.me) this.showPic('<i class="cut">⚽</i><i>✋</i>'); }; // (his pass cut out: a ball and a stopping hand, not the skill's picture)
     this.lastScan = 0; this.cueT = -99; this.kBusy = false; this.kClear = 0; this.sudden = false; this.dom.box.querySelector('#fNext').classList.remove('show');
     m.on.lost = was => { if (was === this.me) { this.lookUp(true); say('Where is the ball?'); } };
-    game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id });
+    game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id, level: m.level });
     return new Promise(res => { this.done = res; });
   }
   stop() {
@@ -225,7 +226,8 @@ class Fast {
   }
   up(e, cancel = false) {
     const f = this.finger; if (!f || e.pointerId !== f.id) return; this.finger = null; clearTimeout(f.timer);
-    if (f.held) { this.holding = false; if (!this.aiming) this.slowTo = BASE; this.holdT = this.real + VIEW_BACK; sfx('up'); this.dom.box.classList.remove('slowing'); return; } // (play eases back over BACK_S; the view stays where he left it a moment, then eases back)
+    const acts = R.pressActs((performance.now() - f.t0) / 1000, f.moved); // (a slow tap, the finger still: it acts too)
+    if (f.held) { this.holding = false; if (!this.aiming) this.slowTo = BASE; this.holdT = this.real + (acts ? 0 : VIEW_BACK); sfx('up'); this.dom.box.classList.remove('slowing'); if (!acts || cancel || held.on || !this.on) return; } // (play eases back over BACK_S; after a look round the view stays where he left it a moment, then eases back)
     if (cancel || f.moved || held.on || !this.on) return;
     if (f.onTap) f.onTap(); else { const r = canvas.getBoundingClientRect(); this.tap(e.clientX - r.left, e.clientY - r.top); }
   }
@@ -273,8 +275,18 @@ class Fast {
     const near = (team, r) => (team === 'us' ? m.usIds.filter(id => id !== this.me) : m.themIds).map(id => s.a(id)).filter(a => a && Math.hypot(a.x - h.x, a.y - h.y) < r);
     const unseen = [...near('us', 14), ...near('them', 4)].some(a => !this.seen1(a, .9) && !this.seen1(a, 0));
     if (!unseen) return;
-    this.cueT = this.real; this.stats.cues++; c.classList.add('show'); say('Check your shoulder!'); sfx('ping');
+    this.cueT = this.real; this.stats.cues++; this.placeHint(c); c.classList.add('show'); say('Check your shoulder!'); sfx('ping');
     game.plog?.('fast', { is: 'cue' });
+  }
+  // The scan reminder and the hold hint sit where they cover no goal and no player he needs (rules.js hintSpot): placed
+  // as they show and again every half second while they do (a transform only).
+  placeHint(el) {
+    const s = this.sim, m = this.m, h = s.a(this.me); if (!h || !el) return; const P = (x, y, z) => world.project(x, y, z), b = s.ball, pts = [P(h.x, h.y, 0), P(h.x, h.y, .9), P(h.x, h.y, 1.8), P(b.x, b.y, b.z || 0)];
+    for (const gx of [0, PITCH.L]) for (const gy of [PITCH.gy0, (PITCH.gy0 + PITCH.gy1) / 2, PITCH.gy1]) for (const z of [0, PITCH.gh]) pts.push(P(gx, gy, z));
+    for (const id of m.usIds) if (id !== this.me && s.a(id)) { const a = s.a(id); pts.push(P(a.x, a.y, 0), P(a.x, a.y, 1.6)); }
+    for (const o of m.foes('us')) if (Math.hypot(o.x - h.x, o.y - h.y) < 9) pts.push(P(o.x, o.y, 0), P(o.x, o.y, 1.6));
+    const q = R.hintSpot(pts.filter(p => p && R.onScreen(p, world.width, world.height, -40)), world.width, world.height); if (!q) return;
+    const k = `${Math.round(q[0])} ${Math.round(q[1])}`; if (el.dataset.at === k) return; el.dataset.at = k; el.style.setProperty('--hx', Math.round(q[0]) + 'px'); el.style.setProperty('--hy', Math.round(q[1]) + 'px');
   }
   // ---------- the keeper turn (5 v 5) ----------
   // Their clear shot at our goal: he plays our keeper for it, with the keeper game's own moment (js/game/goalie.js
@@ -423,6 +435,7 @@ class Fast {
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
     this.drawAction(this.aiming ? null : this.actionNow()); this.drawSpent(this.actKind === 'steal' ? m.stealLeft() : 0);
     this.scanCue(h);
+    if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); if (this.dom.hold.classList.contains('show')) this.placeHint(this.dom.hold); }
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
     if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js; the next goal ends it, the score as it stands then)
       if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }
