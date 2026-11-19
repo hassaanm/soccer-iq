@@ -110,7 +110,7 @@ export async function boot(cfg) {
   // ---------- the lab object ----------
   const lab = {
     world, sim, THREE, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, geom, us, them, sfx, say, nameOf, cones, box, cfg,
-    time: 0, real: 0, slow: 1, slowTo: 1, paused: true, ended: false, started: false, waiting: false,
+    time: 0, real: 0, slow: 1, slowTo: 1, base: 1, frozenT: 0, paused: true, ended: false, started: false, waiting: false,
     ctrl: null, ctrlSoft: false, ui: { glow: {}, lines: null, heroRing: false },
     win: null, tick: null, cam: null, camWant: null, onEnd: null,
     stats: { decisions: 0, good: 0, choose: 0, watch: 0, wait: 0, played: 0, picks: [], stalls: 0, frames: [], work: [] },
@@ -138,7 +138,7 @@ export async function boot(cfg) {
     if (w.sound !== false) sfx('ping');
   };
   lab.close = () => {
-    lab.win = null; lab.slowTo = 1; ask.classList.remove('show');
+    lab.win = null; lab.slowTo = lab.base; ask.classList.remove('show');
     for (const b of btnPool) { b.classList.add('off'); b.classList.remove('hint'); b.dataset.id = ''; }
   };
   const fb = $('#fb'); let fbT = 0;
@@ -173,15 +173,29 @@ export async function boot(cfg) {
     return null;
   };
   // A tap on the pitch picks the option nearest to it on screen, within a generous reach (a small hand, a moving picture).
-  canvas.addEventListener('pointerdown', e => {
-    unlock(); const w = lab.win; if (!w || lab.paused || lab.ended) return;
-    const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, reach = Math.max(64, Math.min(world.width, world.height) * .17);
+  // tapAt(x, y): the option nearest the tap on screen, within reach (with cfg.mustSee, only one he can see now), else the
+  // ground (lab.onGround gets the point on the pitch). Returns what it hit.
+  const onScr = s => s && s[0] > 6 && s[0] < world.width - 6 && s[1] > 6 && s[1] < world.height - 6;
+  lab.seen = o => { const p = lab.pointOf(o); if (!p) return true; return onScr(world.project(p.x, p.y, p.z)) || onScr(world.project(p.x, p.y, 0)); };
+  lab.tapAt = (x, y) => {
+    unlock(); if (lab.paused || lab.ended || !lab.started) return null;
+    const w = lab.win, reach = Math.max(64, Math.min(world.width, world.height) * .17);
     let best = null, bd = 1e9;
-    for (const o of w.options) {
+    for (const o of (w ? w.options : lab.free?.() || [])) {
+      if (cfg.mustSee && o.kind !== 'btn' && !lab.seen(o)) continue;
       const pts = [lab.pointOf(o), lab.pointOf(o, true)].filter(Boolean);
-      for (const p of pts) { const s = world.project(p.x, p.y, p.z); if (!s) continue; const d = Math.hypot(s[0] - x, s[1] - y); if (d < bd) { bd = d; best = o; } }
+      for (const p of pts) { const s = world.project(p.x, p.y, p.z); if (!onScr(s)) continue; const d = Math.hypot(s[0] - x, s[1] - y); if (d < bd) { bd = d; best = o; } }
     }
-    if (best && bd < reach) lab.pick(best.id); else sfx('tap');
+    if (best && bd < reach) { if (w) lab.pick(best.id); else lab.onFree?.(best); return best; }
+    const g = lab.ground(x, y); if (g && lab.onGround) { lab.onGround(g); return { ground: g }; }
+    sfx('tap'); return null;
+  };
+  // The point on the grass under a place on screen (or null: the sky).
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), hit = new THREE.Vector3();
+  lab.ground = (x, y) => { ndc.set(x / world.width * 2 - 1, -(y / world.height) * 2 + 1); ray.setFromCamera(ndc, world.camera); return ray.ray.intersectPlane(plane, hit) ? { x: hit.x, y: hit.y } : null; };
+  canvas.addEventListener('pointerdown', e => {
+    unlock(); if (cfg.tapOnUp) return; // (the player view: a tap is told from a drag when the finger lifts: common/eyes.js)
+    const r = canvas.getBoundingClientRect(); if (lab.win) lab.tapAt(e.clientX - r.left, e.clientY - r.top);
   });
   // For the bots and the checks: tap an option the way a finger would (its marker's place on screen).
   lab.tapPoint = id => { const o = lab.win?.options.find(x => x.id === id); if (!o) return null; const p = lab.pointOf(o); if (!p) return null; const s = world.project(p.x, p.y, p.z); return s && { x: s[0], y: s[1] }; };
@@ -198,7 +212,14 @@ export async function boot(cfg) {
   tapB('#pEnd', () => { pauseS.classList.add('hide'); lab.paused = false; end(); });
   tapB('#againB', () => location.reload());
   tapB('#muteB', () => { muted = !muted; $('#muteB').textContent = muted ? '🔇' : '🔊'; try { snd.setMuted(muted); if (muted) speechSynthesis?.cancel(); } catch { /* none */ } });
-  tapB('#goB', () => { $('#tapStart').remove(); lab.started = true; lab.paused = false; cfg.onStart?.(); });
+  const start = () => { $('#tapStart').remove(); lab.started = true; lab.paused = false; cfg.onStart?.(); };
+  tapB('#goB', start);
+  // A start screen with a choice (his player, the form of the game): one big button each; the choice starts play.
+  if (cfg.picker) {
+    const pk = typeof cfg.picker === 'function' ? cfg.picker(lab) : cfg.picker;
+    const ts = $('#tapStart'); ts.innerHTML = `<div class="pickCard"><h2>${pk.title}</h2><div class="pickRow">${pk.items.map(i => `<button class="lb glass pickIt" data-id="${i.id}">${i.html}</button>`).join('')}</div></div>`;
+    for (const b of ts.querySelectorAll('.pickIt')) b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); unlock(); cfg.onPick?.(b.dataset.id); start(); });
+  }
   document.addEventListener('visibilitychange', () => { if (document.hidden && lab.started && !lab.paused) setPaused(true); });
   const score = $('#score'); lab.setScore = html => { if (score._h !== html) { score.innerHTML = html; score._h = html; } };
 
@@ -257,13 +278,13 @@ export async function boot(cfg) {
     try {
       if (lab.started && !lab.paused && !lab.ended) {
         lab.real += dt; lab.stats.played += dt;
-        const mode = lab.win ? 'choose' : lab.waiting ? 'wait' : 'watch'; lab.stats[mode] += dt; lab.mode = mode;
+        const mode = cfg.mode ? cfg.mode() : lab.win ? 'choose' : lab.waiting ? 'wait' : 'watch'; lab.stats[mode] += dt; lab.mode = mode;
         if (lab.win) {
           lab.win.age = lab.real - lab.win.t0;
           if (!lab.win.hinted && lab.win.age > (lab.win.hintAfter ?? 5)) { lab.win.hinted = true; try { lab.win.judge?.(lab.win.options); } catch (e) { console.error(e); } if (lab.win.hintLine) say(lab.win.hintLine); }
         }
         lab.slow += (lab.slowTo - lab.slow) * (1 - Math.exp(-dt * 7));
-        const gdt = dt * lab.slow; lab.time += gdt;
+        const frozen = lab.real < lab.frozenT; const gdt = frozen ? 0 : dt * lab.slow; lab.time += gdt;
         lab.tick?.(gdt, dt);
         // the sim in steps of at most 1/60 s, so a slow frame plays the same
         const n = Math.max(1, Math.ceil(gdt / (1 / 60))); for (let i = 0; i < n; i++) sim.step(gdt / n);
@@ -274,6 +295,7 @@ export async function boot(cfg) {
         if ((stallT += dt) >= 3) { if (moved() < .05) { lab.stats.stalls++; console.warn('lab: stall at', lab.real.toFixed(1)); } stallRef = null; stallT = 0; moved(); }
         if (lab.real >= lab.len) end();
       }
+      if (lab.started && !lab.paused && !lab.ended) lab.onFrame?.(dt);
       moveCam(dt, !lab.started && !lab.camSnapped && (lab.camSnapped = true));
       drawMarkers(now / 1000);
       world.render(sim, cam, lab.ui, picT);

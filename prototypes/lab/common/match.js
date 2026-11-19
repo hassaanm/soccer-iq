@@ -106,6 +106,11 @@ export class Match {
     this.flight = { kind, from: id, team, by: res.by, t0: s.time };
     this.after(.15, () => { if (s.ball.carrier === id) { s.kick(tx, ty, { speed: sp, arc: kind === 'wide' ? .9 : .25, z1 }); this.lastTeam = team; } });
   }
+  pickPass(opts) {
+    const fav = this.favor && opts.find(o => o.m === this.favor); if (!fav) return opts[0].m;
+    const others = opts.filter(o => o !== fav), great = others.find(o => o.fwd > fav.fwd + 6); if (great) return great.m;
+    const w = this.favorW ?? 1.6; let r = Math.random() * (w + others.length); if (r < w) return fav.m; return others[Math.floor(r - w)]?.m ?? fav.m;
+  }
   dribble(id, x, y, sp = 3.6, secs = 1.2) { this.sim.go(id, clamp(x, 1, this.L - 1), clamp(y, 1, this.W - 1), sp); this.cmd.set(id, this.sim.time + secs); }
 
   // ---------- one step ----------
@@ -243,7 +248,10 @@ export class Match {
     const opts = this.ids(team).filter(m => m !== id).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open && (!this.canPass || this.canPass(id, o.m))).sort((p, q) => q.fwd - p.fwd);
     const pref = this.prefer?.(id, opts);
     if (pref) { this.pass(id, pref); return; }
-    if (opts.length && (press || (opts[0].fwd > 5 && Math.random() < .35))) { this.pass(id, opts[0].m); return; }
+    // (round 2) Friends favour his player: when he is open they pass more often, and to him over an equally open friend
+    // by `favorW` to 1, unless another friend has a much better chance (6 m or more farther forward).
+    const fav = this.favor && opts.find(o => o.m === this.favor);
+    if (opts.length && (press || (opts[0].fwd > 5 && Math.random() < .35) || (fav && Math.random() < .3))) { this.pass(id, this.pickPass(opts)); return; }
     const near = this.foes(team).sort((p, q) => dist(p, a) - dist(q, a))[0], side = near && Math.abs(near.y - a.y) < 2.5 && (near.x - a.x) * dx > 0 ? (near.y > a.y ? -1 : 1) * 2.2 : 0;
     s.go(id, clamp(a.x + dx * 3, 1, this.L - 1), clamp(a.y + side + (this.W / 2 - a.y) * .15, 1.2, this.W - 1.2), 3.1);
   }

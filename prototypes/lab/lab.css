@@ -93,3 +93,32 @@ body.chooser{background:linear-gradient(180deg,#ffd9b5,#ffc89a);overflow:auto;to
 .chooser .back{margin-top:10px;text-decoration:none;font-size:15px;padding:7px 16px}
 .chooser .foot{margin-top:8px;font-size:11px;color:#6b5e7b}
 @media (max-height:460px){ .tile svg{height:72px} .tile{width:240px;padding:8px 10px} .chooser h1{font-size:20px} .chooser .sub{font-size:12.5px;margin-bottom:8px} .tile p{font-size:12px} .chooser .back{margin-top:8px} }
+
+/* ---------- round 2: the player view ---------- */
+/* the head-down edge (as css/app.css body.smooth #tunnel): a plain dark ring on a layer twice the screen, moved by transform */
+#tunnel{position:fixed;inset:-50%;pointer-events:none;opacity:0;display:none;will-change:transform,opacity;
+  background:radial-gradient(ellipse 23% 26% at 50% 57%,rgba(14,10,26,0) 50%,rgba(14,10,26,.62) 72%,rgba(14,10,26,.9) 100%)}
+#tunnel.on{display:block}
+#lookB{position:fixed;left:calc(14px + var(--sl));bottom:calc(16px + var(--sb));width:92px;height:92px;border-radius:50%;padding:0;display:grid;place-items:center;align-content:center;font-size:12px;line-height:1.1}
+#lookB i{font-style:normal;font-size:34px;line-height:1}
+#lookB.up{--top:#fff;--bot:#ece6dc;--edge:#bbb;color:#24193a}
+body.hasAvatar #avatarB{position:fixed;right:calc(10px + var(--sr));top:calc(6px + var(--st));overflow:hidden}
+body.hasAvatar #pauseB{right:calc(66px + var(--sr))}
+body.hasAvatar #muteB{right:calc(122px + var(--sr))}
+#avatarB svg{display:block}
+.pickCard{background:var(--cream);border-radius:26px;padding:14px 20px;text-align:center;box-shadow:0 8px 0 rgba(0,0,0,.25);max-width:94vw}
+.pickCard h2,#swapS h2{margin:0 0 10px;font-size:26px}
+.pickRow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.pickIt{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 12px;min-width:112px;color:var(--ink)}
+.pickIt b{font-size:15px}
+.pickIt.me{box-shadow:0 0 0 4px var(--gold),0 5px 0 var(--edge,#bbb)}
+.pickIt .big{font-size:40px;line-height:1}
+.chips{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.chips button{font-size:15px;padding:7px 12px}
+.chips button.on{box-shadow:0 0 0 3px var(--green),0 5px 0 var(--edge,#bbb)}
+.chips small{display:block;width:100%;font-size:12px;color:#6b5e7b}
+.chooser h3{margin:14px 0 6px;font-size:15px;color:#6b5e7b}
+.tiles.old .tile{width:200px;padding:6px 10px 8px;opacity:.9}
+.tiles.old .tile svg{height:56px}
+.tiles.old .tile .let{width:40px;height:40px;font-size:24px}
+.tiles.old .tile b{font-size:16px}
