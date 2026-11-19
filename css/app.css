@@ -902,3 +902,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fCue{position:absolute;left:50%;top:64px;transform:translateX(-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
 #fCue i{font-style:normal}
 #fCue.show{opacity:1;transform:translateX(-50%) scale(1)}
+#fNext{position:absolute;left:calc(26px + var(--safe-l));top:70px;display:flex;align-items:center;gap:2px;padding:5px 10px;border-radius:999px;background:rgba(36,25,58,.7);color:#fff;font:700 22px/1 var(--font);opacity:0;transition:opacity .3s;pointer-events:none}
+#fNext i{font-style:normal}
+#fNext.show{opacity:1}

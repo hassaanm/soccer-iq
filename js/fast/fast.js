@@ -26,7 +26,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const SCAN_T = 10, CUE_EVERY = 25;
+export const SCAN_T = 10, CUE_EVERY = 25, NEXT_WINS = 300, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -49,6 +49,7 @@ class Fast {
       <div id="fHold" aria-hidden="true"><i>✋</i><b>⏳</b></div>
       <div id="fSlow" aria-hidden="true"></div><div id="fChevL" class="fChev" aria-hidden="true">‹‹</div><div id="fChevR" class="fChev" aria-hidden="true">››</div>
       <div id="fFoot" class="howpick"><button id="fIn" class="btn btn-gold" type="button" aria-label="Inside of the foot"></button><button id="fLaces" class="btn btn-gold" type="button" aria-label="Laces"></button></div>
+      <div id="fNext" aria-hidden="true"><i>⚽</i><b>➜</b><i>🏆</i></div>
       <div id="fCue" aria-hidden="true"><i>👀</i><b>↔</b></div>
       <div id="fChips">${'<button class="fChip" type="button" aria-label="A friend you saw"><span class="ptr"></span><span class="pic"></span></button>'.repeat(4)}</div>`);
     hudEl.appendChild(box); hudEl.appendChild(el('div', { id: 'fSheet', class: 'hidden' }, '<div class="fCard"><div class="fRow"></div></div>')); // (the sheet: also before play, while the rest is hidden)
@@ -89,7 +90,7 @@ class Fast {
     this.build(); this.us = us; this.them = them;
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
-    const m = this.m = new Match({ sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, fx: ev => world.fx(ev), sfx: n => sfx(n) });
+    const m = this.m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, fx: ev => world.fx(ev), sfx: n => sfx(n) });
     m.me = m.favor = this.me || 'hero'; this.me = m.me;
     m.setup('us'); m.kickoff('us');
     this.real = 0; this.slow = this.slowTo = BASE; this.look = 1; this.up1 = true; this.yaw = 0; this.holdYaw = null; this.holdT = 0; this.finger = null; this.holding = false;
@@ -105,7 +106,7 @@ class Fast {
     m.on.goal = team => this.goal(team);
     m.on.warn = k => { this.warnAt = k; this.warnT = this.real + 1.6; sfx('ping'); };
     m.on.theirShot = (id, res) => this.keeperTurn(id, res);
-    this.lastScan = 0; this.cueT = -99; this.kBusy = false;
+    this.lastScan = 0; this.cueT = -99; this.kBusy = false; this.kClear = 0; this.sudden = false; this.dom.box.querySelector('#fNext').classList.remove('show');
     m.on.lost = was => { if (was === this.me) { this.lookUp(true); say('Where is the ball?'); } };
     game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id });
     return new Promise(res => { this.done = res; });
@@ -132,7 +133,7 @@ class Fast {
     game.plog?.('fast', { is: 'gain', id, how });
   }
   goal(team) {
-    const m = this.m, won = m.score[team] >= GOALS;
+    const m = this.m, won = m.score[team] >= GOALS || this.sudden;
     hud.score(m.score, this.us, this.them); hud.banner(team === 'us' ? 'GOAL!' : 'Their goal', team === 'us' ? 'goal' : 'bad');
     if (team === 'us') say(m.lastOwner === this.me ? 'Great choice!' : 'Great pass!');
     game.plog?.('fast', { is: 'goal', team, us: m.score.us, them: m.score.them, by: m.lastOwner });
@@ -161,7 +162,7 @@ class Fast {
   }
   camNow(snap = 0, dt = 0) {
     const s = this.sim, h = s.a(this.me); if (!h) return;
-    const b = s.ball, w = R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), // (the pitch fills the picture: rules.js fitPitch) k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam;
+    const b = s.ball, w = R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam; // (the pitch fills the picture: rules.js fitPitch)
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
     c.Ff += (w.Ff - c.Ff) * k; c.Fw += (w.Fw - c.Fw) * k;
   }
@@ -239,6 +240,7 @@ class Fast {
   keeperTurn(id) {
     const m = this.m; if (!this.goalie || !m.keeper('us') || this.over || this.kBusy || !this.on) return false;
     if (!m.shotCheck(id).good) return false;
+    if (++this.kClear % 2) return false; // (every other clear shot of theirs: a treat, not a chore)
     this.kBusy = true; this.keeperMoment(id).catch(e => { console.error(e); this.kBusy = false; this.on = true; });
     return true;
   }
@@ -370,6 +372,9 @@ class Fast {
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
     this.drawAction(this.aiming ? null : this.actionNow());
     this.scanCue(h);
+    // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
+    if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = true; this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); game.plog?.('fast', { is: 'nextGoalWins' }); }
+    if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
     const c = m.owner(); this.ui.ballGlow = this.actKind === 'steal' && !!c && R.stealNow(s.a(c), s.ball, h); this.stealGlow = this.ui.ballGlow;
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > 8)) this.endAim();
     if (this.aiming) this.yaw = R.wrap(this.yaw + R.wrap(Math.atan2(PITCH.W / 2 - h.y, PITCH.L - h.x) - this.yaw) * (1 - Math.exp(-dt * 6)));

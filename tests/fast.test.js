@@ -150,3 +150,9 @@ test('the pitch fills at least 80% of the picture\'s rows (with or without the b
     assert.ok(full / n >= .97, `full in ${(100 * full / n).toFixed(1)}% (the rest: hard against a side line, where the eye must stand outside it)`);
   }
 });
+
+test('every Fast mode file parses (no test loads the page modules)', async () => {
+  const { spawnSync } = await import('node:child_process'); const { readdirSync } = await import('node:fs');
+  const dir = new URL('../js/fast/', import.meta.url).pathname;
+  for (const f of readdirSync(dir).filter(f => f.endsWith('.js'))) { const r = spawnSync(process.execPath, ['--check', dir + f], { encoding: 'utf8' }); assert.equal(r.status, 0, `${f}: ${r.stderr}`); }
+});
