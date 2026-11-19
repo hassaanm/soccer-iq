@@ -81,12 +81,22 @@ function hush() {
 function playBed() {
   if (!unlocked) return;
   if (muted || document.hidden) { bed.pause(); return; }
-  const url = musicOn && tuneUrl ? tuneUrl : hushUrl;
+  const url = musicOn && tuneUrl && !held ? tuneUrl : hushUrl;
   if (bed.dataset.url !== url) { // a new recording: the tune keeps its place in the loop
-    const t = url === tuneUrl && bed.dataset.url === tuneOld ? bed.currentTime : 0;
+    const t = url === tuneUrl && bed.dataset.url === tuneOld ? bed.currentTime : url === tuneUrl ? heldAt : 0; heldAt = 0;
     bed.dataset.url = url; bed.src = url; bed.loop = true; try { bed.currentTime = t; } catch { /* not loaded yet */ }
+    if (t) bed.addEventListener('loadedmetadata', () => { try { if (bed.dataset.url === url) bed.currentTime = t; } catch { /* */ } }, { once: true });
   }
   if (bed.paused) bed.play().catch(() => {});
+}
+// (v79) The game paused: the tune gives way to the hush (the stream stays open, so a car keeps its channel), and comes
+// back where it was on resume. Effects and a line being said finish by themselves.
+let held = false, heldAt = 0;
+export function holdMusic(on) {
+  if (held === !!on) return; held = !!on;
+  if (!unlocked) return;
+  if (held && bed.dataset.url === tuneUrl) heldAt = bed.currentTime;
+  playBed();
 }
 
 // ---------- synthesis (offline only) ----------

@@ -803,3 +803,22 @@ body.logon #logBar{display:flex}
 #hud.skilling.armed .skillPick.on{transform:scale(1.12)}
 #hud.skilling.armed .skillPick.on .ring circle{stroke-dashoffset:0}
 body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
+
+/* ---------- the pause (v79, js/ui/pause.js) ----------
+   Right of home, the same glass button: two bars, a triangle while paused. Paused: the picture stays sharp (nothing
+   over it), a big triangle pulses in the middle, low or in the very middle, whichever is clear of his player (ui/pause.js
+   place), on its own layer (transform only), the HUD's own animations hold where they are, and the choice buttons stay
+   up, dimmed and dead. */
+#pauseBtn{display:none;left:calc(70px + var(--safe-l))}
+#hud:is(.canpause,.paused) #pauseBtn{display:inline-flex}
+#pauseBtn .tri,#hud.paused #pauseBtn .bars{display:none}
+#hud.paused #pauseBtn .tri{display:block}
+#pausePlay{display:none;position:absolute;z-index:5;left:50%;bottom:calc(14px + var(--safe-b));width:116px;height:116px;margin-left:-58px;padding:0;border-radius:50%;
+  --top:#fff;--bot:#f1ebe3;--edge:#d6cbbd;color:var(--ink);text-shadow:none;align-items:center;justify-content:center;will-change:transform}
+#hud.playmid #pausePlay{bottom:auto;top:50%;margin-top:-58px}
+#pausePlay svg{width:58px;height:58px;margin-left:7px;display:block}
+@keyframes pausePulse{50%{transform:scale(1.07)}}
+#hud.paused *,#hud.paused *::before,#hud.paused *::after{animation-play-state:paused!important}
+#hud.paused #pausePlay{display:flex;animation:pausePulse 1.6s ease-in-out infinite;animation-play-state:running!important}
+#hud.paused :is(.btn-round,.skillPick,.howpick .btn,#skipBtn,#rate .btn){opacity:.45!important;pointer-events:none!important}
+@media (prefers-reduced-motion:reduce){#hud.paused #pausePlay{animation:none}}
