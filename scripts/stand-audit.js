@@ -26,12 +26,15 @@ import { SIZES, setSize } from '../js/geom.js';
 import { makeGame, drive } from '../tests/harness.js';
 
 export const STAND = { k: .12, yaw: 15, VW: 844, VH: 390 };
+// Rooted (reported, not limited): a second of play at full speed in which the ball moves ROOT.ball m or more and he, in
+// the game itself (his small moves on the spot not counted), less than ROOT.him m.
+export const ROOT = { ball: 2, him: .3 };
 // The most standing a phase may have (a share of its counted seconds).
 export const LIMIT = { runup: .25, window: .25, crawl: .25, outcome: .25, live: .25 };
 
 // ---- the poses: pro/motion.js, with three.js stood in for ----
 let animateRig = null;
-async function poser() {
+export async function poser() {
   if (animateRig) return animateRig;
   const rig = readFileSync(new URL('../js/pro/rig.js', import.meta.url), 'utf8').match(/export const HIP = [^;]*;/)[0];
   // (a stand-in that takes any call and gives itself back: the joints' angles are worked out on it and thrown away)
@@ -87,8 +90,9 @@ function skipOf(g) {
 // A per-frame watcher for one game: poses everyone, and counts each player's whole seconds in a phase.
 // tally: { [phase]: { n, still, role: { friend: [n, still], foe: [n, still] } } }
 export function standWatch(g, tally, { mode = '' } = {}) {
+  const s0 = () => g.sim;
   const rigs = new Map(), spans = new Map(); let lastRestores = null;
-  const add = (ph, role, still, who, v) => { const t = tally[ph] ||= { n: 0, still: 0, role: {}, who: [], v: [] }; t.n++; t.v.push(v); if (still) { t.still++; if (t.who.length < 400) t.who.push(who); } const r = t.role[role] ||= [0, 0]; r[0]++; if (still) r[1]++; };
+  const add = (ph, role, still, who, v, rooted) => { const t = tally[ph] ||= { n: 0, still: 0, role: {}, who: [], v: [], live: 0, rooted: 0, rw: [] }; t.n++; t.v.push(v); if (rooted != null) { t.live++; if (rooted) { t.rooted++; if (t.rw.length < 400) t.rw.push(who); } } if (still) { t.still++; if (t.who.length < 400) t.who.push(who); } const r = t.role[role] ||= [0, 0]; r[0]++; if (still) r[1]++; };
   const close = (id, sp) => { spans.delete(id); };
   const fn = () => {
     const s = g.sim, cam = g.cam, ph = phaseOf(g), skip = skipOf(g), T = g.realTime || 0, clock = g.ui?.clock ?? T;
@@ -103,7 +107,8 @@ export function standWatch(g, tally, { mode = '' } = {}) {
       if (sp && (!counted || sp.ph !== ph)) { close(a.id, sp); sp = null; }
       if (!counted) continue;
       const H = () => { const A = screen(cam, hp[0], hp[1], 0), B = screen(cam, hp[0], hp[1], 1.65); return A && B ? Math.hypot(A[0] - B[0], A[1] - B[1]) : 0; }; // (his height on the screen)
-      if (!sp) { spans.set(a.id, { ph, t0: T, hp: [...hp], F: F.map(f => [...f]), yaw, mHip: 0, mFoot: 0, mYaw: 0, H: H() }); continue; }
+      if (!sp) { spans.set(a.id, { ph, t0: T, hp: [...hp], F: F.map(f => [...f]), yaw, mHip: 0, mFoot: 0, mYaw: 0, H: H(), g0: [a.x, a.y], b0: [s.ball.x, s.ball.y], bm: 0 }); continue; }
+      sp.bm = Math.max(sp.bm, Math.hypot(s.ball.x - sp.b0[0], s.ball.y - sp.b0[1]));
       // (each place against where it was as the second began, both through the camera of this moment)
       const px = (p, q) => { const A = screen(cam, p[0], p[1], p[2]), B = screen(cam, q[0], q[1], q[2]); return A && B ? Math.hypot(A[0] - B[0], A[1] - B[1]) : 0; };
       sp.mHip = Math.max(sp.mHip, px([hp[0], hp[1], .9], [sp.hp[0], sp.hp[1], .9]));
@@ -111,12 +116,17 @@ export function standWatch(g, tally, { mode = '' } = {}) {
       sp.mYaw = Math.max(sp.mYaw, Math.abs(Math.atan2(Math.sin(yaw - sp.yaw), Math.cos(yaw - sp.yaw))) * 180 / Math.PI);
       if (T - sp.t0 >= 1 - 1e-6) {
         const lim = STAND.k * Math.max(sp.H, 1), still = sp.mHip < lim && sp.mFoot < lim && sp.mYaw < STAND.yaw, role = a.team === s.a('hero')?.team ? 'friend' : 'foe';
-        add(ph, role, still, `${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(1)}s hip ${sp.mHip.toFixed(1)}px foot ${sp.mFoot.toFixed(1)}px of ${sp.H.toFixed(0)}px turn ${Math.round(sp.mYaw)}° al ${(m.al||0).toFixed(2)} w ${(m.w||0).toFixed(2)} va ${(m.va||0).toFixed(2)} car ${s.ball.carrier === a.id ? 1 : 0} kt ${a.kickAt != null ? (s.time - a.kickAt).toFixed(2) : '-'} ax ${(m.ax||0).toFixed(2)},${(m.ay||0).toFixed(2)}`, [sp.mHip / sp.H, sp.mFoot / sp.H, sp.mYaw]);
-        spans.set(a.id, { ph, t0: T, hp: [...hp], F: F.map(f => [...f]), yaw, mHip: 0, mFoot: 0, mYaw: 0, H: H() });
+        add(ph, role, still, `${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(1)}s hip ${sp.mHip.toFixed(1)}px foot ${sp.mFoot.toFixed(1)}px of ${sp.H.toFixed(0)}px turn ${Math.round(sp.mYaw)}° al ${(m.al||0).toFixed(2)} w ${(m.w||0).toFixed(2)} va ${(m.va||0).toFixed(2)} car ${s.ball.carrier === a.id ? 1 : 0} kt ${a.kickAt != null ? (s.time - a.kickAt).toFixed(2) : '-'} ax ${(m.ax||0).toFixed(2)},${(m.ay||0).toFixed(2)}`, [sp.mHip / sp.H, sp.mFoot / sp.H, sp.mYaw],
+          // (rooted: in play at full speed, the ball moving 2 m or more in that second and he, in the game itself, less than 0.3 m)
+          (ph === 'outcome' || ph === 'live' || ph === 'runup') && sp.bm >= ROOT.ball ? Math.hypot(a.x - sp.g0[0], a.y - sp.g0[1]) < ROOT.him : null);
+        spans.set(a.id, { ph, t0: T, hp: [...hp], F: F.map(f => [...f]), yaw, mHip: 0, mFoot: 0, mYaw: 0, H: H(), g0: [a.x, a.y], b0: [s.ball.x, s.ball.y], bm: 0 });
       }
     }
   };
-  fn.rigs = rigs; return fn;
+  fn.rigs = rigs;
+  // where each player is drawn (his place in the game and his own small move, pro/motion.js ALIVE): for the grade of what is seen
+  fn.drawn = () => { const out = {}; for (const a of s0().agents.values()) { const m = rigs.get(a.id)?.g.userData.m; out[a.id] = [a.x + (m?.ax || 0), a.y + (m?.ay || 0)]; } return out; };
+  return fn;
 }
 
 // ---- the flows ----
@@ -154,7 +164,7 @@ export async function standAudit({ sizes = Object.keys(SIZES).filter(k => SIZES[
     await lessons(tally); await demos(tally); await matches(tally, nMatch);
     const row = ph => { const t = tally[ph]; if (!t) return `${ph.padEnd(8)}      -`; const sh = t.still / t.n, lim = LIMIT[ph], bad = lim != null && sh > lim + 1e-9; if (bad) fails++;
       const roles = Object.entries(t.role).map(([k, [n, st]]) => `${k} ${(100 * st / n).toFixed(0)}% of ${n}`).join(', ');
-      return `${bad ? 'MISS' : lim != null ? 'ok  ' : '    '} ${ph.padEnd(8)} ${(100 * sh).toFixed(1).padStart(5)}% standing of ${String(t.n).padStart(5)} player-seconds${lim != null ? ` (at most ${lim * 100}%)` : ' (not limited)'}; ${roles}`; };
+      return `${bad ? 'MISS' : lim != null ? 'ok  ' : '    '} ${ph.padEnd(8)} ${(100 * sh).toFixed(1).padStart(5)}% standing of ${String(t.n).padStart(5)} player-seconds${lim != null ? ` (at most ${lim * 100}%)` : ' (not limited)'}; ${roles}${t.live ? `; rooted while the ball moves ${(100 * t.rooted / t.live).toFixed(1)}% of ${t.live}` : ''}`; };
     log(`  ${size}: ${['runup', 'window', 'crawl', 'outcome', 'live', 'restart'].map(row).join('\n  ' + size + ': ')}${tally.errors ? `\n  ${size}: ${tally.errors} flow(s) did not finish` : ''}`);
     if (tally.errors) fails += tally.errors;
     if (verbose) for (const ph of Object.keys(tally)) for (const w of (tally[ph].who || []).slice(0, 25)) log('     ' + w);

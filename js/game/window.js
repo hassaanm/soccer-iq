@@ -176,7 +176,7 @@ export const moving = {
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       plan.openAt = s.time + T; // (when the choice opens: the view is set for it from now on, view.js spotView)
-      s.dead = !!sc.restart; // (alive-shape: at a dead ball the players stand, pro/motion.js ALIVE)
+      s.dead = !!sc.restart; s.reactFrom = null; // (alive-shape: at a dead ball the players stand, pro/motion.js ALIVE; the run-up goes as the plan says)
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
         const q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy);
@@ -248,7 +248,7 @@ export const moving = {
     const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' ? (sc.live ? this.reboundPlan() : this.followPlan()) : this.plan(true);
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
-    s.dead = !!sc.restart; // (alive-shape: at a dead ball the players stand until it is played, pro/motion.js ALIVE)
+    s.dead = !!sc.restart; s.reactFrom = null; // (alive-shape: at a dead ball the players stand until it is played, pro/motion.js ALIVE; in the window everyone goes as its plan says)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
     const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, Rp = (G - .1) / PACE + .1, Rm = show ? 0 : Math.min(this.windowReal(), this.windowMin()), // (round 7: a stretch of play a tenth of a second short of the window's floor is shown that much slower, not cut under it)
       R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, Rp < Rm && Rp > Rm - .2 ? Rm : Rp));
@@ -297,7 +297,7 @@ export const moving = {
   closeWindow() {
     const w = this.win; if (!w) { this.sim.untrackAll(); return; } // (a play may start straight after a run-up: the tests)
     this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null; { const h0 = this.sim.a('hero'); if (h0) h0.calmTouch = false; }
-    this.sim.untrackAll(!!this.sc?.live); this.win = null; this.sim.dead = false; this.sim.view = null; this.sim.prate = 1; // (in a match: two left overlapping step apart over a few frames, sim.js)
+    this.sim.untrackAll(!!this.sc?.live); this.win = null; this.sim.dead = false; this.sim.view = null; this.sim.prate = 1; this.sim.reactFrom = this.sim.time + .6; // (alive-shape: from a moment after the choice, nobody stays rooted while the ball goes by: sim.js react) // (in a match: two left overlapping step apart over a few frames, sim.js)
     // (v66) The ones who were coming go on to where their runs end (by the ball), not on through the player on it: what
     // the play does next takes them from there.
     for (const id of [w.threat?.id, w.plan.second]) { const p = id && w.plan.paths[id], a = id && this.sim.a(id); if (!p?.run || !a) continue; const e = pathAt(p, w.G), v = Math.hypot(e.vx, e.vy); if (Math.hypot(e.x - a.x, e.y - a.y) > .1) this.sim.go(id, e.x, e.y, Math.max(1, v)); }

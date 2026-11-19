@@ -14,6 +14,8 @@
 //            touches it within 0.3 s of real time
 //   grade    (share 97% of taps) what he sees when he taps agrees with how the choice is graded: every relation that does
 //            not hang on the threat as it is; the threat by his bearing and his coming (window.js agreeAt)
+//            (alive-shape) both where the game has everyone and where he is drawn (pro/motion.js ALIVE: the small moves
+//            off the ball, on the picture's clock)
 //   result   the play ends the same kind of way as the frozen play did (with --base: a file of v63's results)
 //   size     (share 98%) his own player is at least 60 px tall at 844x390 and 48 px at 667x375 after the first 0.3 s
 //   view     he never leaves the screen; the view never pulls back by more than 1.3x within 0.3 s; in every step view
@@ -50,6 +52,8 @@ import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
 import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
+import { poser, standWatch } from './stand-audit.js';
+await poser(); // (alive-shape: everyone is posed as world.js poses him, so what he sees when he taps is graded as drawn too)
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const sizes = args[0] && !args[0].startsWith('--') ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer);
@@ -95,14 +99,15 @@ async function play(sc, opt, u, act = null) { // (act(g): a step he takes early 
   const s = g.sim, rec = [], wins = [], flags = [], info = {};
   const snap = () => { const at = {}; for (const a of s.agents.values()) at[a.id] = [a.x, a.y]; return at; };
   const hw = headingWatch(g, h => { (info.heading ||= []).push(h); }), kw = kickWatch(g, k => { (info.walk ||= []).push(k); });
-  const onFrame = gm => { hw(); kw(); rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', pre: gm.phase === 'pre', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, bstate: s.ball.state,
+  const pw = standWatch(g, {});
+  const onFrame = gm => { pw(); hw(); kw(); rec.push({ t: s.time, real: gm.realTime, win: !!gm.win, wi: wins.length, out: gm.phase === 'outcome', pre: gm.phase === 'pre', at: snap(), ball: [s.ball.x, s.ball.y], carrier: s.ball.carrier, bstate: s.ball.state,
     cam: gm.cam && { eye: [...gm.cam.eye], tgt: [...gm.cam.tgt], Ff: gm.cam.Ff, Fw: gm.cam.Fw }, left: gm.ui.timer?.left, wide: gm.ui.timer?.wide, u: gm.win?.u, step: gm.step, acted }); };
   let acted = false;
   await drive(g, g.pre(), { onFrame });
   const decideAt = async want => {
     const p = g.decide(), w = g.win; if (w) wins.push({ ask: g.windowReal(), min: g.windowMin(), G: w.G, R: w.R, f: w.f, t0: w.t0, threat: w.threat?.id, second: w.plan.second, kind: w.kind, k: w.plan.k, sp: w.plan.sp, cls: w.plan.cls || '?', role: w.plan.role, r0: w.plan.r0, rP: w.plan.rP, dis: w.plan.dis });
     let tapped = null;
-    const pick = gm => { if (act && !acted && gm.win && gm.win.u > .08) { acted = true; act(gm); } if (want === 'timeout') return null; if (!gm.win) return want; if (gm.win.u >= u) { tapped = { u: gm.win.u, at: snap(), t: s.time }; return want; } return null; };
+    const pick = gm => { if (act && !acted && gm.win && gm.win.u > .08) { acted = true; act(gm); } if (want === 'timeout') return null; if (!gm.win) return want; if (gm.win.u >= u) { tapped = { u: gm.win.u, at: snap(), drawn: pw.drawn(), t: s.time }; return want; } return null; };
     const o = await drive(g, p, { pick, onFrame, maxSec: 90 });
     if (tapped && w && want !== 'timeout' && w.plan.hold) { // what he sees when he taps
       const pos = id => ({ x: tapped.at[id][0], y: tapped.at[id][1] });
@@ -110,6 +115,9 @@ async function play(sc, opt, u, act = null) { // (act(g): a step he takes early 
       const a = agreeAt(own, w.plan, pos, tapped.t - w.t0, { options: g.offerList(), ids: Object.keys(tapped.at).filter(id => !s.a(id)?.gk), ball: s.ball });
       info.taps = (info.taps || 0) + 1;
       if (a.dis.length || a.threat.length) (info.grade ||= []).push(`${a.dis.length ? 'shape: ' + a.dis.join(',') : ''}${a.threat.length ? ' threat: ' + a.threat.join(',') : ''}`.trim());
+      else { // (alive-shape) and as everyone is drawn: his place and his own small move off the ball (pro/motion.js ALIVE)
+        const d = agreeAt(own, w.plan, id => ({ x: tapped.drawn[id][0], y: tapped.drawn[id][1] }), tapped.t - w.t0, { options: g.offerList(), ids: Object.keys(tapped.at).filter(id => !s.a(id)?.gk), ball: s.ball });
+        if (d.dis.length || d.threat.length) (info.grade ||= []).push(`as drawn: ${d.dis.length ? 'shape: ' + d.dis.join(',') : ''}${d.threat.length ? ' threat: ' + d.threat.join(',') : ''}`.trim()); }
     }
     if (wins.length) { const x = wins.at(-1); x.opt = o; x.closeAt = { t: s.time, real: g.realTime, u: g.lastWin?.u, winReal: g.lastWin?.real }; if (o === 'timeout') x.timeoutAt = x.closeAt; }
     return o;

@@ -4,6 +4,7 @@ import { lerp, PITCH } from './geom.js';
 import { MOVE_W } from './flair.js';
 
 const SPACE = .75; // meters between two players' centers
+const REACT = { ball: 1.5, step: .6, wait: .9, clear: 3, room: 1.2, far: 1.8, v: 1.4 }; // (alive-shape: sim.react; ball: the ball's least speed (m/s) for it)
 const EASE = 3.5;   // m/s² a child speeds up or slows down at (v64 research Q1; window.js ACC)
 // From a walk he changes it at MOM_A; the faster he is going, the harder he can push off (up to MOM_MAX), but never so
 // hard that he is going back the way he came within the first 0.6 s: over that time his net way is still the old one.
@@ -537,8 +538,36 @@ export class Sim {
   }
   untrackAll(soft = false) { if (soft) for (const a of this.agents.values()) if (a.track) a.softT = this.time + .25; for (const a of this.agents.values()) if (a.track) this.untrack(a.id); }
 
+  // (alive-shape) In the play after a choice (from `reactFrom`, game time: game/window.js sets it as a window closes) nobody
+  // stays rooted while the ball goes by: one with nothing to do (no orders from the play's script or the team's shape,
+  // no planned way) steps on with the play at a walk, REACT.step m the way the ball is going, then waits a moment and
+  // looks again (a friend follows the play, a defender shifts with it). Never toward the ball: each step ends REACT.clear
+  // m and more from the ball, from where it is going and from the player on it and his way, and REACT.room m from
+  // anyone; and he never goes more than REACT.far m from where he was standing. So the play's script, which decides how
+  // the play ends from where its own players are, finds everything it uses where it was.
+  react() {
+    const b = this.ball; if (this.reactFrom == null || this.time < this.reactFrom) return;
+    const c = b.state === 'carried' && b.carrier ? this.a(b.carrier) : null;
+    let vx = 0, vy = 0, to = null;
+    if (b.state === 'flying' && b.dur > 0) { vx = (b.tx - b.fx) / b.dur; vy = (b.ty - b.fy) / b.dur; to = { x: b.tx, y: b.ty }; }
+    else if (c) { const d = Math.hypot(c.tx - c.x, c.ty - c.y); if (d > .3 && c.sp > 0) { vx = (c.tx - c.x) / d * c.sp; vy = (c.ty - c.y) / d * c.sp; to = { x: c.tx, y: c.ty }; } }
+    const v = Math.hypot(vx, vy); if (v < REACT.ball) return;
+    const ux = vx / v, uy = vy / v, from = c || b, R = REACT;
+    for (const a of this.agents.values()) {
+      if (a.gk || a.id === 'hero' || a === c || a.track || a.beat > this.time || (a.kickAt != null && this.time - a.kickAt < .7) || Math.hypot(a.tx - a.x, a.ty - a.y) > .05 || (a.rT || 0) > this.time) continue;
+      a.rT = this.time + R.wait; if (!a.ra || a.raT !== this.reactFrom) { a.ra = [a.x, a.y]; a.raT = this.reactFrom; }
+      const x = a.x + ux * R.step, y = a.y + uy * R.step;
+      if (x < 1 || x > PITCH.L - 1 || y < 1 || y > PITCH.W - 1 || Math.hypot(x - a.ra[0], y - a.ra[1]) > R.far) continue;
+      const lane = (p, q) => { const dx = q.x - p.x, dy = q.y - p.y, l2 = dx * dx + dy * dy || 1e-9, t = Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / l2)); return Math.hypot(x - p.x - dx * t, y - p.y - dy * t); };
+      if (Math.hypot(x - b.x, y - b.y) < R.clear || (to && (Math.hypot(x - to.x, y - to.y) < R.clear || lane(from, to) < R.clear)) || (c && Math.hypot(x - c.x, y - c.y) < R.clear)) continue;
+      if ([...this.agents.values()].some(o => o !== a && Math.hypot(o.x - x, o.y - y) < R.room)) continue;
+      this.go(a.id, x, y, R.v);
+    }
+  }
+
   step(dt) {
     this.time += dt;
+    this.react();
     const b = this.ball;
     let kicking = b.state === 'flying'; if (!kicking) for (const a of this.agents.values()) if (a.kickAt != null && this.time - a.kickAt < .7) { kicking = true; break; } // (a ball being struck or on its way: the ones the play sends to it or off its line go at once)
     for (const a of this.agents.values()) {
