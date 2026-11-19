@@ -29,11 +29,12 @@ function openMenu() {
   gear.classList.remove('holding');
   // "Automatic" names what PLAY would start with no lesson locked.
   const auto = graduated(P, PATH) ? "Today's training" : skillById(nextSkill({ ...P, settings: { ...P.settings, skill: null } }, PATH)).kid;
-  $('#skillSel').innerHTML = `<option value="">Automatic (${auto})</option>`
+  $('#skillSel').innerHTML = `<option value="">Automatic</option>`
     + PATH.map(s => `<option value="${s.id}" ${s.ready ? '' : 'disabled'} ${P.settings.skill === s.id ? 'selected' : ''}>${s.emoji} ${s.kid}${s.ready ? '' : ' (coming soon)'}</option>`).join('');
+  $('#skillHint').textContent = `Automatic: ${auto}`; // (the picker itself stays short, so it fits the phone)
   $('#sizeSel').innerHTML = SIZE_IDS.map(id => `<option value="${id}" ${id === TEAM.size ? 'selected' : ''}>${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)} v ${sizeOf(id).out + (sizeOf(id).keeper ? 1 : 0)}${sizeOf(id).keeper ? ' with keepers' : ''}</option>`).join('');
   $('#openChk').checked = !!P.settings.alwaysOpen; $('#roundsSel').value = String(P.settings.rounds); $('#thinkSel').value = P.settings.think || 'normal';
-  $('#keeperSel').value = P.settings.keeperPlay || 'off'; $('#keeperHint').textContent = sizeOf().keeper ? 'He plays the keeper when they shoot in matches: some of their shots, or all.' : 'Only in matches with keepers (5 v 5): at this size it does nothing.'; // (v67, ui/goalie.js)
+  $('#keeperSel').value = P.settings.keeperPlay || 'off'; $('#keeperHint').textContent = sizeOf().keeper ? 'When they shoot: some or all' : 'Only in 5 v 5 matches'; // (v67, ui/goalie.js)
   pickVoice();
   $('#voiceSel').innerHTML = voices.length ? voices.map(v => `<option ${v === voice ? 'selected' : ''}>${v.name}</option>`).join('') : '<option>Default</option>';
   $('#recordedChk').checked = P.settings.recorded !== false;
