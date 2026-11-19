@@ -114,6 +114,7 @@ export const live = {
     if (c && c.team === 'us' && c.id !== 'hero') this.cameFrom = c.id; else if (!this.gotBack) this.cameFrom = null; this.gotBack = false;
     if (c && c.team === 'us') this.takeOver(c.id);
     const h = s.a('hero');
+    if (this.sc?.kind === 'defense' || this.sc?.kind === 'tackle') this.playLook = false; // (v78: we have just won it: a new spell of our ball starts head-down)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, yaw: 0 });
     h.face = [1, 0];
     if (this.sc?.kind === 'tackle') this.sc = { ...this.sc, kind: 'attack' }; // after winning a 1v1: back to the normal view and buttons
@@ -142,6 +143,7 @@ export const live = {
     const s = this.sim, c = s.a(s.ball.carrier);
     this.returns = 0; this.cameFrom = null; // (their ball: the move is over)
     const choose = this.has('get-goal-side'), guard = this.has('one-goes'); // (saves that had "Guard the open player" have "One goes, one guards": progress.js MERGED)
+    this.playLook = false; // (v78: their ball: defending starts head-down, game.js beginStep)
     this.beginStep({ seen: new Set(), lookUp: false, drag: null, scanned: false, roles: null, ai: true, scripted: new Set(['hero', c.id]), ballTeam: 'them' });
     const h = s.a('hero');
     this.sc = { kind: 'defense', carrier: c.id, spots: [] };
@@ -175,7 +177,7 @@ export const live = {
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
         if (!(await this.continueDefense())) { tally(); streak = this.result === 'goalAgainst' ? 0 : streak + 1; live = streak > 0 && streak <= 4; continue; }
       } else if (live) await this.continueLive();
-      else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
+      else { streak = 0; const nx = rounds[next++ % rounds.length]; await this.prePlan(nx); this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
       const opt = await this.decide(), good = this.isGood(opt);
       this.react(opt);
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
@@ -218,7 +220,7 @@ export const live = {
     this.missed[id] = { n: (this.missed[id]?.n || 0) + 1, at: ++this.misses };
     if (!this.cued.has(id) && this.cued.size < 3) this.hintNext = { id };
   },
-  // Called as a play's result shows (outcomes.js emit): after a miss, the idea's short name ("Look up!"), once per
+  // Called as a play's result shows (outcomes.js emit): after a miss, the idea's short name ("Look up and scan!"), once per
   // idea and three at most in a match, never over other words (a caption, a skill move's name). It is short, so it is
   // over before the next decision opens.
   resultCue() {

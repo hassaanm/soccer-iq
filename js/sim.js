@@ -16,6 +16,7 @@ function turnToward(a, fx, fy, dt) {
   a.face[0] = Math.cos(cur + step); a.face[1] = Math.sin(cur + step); // every player has his own `face` list, so it is changed in place
 }
 const SIDE = [0, .14, -.14]; // how far a dribble touch sits to the side: laces / inside / outside
+const CALM_SIDE = [.1, .2, -.2]; // (v78: a calm touch, side to side: calmTouch)
 // How far along his dribble he is: metres of his run counted from `d0` (set when he gets the ball or ends a turn, so the
 // dribble starts from where the ball really is). His run is cut into touches: the a.tN-th started a.tA metres in and
 // takes the ball a.tL metres of his run on (see touchLen: 1.4 m close in, more in open space at speed). touchAt: how
@@ -32,7 +33,12 @@ const rephase = (a, r) => { const run = Math.min(1, a.sp / 2.5), k = run > .05 ?
 // it, farther the faster he goes: about 2.8 m at 4.4 m/s, 4 m from 5.1 m/s. (Nothing else counts, so a skill move,
 // tapped for or not, never changes where the ball goes. sim.close: close control always, for tests of the touch itself.)
 const LONG = 4.1;
+// (v78) No pressure (a.calmTouch, game/window.js): at a walk he keeps it alive with small touches, CALM_TOUCH m of his
+// way each, from side to side (the inside and outside of the foot; the ball's spot below).
+const CALM_TOUCH = .4, CALM_V = 1.2;
+const calmT = a => a.calmTouch && a.sp < CALM_V;
 export function touchLen(sim, a) {
+  if (calmT(a)) return CALM_TOUCH;
   if (sim.close || a.sp <= 3.5) return 1.4;
   const L = Math.min(LONG, 1.4 + (a.sp - 3.5) * 1.6);
   const ch = Math.cos(sim.ball.h), sh = Math.sin(sim.ball.h);
@@ -135,6 +141,9 @@ export function skillNow(sim, id) {
 // the picture to ready the foot for a pass he will turn with.
 export function turnSide(sim, c, h, want) {
   if (c.openS) return c.openS;
+  // (v78) A calm turn (his own player playing it with nobody on him, game/outcomes.js turnTo): the short way round, never
+  // the long way for a defender who is not on him (and his body too turns its own short way: startTurn).
+  if (c.calmTurn) return Math.sign(wrapA(want - h)) || 1;
   const d = wrapA(want - h); if (Math.abs(d) <= 2.6) return Math.sign(d) || 1;
   const o = nearFoe(sim, c), ol = o ? (o.y - c.y) * Math.cos(h) - (o.x - c.x) * Math.sin(h) : 0;
   return o && Math.abs(ol) > .2 ? -Math.sign(ol) : Math.sign(d) || 1;
@@ -261,7 +270,7 @@ export class Sim {
     if (dry) return null;
     const bad = tap && c.turnBad && TURN_SKILLS.has(k); // (v78: the one of the two that goes the wrong way: the defender is not fooled)
     if (tap) { c.turnTap = null; c.turnBad = false; }
-    let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s) fd += s * 2 * Math.PI; // the body turns the same way round as the ball
+    let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s && !c.calmTurn) fd += s * 2 * Math.PI; // the body turns the same way round as the ball (v78: a calm turn: his body its own short way, to face the kick)
     b.move = { k, t0: this.time, a0: b.h, d, s, P, f0, fd, ...m, ...(bad ? { good: false } : {}) };
     this.on('touch');
     return m.dur;
@@ -502,7 +511,7 @@ export class Sim {
     else if (v > .05 && !a.gk) turnToward(a, q.vx / v, q.vy / v, dt);
     if (b.state === 'carried' && b.carrier === a.id && !b.move) {
       if (b.reach) b.reach = null;
-      if (dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); a.tL = 1.4; if (v > .05) b.h = ang(q.vx, q.vy); this.on('touch'); }
+      if (dribbleAt(a) - (a.tA || 0) >= (a.tL || 1.4)) { a.tN = (a.tN || 0) + 1; a.tA = (a.tA || 0) + (a.tL || 1.4); a.tL = calmT(a) ? CALM_TOUCH : 1.4; if (v > .05) b.h = ang(q.vx, q.vy); this.on('touch'); }
     }
   }
   // (v66) He comes off his planned way with the velocity he has (a.mom, for MOM_T s at most): whatever moves him next, he
@@ -544,6 +553,9 @@ export class Sim {
       // the way it is going, at a walk, and the turn starts when the game lets it. Nothing else waits.
       const hold = a.holdTurn && has && !b.move && !b.reach && d > .02;
       if (hold) { dx = Math.cos(b.h) * 2; dy = Math.sin(b.h) * 2; d = 2; }
+      // (v78) Standing on the ball and nudged a few centimetres off his spot (two players stepping apart): he stays where he
+      // is. Stepping back onto the spot used to start a turn with the ball (below) toward it, a spin on the spot.
+      else if (has && !fetch && !b.move && d > .02 && d < .15 && a.sp < .3) { a.tx = a.x; a.ty = a.y; dx = dy = d = 0; }
       if (fetch) {
         const bx = b.x - a.x, by = b.y - a.y, bd = Math.hypot(bx, by);
         if (bd < REACH - .1) { // in reach: a foot takes it, onto the way he goes, or (standing) in to his feet
@@ -618,7 +630,7 @@ export class Sim {
       const c = this.a(b.carrier), run = Math.min(1, c.sp / 2.5), k = Math.min(1, (dribbleAt(c) - (c.tA || 0)) / (c.tL || 1.4)), kind = ((c.tN || 0) % 3 + 3) % 3;
       // He stopped with the ball pushed out ahead in a long touch: it rests where it is and he goes to it.
       if ((c.tL || 1.4) > 1.4 && !(c.speed > 0 && Math.hypot(c.tx - c.x, c.ty - c.y) > .02) && Math.hypot(b.x - c.x, b.y - c.y) > CLOSE + .2) b.reach = { stop: true };
-      const ahead = .34 + run * .55 * (1 - k) + longLead(c.tL || 1.4, k), side = (c.tL || 1.4) > 1.4 ? 0 : run * SIDE[kind] * (1 - k), hx = Math.cos(b.h), hy = Math.sin(b.h);
+      const ahead = .34 + run * .55 * (1 - k) + longLead(c.tL || 1.4, k), side = (c.tL || 1.4) > 1.4 ? 0 : calmT(c) ? CALM_SIDE[kind] * Math.sin(Math.PI * Math.min(1, k * 1.15)) : run * SIDE[kind] * (1 - k), hx = Math.cos(b.h), hy = Math.sin(b.h); // (v78: a calm touch rolls it across and back under his foot)
       // The ball rolls toward its spot at his feet instead of jumping there.
       const wx = c.x + hx * ahead - hy * side, wy = c.y + hy * ahead + hx * side, roll = ease(dt, 14);
       b.x += (wx - b.x) * roll; b.y += (wy - b.y) * roll; b.z = 0;

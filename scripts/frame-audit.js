@@ -1,7 +1,7 @@
 // Frame time: how long the game's own work takes in every frame of play (npm run audit:frames, and at the end of
 // npm run audit:motion): the frames in which a choice opens or closes, and every other frame of the run-up, the choice
 // and the outcome. Only the one frame in which a new scene is set up (a cut: the picture changes anyway) is reported
-// without a limit. What this cannot see: drawing (the renderer is a stub here), so not the GPU nor the effects.
+// without a limit (v78: no longer: see below). What this cannot see: drawing (the renderer is a stub here), so not the GPU nor the effects.
 //
 // A frame that takes too long is a hitch on the phone: the picture stops, then jumps. The heavy work is all at a
 // choice's edges (the window's plan, the fit of the view, the next scene), so those frames are timed here: matches at
@@ -9,6 +9,9 @@
 // waiting on it). A phone is taken as four times slower than this machine: no such frame may take more than
 // FRAME_MS / 4 here (FRAME_MS: 50, three frames of a 60 Hz screen). Every run is made twice and the quicker time of each
 // frame counts, so that a busy machine does not fail it.
+// (v78) The frame a new scene is set up in is held to the same limit: it used to make the scene's whole plan, one try
+// after another (a phone record: "plan 41" in one frame, outcome>pre); the tries are now made one a frame before it
+// (game/window.js prePlan). And a choice opens: its frame is listed with the plan it made (live, a give-and-go's step).
 //
 // And no jump: between two frames nobody moves by more than a frame's travel (12 cm and 9 m/s of the game time gone
 // by), except as his player becomes another one or a new scene is set up (both cuts). A jump is somebody put somewhere
@@ -18,6 +21,7 @@
 import { PATH, allScenarios } from '../js/skills.js';
 import { setSize } from '../js/geom.js';
 import * as H from '../tests/harness.js';
+import { planStats } from '../js/window.js';
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
 const LIMIT = +arg('ms', process.env.FRAME_MS || 50) / 4, MATCHES = +arg('matches', 3), SIZES = arg('size', null) ? [arg('size')] : ['3v3', '4v4', '5v5'];
@@ -28,7 +32,7 @@ async function timed(g, promise, pick, maxSec = 9000) {
   const out = []; let was = !!g.win, wasPh = g.phase, prev = null, cut = 0; out.jumps = [];
   if (!g.__cuts) { g.__cuts = true; for (const fn of ['takeOver', 'load']) { const f = g[fn].bind(g); g[fn] = (...a) => { g.__cut = 3; return f(...a); }; } }
   for (let t = 0, k = 0; t < maxSec && !done; k++) {
-    const dt = H.frameDt(k); t += dt; const a = performance.now();
+    const dt = H.frameDt(k); t += dt; const a = performance.now(), m0 = planStats.made;
     g.tick(dt, t);
     if (g.canAct && g._choose) { const o = pick(g); if (o) { g.seen.add('m1'); g.seen.add('m2'); if (g.sim.a('m3')) g.seen.add('m3'); g.choose(o); } }
     await new Promise(r => setImmediate(r));
@@ -36,7 +40,7 @@ async function timed(g, promise, pick, maxSec = 9000) {
     { const at = {}; for (const p of g.sim.agents.values()) at[p.id] = [p.x, p.y]; const st = g.sim.time; if (g.__cut > 0) g.__cut--;
       else if (prev) for (const id in at) { const q = prev.at[id]; if (!q) continue; const d = Math.hypot(at[id][0] - q[0], at[id][1] - q[1]); if (d > .12 + 9 * Math.max(0, st - prev.st)) out.jumps.push(`${id} ${d.toFixed(2)} m, ${wasPh}>${g.phase}${now && !was ? ' (opens)' : was && !now ? ' (closes)' : ''} ${g.sc?.kind || 'attack'}${g.sc?.live ? ' live' : ''} ${g.sc?.id || ''}`); }
       prev = { at, st }; }
-    out.push({ ms, edge: now && !was ? 'opens' : was && !now ? 'closes' : g.phase !== wasPh && (g.phase === 'pre' || wasPh === 'idle') ? 'scene' : null, what: `${wasPh}>${g.phase} ${g.sc?.kind || 'attack'}${g.sc?.live ? ' live' : ''} ${g.sc?.id || ''}` });
+    out.push({ plans: planStats.made - m0, ms, edge: now && !was ? 'opens' : was && !now ? 'closes' : g.phase !== wasPh && (g.phase === 'pre' || wasPh === 'idle') ? 'scene' : null, what: `${wasPh}>${g.phase} ${g.sc?.kind || 'attack'}${g.sc?.live ? ' live' : ''} ${g.sc?.id || ''}` });
     was = now; wasPh = g.phase;
   }
   return out;
@@ -57,7 +61,7 @@ async function runs(size) {
     for (const j of a.jumps) rows.push({ name, jump: j });
     for (let i = 0; i < n; i++) { // every frame: the one a new scene is set up in (the cut), one at or next to a choice's edge, or any other (play)
       const near = [i - 1, i, i + 1].map(j => a[j]?.edge).find(e => e && e !== 'scene');
-      rows.push({ name, i, edge: a[i].edge === 'scene' ? 'scene' : near || 'play', ms: same ? Math.min(a[i].ms, b[i].ms) : a[i].ms, what: a[i].what });
+      rows.push({ name, i, plans: a[i].plans, edge: a[i].edge === 'scene' ? 'scene' : near || 'play', ms: same ? Math.min(a[i].ms, b[i].ms) : a[i].ms, what: a[i].what });
     }
   }
   return rows;
@@ -69,9 +73,13 @@ export async function frameAudit({ sizes = SIZES, limit = LIMIT, log = console.l
     setSize(size); const rows = await runs(size), errs = rows.filter(r => r.err), J = rows.filter(r => r.jump), R = rows.filter(r => !r.err && !r.jump);
     for (const e of errs) { fails++; log(`  ${size} ${e.name}: did not run (${e.err})`); }
     fails += J.length; log(`  ${size} jumps (somebody moved by more than a frame's travel): ${J.length}`); for (const r of J.slice(0, 6)) log(`     ${r.name}: ${r.jump}`);
+    // (v78) plans: no frame makes more than one plan (window.js planHold; one kept from before is not made again). It does
+    // not hang on how busy this machine is: the scene's first frame used to make up to four, one after another.
+    { const many = R.filter(r => r.plans > 1).sort((p, q) => q.plans - p.plans); fails += many.length;
+      log(`  ${size} frames that make more than one plan: ${many.length}${many.length ? ` (most ${many[0].plans})` : ''}`); for (const r of many.slice(0, 5)) log(`     ${r.plans} plans, ${r.ms.toFixed(1)} ms  ${r.name} frame ${r.i}: ${r.what}`); }
     for (const edge of ['opens', 'closes', 'play', 'scene']) {
-      const v = R.filter(r => r.edge === edge).sort((p, q) => q.ms - p.ms), over = v.filter(r => r.ms > limit), strict = edge !== 'scene';
-      log(`  ${size} ${edge === 'scene' ? 'the frame a new scene is set up in (a cut, reported only)' : edge === 'play' ? 'every other frame (the choice, the outcome, the run-up)' : 'choice ' + edge}: ${v.length} frames, worst ${v[0]?.ms.toFixed(1) ?? '-'} ms here (${((v[0]?.ms || 0) * 4).toFixed(0)} ms on a phone four times slower), over the limit: ${strict ? over.length : '-'}`);
+      const v = R.filter(r => r.edge === edge).sort((p, q) => q.ms - p.ms), over = v.filter(r => r.ms > limit), strict = true;
+      log(`  ${size} ${edge === 'scene' ? 'the frame a new scene is set up in' : edge === 'play' ? 'every other frame (the choice, the outcome, the run-up)' : 'choice ' + edge}: ${v.length} frames, worst ${v[0]?.ms.toFixed(1) ?? '-'} ms here (${((v[0]?.ms || 0) * 4).toFixed(0)} ms on a phone four times slower), over the limit: ${strict ? over.length : '-'}`);
       if (strict) { fails += over.length; for (const r of over.slice(0, 5)) log(`     ${r.ms.toFixed(1)} ms  ${r.name} frame ${r.i}: ${r.what}`); }
     }
   }

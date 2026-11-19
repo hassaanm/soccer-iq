@@ -272,7 +272,7 @@ export const rounds = {
   async round(sc, { hint, light = false, level = 1, first = false }) {
     this.mode = 'lesson'; this.light = light; this.shown = new Set(); // shown: wrong choices already replayed in this round
     this.level1 = level <= 1; this.firstRound = first; // (v64: the window's length, window.js; a new idea's very first round has the longest)
-    this.load(sc); await this.pre();
+    await this.prePlan(sc); this.load(sc); await this.pre(); // (v78: the plan made in the frames before the scene is set up: game/window.js prePlan)
     let firstTry = true;
     for (;;) {
       const more = !!this.sc.then, r = await this.attempt(hint, more);
@@ -288,7 +288,7 @@ export const rounds = {
     // After a replay the round starts over facing the same way as before (toward the ball on a receive or on
     // defense), not up the field.
     const plan = this.wplan, runs = { followRuns: this.followRuns, followRacer: this.followRacer, reshoot: this.reshoot }, t00 = this.sim.time; // (v64: the window's plan from the run-up; a restart puts the play back where it opens, with its runs and shot)
-    const restart = () => { this.sim.restore(save); this.reset(); this.spotsReset(); if (plan) plan.ready = true; Object.assign(this, runs, { followRuns: (runs.followRuns || []).map(f => ({ ...f, t0: f.t0 + this.sim.time - t00 })) }); this.reshoot?.(); /* (the sim's clock runs on through a restart: the runs keep their place in the play) */ /* (round 2: a shot still to be struck as it opens) */ this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
+    const restart = () => { this.sim.restore(save); this.reset(); if (this.carriedLook) this.keepLook(); /* (v78: a later step of the play: his head stays up, game.js beginStep) */ this.spotsReset(); if (plan) plan.ready = true; Object.assign(this, runs, { followRuns: (runs.followRuns || []).map(f => ({ ...f, t0: f.t0 + this.sim.time - t00 })) }); this.reshoot?.(); /* (the sim's clock runs on through a restart: the runs keep their place in the play) */ /* (round 2: a shot still to be struck as it opens) */ this.camMode = 'player'; this.yaw = yawSave; const h = this.sim.a('hero'); if (h && facesBall(sc)) this.faceYaw(h); this.leadRun(); };
     let firstTry = true;
     for (let attempt = 1; ; attempt++) {
       this.hint = hint || attempt > 1;

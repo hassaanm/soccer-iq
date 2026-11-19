@@ -12,12 +12,13 @@
 //           is our nearest to it (by a metre), and to guard when a friend is (by a metre)
 //   passback after his pass in a match the friend never gives it back with a clear shot or open space ahead of him, and
 //           at most once in a move
+//   walk    (v78) his own pass or shot with nobody on him is played from where he is (WALK, kickWatch, walkMatches)
 //   twoball after a defending play, never two of ours on the ball (within 2 m of their player on it, with the ball as
 //           their job: his own player, and a friend who is pressing, chasing or has no job) while another of theirs
 //           within 12 m of it has nobody of ours within 3 m
 // Usage: node scripts/live-audit.js [size] [matches] [wrong share] [--v]   (exit 1 on any flag)
 import { PATH } from '../js/skills.js';
-import { SIZES, setSize } from '../js/geom.js';
+import { SIZES, setSize, PITCH } from '../js/geom.js';
 import { makeGame, drive, optionsFor } from '../tests/harness.js';
 import { pathAt } from '../js/window.js';
 
@@ -66,6 +67,67 @@ export async function headingMatches(size, N = 6) {
           if (gm._choose !== last) { last = gm._choose; delay = 1 + rnd() * 6; openT = T; } if (T - openT < delay) return null;
           return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); } });
       hw();
+    }
+  } finally { Math.random = real; }
+  return rows;
+}
+
+// (v78) walk: his own player plays a pass or a shot from where he is, with a natural turn. For every pass and shot he
+// chooses with the ball at his feet and nobody of theirs within WALK.pressure m of him: from the window opening to the
+// kick he gets no more than WALK.away m farther from their goal; from the choice to the kick no more than WALK.away m
+// farther from where it is kicked to; and his body turns no more than WALK.turn degrees farther off that way than it was
+// as he chose. (The owner, v76: in front of the goal, nobody on him, he walked away from the goal with his back to it,
+// turned and passed. Two causes: in matches the carry he settled into went back the way the touch took him, toward his
+// own goal, through the whole window (game/window.js settle); and after any choice he walked on with his run while the
+// ball came round, then his body swung back to his run in the wind-up (game/outcomes.js plantFor).)
+export const WALK = { pressure: 2, away: .5, turn: 30 };
+const KICKS = /^(pass:|shoot|turn:B)/;
+// A per-frame watcher: done(r) for each kick of his that follows a choice, with { opt, sc, live, near (m, the nearest of
+// theirs as he chose), goal (m farther from their goal, from the window's opening), target (m farther from the kick's
+// point, from the choice), turn (degrees his body turned farther off the kick's way), calm (nobody on him), bad }.
+export function kickWatch(g, done) {
+  const s = g.sim, G = () => [PITCH.L, PITCH.W / 2], deg = a => Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) * 180 / Math.PI;
+  let cur = null, wo = null, lastW = null;
+  const ch = g.choose.bind(g);
+  g.choose = opt => { const can = g.canAct && g._choose; ch(opt); if (!can) return; const h = s.a('hero');
+    if (!h || s.ball.carrier !== 'hero' || !KICKS.test(String(opt))) { cur = null; return; }
+    const near = Math.min(99, ...s.team('them').filter(o => !o.gk).map(o => Math.hypot(o.x - h.x, o.y - h.y)));
+    cur = { opt, sc: g.sc?.id, live: !!g.sc?.live, near, win: wo && wo.w === lastW ? wo.path : [], path: [[h.x, h.y, Math.atan2(h.face[1], h.face[0])]] }; };
+  const kick = s.kick.bind(s);
+  s.kick = (x, y, o) => {
+    if (cur && s.ball.carrier === 'hero') { const r = cur, h = s.a('hero'); cur = null; r.path.push([h.x, h.y, Math.atan2(h.face[1], h.face[0])]);
+      const gl = G(), d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]), T = [x, y], p0 = r.path[0], o0 = deg(Math.atan2(y - p0[1], x - p0[0]) - p0[2]), w0 = r.win[0] || p0;
+      let goal = 0, target = 0, off = 0; for (const p of [...r.win, ...r.path]) goal = Math.max(goal, d(p, gl) - d(w0, gl));
+      for (const p of r.path) { target = Math.max(target, d(p, T) - d(p0, T)); off = Math.max(off, deg(Math.atan2(y - p[1], x - p[0]) - p[2])); }
+      const calm = r.near >= WALK.pressure, out = { opt: r.opt, sc: r.sc, live: r.live, near: r.near, goal, target, turn: Math.max(0, off - o0), calm };
+      out.bad = calm && (goal > WALK.away || target > WALK.away || out.turn > WALK.turn); done(out); }
+    return kick(x, y, o);
+  };
+  return () => {
+    if (g.win && g.win !== lastW) { lastW = g.win; wo = s.ball.carrier === 'hero' && s.a('hero') ? { w: g.win, path: [] } : null; }
+    if (wo && g.win === wo.w && g.phase === 'decide') { const h = s.a('hero'); wo.path.push([h.x, h.y]); }
+    if (cur) { const h = s.a('hero'); cur.path.push([h.x, h.y, Math.atan2(h.face[1], h.face[0])]); if (cur.path.length > 400) cur = null; }
+  };
+}
+export const walkText = r => `${r.sc} ${r.opt}: ${r.goal > WALK.away ? `${r.goal.toFixed(1)} m farther from the goal; ` : ''}${r.target > WALK.away ? `${r.target.toFixed(1)} m farther from where he kicks it; ` : ''}${r.turn > WALK.turn ? `his body turns ${Math.round(r.turn)}° away; ` : ''}nearest of theirs ${r.near.toFixed(1)} m`;
+// (v78) The walk check on whole matches: a bot that looks up and passes or shoots (a pass or a shot it picks, now and
+// then, wherever it has the ball), at a child's pace (0.4 to 3 s after a choice opens). Looking up turns his body with
+// the view (game.js frame): some looks are at the friend or the goal, as a child drags the view to find them.
+export async function walkMatches(size, N = 4) {
+  setSize(size); const real = Math.random, rows = [];
+  try {
+    for (let seed = 1; seed <= N; seed++) {
+      let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      let y = seed * 31337; const rnd = () => (y = (y * 48271) % 2147483647) / 2147483647;
+      const { g } = makeGame(); g.world.canvas = { clientWidth: 844, clientHeight: 390 }; g.skills = new Set(PATH.map(s => s.id));
+      let T = 0, last = null, delay = 0, openT = 0, pk = null, look = 0, looked = false; const kw = kickWatch(g, r => rows.push({ seed, ...r }));
+      await drive(g, g.match(PATH.map(k => k.id), [], 5, 'free'), { maxSec: 9000, onFrame: () => { T += 1 / 30; kw(); },
+        pick: gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
+          if (gm._choose !== last) { last = gm._choose; delay = .4 + rnd() * 2.6; openT = T; pk = null; looked = false; look = Math.floor(rnd() * 3);
+            const ks = gm.sim.ball.carrier === 'hero' && !gm.sc.spots ? optionsFor(gm.sc).filter(o => KICKS.test(o)) : []; if (ks.length && rnd() < .7) pk = ks[Math.floor(rnd() * ks.length)]; }
+          if (pk && !looked && T - openT > .2) { looked = true; gm.lookUp = true; gm.scanned = true; const h = gm.sim.a('hero'), t = look === 1 ? gm.target(pk) : look === 2 ? { x: PITCH.L, y: PITCH.W / 2 } : null; if (h && t) gm.yaw = Math.atan2(t.y - h.y, t.x - h.x); }
+          if (T - openT < delay) return null;
+          return pk || gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); } });
     }
   } finally { Math.random = real; }
   return rows;
@@ -149,6 +211,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2).filter(a => !a.startsWith('--')), sizes = args[0] ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer); let bad = 0;
   for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(args[1] || 4), +(args[2] || 0)); bad += flags.length;
     console.log(`${size} live play: ${stat.plays} choices, ${stat.windows} windows (shortest live ${stat.minWin.toFixed(2)} s); ${Object.entries(stat.counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-    const by = {}; for (const [k, m] of flags) (by[k] ||= []).push(m); for (const [k, v] of Object.entries(by)) { console.log(`  ${k}: ${v.length}`); for (const m of v.slice(0, process.argv.includes('--v') ? 99 : 6)) console.log('    ' + m); } }
+    const by = {}; for (const [k, m] of flags) (by[k] ||= []).push(m); for (const [k, v] of Object.entries(by)) { console.log(`  ${k}: ${v.length}`); for (const m of v.slice(0, process.argv.includes('--v') ? 99 : 6)) console.log('    ' + m); }
+    const wr = await walkMatches(size, +(args[1] || 4)), wb = wr.filter(r => r.bad); bad += wb.length;
+    console.log(`${size} walk: ${wr.length} passes and shots after a choice in ${args[1] || 4} matches (${wr.filter(r => r.calm).length} with nobody within ${WALK.pressure} m); played from where he is in all but ${wb.length}`);
+    for (const r of wb.slice(0, 10)) console.log(`  walk: match ${r.seed} ${walkText(r)}`); }
   process.exitCode = bad ? 1 : 0;
 }

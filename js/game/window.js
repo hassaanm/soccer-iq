@@ -4,18 +4,19 @@
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
-import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
+import { planHold, planSteps, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).
-const VIEW_OFF = .3, CARRY_BACK = 1.4, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+const VIEW_OFF = .3, CARRY_BACK = 1.4, ACROSS = 1.3, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
-import { SHOT } from '../generate.js';
+import { SHOT, shotLook } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
+const PLAN_STEPS = 4; // (v78) how many steps of a plan prePlan makes in a frame (window.js planSteps: each one moment of one try, a millisecond or less here)
 // In demos and in the replay of the better play nobody runs out of time: the window is this long (real seconds), and
 // the hand taps well inside it.
 const SHOW = { demo: 16, replay: 7 };
@@ -60,14 +61,15 @@ export const moving = {
   // The plan for this choice (window.js planHold). live: from play already going (a match, a give-and-go's second step):
   // the picture is where everyone is now. Else the scene's own picture, planned before the run-up. `extra`: options for
   // planHold (who the scene's own script moves, runs the scene gives, a length the play gives).
+  // What planHold is asked (plan, and prePlan's steps).
+  planArgs(live, extra = {}) { const sc = this.sc; return [sc, live ? this.liveState() : this.sceneState(sc), { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra }]; },
   plan(live, extra = {}) {
     const sc = this.sc;
     if (kindOf(sc) === 'tackle') return null;
-    const st = live ? this.liveState() : this.sceneState(sc);
     this.heavyAt = this.frameNo | 0; // (frame time: see view.js spotView)
     const timed = time('plan'); // (the frame recorder, perf.js)
     try {
-      const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra });
+      const p = planHold(...this.planArgs(live, extra));
       if (p) p.live = live;
       return p;
     } catch (e) { console.error(e); return null; } finally { timed(); } // (never a stuck choice: without a plan the choice opens as before v64)
@@ -87,6 +89,10 @@ export const moving = {
       if (d < 3.2) { // (away from him and across, toward the side with more room: he stays goal-side, a step or two farther off)
         const bx = (c.x - o.x) / (d || 1), by = (c.y - o.y) / (d || 1), sg = Math.sign((-by) * 0 + bx * (W / 2 - c.y)) || 1; let ax = bx * .6 - by * sg * .8, ay = by * .6 + bx * sg * .8;
         if ((c.y < 3 && ay < 0) || (c.y > W - 3 && ay > 0)) ay = -ay; if ((c.x > L - 3 && ax > 0) || (c.x < 3 && ax < 0)) ax = -ax; const al = Math.hypot(ax, ay) || 1; dir = [ax / al, ay / al]; burst = 3.4; T = Math.max(T, .9);
+        // (v78) The touch goes away from him across the pitch, never back toward his own goal: at most ACROSS off the way to
+        // their goal (the owner, v76: he walked back from their goal, facing his own, with nobody on him). Only one right on
+        // him (the touch across would take him past that player's shoulder) sends it straight away from him.
+        const ga0 = Math.atan2(g[1] - c.y, g[0] - c.x), da = wrapA(Math.atan2(dir[1], dir[0]) - ga0); if (Math.abs(da) > ACROSS) { const a = ga0 + Math.sign(da) * ACROSS; dir = [Math.cos(a), Math.sin(a)]; }
         { const k = 3.4 * .25 + 1.2 * (T - .25), ex = c.x + dir[0] * k - o.x, ey = c.y + dir[1] * k - o.y; if (Math.hypot(ex, ey) < 1.9) dir = [bx, by]; } } } // (round 6: never a touch that takes him past that player's shoulder: then straight away from him)
     // (v76) His own player carries it on toward their goal, the way the choice's plan then has him carry it (window.js
     // planHold: a picture from live play has him carry it at the goal), and the view looks that way (viewFor). He used to
@@ -101,7 +107,13 @@ export const moving = {
       const clear = u => !o || [.5, 1, 1.5, 2].every(t => Math.hypot(c.x + dir[0] * k0 + u[0] * v * t - o.x, c.y + dir[1] * k0 + u[1] * v * t - o.y) >= 2.2); // (two steps clear of that player as he stands)
       const ga = Math.atan2(g[1] - c.y, g[0] - c.x), to = a => [Math.cos(a), Math.sin(a)];
       cdir = to(ga);
-      if (burst && !clear(cdir)) { const a = Math.atan2(dir[1], dir[0]), d = wrapA(a - ga), u = to(ga + Math.sign(d) * Math.min(Math.abs(d), CARRY_BACK)); cdir = clear(u) ? u : dir; }
+      // (v78) Not clear at the goal: the least turn off it, on the side away from that player first, that is clear; none
+      // clear: of those, the one that keeps him farthest from that player. Never more than ACROSS off the way to their goal:
+      // he used to carry it on the touch's own way, back toward his own goal, for the whole window (16% of the windows on
+      // the ball in matches at 3v3, up to 2 m back).
+      if (burst && !clear(cdir)) { const sd = o ? Math.sign(wrapA(Math.atan2(c.y - o.y, c.x - o.x) - ga)) || 1 : 1, offs = [.35, .7, 1.05, ACROSS], tries = [...offs.map(a => ga + sd * a), ...offs.map(a => ga - sd * a)];
+        const room = u => Math.min(...[.5, 1, 1.5, 2].map(t => Math.hypot(c.x + dir[0] * k0 + u[0] * v * t - o.x, c.y + dir[1] * k0 + u[1] * v * t - o.y)));
+        const ok = tries.find(a => clear(to(a))); cdir = to(ok ?? tries.sort((p, q) => room(to(q)) - room(to(p)))[0]); }
       this.yaw = viewFor(Math.atan2(cdir[1], cdir[0]), ga); this.camTurn = this.clock + T + .8; // (view.js CAM_TURN: the camera is round by the time the choice opens)
       if (this.wplan?.sc === this.sc && spotKind(this.sc)) this.wplan = null; // (the last play's plan, a run to a ring or a defending choice: its view from above held on through these moments, and swung round as the choice opened)
     }
@@ -127,6 +139,23 @@ export const moving = {
     { const ce = pathAt(c.setPath, T); for (const a of s.agents.values()) { if (a.gk || a.team === c.team || !a.setPath) continue; const e = pathAt(a.setPath, T), d = Math.hypot(e.x - ce.x, e.y - ce.y);
       if (d < 2.2) { for (let n = 0; n < 4; n++) { const q = pathAt(a.setPath, T), dq = Math.hypot(q.x - ce.x, q.y - ce.y); if (dq >= 2.1) break; const k = (2.3 - dq) / (T * .6), l = dq || 1; a.setPath.v1 = [a.setPath.v1[0] + (q.x - ce.x) / l * k, a.setPath.v1[1] + (q.y - ce.y) / l * k]; } } } } // (round 7: until it does hold him off)
     await this.delay(T);
+  },
+  // (v78) The plan for a scene that is about to be set up: its tries (plannedRunUp: one for each rCap), PLAN_STEPS steps a frame, while
+  // the last picture is still on the screen. planHold keeps each, so as the scene is set up plannedRunUp finds them made:
+  // the frame it is set up in used to make them all (41 ms on a phone). It plans on a stand-in for the game with that
+  // scene in it (the scene as load() makes it), so nothing on the screen changes.
+  async prePlan(sc) {
+    if (this.skipping || !sc || sc.spots || sc.intro === 'won' || sc.kind === 'receive' || sc.kind === 'lead' || sc.kind === 'tackle' || sc.run === 'follow' || kindOf(sc) !== 'attack') return;
+    const sim = new this.sim.constructor(); sim.setup(sc);
+    const ghost = Object.create(this); Object.assign(ghost, { sc, sim, timeouts: 0, yaw: sc.shots && sc.shotPlan ? shotLook(sc.heroTo, sc.mates) : 0 });
+    const frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; }; // (the next frame)
+    for (const rCap of [0, 5.2, 4.2, 3.4]) {
+      const [s0, st, opts] = ghost.planArgs(false, rCap ? { rCap } : {}); let r = { done: false, it: null }, p = null;
+      try { do { await frame(); if (this.skipping) return; r = planSteps(s0, st, opts, PLAN_STEPS, r.it); } while (!r.done); p = r.plan; } catch (e) { console.error(e); return; } // (PLAN_STEPS of it a frame)
+      if (!p) break;
+      const t = ghost.threatFit(p); if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break;
+    }
+    await frame(); // (and the scene is set up in a frame of its own)
   },
   // ---------- the run-up ----------
   // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window
@@ -238,6 +267,7 @@ export const moving = {
       // already), so he never crosses the screen sideways.
       if (kindOf(sc) === 'attack' && s.ball.carrier === 'hero' && plan.paths.hero) { const q = pathAt(plan.paths.hero, 0), h = s.a('hero'); if (h && Math.hypot(q.vx, q.vy) > .6) this.yaw = viewFor(Math.atan2(q.vy, q.vx), Math.atan2(W / 2 - h.y, L - h.x)); }
       if (kindOf(sc) === 'attack') { const tv = this.threatFit(plan); plan.wideK = tv.k; plan.seen = tv.seen; } this.camSlow = 2; }
+    { const h0 = s.a('hero'); if (h0) { h0.calmTouch = !!plan.calm && s.ball.carrier === 'hero'; if (h0.calmTouch && !s.ball.move) { h0.tA = h0.dist - (h0.d0 || 0); h0.tL = .4; } } } // (v78: no pressure: small touches from now, sim.js calmTouch; window.js CALM)
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
@@ -263,7 +293,7 @@ export const moving = {
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
   closeWindow() {
     const w = this.win; if (!w) { this.sim.untrackAll(); return; } // (a play may start straight after a run-up: the tests)
-    this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null;
+    this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null; { const h0 = this.sim.a('hero'); if (h0) h0.calmTouch = false; }
     this.sim.untrackAll(!!this.sc?.live); this.win = null; // (in a match: two left overlapping step apart over a few frames, sim.js)
     // (v66) The ones who were coming go on to where their runs end (by the ball), not on through the player on it: what
     // the play does next takes them from there.

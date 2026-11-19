@@ -92,7 +92,7 @@ export const team = {
     if (!c || c.gk || this.win || this.phase === 'pre' || (this.mode !== 'match' && this.mode !== 'free') || this.phase === 'feedback' || this.sc?.kind === 'tackle') { for (const a of s.agents.values()) a.hov = 0; return; }
     for (const d of s.agents.values()) {
       if (d.gk || d.team === c.team || (d.id === 'hero' && !(this.sc?.kind === 'defense' && this.phase === 'outcome')) || d.beat > s.time || d.tk > s.time - .5 || Math.min(dist(d, c), dist(d, s.ball)) >= 1.5) { d.hov = 0; continue; }
-      if (this.leaving(d)) { d.hov = 0; continue; } // (a friend whose job is one of their other players: he is on his way off the ball)
+      if (this.leaving(d) && d.lv && Math.hypot(d.lv[0], d.lv[1]) > 1) { d.hov = 0; continue; } // (a friend whose job is one of their other players: he is on his way off the ball; v78: not one standing there, held still for a kick's line)
       d.hov = (d.hov || 0) + dt; if (d.hov < .3) continue;
       const b = s.ball, dx = b.x - d.x, dy = b.y - d.y, l = Math.hypot(dx, dy) || 1, sd = Math.sign(dx * (c.ty - c.y) - dy * (c.tx - c.x)) || 1; // (past it on the side the player on it is not going to)
       d.hov = 0; d.tk = s.time; d.beat = s.time + 1; d.mom = null; d.aic = null; d.track = null;
