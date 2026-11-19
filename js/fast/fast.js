@@ -411,8 +411,8 @@ class Fast {
     this.drawAction(this.aiming ? null : this.actionNow());
     this.scanCue(h);
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
-    if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js)
-      this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); game.plog?.('fast', { is: 'nextGoalWins' }); }
+    if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js; the next goal ends it, the score as it stands then)
+      if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }
     if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
     this.ui.ballGlow = this.actKind === 'steal' && m.stealOpen(); this.stealGlow = this.ui.ballGlow;
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > 8)) this.endAim();
