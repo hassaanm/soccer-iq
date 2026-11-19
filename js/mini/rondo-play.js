@@ -10,7 +10,7 @@ import { Sim } from '../sim.js';
 import { clamp, dist, cutBy, bodyHit, stealNow, REACH as FOOT, BODY_R, STEAL_R } from '../fast/rules.js';
 import * as K from './rondo.js';
 
-const PASS_R = 1.1, LOOK = .4, OFF_MAX = 2, LOOSE_R = .62, TACKLE_R = .95, WARN_AT = .15, SAFE = .5, FAVOR = .75, TAKE = 1;
+const PASS_R = 1.1, FREE = 3, PROTECT = 2.4, LOOK = .4, OFF_MAX = 2, LOOSE_R = .62, TACKLE_R = .95, WARN_AT = .15, SAFE = .5, FAVOR = .9, TAKE = 1;
 const SIDE = { keep: { hero: 'near', m1: 'left', m2: 'far', m3: 'right' }, win: { o1: 'far', o2: 'left', o3: 'right', o4: 'near' } };
 const unit = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l, l }; };
 
@@ -70,7 +70,7 @@ export class Rondo {
     if (this.phase !== 'play') return;
     const s = this.sim; this.phase = 'after'; this.afterEnd = s.time + K.AFTER_S; this.flight = null;
     for (const a of s.agents.values()) if (a.id !== by) s.stop(a.id);
-    this.result = { res, why, by, level: this.level, sec: +(s.time - this.t0).toFixed(2), real: +(this.real - this.real0).toFixed(2), ...this.stats };
+    this.result = { res, why, by, fault: res === 'lost' ? this.fault : null, level: this.level, sec: +(s.time - this.t0).toFixed(2), real: +(this.real - this.real0).toFixed(2), ...this.stats };
     this.ui.ballGlow = false; this.slowTo = K.SPEED;
     this.hooks.end?.(this.result);
   }
@@ -87,6 +87,7 @@ export class Rondo {
     if (d < .3) { s.stop('hero'); this.goAt = null; return { ...q, stay: true }; }
     const has = this.owner() === 'hero';
     s.go('hero', q.x, q.y, has ? K.ME.dribble : d > K.ME.far ? K.ME.sprint : K.ME.jog); this.goAt = q;
+    if (this.flight?.to === 'hero') this.flight.heroMoved = true; // (he left a pass coming to him)
     return q;
   }
   // A tap on a friend: a pass ('keep', with the ball). Returns whether it went.
@@ -125,21 +126,27 @@ export class Rondo {
     this.flight = { kind: 'pass', from, to, t0: s.time, speed, tgt, cut: cut?.id || null, kicked: false };
     this.stats.passes++; if (from === 'hero') this.stats.myPasses++;
     if (to === 'hero') { this.stats.toMe++; if (!open) this.stats.toMeClosed++; }
-    this.after(.13, () => { const f = this.flight; if (f && f.from === from && s.ball.carrier === from) { s.kick(tgt.x, tgt.y, { speed, arc: .05 }); f.kicked = true; } });
+    this.after(.13, () => { const f = this.flight; if (!f || f.from !== from || s.ball.carrier !== from) return;
+      if (this.mode === 'keep' && from !== 'hero' && !this.openLine(from, to, speed, 0)) { this.flight = null; this.busy.delete(to); if (f.cut) this.busy.delete(f.cut); return; } // (a friend sees the line close as he shapes to pass: he keeps it)
+      s.kick(tgt.x, tgt.y, { speed, arc: .05 }); f.kicked = true; });
     this.hooks.pass?.(from, to, open);
     return true;
   }
   // The ball is his (one of the keeping side): a pass got there, a loose ball, a heavy touch gathered.
   give(id, how) {
     const s = this.sim, f = this.flight; if (f) for (const x of [f.cut, f.to]) if (x) this.busy.delete(x);
-    this.flight = null; s.give(id); this.contact.clear(); this.warned = false; this.gotAt = s.time; this.safeT = s.time + SAFE; this.busy.delete(id);
+    this.flight = null; s.give(id); this.contact.clear(); this.warned = false; this.gotAt = s.time; this.safeT = s.time + SAFE; this.busy.delete(id); this.shut = { none: null, me: null };
     if (id !== 'hero' && this.keeps(id)) { if (this.off.has(id)) { const q = this.onLine(id, s.a(id)); s.go(id, q[0], q[1], 2.2); this.busy.set(id, s.time + .9); } else s.stop(id); } // (off his line for a loose ball: back onto it)
     if (id === 'hero') this.stats.myTouches++;
     this.hooks.gain?.(id, how);
   }
   // The middle wins it: in 'keep' the round is lost; in 'win' it is won.
   take(id, how) {
-    const s = this.sim; this.flight = null; s.give(id); this.contact.clear(); if (this.mode === 'win') this.slowMoment = s.time + .9; // (his steal, a little slow, so he sees it)
+    const s = this.sim, f = this.flight, c = this.owner();
+    // whose doing it was ('keep'): his pass, a pass to him he left, him standing on it, or a friend left with no line
+    // because his own stayed shut (the only way a friend loses it: tackles)
+    this.fault = this.mode !== 'keep' ? null : how === 'tackle' ? (c === 'hero' || this.shutFor(this.shut?.me) >= PROTECT ? 'his' : 'team') : f && (f.from === 'hero' || (f.to === 'hero' && (f.heroMoved || how === 'loose'))) ? 'his' : 'team';
+    this.flight = null; s.give(id); this.contact.clear(); if (this.mode === 'win') this.slowMoment = s.time + .9; // (his steal, a little slow, so he sees it)
     this.fx(this.mode === 'keep' ? 'stolen' : 'won'); this.sfx(this.mode === 'keep' ? 'down' : 'star');
     this.hooks.gain?.(id, how);
     this.end(this.mode === 'keep' ? 'lost' : 'won', how, id);
@@ -220,8 +227,16 @@ export class Rondo {
   // away along his line, not at all); a warning first when it is his (hooks.warn). In 'win' he wins it only with STEAL.
   tackles(dt) {
     if (this.mode !== 'keep') return;
-    const s = this.sim, c = this.owner(); if (!c || !this.keeps(c) || s.time < this.safeT || s.ball.reach) return;
-    const ca = s.a(c);
+    const s = this.sim, c = this.owner(); if (!c || !this.keeps(c) || s.ball.reach) return;
+    const ca = s.a(c), t = s.time, sh = this.shut ||= { none: null, me: null };
+    // A friend on the ball protects it (turns away along his side, shields it): he can lose it only when he has had no
+    // open line for PROTECT s AND his line to him has been shut all that time ("move to open the line" stays the lesson).
+    if (c !== 'hero') {
+      const D = this.D, others = this.keeperIds().filter(m => m !== c), me = this.openLine(c, 'hero', D.fPass, 0), any = me || others.some(m => m !== 'hero' && this.openLine(c, m, D.fPass, 0));
+      sh.me = me ? null : sh.me ?? t; sh.none = any ? null : sh.none ?? t;
+      if (this.shutFor(sh.none) < PROTECT || this.shutFor(sh.me) < PROTECT) { this.contact.clear(); return; }
+    }
+    if (t < this.safeT) return;
     for (const o of this.takers()) {
       if (dist(o, ca) >= TACKLE_R) { this.contact.delete(o.id); continue; }
       const moving = (ca.sp || 0) > .8 && Math.hypot(ca.tx - ca.x, ca.ty - ca.y) > .15, ahead = (o.x - ca.x) * (ca.tx - ca.x) + (o.y - ca.y) * (ca.ty - ca.y) > 0;
@@ -231,6 +246,7 @@ export class Rondo {
       if (v > need) { this.take(o.id, 'tackle'); return; }
     }
   }
+  shutFor(since) { return since == null ? 0 : this.sim.time - since; }
   // ---------- the glow ('win') ----------
   // The ball can be won: a pass (slow or not) within his reach, a heavy touch rolling within it, or (Fast mode's rule)
   // a carrier's touch off his foot with him close. Once open it stays at least `glow` s; a carrier's window then waits
@@ -259,7 +275,7 @@ export class Rondo {
       const a = s.a(id); if (!a) continue;
       if (id === c) { this.friendBall(id, dt); continue; }
       if (this.busy.has(id) || f?.to === id || (this.next.get(id) || 0) > t) continue;
-      this.next.set(id, t + D.fMove * (.8 + .4 * this.rnd()));
+      this.next.set(id, t + D.fMove * (c === 'hero' ? .7 : 1) * (.8 + .4 * this.rnd())); // (quicker to give him a line when he has it)
       const side = this.sideOf(id), p = this.rnd() < .85 ? K.bestSpot(box, side, from, defs, { speed: D.fPass, run: D.cutRun, react: D.cutReact, margin: .2 }) : K.sideAt(box, side, (this.rnd() * 2 - 1) * K.reachOf(box));
       s.go(id, p.x, p.y, 3.2);
     }
@@ -290,7 +306,8 @@ export class Rondo {
     const s = this.sim, D = this.D; if (this.busy.has(id) || this.flight || s.time - this.gotAt < D.fHold) return;
     if ((this.aiT -= dt) > 0) return; this.aiT = .3;
     const a = s.a(id), defs = this.watch(), opts = this.keeperIds().filter(m => m !== id).map(m => ({ m, open: this.openLine(id, m, D.fPass, D.fMargin), gap: K.laneGap(a, this.passPoint(id, m), defs) })).filter(o => o.open);
-    const me = opts.find(o => o.m === 'hero'), others = opts.filter(o => o.m !== 'hero').sort((p, q) => q.gap - p.gap);
+    const mp = this.passPoint(id, 'hero'), free = defs.every(o => dist(o, mp) >= FREE); // (and only when he will have time to look before a defender is on him)
+    const me = free && opts.find(o => o.m === 'hero'), others = opts.filter(o => o.m !== 'hero').sort((p, q) => q.gap - p.gap);
     if (me && (!others.length || this.rnd() < FAVOR)) { this.pass(id, 'hero', D.fPass); return; }
     if (others.length) { this.pass(id, others[0].m, D.fPass); return; }
     this.dribbleAway(id);

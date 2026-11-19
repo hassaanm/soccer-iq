@@ -63,10 +63,10 @@ test('keep: he cannot leave his side of the box; win: he cannot leave the box', 
 
 test('keep: his friends pass to him only when his line is open', async () => {
   let toMe = 0, shut = 0;
-  for (let k = 0; k < 6; k++) {
-    const g = new Rondo({ mode: 'keep', rnd: stream(.1 + k * .13) }), r = stream(.7 + k * .05);
+  for (let k = 0; k < 12; k++) {
+    const g = new Rondo({ mode: 'keep', rnd: stream(.1 + k * .07) }), r = stream(.7 + k * .02);
     g.hooks.pass = (from, to) => { if (to !== 'hero') return; toMe++; if (!g.openLine(from, 'hero', g.D.fPass, 0)) shut++; };
-    let done = false; g.round(k % 3).then(() => { done = true; });
+    let done = false; g.round(k % 4).then(() => { done = true; });
     let next = 0;
     for (let t = 0; t < 40 && !done; t += 1 / 30) { // (he moves about his side at random, and passes on at once)
       g.tick(1 / 30); await flush();
@@ -75,6 +75,23 @@ test('keep: his friends pass to him only when his line is open', async () => {
   }
   assert.ok(toMe >= 5, `passes to him: ${toMe}`);
   assert.equal(shut, 0, 'never on a shut line');
+});
+
+test('keep: a friend on the ball protects it; he loses it only after his line has stayed shut a while, and that loss is his', async () => {
+  for (const meOpen of [true, false]) {
+    const { g, p } = await begun('keep', 0, .2);
+    const s = g.sim, b = g.box;
+    g.openLine = (from, to) => meOpen && to === 'hero' && from !== 'hero'; // (every line shut; or only his open, but not free to pass to)
+    g.passPoint = () => ({ x: s.a('o1').x, y: s.a('o1').y }); // (so his friend never passes it: the defender stands on the spot)
+    place(g, 'm2', b.x1, b.cy); place(g, 'o1', b.x1 - .6, b.cy);
+    Object.assign(s.ball, { x: b.x1 - .3, y: b.cy, state: 'carried', carrier: 'm2', reach: null, move: null }); g.give('m2', 'pass');
+    let r = null; p.then(x => { r = x; });
+    const t0 = s.time; await play(g, 2.4 / K.SPEED, () => !!r);
+    assert.equal(r, null, 'no tackle in the first moments');
+    await play(g, 20, () => !!r);
+    if (meOpen) { assert.ok(!r || r.res === 'kept', 'his line open: his friend keeps it (the round runs out)'); continue; }
+    assert.equal(r?.res, 'lost'); assert.equal(r.why, 'tackle'); assert.equal(r.fault, 'his'); assert.ok(s.time - t0 >= 2.4);
+  }
 });
 
 test('win: STEAL wins the ball in the glow; outside it he lunges, is slow a moment, and the round goes on', async () => {

@@ -83,7 +83,7 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 //   stand    s a defender needs on a player standing on the ball to win it
 //   think    s between the defenders' choices (where to press, which line to cut)
 //   smart    the share of choices the defenders get right (the pressing curve that cuts the best line)
-//   fMargin  m to spare his friends want on a line before they pass (less forgiving: smaller)
+//   fMargin  m to spare his friends want on a line before they pass (a little less later; never a risky pass)
 //   fHold    s a friend keeps the ball before passing; fPass: m/s of their passes
 //   fMove    s between his friends' moves to open their lines (slower: he must make more of the angles himself)
 export const TWO_AT = 5 / 3; // (after 5 rounds kept)
@@ -91,7 +91,7 @@ export function keepLevel(L) {
   L = Math.max(0, L); const two = L >= TWO_AT - 1e-9 ? .3 + ramp(TWO_AT, .2, .7)(L) : 0; // (1e-9: five thirds of a level, counted a third at a time)
   return {
     size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L), cover: ease(2.2, 4.3, 6)(L) * two, cutRun: ease(2.8, 5.2, 6)(L), cutReact: ease(.6, .15, 6)(L),
-    stand: ease(3.2, 1, 6)(L), think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.35, .05, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.9, 1.6, 6)(L),
+    stand: ease(3.2, 1, 6)(L), think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.4, .3, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.8, 1.1, 6)(L),
   };
 }
 // Win the ball (he is the defender in the middle):
