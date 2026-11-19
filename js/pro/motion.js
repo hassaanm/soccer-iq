@@ -396,11 +396,11 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const passIn = !carrying && b.state === 'flying' && Math.hypot(b.tx - a.x, b.ty - a.y) < 1.6, left = passIn ? (1 - b.t) * b.dur : 9;
   m.ready = damp(m.ready, defending ? (bd < 7 ? 1 : Math.max(.5, .9 * (m.al || 0))) : carrying ? .4 : passIn ? .95 : ours && dc < 20 ? .6 : m.sr, 3, rdt);
   // (alive-shape) His own small moves off the ball (ALIVE): AX, AY, the drawn offset (world metres) from where the game has him.
-  const alive = a.id !== 'hero' && !a.gk && !carrying && !mood && !a.track?.comer && !passIn && kt > .7 && !(act && act.k === 'trap');
-  m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 2.2), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 4, rdt / clamp(sim.prate ?? 1, .2, 1)); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out; it comes and goes by real time)
+  const alive = a.id !== 'hero' && !a.gk && !carrying && !mood && !a.track?.comer && !passIn && kt > .62 && !(act && act.k === 'trap');
+  m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 3), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 4, rdt / clamp(sim.prate ?? 1, .2, 1)); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out; it comes and goes by real time)
   // (his moves are paced by real time: the picture's clock runs at sim.prate of it in a choice's slow motion, set by
   // game/window.js; outside a window that is 1, and a skill moment's slower picture only makes them calmer still)
-  const rT = rdt / clamp(sim.prate ?? 1, .2, 1);
+  const rT = rdt / clamp(sim.prate ?? 1, .2, 1); m.rtA = (m.rtA || 0) + rT; // (rtA: his own real-time clock)
   let AX = 0, AY = 0, TX = 0, TY = 0; // (TX, TY: where his move now takes him, drawn: game/window.js aliveGuard grades it ahead of time)
   m.cap = damp(m.cap ?? 1, (sim.aliveCap ?? 1) * (a.aliveK ?? 1), ALIVE.capRate, rT); // (the window's own check may make everyone's moves smaller: game/window.js aliveGuard)
   if (m.al < .15) m.alOn = false;
@@ -411,10 +411,10 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     // motion eases in, so a small change of pace jumped it on by whole moves: three moves a second, a nervous shuffle.)
     const P = ALIVE.per[0] + (ALIVE.per[1] - ALIVE.per[0]) * frac(u.seed * 7.31);
     m.aph = (m.aph ?? frac(u.seed * 3.1)) + rT / P;
-    if (m.al > .3 && !m.alOn) { m.alOn = true; m.aph = Math.ceil(m.aph) + frac(u.seed * 5.3) * .25; } // (as he comes to rest round his place, a choice opening: his first move starts at once, give or take a moment of his own)
+    if (m.al > .3 && !m.alOn) { m.alOn = true; if (m.rtA - (m.anT ?? -9) > .7 * P) m.aph = Math.ceil(m.aph) + frac(u.seed * 5.3) * .25; } // (as he comes to rest round his place, a choice opening: his first move starts at once, give or take a moment of his own; never sooner than most of his tempo after the last)
     const n = Math.floor(m.aph);
     if (m.an !== n) { // the next move: from where his move now is, to a new place round his own
-      const first = m.an == null; m.an = n; m.af = first ? [0, 0] : [...(m.ao || [0, 0])];
+      const first = m.an == null; m.an = n; m.anT = m.rtA; m.af = first ? [0, 0] : [...(m.ao || [0, 0])];
       const r = frac(Math.sin(n * 12.9898 + u.seed * 78.233) * 43758.5453), ux = bd > .1 ? bx / bd : Math.cos(face), uy = bd > .1 ? by / bd : Math.sin(face), A = ALIVE.amp, sg = n & 1 ? 1 : -1;
       let tx, ty;
       if (ours) { // across into the gap, short, across, back out; "across" is across the screen when the view is known (sim.view: a move straight at the camera hardly shows)

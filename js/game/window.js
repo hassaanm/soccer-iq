@@ -7,7 +7,7 @@ import { time } from '../perf.js';
 import { planHold, planSteps, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, agreeAt, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
-const GUARD = 1.25; // (alive-shape) how much farther than his own small move takes him the picture is graded (aliveGuard)
+const GUARD = 1.25, GUARD_DT = .05; // (alive-shape) how much farther than his own small move takes him the picture is graded, and how often (real s: aliveGuard)
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).
@@ -177,7 +177,7 @@ export const moving = {
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       plan.openAt = s.time + T; // (when the choice opens: the view is set for it from now on, view.js spotView)
-      s.dead = !!sc.restart; s.reactFrom = null; // (alive-shape: at a dead ball the players stand, pro/motion.js ALIVE; the run-up goes as the plan says)
+      s.dead = !!sc.restart; s.reactFrom = null; s.aliveCap = 1; for (const a of s.agents.values()) a.aliveK = 1; // (alive-shape: at a dead ball the players stand, pro/motion.js ALIVE; the run-up goes as the plan says)
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
         const q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy);
@@ -246,10 +246,10 @@ export const moving = {
     const s = this.sim, sc = this.sc;
     this.closeWindow();
     if (kindOf(sc) === 'tackle') return;
-    const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' ? (sc.live ? this.reboundPlan() : this.followPlan()) : this.plan(true);
+    const fromRunUp = !!(this.wplan?.ready && this.wplan.sc === sc), plan = fromRunUp ? this.wplan : kindOf(sc) === 'follow' ? (sc.live ? this.reboundPlan() : this.followPlan()) : this.plan(true);
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
-    s.dead = !!sc.restart; s.reactFrom = null; s.aliveCap = 1; for (const a of s.agents.values()) a.aliveK = 1; // (alive-shape: at a dead ball the players stand until it is played, pro/motion.js ALIVE; in the window everyone goes as its plan says)
+    s.dead = !!sc.restart; s.reactFrom = null; if (!fromRunUp) { s.aliveCap = 1; for (const a of s.agents.values()) a.aliveK = 1; } // (alive-shape: at a dead ball the players stand until it is played, pro/motion.js ALIVE; in the window everyone goes as its plan says; what the run-up's check found holds on)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
     const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, Rp = (G - .1) / PACE + .1, Rm = show ? 0 : Math.min(this.windowReal(), this.windowMin()), // (round 7: a stretch of play a tenth of a second short of the window's floor is shown that much slower, not cut under it)
       R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, Rp < Rm && Rp > Rm - .2 ? Rm : Rp));
@@ -280,10 +280,13 @@ export const moving = {
   // Each step of game time while it is open: the rings that belong to a player move with him, and when the threat gets
   // there he takes it.
   windowStep() {
-    const w = this.win, s = this.sim; if (!w) return;
+    const w = this.win, s = this.sim;
+    // (alive-shape) In the run-up the small moves are already graded (aliveGuard), on the picture the window will open
+    // on: what is drawn as it opens holds.
+    if (!w) { const p = this.wplan; if (p?.hold && p.sc === this.sc && !p.ready && p.openAt != null && this.phase === 'pre' && !((this.realTime || 0) - (p.gT ?? -9) < GUARD_DT)) { p.gT = this.realTime || 0; const q = {}; this.aliveGuard({ plan: p, t: 0, at0: p.at0 || {}, spots0: [], base: id => (p.paths[id] ? pathAt(p.paths[id], 0, q[id] ||= {}) : s.a(id)) }); } return; } // (graded on the picture the window will open on: everyone where its plan has him then)
     if (this.phase !== 'decide') { this.closeWindow(); return; }
     s.view = this.yaw; s.prate = this.prate ?? 1; // (alive-shape: the view and the picture's pace, for pro/motion.js ALIVE)
-    if (w.plan.hold && (w.n = (w.n || 0) + 1) % 3 === 0) this.aliveGuard(w);
+    if (w.plan.hold && !((this.realTime || 0) - (w.gT ?? -9) < GUARD_DT)) { w.gT = this.realTime || 0; this.aliveGuard(w); } // (from its very first step, then every GUARD_DT s of real time)
     if (w.spots0.length && this.sc.spots) {
       const at0 = id => w.at0[id] || s.a(id), now = spotsNow({ ...this.sc, spots: w.spots0 }, id => s.a(id), at0);
       this.sc.spots.forEach((sp, i) => { if (now[i]) { sp.x = now[i].x; sp.y = now[i].y; } });
@@ -297,8 +300,8 @@ export const moving = {
   },
   // (alive-shape) The small moves off the ball (pro/motion.js ALIVE) are drawn, not played: the game's own places, from
   // which every choice is graded, do not move. Their size is well inside the slack the grades are read with, but a scene
-  // built right up to a line (and a defending scene's spots, read with none) can tip. So every third step of the window
-  // the picture is graded as it will be drawn: everyone where his own move now takes him, GUARD times as far (ahead of
+  // built right up to a line (and a defending scene's spots, read with none) can tip. So from the window's first step,
+  // and every GUARD_DT s of real time after, the picture is graded as it will be drawn: everyone where his own move now takes him, GUARD times as far (ahead of
   // time, with room to spare). A choice that would look other than its grade, and does not already in the game's own
   // places, halves the moves of the player whose move does it, for the rest of the window (a.aliveK; none after three
   // halvings), or everyone's if no one alone does it (sim.aliveCap). Cheap: one grading (0.06 ms here at 5v5, 0.2 ms at
@@ -307,10 +310,10 @@ export const moving = {
   aliveGuard(w) {
     const s = this.sim, cap = s.aliveCap ?? 1; if (cap <= 0) return;
     let any = false; for (const a of s.agents.values()) if (a.alive && (a.alive[2] || a.alive[3])) { any = true; break; } if (!any) return;
-    const sc = this.sc.spots && w.spots0.length ? { ...this.sc, spots: w.spots0 } : this.sc, t = s.time - w.t0, opts = { options: this.offerList(), ids: [...s.agents.values()].filter(a => !a.gk).map(a => a.id), ball: s.ball, at0: id => w.at0[id] || s.a(id) };
-    const at = only => id => { const a = s.a(id), q = a.alive; return q && (!only || only === id) ? { x: a.x + q[2] * GUARD, y: a.y + q[3] * GUARD } : a; }, worse = (r, was) => [...r.dis, ...r.threat].some(o => !was.has(o));
+    const sc = this.sc.spots && w.spots0.length ? { ...this.sc, spots: w.spots0 } : this.sc, t = w.t ?? s.time - w.t0, opts = { options: this.offerList(), ids: [...s.agents.values()].filter(a => !a.gk).map(a => a.id), ball: s.ball, at0: id => w.at0[id] || s.a(id) };
+    const base = w.base || (id => s.a(id)), at = only => id => { const a = s.a(id), b = base(id), q = a.alive; return q && (!only || only === id) ? { x: b.x + q[2] * GUARD, y: b.y + q[3] * GUARD } : b; }, worse = (r, was) => [...r.dis, ...r.threat].some(o => !was.has(o));
     const drawn = agreeAt(sc, w.plan, at(null), t, opts); if (!drawn.dis.length && !drawn.threat.length) return;
-    const own = agreeAt(sc, w.plan, id => s.a(id), t, opts), was = new Set([...own.dis, ...own.threat]); if (!worse(drawn, was)) return;
+    const own = agreeAt(sc, w.plan, base, t, opts), was = new Set([...own.dis, ...own.threat]); if (!worse(drawn, was)) return;
     const half = k => (k > .2 ? k / 2 : 0);
     // (the one whose move goes farthest first; the first found is enough this step: the next looks again)
     const movers = [...s.agents.values()].filter(a => a.alive && (a.alive[2] || a.alive[3])).sort((p, q) => Math.hypot(q.alive[2], q.alive[3]) - Math.hypot(p.alive[2], p.alive[3]));
