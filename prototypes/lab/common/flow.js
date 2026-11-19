@@ -127,7 +127,7 @@ export async function onePlayer(cfg) {
   const showScore = () => lab.setScore(`<i>${lab.us.short}</i> ${m.score.us} – ${m.score.them} <i>${lab.them.short}</i>`);
   showScore();
   const share = () => { const all = Object.values(touches).reduce((a, b) => a + b, 0); return all ? touches[me] / all : 0; };
-  lab.extra = () => ({ ...S, actions: lab.stats.actions || 0, holds: view.holds, heldS: +(lab.stats.held || 0).toFixed(1), touches, meShare: +share().toFixed(2), favor: FAVOR, score: m.score, asks: lab.asks });
+  lab.extra = () => ({ ...S, actions: lab.stats.actions || 0, holds: view.holds, heldS: +(lab.stats.held || 0).toFixed(1), touches, meShare: +share().toFixed(2), favor: FAVOR, score: m.score, asks: typeof lab.asks === "function" ? lab.asks() : 0 });
   lab.onEnd = () => `<div><b>${m.score.us}–${m.score.them}</b><small>⚽ score</small></div><div><b>${touches[me]}</b><small>🙋 his touches</small></div>`;
 
   lab.tick = dt => {
