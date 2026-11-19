@@ -959,8 +959,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 @media (prefers-reduced-motion:reduce){#miniBar .heart.lost .fg{animation:none;opacity:0}#miniBar.last .heart .fg,.miniEnd .newbest span{animation:none}}
 
 
-/* (v87) The Slow / Fast picker stays hidden until Fast mode has passed its review. Remove this rule to show it. */
-#modePick{display:none!important}
 #hud.faiming #score,#hud.faiming #fChips,#hud.faiming #fHold,#hud.faiming #fCue{opacity:0!important}
 #fPic{position:absolute;left:50%;top:22%;display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:22px;background:rgba(255,250,242,.94);opacity:0;transform:translateX(-50%) scale(.85);transition:opacity .2s,transform .2s;pointer-events:none}
 #fPic.show{opacity:1;transform:translateX(-50%) scale(1)}
