@@ -964,3 +964,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fPic.show{opacity:1;transform:translateX(-50%) scale(1)}
 #fPic svg{width:64px;height:64px;display:block}
 #fPic i{font-style:normal;font-size:30px}
+
+/* ---------- score attack (v88: js/mini/attack-ui.js) ---------- */
+/* He is one player the whole attempt: no changing player. */
+#hud.fattack #fAvatar{display:none}

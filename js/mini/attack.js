@@ -83,7 +83,8 @@ export function attackScene(level, r, n = 0, last = [], P = PITCH) {
 
 // ---------- one attempt on the Fast match ----------
 // env: as Match's ({ sim, L, W, gy0, gy1, gh, fx, sfx, rnd }) plus scene (attackScene), real (a clock in real s; none:
-// game time / BASE), pace (how fast the timer drains now: 1, less while he holds or aims), onEnd(result).
+// game time / BASE), pace (how fast the timer drains now: 1, less while he holds or aims), frame(match) after each
+// step, onEnd(result).
 // The result: { goal, why: 'goal' | 'lost' | 'save' | 'out' | 'time', by (who scored or won it), sec (real s) }.
 const SUPPORT_T = .7, FIRST_T = .45, GG_T = 1.8, BLOCK_D = 2.2, BLOCK_R = .6, SURE_D = 8, HURRY = .25; // (BLOCK: a body within BLOCK_R m of a shot's first BLOCK_D m blocks it)
 export class AttackMatch extends Match {
@@ -92,7 +93,7 @@ export class AttackMatch extends Match {
     super({ ...env, n: sc.us, keepers: true, level: D.opp });
     this.sc = sc; this.D = D; this.setLevel(D.opp);
     this.usIds = ['hero', 'm1', 'm2', 'm3'].slice(0, sc.us); this.themIds = ['o1', 'o2', 'o3', 'o4'].slice(0, sc.them);
-    this.real = env.real || null; this.pace = env.pace || (() => 1); this.onEnd = env.onEnd || (() => {});
+    this.real = env.real || null; this.pace = env.pace || (() => 1); this.onEnd = env.onEnd || (() => {}); this.frame = env.frame || null;
     this.total = D.time; this.left = D.time; this.sec = 0; this.res = null; this.plan = new Map(); this.presser = null; this.owner0 = undefined; this.gg = null;
     this.advice = null; this.adviceT = -9; this.meAuto = false;
   }
@@ -154,6 +155,7 @@ export class AttackMatch extends Match {
     // Their tackle comes sooner level by level (boost), and at once on a dribble straight into one of them: a player
     // who runs the ball at a defender's feet loses it (the Fast match only times a stand-off).
     if (!this.dead && this.owner() === this.me) { const me = s.a(this.me); for (const [k, v] of this.contact) { const o = s.a(k); if (!o || o.gk) continue; const into = this.meMove?.kind === 'near' && s.time < this.meMove.until && (o.x - me.x) * (me.tx - me.x) + (o.y - me.y) * (me.ty - me.y) > .3 * dist(o, me) * Math.hypot(me.tx - me.x, me.ty - me.y); this.contact.set(k, v + dt * (this.D.boost + (into ? this.D.into : 0))); } }
+    this.frame?.(this);
   }
   // Nobody of theirs restarts or shoots: the attempt ends as soon as they have it. His team: friends support and pass.
   moveTeams(dt) {

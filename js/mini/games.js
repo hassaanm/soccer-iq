@@ -19,11 +19,15 @@ const PENS = GRASS + GOAL(18, 10, 84, 40)
   + '<g transform="rotate(14 50 40)"><rect x="44" y="24" width="12" height="20" rx="5" fill="#5aa2ff" stroke="#24193a" stroke-width="2.2"/><circle cx="50" cy="19" r="6" fill="#f2c9a0" stroke="#24193a" stroke-width="2.2"/><path d="M44 30l-9 7M56 30l9-6" stroke="#5aa2ff" stroke-width="4.4" stroke-linecap="round"/></g>'
   + '<path d="M60 70Q74 46 86 26" fill="none" stroke="#ffd23f" stroke-width="3.4" stroke-dasharray="5 4" stroke-linecap="round"/><path d="M80 25l7-1-1 7" fill="none" stroke="#ffd23f" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>'
   + '<ellipse cx="57" cy="76" rx="9" ry="3" fill="rgba(255,255,255,.75)"/>' + BALL(57, 70, 7.5);
+// Score attack (a placeholder until the house-style picture is merged): two of ours (blue) against one of theirs (red)
+// in front of their goal, the pass to the free one.
+const ATTACK = GRASS + GOAL(30, 6, 60, 26) + '<circle cx="34" cy="66" r="7" fill="#5aa2ff" stroke="#24193a" stroke-width="2.2"/><circle cx="88" cy="58" r="7" fill="#5aa2ff" stroke="#24193a" stroke-width="2.2"/><circle cx="60" cy="48" r="7" fill="#ff5a5a" stroke="#24193a" stroke-width="2.2"/><path d="M44 64L78 59" stroke="#ffd23f" stroke-width="3" stroke-dasharray="4 3" stroke-linecap="round"/>' + BALL(42, 72, 5);
 const svg = body => `<svg viewBox="0 0 120 84" aria-hidden="true">${body}</svg>`;
 
 export const MINI = [
   { id: 'keeper', name: 'Goalkeeper', say: 'Goalkeeper!', unit: '🧤', pic: svg(KEEPER) },
   { id: 'pens', name: 'Penalties', say: 'Penalties!', unit: '⚽', pic: svg(PENS) },
+  { id: 'attack', name: 'Score attack', say: 'Score attack!', unit: '⚽', pic: svg(ATTACK) },
 ];
 export const miniById = id => MINI.find(g => g.id === id);
 // What the mini games say (spoken: tests/spoken.js; loaded as a game starts: voicelines.js miniLines).
