@@ -39,7 +39,7 @@ test('the best score per game: kept, a new best only when beaten, across a reloa
 });
 
 test('the Mini games list: every game has a name, a spoken name, a picture and its own id', () => {
-  assert.deepEqual(MINI.map(g => g.id), ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack']); // the five tiles in their order (v88)
+  assert.deepEqual(MINI.map(g => g.id), ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles']); // the six tiles in their order (v88)
   assert.equal(new Set(MINI.map(g => g.id)).size, MINI.length);
   for (const g of MINI) { assert.ok(g.name && g.say && g.unit && /^<svg/.test(g.pic)); assert.equal(miniById(g.id), g); }
 });

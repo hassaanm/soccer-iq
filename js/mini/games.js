@@ -13,6 +13,7 @@ export const MINI = [
   { id: 'rondoKeep', name: 'Keep the ball', say: 'Keep the ball!', unit: '🔁', pic: PIC.rondoKeep, lines: Object.values(RONDO_SAID) }, // (v88: mini/rondo-ui.js)
   { id: 'rondoWin', name: 'Win the ball', say: 'Win the ball!', unit: '🦶', pic: PIC.rondoWin, lines: Object.values(RONDO_SAID) }, // (v88: mini/rondo-ui.js)
   { id: 'attack', name: 'Score attack', say: 'Score attack!', unit: '⚽', pic: PIC.attack },
+  { id: 'puzzles', name: 'Soccer puzzles', say: 'Soccer puzzles!', unit: '🧩', pic: PIC.puzzles }, // (v90: mini/puzzle.js, mini/puzzle-ui.js)
 ];
 export const miniById = id => MINI.find(g => g.id === id);
 // What the mini games say (spoken: tests/spoken.js; loaded as a game starts: voicelines.js miniLines).
