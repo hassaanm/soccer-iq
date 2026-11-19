@@ -60,7 +60,7 @@ export class Rondo {
     const cr = s.a(this.mode === 'keep' ? 'hero' : 'o1'), u = unit(cr, c);
     Object.assign(s.ball, { x: cr.x + u.x * .4, y: cr.y + u.y * .4, z: 0, state: 'carried', carrier: cr.id, h: Math.atan2(u.y, u.x), move: null, reach: null, got: -9 });
     this.flight = null; this.jobs.length = 0; this.off.clear(); this.busy.clear(); this.next.clear(); this.contact.clear(); this.warned = false; this.goAt = null;
-    this.gotAt = s.time; this.safeT = s.time + 1; this.left = K.ROUND_S; this.phase = 'ready'; this.readyEnd = s.time + K.READY_S; this.result = null;
+    this.gotAt = s.time; this.safeT = s.time + 1; this.left = this.len = K.ROUND[this.mode]; this.phase = 'ready'; this.readyEnd = s.time + K.READY_S; this.result = null;
     this.defT = 0; this.aiT = 0; this.shadow = null; this.coverOf = null; this.glowUntil = -9; this.glowNext = -9; this.glowWin = null; this.lungeT = -9; this.wasGlow = false;
     this.slowTo = K.SPEED; this.t0 = s.time; this.real0 = this.real;
     this.stats = { passes: 0, myPasses: 0, myTouches: 0, toMe: 0, toMeClosed: 0, moves: 0, steals: 0, lunges: 0, glows: 0, glowS: 0 };
@@ -186,7 +186,7 @@ export class Rondo {
       if (this.mode === 'win') this.glowStep(dt);
       this.left -= dt; if (this.phase === 'play' && this.left <= 0) this.end(this.mode === 'keep' ? 'kept' : 'time', 'time');
     } else if (this.phase === 'after' && s.time >= this.afterEnd) { this.phase = 'idle'; const d = this.done; this.done = null; d?.(this.result); }
-    this.ui.timer = this.phase === 'play' || this.phase === 'ready' ? { left: clamp(this.left / K.ROUND_S, 0, 1), wide: false, scale: .62 } : null;
+    this.ui.timer = this.phase === 'play' || this.phase === 'ready' ? { left: clamp(this.left / this.len, 0, 1), wide: false, scale: .62 } : null;
     this.ui.ballGlow = this.glowing();
   }
   // Everyone where he may be: the outside players on their side, the middle in the box (and the ball, at rest, in it).

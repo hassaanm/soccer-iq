@@ -20,6 +20,7 @@ import { ease, ramp } from './rules.js';
 // SPEED: the one base speed, a share of real time (calm for a five-year-old at level 0; no slow motion by itself).
 // HOLD: the speed while a finger is held down (as Fast mode). ROUND_S: game seconds of play a round (about 30 real s).
 export const SPEED = .8, HOLD = .18, ROUND_S = 24, READY_S = 1.3, AFTER_S = 2.2;
+export const ROUND = { keep: ROUND_S, win: 20 }; // (game s a round, each game: 'win' a little shorter, about 25 real s to win it)
 
 // ---------- the box ----------
 // Centred on (cx, cy); x0..x1 and y0..y1. His side in 'keep' is the near one (x = x0, the camera behind it), facing +x
@@ -108,7 +109,7 @@ export const FOUR_AT = 5 / 3; // (after 5 rounds won)
 export function winLevel(L) {
   L = Math.max(0, L);
   return {
-    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, 2)(L), heavy: ease(.25, .02, 1.2)(L), careless: ease(.2, 0, 1.2)(L), loose: ease(.8, .1, 2.5)(L), hold: ease(1.8, .5, 2.2)(L),
+    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, 2)(L), heavy: ease(.22, .02, 1.2)(L), careless: ease(.16, 0, 1.2)(L), loose: ease(.8, .1, 2.5)(L), hold: ease(1.8, .5, 2.2)(L),
     move: ease(.2, .95, 2.2)(L), glow: ease(.5, .2, 2.5)(L), gap: ease(1, 2.5, 2.2)(L), margin: ease(0, .5, 2.2)(L),
   };
 }
