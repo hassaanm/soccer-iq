@@ -16,14 +16,14 @@ import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, REACH as FOOT_
 import { shotResult } from '../shot.js';
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
-export const ALONE_SHOT = .12, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
+export const ALONE_SHOT = .06, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
 // LEVEL, 0 (gentle) to 1 (as quick as his own friends), scales everything about them: how fast they dribble, close him
 // down and mark, how long they need on a player to take the ball (from him standing on it: STAND), how quickly they get
 // to a pass line, how hard they pass, how often and from how far they shoot, how often their first touch runs loose, and
 // how well their keeper (5 v 5) follows the ball across his goal. The default makes his team win about two matches in
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
-export const LEVELS = { '3v3': .1, '4v4': .3, '5v5': .3 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
+export const LEVELS = { '3v3': 0, '4v4': .18, '5v5': .15 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
 export let LEVEL = .5;
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   const k = clamp(level, 0, 1);
