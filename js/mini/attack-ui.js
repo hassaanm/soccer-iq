@@ -68,7 +68,7 @@ function hideCue() { if (ring) ring.visible = false; fast.ui.lines = null; }
 // two ends and the keeper's head are KEEP_PX px inside the top, as long as his own feet stay on screen; over the next
 // FADE_S s the tip goes, and the Fast camera eases back to its own view. (fast.camNow is wrapped on the instance while
 // a run plays: js/fast is not changed.) The tip is kept apart from Fast's own camera (v89 integration): taken off
-// before Fast eases its camera and put back after, itself eased, so the two never fight (before, Fast's easing pulled
+// before Fast eases its camera and put back after (raised at once, lowered eased), so the two never fight (before, Fast's easing pulled
 // the raised target down every frame and the tip pushed it up again: the view shook up and down a little).
 const START_S = 1.6, FADE_S = .8, KEEP_PX = 20, STEP_Z = .12, TIP_RATE = 8;
 const baseCam = Object.getPrototypeOf(fast).camNow;
@@ -90,7 +90,7 @@ function camNow(snap, dt) {
       want = dz * k;
     }
   }
-  this.tipZ = snap ? want : (this.tipZ || 0) + (want - (this.tipZ || 0)) * (1 - Math.exp(-(dt || 0) * TIP_RATE));
+  const was = this.tipZ || 0; this.tipZ = snap || want >= was ? want : was + (want - was) * (1 - Math.exp(-(dt || 0) * TIP_RATE)); // (up at once, so the goal never slips out of the top; down eased)
   c.tgt[2] += this.tipZ;
 }
 // Confetti from the last goal is cleared as the next attempt starts (a new scene: it would fall on it).
