@@ -112,6 +112,6 @@ lab.tick = dt => {
 };
 lab.camWant = () => {
   const b = sim.ball, h = sim.a('hero'), c = m.owner() ? sim.a(m.owner()) : b, x = clamp((c.x * .55 + h.x * .45) * .85 + L / 2 * .15, 8, L - 8), close = lab.win ? 1 : 0;
-  return { eye: [x - 1, -3 + close * .6, 8.5 - close * .5], tgt: [x, W * .55, 0], Ff: 1.06 + close * .06, Fw: .44, k: 2.2 };
+  return { eye: [x - 1, -4.6 + close * .6, 9.2 - close * .5], tgt: [x, W * .47, 0], Ff: 1.06 + close * .06, Fw: .44, k: 2.2 };
 };
 lab.run();

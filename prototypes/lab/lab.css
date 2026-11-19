@@ -41,11 +41,11 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0a1230;color:var(--in
 #score .dots b.on{background:var(--gold);transform:scale(1.15)}
 
 /* feedback: one node, reused; a picture and a word or two, never more */
-#fb{position:fixed;left:50%;top:22%;transform:translate(-50%,-10px) scale(.8);opacity:0;transition:transform .18s,opacity .18s;pointer-events:none;
+#fb{position:fixed;left:50%;top:calc(52px + var(--st));transform:translate(-50%,-10px) scale(.8);opacity:0;transition:transform .18s,opacity .18s;pointer-events:none;
   display:flex;align-items:center;gap:10px;background:#fffaf2;border-radius:22px;padding:8px 20px 8px 12px;box-shadow:0 6px 0 rgba(0,0,0,.25)}
 #fb.show{opacity:1;transform:translate(-50%,0) scale(1)}
-#fb .emo{font-size:44px;line-height:1}
-#fb .txt{font-size:26px;font-weight:700;color:var(--ink);white-space:nowrap}
+#fb .emo{font-size:38px;line-height:1}
+#fb .txt{font-size:24px;font-weight:700;color:var(--ink);white-space:nowrap}
 #fb.good{box-shadow:0 0 0 5px var(--green),0 6px 0 rgba(0,0,0,.25)}
 #fb.bad{box-shadow:0 0 0 5px #ff9a3c,0 6px 0 rgba(0,0,0,.25)}
 
