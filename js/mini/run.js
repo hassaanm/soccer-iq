@@ -26,7 +26,7 @@ function makeBar() {
   bar = document.createElement('div'); bar.id = 'miniBar'; bar.className = 'hidden';
   bar.innerHTML = `<span class="lives" aria-label="Lives">${Array.from({ length: LIVES }, () => `<i class="heart"><span class="bg">${HEART}</span><span class="fg">${HEART}</span></i>`).join('')}</span>`
     + '<span class="sc" aria-label="Score"><i class="u"></i><b>0</b></span><span class="best" aria-label="Best"><i>⭐</i><b>0</b></span>';
-  ($('#topbar') || $('#hud')).appendChild(bar);
+  ($('#hud') || document.body).appendChild(bar); // (v88: at the top left, by the pause button: the middle of the top stays clear for the goal and the keeper's eyes)
   hearts = [...bar.querySelectorAll('.heart')]; scoreEl = bar.querySelector('.sc b'); unitEl = bar.querySelector('.sc .u'); bestBox = bar.querySelector('.best'); bestEl = bestBox.querySelector('b');
 }
 
@@ -68,9 +68,11 @@ export function endRun(run, { again, sticker = null, title = null } = {}) {
   save();
   plog('end', { game: run.id, score: run.score, best: miniBest(P, run.id), newBest: d.best ? 1 : 0, tries: run.n, sec: Math.round((Date.now() - run.t0) / 1000) });
   const head = d.best ? MINI_SAID.best : title || MINI_SAID.again;
+  // (v88) His score big, with his best beside it as a gold star badge (on a new best the badge under it says so instead);
+  // the old 8-shot game's best once, in words for a grown-up.
   const extra = `<div class="miniEnd${d.best ? ' nb' : ''}"><div class="score"><i>${g.unit}</i><b>${run.score}</b></div>`
-    + `<div class="best"><i>⭐</i><b>${miniBest(P, run.id)}</b></div>${d.best ? '<div class="newbest"><span>New best!</span></div>' : ''}`
-    + (old ? `<div class="old">Old best: ${old} of 8</div>` : '') + '</div>';
+    + (d.best ? '<div class="newbest"><span><i>⭐</i>New best!</span></div>' : `<div class="best" aria-label="Best"><i>⭐</i><b>${miniBest(P, run.id)}</b></div>`)
+    + (old ? `<div class="old">Best in the old 8-shot game: ${old} ${old === 1 ? 'save' : 'saves'}</div>` : '') + '</div>';
   fillResults({
     emoji: g.unit, sticker: d.sticker ? sticker.emoji : null, title: g.name, line: '', rounds: [], note: '', news: '', extra, // (the title: the game's name; "New best!" has its own badge under the score)
     lesson: { icon: '🔁', text: 'Again', label: '', go: () => again?.() },
@@ -78,6 +80,7 @@ export function endRun(run, { again, sticker = null, title = null } = {}) {
     paper: d.best ? 90 : d.sticker ? 60 : 0,
   });
   $('#results').classList.add('mini');
+  if (g.pic && !d.sticker) $('#results .emoji').innerHTML = g.pic; // (v88: the game's own picture at the top, as on its tile)
   show('#results'); renderPickers();
   const lines = d.sticker ? (d.best ? ['Great try! You got a new sticker!', MINI_SAID.best] : ['Great try! You got a new sticker!']) : [head];
   (async () => { for (const l of lines) await say(l); })().then(() => setTimeout(() => { if (!$('#results').classList.contains('hidden')) say(ASK); }, 300));

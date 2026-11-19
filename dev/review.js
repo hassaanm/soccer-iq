@@ -155,7 +155,7 @@ function stopAll() {
   for (const k of ['load', 'round', 'match', 'demo']) if (Object.hasOwn(game, k)) delete game[k];
   game.levelOf = G.levelOf0; game.thinkTime = G.thinkTime0;
   G.hush();
-  for (const s of ['#card', '#results', '#menu', '#report', '#lessonSheet', '#cupSheet', '#albumSheet', '#sizePop', '#soundPop']) $(s)?.classList.add('hidden');
+  for (const s of ['#card', '#results', '#menu', '#report', '#lessonSheet', '#cupSheet', '#albumSheet', '#miniSheet', '#sizePop', '#soundPop']) $(s)?.classList.add('hidden');
   $('#cardMain').onclick = null; $('#cardAlt').onclick = null;
   $('#confetti')?.remove();
   G.banner0.call(hud, '', 'soft', null); // (clears the result card's own timers)
@@ -247,7 +247,9 @@ async function run(e, my) {
     const ok = e.keeper === 'game' && !!$('#keeperBtn');
     if (!ok) { notice = 'Not in this build yet: the keeper work is on another branch. This entry lights up once it is merged.'; status('not in this build yet'); return; }
     game.home(); renderPickers(); show('#home'); G.goalie = (await import('../js/ui/goalie.js').catch(() => null))?.goalie || null;
-    $('#keeperBtn').click(); status('playing'); return;
+    $('#keeperBtn').click(); // (v87: the button opens the mini games; the keeper's tile starts the keeper game)
+    const tile = $('#minis .tile[data-id=keeper]'); if (!tile) { notice = 'No Goalkeeper tile in the mini games.'; status('no keeper tile'); return; }
+    tile.click(); status('playing'); return;
   }
   if (e.screen) {
     game.home(); G.world.setEnv('crowd'); renderPickers(); show('#home');
