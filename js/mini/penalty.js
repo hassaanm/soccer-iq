@@ -167,8 +167,10 @@ export class Penalty extends Goalie {
     if (st) {
       if (st.at0 == null) st.at0 = this.ui.clock;
       const age = this.ui.clock - st.at0, a = k.eyes >= 99 ? 1 : clamp(k.eyes - age, 0, 1);
-      if (a > 0) ui.tell = { x: K.x, y: K.y, z: 1.75, dx: sideU(st.side), dy: .7, big: k.big, alpha: a, side: st.side };
-      if (k.arrow && st.side === k.side) { const u = sideU(st.side); ui.lines = [{ a: { x: K.x + .5, y: K.y + u * .35 }, b: { x: K.x + .5, y: K.y + u * 1.6 }, color: '#ffd23f' }]; }
+      // (v88) his eyes sit on the crossbar over his head, clear of the top-middle target; the arrow lies on the grass a
+      // little in front of the goal line, long enough to see from the spot
+      if (a > 0) ui.tell = { x: K.x, y: K.y, z: GOAL.gh, dx: sideU(st.side), dy: .7, big: k.big, alpha: a, side: st.side };
+      if (k.arrow && st.side === k.side) { const u = sideU(st.side); ui.lines = [{ a: { x: K.x + 1, y: K.y + u * .2 }, b: { x: K.x + 1, y: K.y + u * 2.3 }, color: '#ffd23f' }]; }
     }
     // The teaching hand (his very first kick): over a target on the side the keeper leaves, once the keeper has shown it.
     if (this.hint && st && this.pick == null && f > k.at + .05) { const Z = target(other(k.side)); ui.hand = this.w({ x: 0, u: Z.u }, Z.z); }
