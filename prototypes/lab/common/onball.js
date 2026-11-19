@@ -31,7 +31,7 @@ function judgeBall(lab, m, id, os) {
       o.emo = c.good ? '🥅' : '✋';
     } else if (o.act === 'run') {
       const c = m.runCheck(id, o.ang); o.check = c; o.good = c.good;
-      o.word = c.good ? 'Space!' : 'Defender!'; o.line = c.good ? 'space ahead keep it and run' : 'a defender was right there'; o.emo = c.good ? '🏃' : '✋';
+      o.word = c.good ? 'Space!' : c.why === 'line' ? 'Out!' : 'Defender!'; o.line = c.good ? 'space ahead keep it and run' : c.why === 'line' ? 'run where nobody is' : 'a defender was right there'; o.emo = c.good ? '🏃' : '✋';
     }
   }
   const shot = os.find(o => o.act === 'shoot' && o.good), run = os.find(o => o.act === 'run' && o.good);

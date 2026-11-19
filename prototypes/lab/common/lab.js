@@ -113,7 +113,7 @@ export async function boot(cfg) {
     time: 0, real: 0, slow: 1, slowTo: 1, paused: true, ended: false, started: false, waiting: false,
     ctrl: null, ctrlSoft: false, ui: { glow: {}, lines: null, heroRing: false },
     win: null, tick: null, cam: null, camWant: null, onEnd: null,
-    stats: { decisions: 0, good: 0, choose: 0, watch: 0, wait: 0, played: 0, picks: [], stalls: 0, frames: [] },
+    stats: { decisions: 0, good: 0, choose: 0, watch: 0, wait: 0, played: 0, picks: [], stalls: 0, frames: [], work: [] },
     len: +(Q.get('len') || cfg.len || 180), // seconds of play before the end screen
   };
   window.__lab = lab;
@@ -251,7 +251,7 @@ export async function boot(cfg) {
   let last = performance.now(), picT = 0, stallRef = null, stallT = 0;
   const moved = () => { let s = Math.hypot(sim.ball.x || 0, sim.ball.y || 0) * 0; const now = [sim.ball.x, sim.ball.y]; for (const a of sim.agents.values()) now.push(a.x, a.y); if (!stallRef) { stallRef = now; return 1; } for (let i = 0; i < now.length; i++) s = Math.max(s, Math.abs(now[i] - (stallRef[i] ?? now[i]))); return s; };
   function frame(now) {
-    requestAnimationFrame(frame);
+    requestAnimationFrame(frame); const t0 = performance.now();
     const ms = Math.min(100, now - last); last = now; const dt = Math.min(.05, ms / 1000);
     if (lab.started && !lab.paused && !lab.ended) lab.stats.frames.push(+ms.toFixed(1));
     try {
@@ -277,6 +277,7 @@ export async function boot(cfg) {
       moveCam(dt, !lab.started && !lab.camSnapped && (lab.camSnapped = true));
       drawMarkers(now / 1000);
       world.render(sim, cam, lab.ui, picT);
+      if (lab.started && !lab.paused && !lab.ended) lab.stats.work.push(+(performance.now() - t0).toFixed(2)); // (the frame's own work, for the speed checks)
     } catch (e) { console.error(e); }
   }
   lab.run = () => { last = performance.now(); requestAnimationFrame(frame); };
