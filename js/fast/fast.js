@@ -27,7 +27,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const TURN_MAX = 2.5, SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
+export const TURN_MAX = R.TURN_MAX, SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -87,7 +87,7 @@ class Fast {
     const m = this.m; if (!m || id === this.me) { this.drawAvatar(); return; }
     this.resetTransient();
     m.cmd.delete(this.me); this.me = m.me = m.favor = id; m.meMove = null; m.roles = null;
-    this.yaw = this.natural(); this.drawAvatar(); this.lookUp(true); this.stats.swaps++;
+    this.yaw = this.natural(); this.vw = null; this.drawAvatar(); this.lookUp(true); this.stats.swaps++;
     game.plog?.('fast', { is: 'swap', me: id });
   }
   drawAvatar() { this.dom.avatar.innerHTML = shirt(this.us, this.player(this.me).num, 40); }
@@ -107,7 +107,7 @@ class Fast {
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
     this.aiming = this.footing = false; this.ui.ballGlow = false; this.actKind = null; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
-    this.yaw = this.natural(); this.camNow(1);
+    this.yaw = this.natural(); this.vw = null; this.camNow(1);
     hud.state({ phase: 'idle', mode: 'fast' }); hud.caption(''); hud.score(m.score, us, them);
     game.mode = 'fast'; this.drawAvatar(); this.dom.box.classList.add('on'); this.dom.hold.classList.add('show');
     FAST.on = this.on = true; this.calm = true;
@@ -133,7 +133,7 @@ class Fast {
     const m = this.m, c = m.count, all = Object.values(c.touches).reduce((a, b) => a + b, 0);
     return { score: { ...m.score }, touches: c.touches[this.me] || 0, teamTouches: all, share: all ? +((c.touches[this.me] || 0) / all).toFixed(2) : 0, passes: c.passes, good: c.arrived, cut: c.cut, goals: c.goals, steals: c.steals, lost: c.lost,
       time: Math.round(this.stats.played), actions: this.stats.actions, shots: this.stats.shots, skills: this.stats.skills, stealMiss: this.stats.stealMiss, spentTaps: this.stats.spentTaps, keeperTurns: this.stats.keeperTurns, saves: this.stats.saves, cues: this.stats.cues, chipPasses: this.stats.chipPasses, holds: this.stats.holds, slowS: +this.stats.slowT.toFixed(1), looks: this.stats.looks,
-      pitch: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
+      pitch: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), share65MaxS: +(this.stats.low65Max || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
       camBall: this.stats.camN ? +(this.stats.camBall / this.stats.camN).toFixed(3) : null, camGoal: this.stats.camN ? +(this.stats.camGoal / this.stats.camN).toFixed(3) : null };
   }
   // ---------- events ----------
@@ -175,9 +175,17 @@ class Fast {
     if (up) { this.stats.looks++; sfx('up'); this.lastScan = this.real; } else sfx('down');
     const d = this.dom.look; d.classList.toggle('show', !up);
   }
+  // The camera: the shot view while he aims, else the view he does not steer (rules.js viewStep: where he looks, near a
+  // line turned along the pitch, the eye in from the line or out over it looking in, close in a corner; the pitch fills
+  // the picture: fitPitch), or the yaw his finger holds.
   camNow(snap = 0, dt = 0) {
     const s = this.sim, h = s.a(this.me); if (!h) return;
-    const b = s.ball, w = this.aiming ? R.aimCam(h, PITCH.L, PITCH.gy0, PITCH.gy1, PITCH.gh, world.width || 932, world.height || 430, spaces()) : R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam; // (the pitch fills the picture: rules.js fitPitch)
+    const b = s.ball, ww = world.width || 932, hh = world.height || 430, has = b.state === 'carried' && b.carrier === this.me, vs = this.vw ||= { yaw: this.yaw };
+    let w;
+    if (this.aiming) { w = R.aimCam(h, PITCH.L, PITCH.gy0, PITCH.gy1, PITCH.gh, ww, hh, spaces()); vs.yaw = this.yaw; }
+    else { const drag = this.finger?.moved && this.holdYaw != null ? this.holdYaw : null; if (snap) { vs.yaw = this.yaw; vs.at = null; vs.gen = null; }
+      w = R.viewStep(vs, { me: h, ball: { x: b.x, y: b.y, z: b.z || 0 }, has, look: this.look, w: ww, h: hh, L: PITCH.L, W: PITCH.W, nat: this.natural(), drag, still: drag == null && this.real <= this.holdT }, dt, snap ? 50 : 1); this.yaw = vs.yaw; }
+    const k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam;
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
     c.Ff += (w.Ff - c.Ff) * k; c.Fw += ((w.Fw || 0) - c.Fw) * k;
   }
@@ -407,11 +415,8 @@ class Fast {
     const h = s.a(this.me), has = m.owner() === this.me;
     // his head: down only after the ball came to him; the camera looks where he would, or where he holds it
     this.look += ((this.up1 ? 1 : 0) - this.look) * (1 - Math.exp(-dt * 6));
-    const nat = this.natural();
-    if (this.finger?.moved && this.holdYaw != null) this.yaw = this.holdYaw;
-    else if (this.real > this.holdT) { const d = R.wrap(nat - this.yaw), st = R.clamp(d * (1 - Math.exp(-dt * 2.4)), -TURN_MAX * dt, TURN_MAX * dt); this.yaw = R.wrap(this.yaw + st); this.holdYaw = null; } // (eased, and never faster than TURN_MAX rad/s: the ball changing sides does not whip the view round)
-    if (h) this.yaw = R.clampYaw(h, this.yaw, PITCH.L, PITCH.W, Math.min(R.LOOK_MIN, R.reachOut(h, nat, PITCH.L, PITCH.W))); // (never off the pitch; the ball or the goal near a line still in view)
-    this.camNow(0, dt);
+    if (!(this.finger?.moved && this.holdYaw != null) && this.real > this.holdT) this.holdYaw = null;
+    this.camNow(0, dt); // (the yaw: eased to the view's, never faster than TURN_MAX rad/s, never off the pitch: rules.js viewStep)
     // the spots round him, the glow on friends he can pass to, the warning on a defender about to tackle
     this.spots = h && !m.dead && !this.aiming ? R.spots(h, [...s.agents.values()].filter(a => a.id !== this.me), PITCH.L, PITCH.W) : [];
     for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me && m.passCheck(this.me, id).open ? .55 : 0; // (gold: a pass that will get there)
@@ -440,7 +445,7 @@ class Fast {
     }
     if (h && !m.dead && !this.aiming && (st.shareF = (st.shareF || 0) + 1) % 6 === 0) { // (the share of the picture that is pitch, for the counts: its median and the longest time under 0.6)
       const v = R.pitchShare(this.cam, world.width, world.height, PITCH.L, PITCH.W, 10, 7); (st.shares ||= []).push(+v.toFixed(2)); if (st.shares.length > 6000) st.shares.splice(0, 3000);
-      st.lowRun = v < .6 ? (st.lowRun || 0) + 6 * dt : 0; st.lowMax = Math.max(st.lowMax || 0, st.lowRun); }
+      st.lowRun = v < .6 ? (st.lowRun || 0) + 6 * dt : 0; st.lowMax = Math.max(st.lowMax || 0, st.lowRun); st.low65 = v < .65 ? (st.low65 || 0) + 6 * dt : 0; st.low65Max = Math.max(st.low65Max || 0, st.low65); }
     const w = performance.now() - t0; st.work.push(w); if (st.work.length > 20000) st.work.splice(0, 10000); (this.workAll ||= []).push(w); if (this.workAll.length > 60000) this.workAll.splice(0, 30000);
   }
   // Friends he saw who are off screen now: a chip at the edge toward where he last saw them (rules.js chipList, edgeAt),

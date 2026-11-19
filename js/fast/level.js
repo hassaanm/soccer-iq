@@ -7,7 +7,7 @@
 import { LEVELS, LEVEL_MIN, LEVEL_MAX } from './match.js';
 import { clamp } from './rules.js';
 
-export const UP = .06, UP_CLEAR = .1, DOWN = .05, DOWN_HEAVY = .09, CLEAR = 2; // (CLEAR: a win or a loss by this many goals or more)
+export const UP = .05, UP_CLEAR = .08, DOWN = .07, DOWN_HEAVY = .11, CLEAR = 2; // (down a little more than up: with draws, it settles where he wins about half) // (CLEAR: a win or a loss by this many goals or more)
 export const startLevel = size => LEVELS[size] ?? 0;
 // The level after a match that ended `score` ({ us, them }). A draw (the next goal tied it) leaves it as it was.
 export function levelAfter(level, score) {

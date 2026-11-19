@@ -68,18 +68,51 @@ test('his head goes down only as a ball comes to him, never on his own dribble, 
   assert.equal(R.headDownOn('m1', 'hero', 'pass'), false, 'a friend getting it: his head stays up');
 });
 
-test('a steal: the ball off his foot opens a window (at least 0.7 s at the default level); a press in it wins, one outside it is a lunge', () => {
-  for (const when of ['in', 'none', 'after']) {
+test('a steal: the glow comes only once he has been on the carrier a moment; a press in it wins, one outside it is a lunge and spends STEAL', () => {
+  for (const when of ['in', 'early', 'none', 'after']) {
     const { sim, m } = match(); m.me = 'hero'; m.meAuto = false; m.dead = false;
-    assert.ok(m.opp.glow / .75 >= .7, `the window lasts ${(m.opp.glow / .75).toFixed(2)} s of real time`);
+    assert.ok(m.opp.glow / .75 >= .6, `the window lasts ${(m.opp.glow / .75).toFixed(2)} s of real time`);
     park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); sim.give('o1');
     Object.assign(sim.ball, { x: when === 'none' ? 15.3 : 14.3, y: W / 2 }); // (off his foot toward him, or at his foot)
-    m.stealWindow(); assert.equal(m.stealOpen(), when !== 'none');
+    m.stealWindow(); assert.equal(m.stealOpen(), false, 'never the moment STEAL shows');
+    if (when !== 'early') { sim.time += m.opp.glowFirst * 1.26; m.stealWindow(); }
+    assert.equal(m.stealOpen(), when === 'in' || when === 'after', when);
     if (when === 'after') sim.time += m.opp.glow + .01;
-    const r = m.steal();
+    const t0 = sim.time, r = m.steal();
     assert.equal(r, when === 'in' ? 'won' : 'missed', when); assert.equal(m.owner(), when === 'in' ? 'hero' : 'o1');
-    if (r === 'missed') assert.ok(m.meMove.kind === 'lunge' && m.meMove.until - sim.time >= 1, 'a lunge costs him about 1.5 s');
+    if (r === 'missed') {
+      assert.ok(m.meMove.kind === 'lunge' && m.meMove.until - sim.time >= 1, 'a lunge costs him about 1.5 s');
+      assert.ok(m.stealSpent() && m.stealLeft() > .99, 'STEAL is spent'); assert.equal(m.steal(), null, 'a press while it is spent does nothing');
+      sim.time = t0 + m.opp.recover * .5; assert.ok(Math.abs(m.stealLeft() - .5) < .02, 'it comes back over opp.recover s');
+      sim.time = t0 + m.opp.recover + .01; assert.ok(!m.stealSpent(), 'and is back');
+      Object.assign(sim.ball, { x: 14.3, y: W / 2 }); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); m.stealWindow(); assert.equal(m.stealOpen(), false, 'no glow straight after it is back');
+    }
   }
+});
+
+// The steal tool's two players (fast2/tools/r-steal.mjs, shorter): both chase their carrier; one presses STEAL 0.4 s
+// after the glow starts, the other every 0.7 s whenever it can be pressed.
+function stealBot(policy, secs = 200, seed = 3) {
+  const { sim, m } = match(seed); m.me = m.favor = 'hero'; m.meAuto = false; m.setup('them'); m.kickoff('them');
+  m.on.goal = () => m.after(1.8, () => m.kickoff('them'));
+  let real = 0, next = 0, glowOn = false, last = -9, presses = 0, won = 0; const pend = [], dt = 1 / 60;
+  while (real < secs) {
+    real += dt; for (let i = pend.length - 1; i >= 0; i--) if (pend[i].at <= real) pend.splice(i, 1)[0].f();
+    m.step(dt * .75); sim.step(dt * .75); if (m.dead) { glowOn = false; continue; }
+    const me = sim.a('hero'), c = m.owner(), shown = c && m.team(c) === 'them' && R.stealShown(sim.a(c), me), glow = shown && m.stealOpen();
+    const press = d => { last = real; pend.push({ at: real + d, f: () => { const r = m.steal(); if (r) presses++; if (r === 'won') won++; } }); };
+    if (policy === 'wait' && glow && !glowOn) press(.4);
+    if (policy === 'mash' && shown && !m.stealSpent() && real - last > .7) press(.1);
+    glowOn = glow;
+    if (real > next) { next = real + .8; const t = c && m.team(c) === 'them' ? sim.a(c) : c ? null : sim.ball; if (t) { const p = R.moveTarget(me, t, L, W); m.meTo(p.x, p.y, p.ring || 1); } }
+  }
+  return { presses, won, rate: won / (presses || 1), perMin: won / (secs / 60) };
+}
+test('waiting for the glow wins STEAL; mashing it does not pay (under 20%, and fewer steals a minute)', () => {
+  const wait = stealBot('wait'), mash = stealBot('mash');
+  assert.ok(wait.presses >= 3 && wait.rate >= .85, `waiting: ${JSON.stringify(wait)}`);
+  assert.ok(mash.rate < .2, `mashing: ${JSON.stringify(mash)}`);
+  assert.ok(mash.perMin < wait.perMin, `steals a minute: mashing ${mash.perMin.toFixed(2)}, waiting ${wait.perMin.toFixed(2)}`);
 });
 
 test('the shot view: from every place SHOOT shows, all six targets on screen, under the HUD, at least 56 px apart', async () => {
