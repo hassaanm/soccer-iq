@@ -37,7 +37,7 @@ test('a ball in flight never goes through a body (any of theirs, planned or not)
   assert.equal(R.bodyHit(ball, [{ id: 'o2', x: 10, y: 6.2 }]), null);
 });
 
-test('the spots never lie off the pitch or on another player, and include his own spot', () => {
+test('the guide marks never lie off the pitch, are not drawn on a player, and include his own spot', () => {
   const rnd = seeded(3);
   for (let i = 0; i < 400; i++) {
     const me = { x: rnd() * L, y: rnd() * W }, others = Array.from({ length: 7 }, () => ({ x: rnd() * L, y: rnd() * W }));
@@ -45,9 +45,10 @@ test('the spots never lie off the pitch or on another player, and include his ow
     assert.ok(sp.some(s => s.ring === 0));
     for (const s of sp.filter(s => s.ring)) {
       assert.ok(s.x >= R.EDGE && s.x <= L - R.EDGE && s.y >= R.EDGE && s.y <= W - R.EDGE, 'on the pitch');
-      assert.ok(others.every(o => Math.hypot(o.x - s.x, o.y - s.y) >= R.BODY), 'not on a player');
+      assert.equal(!!s.hid, others.some(o => Math.hypot(o.x - s.x, o.y - s.y) < R.BODY), 'a mark on a player is not drawn');
     }
-    assert.ok(sp.filter(s => s.ring === 1).length <= 8 && sp.filter(s => s.ring === 2).length <= 8);
+    assert.ok(sp.filter(s => s.ring === 1).length <= 8 && sp.filter(s => s.ring === 2).length <= R.TICKS);
+    for (const d of R.dashes(me, L, W)) assert.ok(d.x >= 0 && d.x <= L && d.y >= 0 && d.y <= W, 'the far ring is broken where it leaves the pitch');
   }
 });
 
@@ -155,4 +156,28 @@ test('every Fast mode file parses (no test loads the page modules)', async () =>
   const { spawnSync } = await import('node:child_process'); const { readdirSync } = await import('node:fs');
   const dir = new URL('../js/fast/', import.meta.url).pathname;
   for (const f of readdirSync(dir).filter(f => f.endsWith('.js'))) { const r = spawnSync(process.execPath, ['--check', dir + f], { encoding: 'utf8' }); assert.equal(r.status, 0, `${f}: ${r.stderr}`); }
+});
+
+test('a tap anywhere moves him: between marks there, near a jog, far a sprint brought in to 9 m, off the pitch onto it, by his feet stay', () => {
+  const me = { x: L / 2, y: W / 2 };
+  const mid = { x: me.x + Math.cos(Math.PI / 8) * 3, y: me.y + Math.sin(Math.PI / 8) * 3 }, t1 = R.moveTarget(me, mid, L, W); // (between two near dots)
+  assert.equal(t1.ring, 1); assert.ok(Math.hypot(t1.x - mid.x, t1.y - mid.y) < 1e-9, 'exactly where he tapped');
+  const t2 = R.moveTarget(me, { x: me.x + 20, y: me.y + 1 }, L, W); assert.equal(t2.ring, 2); assert.ok(Math.hypot(t2.x - me.x, t2.y - me.y) <= R.FAR_MAX + 1e-9, 'a far tap is brought in');
+  const t3 = R.moveTarget({ x: 3, y: 2 }, { x: -4, y: -5 }, L, W); assert.ok(t3.x >= R.EDGE && t3.y >= R.EDGE, 'onto the pitch');
+  assert.equal(R.moveTarget(me, { x: me.x + .3, y: me.y }, L, W).ring, 0, 'by his feet: stay');
+  // and the match takes him there: a jog to the point between the marks
+  const { sim, m } = match(); m.me = 'hero'; m.dead = false; park(sim, ['hero']); place(sim, { hero: [me.x, me.y] }); Object.assign(sim.ball, { state: 'loose', carrier: null, x: 2, y: 2 }); m.restart = { team: 'us', id: 'x' };
+  m.meTo(t1.x, t1.y, t1.ring); const h = sim.a('hero'); assert.ok(Math.hypot(h.tx - t1.x, h.ty - t1.y) < 1e-9, 'he sets off for the point between the marks'); const d0 = Math.hypot(h.x - t1.x, h.y - t1.y); run(m, sim, .5); assert.ok(Math.hypot(h.x - t1.x, h.y - t1.y) < d0 - .8, 'and gets nearer');
+});
+
+test('hints: only after he has done nothing for the delay (and is not on his way), never off the pitch, at most three', () => {
+  assert.equal(R.hintsDue(10, 8, false), false); assert.equal(R.hintsDue(10, 10 - R.HINT_S, false), true); assert.equal(R.hintsDue(10, 0, true), false, 'not while he is on his way');
+  const rnd = seeded(9);
+  for (let i = 0; i < 200; i++) {
+    const me = { x: rnd() * L, y: rnd() * W }, foes = Array.from({ length: 4 }, () => ({ x: rnd() * L, y: rnd() * W })), carrier = { x: rnd() * L, y: rnd() * W };
+    for (const st of [{ mine: true }, { ours: true, carrier }, { carrier: foes[0] }]) {
+      const h = R.hints({ me, ball: st.carrier || me, foes, L, W, ...st });
+      assert.ok(h.length <= 3); for (const p of h) assert.ok(p.x >= R.EDGE && p.x <= L - R.EDGE && p.y >= R.EDGE && p.y <= W - R.EDGE);
+    }
+  }
 });

@@ -17,20 +17,47 @@ export function onLane(p, a, b, t0 = .12) {
   const x = a.x + dx * t, y = a.y + dy * t; return { t, x, y, d: Math.hypot(p.x - x, p.y - y), along: t * Math.sqrt(l2) };
 }
 
-// ---------- the spots on the grass ----------
-// Eight ways round him (the first one toward the goal he attacks), each with a near spot (NEAR m) and a far one (FAR m),
-// and his own spot ("stay"). A spot off the pitch (EDGE m inside the lines at least) or on top of another player (BODY m)
-// is left out.
-export const NEAR = 3, FAR = 7, EDGE = .7, BODY = 1.1;
-export const DIRS = Array.from({ length: 8 }, (_, i) => i * Math.PI / 4);
+// ---------- moving: a free tap, the marks only a guide ----------
+// He can tap any point of the pitch (v84 round 2, the owner's "no gaps"): within NEAR_R m of him a jog (with the ball a
+// close dribble), farther a sprint (a big push), the target brought in to FAR_MAX m that way and onto the pitch (EDGE m
+// inside the lines); within STAY_R m of his feet, stay. Toward a defender too: running into one is his choice to make.
+export const NEAR = 3, FAR = 7, EDGE = .7, BODY = 1.1, NEAR_R = 4.5, FAR_MAX = 9, STAY_R = .8;
+export function moveTarget(me, p, L, W) {
+  const dx = p.x - me.x, dy = p.y - me.y, d = Math.hypot(dx, dy);
+  if (d < STAY_R) return { x: me.x, y: me.y, ring: 0 };
+  const k = d > FAR_MAX ? FAR_MAX / d : 1;
+  return { x: clamp(me.x + dx * k, EDGE, L - EDGE), y: clamp(me.y + dy * k, EDGE, W - EDGE), ring: d <= NEAR_R ? 1 : 2 };
+}
+// The guide on the grass: eight soft dots NEAR m round him and twelve small ticks on a faint ring FAR m out (the ring a
+// broken line where it leaves the pitch: `dash`, 48 pieces). Marks off the pitch are left out; one on a player is not
+// drawn (`hid`), but a tap there still works. Each mark: { x, y, ring, dir (0: toward the goal he attacks) }.
+export const DIRS = Array.from({ length: 8 }, (_, i) => i * Math.PI / 4), TICKS = 12, DASHES = 48;
+const onPitch = (x, y, L, W) => x >= EDGE && x <= L - EDGE && y >= EDGE && y <= W - EDGE;
 export function spots(me, others, L, W) {
   const out = [{ x: me.x, y: me.y, ring: 0, dir: -1 }];
-  for (const [ring, r] of [[1, NEAR], [2, FAR]]) DIRS.forEach((a, dir) => {
-    const x = me.x + Math.cos(a) * r, y = me.y + Math.sin(a) * r;
-    if (x < EDGE || x > L - EDGE || y < EDGE || y > W - EDGE) return;
-    if (others.some(o => Math.hypot(o.x - x, o.y - y) < BODY)) return;
-    out.push({ x, y, ring, dir });
-  });
+  const add = (a, r, ring, dir) => { const x = me.x + Math.cos(a) * r, y = me.y + Math.sin(a) * r; if (!onPitch(x, y, L, W)) return; out.push({ x, y, ring, dir, hid: others.some(o => Math.hypot(o.x - x, o.y - y) < BODY) }); };
+  DIRS.forEach((a, i) => add(a, NEAR, 1, i));
+  for (let i = 0; i < TICKS; i++) add(i * 2 * Math.PI / TICKS, FAR, 2, i * 8 / TICKS); // (dir: in eighths of a turn)
+  return out;
+}
+export function dashes(me, L, W) { const out = []; for (let i = 0; i < DASHES; i++) { const a = (i + .5) * 2 * Math.PI / DASHES, x = me.x + Math.cos(a) * FAR, y = me.y + Math.sin(a) * FAR; if (x >= 0 && x <= L && y >= 0 && y <= W) out.push({ x, y, a }); } return out; }
+
+// ---------- hints: the two or three really good places, after a while ----------
+// When he has done nothing for HINT_S s (and is not on his way anywhere), the best places now pulse: with the ball,
+// space ahead and away from the one who presses him; his team's ball, open space that gives the carrier a line to him;
+// theirs, goal-side of the ball. Only places on the pitch and good enough (a score over 0) are given; at most three.
+export const HINT_S = 3;
+export const hintsDue = (now, lastAct, moving) => !moving && now - lastAct >= HINT_S;
+export function hints({ me, ball, carrier, mine, ours, foes, L, W }) {
+  const cand = [];
+  for (const r of [NEAR, 5.5, FAR]) for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, x = me.x + Math.cos(a) * r, y = me.y + Math.sin(a) * r; if (onPitch(x, y, L, W)) cand.push({ x, y }); }
+  const room = p => foes.reduce((m, o) => Math.min(m, Math.hypot(o.x - p.x, o.y - p.y)), 99);
+  let score;
+  if (mine) { const press = foes.slice().sort((p, q) => dist(p, me) - dist(q, me))[0]; score = p => (p.x - me.x) * .35 + Math.min(room(p), 4) - (press ? Math.max(0, 3 - dist(press, p)) * 1.5 : 0) - 2.2; }
+  else if (ours && carrier) score = p => { let lane = 9; for (const o of foes) lane = Math.min(lane, onLane(o, carrier, p, 0).d); const d = dist(carrier, p); return Math.min(lane, 3) + Math.min(room(p), 3) * .5 - Math.abs(d - 7) * .3 + (p.x - carrier.x) * .08 - 2.6; };
+  else { const own = { x: 0, y: W / 2 }; score = p => { const c = onLane(p, ball, own, 0); return 2.5 - c.d * 1.2 - Math.abs(dist(p, ball) - 2.5) * .5; }; }
+  const out = [];
+  for (const p of cand.map(p => ({ ...p, s: score(p) })).filter(p => p.s > 0).sort((p, q) => q.s - p.s)) { if (out.every(q => dist(q, p) > 3)) out.push(p); if (out.length === 3) break; }
   return out;
 }
 

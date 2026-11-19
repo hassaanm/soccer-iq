@@ -11,6 +11,7 @@
 //    only). Let go and the view eases back.
 //  - The avatar (top right) pauses and lets him change his player.
 // Play runs at BASE of real speed. First to GOALS wins; play() resolves with the counts.
+import * as THREE from 'three';
 import { world, game, canvas } from '../ui/stage.js';
 import { hud, hudEl } from '../ui/hud.js';
 import { say } from '../ui/speech.js';
@@ -191,7 +192,6 @@ class Fast {
   options() {
     const s = this.sim, m = this.m, me = s.a(this.me), out = []; if (!me || m.dead) return out;
     if (m.owner() === this.me) for (const id of m.usIds) if (id !== this.me && s.a(id)) out.push({ kind: 'pass', id, p: s.a(id) });
-    for (const sp of this.spots || []) out.push({ kind: 'spot', sp, p: sp });
     return out;
   }
   seen(p, z = 0) { const q = world.project(p.x, p.y, z); return !!q && R.onScreen(q, world.width, world.height); }
@@ -207,16 +207,19 @@ class Fast {
       }
     }
     this.stats.taps++;
-    if (!best || bd > reach) { sfx('tap'); return null; }
-    if (best.kind === 'pass') this.passTo(best.id); else this.goSpot(best.sp);
-    return best;
+    if (best && best.kind === 'pass' && bd <= reach) { this.passTo(best.id); return best; }
+    // anywhere else on the pitch: go there (rules.js moveTarget: near a jog or close dribble, far a sprint or big push)
+    const g = this.ground(x, y), h = this.sim.a(this.me); if (!g || !h) { sfx('tap'); return null; }
+    const tgt = R.moveTarget(h, g, PITCH.L, PITCH.W); this.goSpot(tgt); return { kind: 'ground', ...tgt };
   }
   passTo(id) {
     const m = this.m, c = m.passCheck(this.me, id); this.acted('pass');
     m.pass(this.me, id); sfx(c.open ? 'star' : 'tap', c.open ? 1 : undefined);
     game.plog?.('fast', { is: 'pass', to: id, open: c.open ? 1 : 0, why: c.why });
   }
-  goSpot(sp) { this.m.meTo(sp.x, sp.y, sp.ring); this.acted(sp.ring === 0 ? 'stay' : sp.ring === 2 ? 'far' : 'near'); }
+  goSpot(sp) { this.m.meTo(sp.x, sp.y, sp.ring); this.goAt = sp.ring ? { x: sp.x, y: sp.y } : null; this.acted(sp.ring === 0 ? 'stay' : sp.ring === 2 ? 'far' : 'near'); }
+  // The point on the grass under a place on the screen (or null: the sky).
+  ground(x, y) { const r = this.ray ||= { c: new THREE.Raycaster(), n: new THREE.Vector2(), p: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), h: new THREE.Vector3() }; r.n.set(x / world.width * 2 - 1, -(y / world.height) * 2 + 1); r.c.setFromCamera(r.n, world.camera); return r.c.ray.intersectPlane(r.p, r.h) ? { x: r.h.x, y: r.h.y } : null; }
   acted(kind) { this.stats.actions++; this.lastAct = this.real; this.dom.hold.classList.remove('show'); void kind; }
   // ---------- the scan reminder ----------
   // He has not looked round (a hold, a drag, LOOK UP) for SCAN_T s, and someone who matters is out of his view: a friend
@@ -379,7 +382,12 @@ class Fast {
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > 8)) this.endAim();
     if (this.aiming) this.yaw = R.wrap(this.yaw + R.wrap(Math.atan2(PITCH.W / 2 - h.y, PITCH.L - h.x) - this.yaw) * (1 - Math.exp(-dt * 6)));
     if (this.warnAt && (this.real > this.warnT || !has)) this.warnAt = null;
-    this.marks.draw(this.spots, h, has, this.ui.clock, this.warnAt && s.a(this.warnAt), !m.dead);
+    // where he chose to go, until he is there (or does something else); the hints after HINT_S s of nothing
+    if (this.goAt && (!h || Math.hypot(h.x - this.goAt.x, h.y - this.goAt.y) < .7 || !m.meMove || m.meMove.kind === 'stay')) this.goAt = null;
+    const moving = !!(m.meMove && s.time < m.meMove.until), c0 = m.owner();
+    if (h && !m.dead && !this.aiming && R.hintsDue(this.real, this.lastAct ?? 0, moving)) { if (!this.hinted || this.real - (this.hintAt || 0) > .5) { this.hintAt = this.real; this.hinted = R.hints({ me: h, ball: s.ball, carrier: c0 && s.a(c0), mine: has, ours: !!c0 && m.team(c0) === 'us', foes: m.foes('us'), L: PITCH.L, W: PITCH.W }); if (this.hinted.length && !this.hintCounted) { this.hintCounted = true; this.stats.hints = (this.stats.hints || 0) + 1; } } }
+    else { this.hinted = null; this.hintCounted = false; }
+    this.marks.draw(this.spots, h && !m.dead && !this.aiming ? R.dashes(h, PITCH.L, PITCH.W) : [], h, has, this.ui.clock, this.warnAt && s.a(this.warnAt), !m.dead, this.goAt, this.hinted);
     this.edge(h); this.chips(h, has);
     // the counts: where the camera he did not move looks (the ball on screen, the goal he attacks on screen)
     if (!this.finger?.moved && this.real > this.holdT && h && !m.dead) {
