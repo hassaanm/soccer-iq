@@ -13,7 +13,7 @@
 // give the ball an open line ("make the angle") before the ball comes; pass to the friend whose line is open, early,
 // before the defender closes; the defender presses the ball on a curve that cuts the line to one friend (the cover
 // shadow), a second defender cuts the next best line, and he wins it on a slow pass or a heavy touch.
-import { clamp, dist, onLane, cutBy, REACH } from '../fast/rules.js';
+import { clamp, dist, onLane, cutBy, project, REACH } from '../fast/rules.js';
 import { ease, ramp } from './rules.js';
 
 // ---------- time ----------
@@ -87,9 +87,9 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 //   fMove    s between his friends' moves to open their lines (slower: he must make more of the angles himself)
 export const TWO_AT = 5 / 3; // (after 5 rounds kept)
 export function keepLevel(L) {
-  L = Math.max(0, L); const two = L >= TWO_AT ? .3 + ramp(TWO_AT, .2, .7)(L) : 0;
+  L = Math.max(0, L); const two = L >= TWO_AT - 1e-9 ? .3 + ramp(TWO_AT, .2, .7)(L) : 0; // (1e-9: five thirds of a level, counted a third at a time)
   return {
-    size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L), cover: ease(2.2, 4.3, 6)(L) * (two || 1), cutRun: ease(2.8, 5.2, 6)(L), cutReact: ease(.6, .15, 6)(L),
+    size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L), cover: ease(2.2, 4.3, 6)(L) * two, cutRun: ease(2.8, 5.2, 6)(L), cutReact: ease(.6, .15, 6)(L),
     stand: ease(3.2, 1, 6)(L), think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.35, .05, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.9, 1.6, 6)(L),
   };
 }
@@ -108,9 +108,22 @@ export const FOUR_AT = 5 / 3; // (after 5 rounds won)
 export function winLevel(L) {
   L = Math.max(0, L);
   return {
-    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT ? 4 : 3, pass: ease(5, 10.5, 2)(L), heavy: ease(.25, .02, 1.2)(L), careless: ease(.2, 0, 1.2)(L), loose: ease(.8, .1, 1.5)(L), hold: ease(1.8, .5, 2.2)(L),
+    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, 2)(L), heavy: ease(.25, .02, 1.2)(L), careless: ease(.2, 0, 1.2)(L), loose: ease(.8, .1, 2.5)(L), hold: ease(1.8, .5, 2.2)(L),
     move: ease(.2, .95, 2.2)(L), glow: ease(.5, .2, 2.5)(L), gap: ease(1, 2.5, 2.2)(L), margin: ease(0, .5, 2.2)(L),
   };
+}
+// ---------- the view ----------
+// Behind and above his player, looking along `yaw` to a point `ahead` m in front of him (the game's own view: never
+// from the top). It starts BACK m behind and UP m high and steps back and up (to at most MAX m back) until every point
+// in `keep` is in the picture (below the bar along the top, `top` px). The view looks down at most about 30 degrees.
+export const VIEW = { back: 5.6, up: 4, max: 11, step: .5, rise: .22, Ff: .86, Fw: .5 };
+export function rondoCam(me, yaw, ahead, keep, w, h, top = 60) {
+  const c = Math.cos(yaw), s = Math.sin(yaw), ok = p => { const q = project(cam, p, w, h); return !!q && q[0] > 24 && q[0] < w - 24 && q[1] > top && q[1] < h - 16; };
+  let cam = null;
+  for (let B = VIEW.back, H = VIEW.up; ; B += VIEW.step, H += VIEW.rise) {
+    cam = { eye: [me.x - c * B, me.y - s * B, H], tgt: [me.x + c * ahead, me.y + s * ahead, .3], Ff: VIEW.Ff, Fw: VIEW.Fw };
+    if (B >= VIEW.max || keep.every(ok)) return cam;
+  }
 }
 // How fast he is (both games), and how fast he gets to a line in 'win' (their passes are judged against it).
 export const ME = { jog: 3.6, sprint: 5.2, dribble: 3, far: 4.5, run: 4.6, react: .25, pass: 9, lunge: 1.2 };

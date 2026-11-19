@@ -32,7 +32,7 @@ export class Rondo {
   // line shuts it, though he is not on it yet). For every 'is it open' (his friends' passes, the gold on friends, hints).
   watch() { const out = []; for (const o of this.takers()) { out.push(o); const d = Math.hypot(o.tx - o.x, o.ty - o.y), k = d > .05 ? Math.min(d, (o.speed || 0) * LOOK) / d : 0; if (k) out.push({ id: o.id, x: o.x + (o.tx - o.x) * k, y: o.y + (o.ty - o.y) * k }); } return out; }
   // Whether a pass from → to (ids) is open now (margin m to spare).
-  openLine(from, to, speed, margin = .2) { const a = this.sim.a(from), pc = this.pace(); return K.lineOpen(a, this.passPoint(from, to), speed, this.watch(), pc.run, pc.react, margin); }
+  openLine(from, to, speed, margin = 0) { const a = this.sim.a(from), pc = this.pace(); return K.lineOpen(a, this.passPoint(from, to), speed, this.watch(), pc.run, pc.react, margin); }
   keeps(id) { return this.keeperIds().includes(id); }
   owner() { const b = this.sim.ball; return b.state === 'carried' ? b.carrier : null; }
   after(t, f) { this.jobs.push({ at: this.sim.time + t, f }); }
