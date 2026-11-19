@@ -1,6 +1,7 @@
 // Touch input on the field and the game buttons.
 import { $, onPress } from './dom.js';
 import { canvas, game } from './stage.js';
+import { held } from '../pause.js';
 
 // A touch only picks a player, spot or arrow if the finger lifts without sliding; any slide is a look-around drag.
 // Only the finger that started the touch counts: a second finger (or a resting palm) changes nothing.
@@ -9,6 +10,7 @@ let press = null;
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (press && !e.isPrimary) return;
+  if (held.on && !game.lookUp) return; // (v79: paused, only a look around with his head already up: ui/pause.js)
   press = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
   game.lookStart(e.clientX, canvas.clientWidth);
 });
@@ -20,7 +22,7 @@ addEventListener('pointermove', e => {
 addEventListener('pointerup', e => {
   if (e.pointerId !== press?.id) return;
   const p = press; press = null; game.lookEnd();
-  if (!p.moved && e.target === canvas) game.tap(p.x, p.y);
+  if (!p.moved && e.target === canvas && !held.on) game.tap(p.x, p.y);
 });
 addEventListener('pointercancel', e => { if (e.pointerId === press?.id) { press = null; game.lookEnd(); } });
 // If the page loses the touch without an "up" (the app is sent to the background), drop it so the next one works.
@@ -34,6 +36,6 @@ const BUTTONS = {
 // (round 2) Play moves while he chooses: a friend he is passing to can run under a button. A press on the button right
 // over a friend's body, while he picks who to pass to, is a tap on that friend.
 const OVER = new Set(['#passBtn', '#dribBtn', '#shootBtn', '#lookBtn']);
-for (const [sel, act] of Object.entries(BUTTONS)) onPress($(sel), e => { if (OVER.has(sel) && game.tapPlayer?.(e.clientX, e.clientY)) return; act(); });
+for (const [sel, act] of Object.entries(BUTTONS)) onPress($(sel), e => { if (held.on) return; if (OVER.has(sel) && game.tapPlayer?.(e.clientX, e.clientY)) return; act(); });
 // No long-press menu (copy, save image) while he plays.
 document.addEventListener('contextmenu', e => e.preventDefault());

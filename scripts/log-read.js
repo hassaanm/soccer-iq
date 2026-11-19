@@ -118,7 +118,7 @@ function decision(d, ctx) {
   if (at.ball) console.log(`    ball (${r1(at.ball.x)}, ${r1(at.ball.y)}) ${at.ball.st === 'c' ? 'with ' + (at.ball.carrier || 'a player') : at.ball.st === 'f' ? 'in the air' : at.ball.st === 'l' ? 'loose' : at.ball.st}`);
   const gl = r => o.list.filter(x => x.rating === r).map(x => x.opt + (x.x != null ? `@(${x.x},${x.y})` : '')).join(', ');
   console.log(`  Options: best ${gl('best') || '-'} | ok ${gl('ok') || '-'} | safe ${gl('safe') || '-'} | bad ${gl('bad') || '-'}${o.shots ? ` | shots ${o.shots}` : ''}`);
-  const evs = ctx.rs.filter(r => r.t >= d.t - .05 && r.t <= (d.choose?.t ?? d.t + 30) + .05 && ['LOOK', 'DRAG', 'TAP', 'STEP', 'FLAG'].includes(r.type));
+  const evs = ctx.rs.filter(r => r.t >= d.t - .05 && r.t <= (d.choose?.t ?? d.t + 30) + .05 && ['LOOK', 'DRAG', 'TAP', 'STEP', 'FLAG', 'PAUSE', 'RESUME'].includes(r.type));
   for (const r of evs) console.log(`    ${mmss(r.t)} +${r1(r.t - d.t)} s ${r.type} ${r.rest}`);
   if (d.choose) console.log(`  He chose ${d.choose.opt} after ${d.choose.sec} s (window ${Math.round(+d.choose.u * 100)}% run, ring ${Math.round(+d.choose.left * 100)}% left), head ${d.choose.look}: ${d.choose.rating}`);
   else if (d.play) console.log(`  The game played ${d.play.opt} (${d.showing === '1' ? 'showing the better play' : d.play.mode})`);

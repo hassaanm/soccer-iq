@@ -17,6 +17,7 @@ import { throwaway } from '../storage.js';
 import { PATH } from '../skills.js';
 import { level } from '../progress.js';
 import { MATE, spotKind } from '../game/shared.js';
+import { onPause } from '../pause.js';
 
 const { kv } = L, f2 = x => (Number.isFinite(x) ? Math.round(x * 100) / 100 : '-'), f1 = x => (Number.isFinite(x) ? Math.round(x * 10) / 10 : '-');
 const deg = r => (Number.isFinite(r) ? Math.round(r * 180 / Math.PI) : '-'), wrapR = a => Math.atan2(Math.sin(a), Math.cos(a));
@@ -261,6 +262,9 @@ if (typeof addEventListener === 'function') {
   addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && L.LOG.on) { L.ev('HIDDEN'); savePerf(); L.flush(true); } else if (L.LOG.on) L.ev('SHOWN'); });
   addEventListener('pagehide', () => { if (L.LOG.on) { savePerf(); L.flush(true); } });
 }
+
+// (v79) The pause (js/pause.js): a row of where everyone is, then why it paused; on resume, how long it was.
+onPause((on, why, sec) => { if (!L.LOG.on) return; if (on) { forceRow(); const K = keeper(); L.ev('PAUSE', kv({ why, mode: K?.on ? 'keeper' : game.mode, phase: K?.on ? K.phase : game.phase, step: game.step })); } else L.ev('RESUME', kv({ sec: f1(sec) })); });
 
 // ---------- the flag, Copy log and Clear ----------
 const flagBtn = $('#logFlag');

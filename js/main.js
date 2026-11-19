@@ -13,13 +13,15 @@ import * as perf from './perf.js';
 import './ui/soundmenu.js';
 import './ui/menu.js';
 import './ui/input.js';
+import { held, share } from './pause.js';
+import { pauseFrame, stillView } from './ui/pause.js';
 
 $('#playBtn').onclick = () => runSession();
 $('#freeBtn').onclick = () => gated(runFreePlay);
 $('#cupBtn').onclick = () => gated(openCups);
 $('#resultsHome').onclick = () => show('#home');
 $('#homeBtn').onclick = () => location.reload(); // leaving mid-game: a reload is the one sure way to stop everything
-$('#skipBtn').onclick = () => { game.skipDemo(); hush(); };
+$('#skipBtn').onclick = () => { if (held.on) return; game.skipDemo(); hush(); };
 $('#version').textContent = VERSION;
 renderPickers(); show('#home');
 
@@ -35,6 +37,7 @@ function frame(now) {
   const cap = FPS && FPS < 100 ? FPS : smooth() && TEST.cap ? (game.phase === 'idle' && !goalie.on ? 30 : 60) : 0;
   if (cap && now - last < 1000 / cap - 3) return;
   const ms = now - last; last = now;
+  if (held.on) { still(now, ms); return; } // (v79: paused, js/pause.js)
   if (FPS >= 100) { one(now - ms / 2, ms / 2, false); one(now, ms / 2, false); } else one(now, ms, !cap || cap === 60);
 }
 // (round 13) The strip under the page that iPadOS paints with the page's colour (ui/strip.js) is only there in an iPad's
@@ -46,7 +49,8 @@ const STRIP = (() => { try {
   return pad && navigator.standalone === true && Math.min(screen.width, screen.height) >= 700;
 } catch { return false; } })();
 function one(now, ms, judge) { // judge: the slow-device governor looks at this frame's length (not when the loop is held back on purpose)
-  const dt = Math.min(.05, ms / 1000); time += dt;
+  const dt = share(Math.min(.05, ms / 1000)); time += dt; // (v79: none of it while paused, and part of it as play eases back in)
+  pauseFrame();
   try {
     if (judge) world.pace(ms);
     if (world.pending != null && (goalie.on ? false : game.phase === 'idle' || (game.phase === 'pre' && lastPhase !== 'pre'))) world.applyPending(); lastPhase = game.phase;
@@ -57,6 +61,13 @@ function one(now, ms, judge) { // judge: the slow-device governor looks at this 
     if (TEST.onFrame) TEST.onFrame(now);
     perf.frame(now, goalie.on ? { phase: 'keeper', mode: 'keeper' } : game, world.renderer);
   } catch (e) { console.error(e); }
+}
+// (v79) A frame while paused: no game time, no real-time jobs, nothing for the governor or the speed record. The picture
+// is drawn again only when it has to change: a look around (camera only, ui/pause.js stillView) or a new size.
+function still(now, ms) {
+  perf.idle(now); pauseFrame();
+  if (!stillView(Math.min(.05, ms / 1000)) && !world.resized) return;
+  try { if (goalie.on) world.render(goalie.sim, goalie.cam, goalie.ui, time); else world.render(game.sim, game.cam, game.ui, time); } catch (e) { console.error(e); }
 }
 requestAnimationFrame(frame);
 
