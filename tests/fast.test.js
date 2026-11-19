@@ -265,6 +265,15 @@ test('the level: up a little after a win, more after a clear one; down a little 
   assert.deepEqual(e, { level: l0 + .03, best: l0 + .1, n: 2 }, 'the level eases, the best (the stars) stays');
   assert.deepEqual(fastLevel(JSON.parse(JSON.stringify(p)), '4v4', l0), e, 'kept in the save'); assert.equal(fastLevel(p, '3v3', -.85).level, -.85, 'each size its own');
 });
+test('the results card: the score, a star for a win and a ball for each of his goals first, his stars, then the counts', async () => {
+  const Lv = await import('../js/fast/level.js'), c = { score: { us: 3, them: 1 }, goals: 2, touches: 12, passes: 5, good: 4, steals: 1, time: 201 };
+  const html = Lv.endCard({ c, img: { us: 'a.png', them: 'b.png' }, best: Lv.startLevel('3v3') + Lv.STAR, size: '3v3', fresh: 1 });
+  const at = k => html.indexOf(k);
+  assert.ok(at('fScore') >= 0 && at('fScore') < at('fMine') && at('fMine') < at('fLevel') && at('fLevel') < at('fCounts'), 'in that order');
+  assert.ok(/fWin/.test(html), 'a star for a win'); assert.equal((html.slice(at('fMine'), at('fLv')).match(/<i>⚽<\/i>/g) || []).length, 2, 'a ball for each of his goals');
+  const lost = Lv.endCard({ c: { ...c, score: { us: 1, them: 3 }, goals: 0 }, img: { us: 'a', them: 'b' }, best: Lv.startLevel('3v3'), size: '3v3' });
+  assert.ok(!/fWin/.test(lost) && !/fMine/.test(lost), 'no star, no balls when he lost without a goal');
+});
 test('a Match takes his level (no level: the size\'s start)', () => {
   const sim = new Sim(), sz = sizeOf();
   const m = new Match({ sim, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: sz.out, keepers: !!sz.keeper, level: .3 }); assert.equal(m.level, .3);
