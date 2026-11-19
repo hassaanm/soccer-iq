@@ -126,7 +126,7 @@ export const moving = {
       if (a.gk) continue;
       const D1 = a === cm && cs > .2 ? [D[0] + (c.x - a.x) / cd * cs, D[1] + (c.y - a.y) / cd * cs] : D;
       const q = st.at[a.id], own = a === c && burst, v0 = own ? [dir[0] * burst, dir[1] * burst] : [q.vx, q.vy], dv = Math.hypot(D1[0] - v0[0], D1[1] - v0[1]), path = { x: a.x, y: a.y, v0, v1: D1, t1: own ? .25 : 0, tau: own ? T - .25 : Math.max(.3, Math.min(T, dv * 1.5 / 3.5 + .1)) };
-      a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team }; a.setPath = path;
+      a.track = { at: t => pathAt(path, t), t0: s.time, watch: a.team !== c.team, comer: a === cm && cs > .2 }; a.setPath = path;
     }
     // (round 7) Within shooting range of their goal, the one of theirs best placed for it (not the one who comes, not one
     // just beaten) steps across onto the shot's line, three metres off the ball: after a missed tackle the next of them
@@ -176,13 +176,14 @@ export const moving = {
       let T = RUNUP; const far = id => { const q = pathAt(plan.paths[id], -T); return q.x < -1.5 || q.x > L + 1.5 || q.y < -1.5 || q.y > W + 1.5; };
       while (T > .5 && Object.keys(plan.paths).some(far)) T = Math.round((T - .1) * 10) / 10;
       plan.openAt = s.time + T; // (when the choice opens: the view is set for it from now on, view.js spotView)
+      s.dead = !!sc.restart; // (alive-shape: at a dead ball the players stand, pro/motion.js ALIVE)
       for (const [id, p] of Object.entries(plan.paths)) {
         const a = s.a(id); if (!a) continue;
         const q = pathAt(p, -T), v = Math.hypot(q.vx, q.vy);
         Object.assign(a, { x: q.x, y: q.y, tx: q.x, ty: q.y });
         if (v > .1 && !a.gk && !plan.watch.has(id)) a.face = [q.vx / v, q.vy / v];
         else if (plan.watch.has(id) || a.gk) { const h = plan.paths[sc.carrier || 'hero'] || plan.paths.hero, hq = h && pathAt(h, -T); if (hq) { const dx = hq.x - a.x, dy = hq.y - a.y, l = Math.hypot(dx, dy) || 1; a.face = [dx / l, dy / l]; } }
-        a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: plan.watch.has(id) };
+        a.track = { at: tt => pathAt(p, tt - T), t0: s.time, watch: plan.watch.has(id), comer: id === plan.threat?.id || id === plan.second }; // (comer: pro/motion.js leaves his run as it is)
       }
       const c = s.a(s.ball.carrier);
       if (c) { Object.assign(s.ball, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4, h: Math.atan2(c.face[1], c.face[0]) }); c.d0 = c.dist; c.tA = 0; c.tN = 0; }
@@ -247,6 +248,7 @@ export const moving = {
     const plan = this.wplan?.ready && this.wplan.sc === sc ? this.wplan : kindOf(sc) === 'follow' ? (sc.live ? this.reboundPlan() : this.followPlan()) : this.plan(true);
     if (!plan) return;
     plan.sc = sc; plan.ready = false; this.wplan = plan; // (kept: a retry of this choice opens the same window again)
+    s.dead = !!sc.restart; // (alive-shape: at a dead ball the players stand until it is played, pro/motion.js ALIVE)
     // (v66) The world never goes slower than PACE: a short piece of play is a shorter window (a tight scene is a quick one).
     const show = this.mode === 'demo' ? SHOW.demo : this.showing ? SHOW.replay : 0, G = plan.G, Rp = (G - .1) / PACE + .1, Rm = show ? 0 : Math.min(this.windowReal(), this.windowMin()), // (round 7: a stretch of play a tenth of a second short of the window's floor is shown that much slower, not cut under it)
       R = Math.max(G, Math.min(show || this.windowReal(), plan.jock && !show ? JOCK.R : 99, Rp < Rm && Rp > Rm - .2 ? Rm : Rp));
@@ -271,7 +273,7 @@ export const moving = {
     for (const [id, p] of Object.entries(plan.paths)) {
       const a = s.a(id); if (!a) continue;
       this.win.at0[id] = plan.at0?.[id] || { x: p.x, y: p.y }; // (rings that go with a player: from the scene's own picture)
-      a.track = { at: t => pathAt(p, t), t0: s.time, watch: plan.watch.has(id), jf: p.jock ? t => jockFeint(p, t) : null }; // (jf: a jockey's feint lunges, drawn by pro/motion.js)
+      a.track = { at: t => pathAt(p, t), t0: s.time, watch: plan.watch.has(id), jf: p.jock ? t => jockFeint(p, t) : null, comer: id === plan.threat?.id || id === plan.second }; // (jf: a jockey's feint lunges, drawn by pro/motion.js; comer: the one who comes, whose run pro/motion.js leaves as it is)
     }
   },
   // Each step of game time while it is open: the rings that belong to a player move with him, and when the threat gets
@@ -279,6 +281,7 @@ export const moving = {
   windowStep() {
     const w = this.win, s = this.sim; if (!w) return;
     if (this.phase !== 'decide') { this.closeWindow(); return; }
+    s.view = this.yaw; s.prate = this.prate ?? 1; // (alive-shape: the view and the picture's pace, for pro/motion.js ALIVE)
     if (w.spots0.length && this.sc.spots) {
       const at0 = id => w.at0[id] || s.a(id), now = spotsNow({ ...this.sc, spots: w.spots0 }, id => s.a(id), at0);
       this.sc.spots.forEach((sp, i) => { if (now[i]) { sp.x = now[i].x; sp.y = now[i].y; } });
@@ -294,7 +297,7 @@ export const moving = {
   closeWindow() {
     const w = this.win; if (!w) { this.sim.untrackAll(); return; } // (a play may start straight after a run-up: the tests)
     this.lastWin = { u: Math.min(1, w.u || 0), real: w.real, R: w.R, G: w.G }; this.lastThreat = w.threat?.id || null; { const h0 = this.sim.a('hero'); if (h0) h0.calmTouch = false; }
-    this.sim.untrackAll(!!this.sc?.live); this.win = null; // (in a match: two left overlapping step apart over a few frames, sim.js)
+    this.sim.untrackAll(!!this.sc?.live); this.win = null; this.sim.dead = false; this.sim.view = null; this.sim.prate = 1; // (in a match: two left overlapping step apart over a few frames, sim.js)
     // (v66) The ones who were coming go on to where their runs end (by the ball), not on through the player on it: what
     // the play does next takes them from there.
     for (const id of [w.threat?.id, w.plan.second]) { const p = id && w.plan.paths[id], a = id && this.sim.a(id); if (!p?.run || !a) continue; const e = pathAt(p, w.G), v = Math.hypot(e.vx, e.vy); if (Math.hypot(e.x - a.x, e.y - a.y) > .1) this.sim.go(id, e.x, e.y, Math.max(1, v)); }

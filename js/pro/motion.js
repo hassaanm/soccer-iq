@@ -19,6 +19,19 @@ import { turnFoot, turnSide, touchAt, touchLen, skillNow, longLead } from '../si
 import { PITCH as FIELD } from '../geom.js';
 
 const JAB = .34; // (round 13) how far a jockeying defender's weight goes in at the ball in a feint lunge (m)
+// (alive-shape) Off the ball nobody stands still (the owner's son: "players just stand around"). A player round his own
+// with no run to make (standing, or at a walk) moves on the picture's clock, the one that keeps life in slow motion
+// (game/skill.js: never under 0.35 of real time): a small move every `per` s (his own tempo, a little quicker or slower),
+// to a place up to `amp` m from where the game has him, his feet stepping there (short shuffle steps), and back. A
+// defender slides side to side across the line to the ball, a touch in and out, on his toes and facing it; a defender
+// marking a man goes with that man's own moves, and makes smaller ones of his own (`mark` of the move); a friend shows for the ball:
+// across into the gap, a step short toward it, across the other way, back out. The game's own place for him (a.x) does
+// not move: every choice is graded from it, and `amp` is inside the slack its lines are read with (window.js TOL,
+// 0.3 m); scripts/motion-audit.js grades the drawn places too. At a dead ball before it is played (sim.dead: a kick-off,
+// a goal kick, a pass in from the side) players stand: only their weight shifts (`dead` of the move). Not his own
+// player, the one who comes for the ball (a.track.comer), a keeper (pro/keeper.js), nor one the ball is coming to.
+export const ALIVE = { amp: .2, per: .42, slow: .7, dead: .3, mark: .6 };
+const OFF = new WeakMap(); // each player's drawn offset from his place in the game (a marker goes with his man's)
 const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, SOFT = .04, BALL = .125; // BALL: the ball's radius (world.js)
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), damp = (v, to, rate, dt) => v + (to - v) * (1 - Math.exp(-rate * dt)), sat = (v, a) => a * Math.tanh(v / a); // sat: a soft limit
@@ -219,6 +232,11 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   if (dt > 0 || b.state !== 'flying') m.it += rdt; // his own clock for standing about; it stops only when the game freezes with the ball in the air
   const T = m.it;
   if (dt > 0) m.v = damp(m.v, Math.min(ds / dt, 9), 14, dt); // how fast he really moves (the game's speed runs on a moment after he stops)
+  // (alive-shape) and how fast he goes by the picture's clock (va): in a choice's slow motion a walk is a creep on the
+  // screen, and in a demo's crawl next to nothing. Off the ball (not his own player) his legs and his own small moves go
+  // by the slower of the two: creeping, he steps his feet after his body (no stride frozen half way), and moves round
+  // his place (ALIVE).
+  if (rdt > 0) m.va = damp(m.va ?? m.v, Math.min(ds / rdt, 9), 14, rdt);
   const kt = a.kickAt != null ? (now - a.kickAt) * (a.kickKind === 'touch' ? 2 : 1) : 9; // kt: a touch runs the kick at twice the speed
   // Who has the ball (kept while it is in the air), the nearest player of the other team, and where the goal he attacks is.
   const carrier = b.state === 'carried' ? sim.a(b.carrier) : null; if (carrier) m.poss = carrier.team;
@@ -241,6 +259,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
       const tc = Math.atan2(carrier.y - a.y, carrier.x - a.x); m.ss = Math.sign(Math.cos(tc) * (carrier.y < FIELD.W / 2 ? -1 : 1)) || 1;
       kd = sm((5.5 - dc) / 1.5) * sm((1.6 - Math.abs(wrap(tc - face - yo))) / .4); yo += .55 * kd * m.ss;
     } else if (ours && a.open == null) yo += (1 - sm(vs / 1.1)) * sm((bd - 3) / 1) * (1 - sm((bd - 28) / 4)) * clamp(wrap(gdir - toBall), -.65, .65); // waiting for it he stands half turned, open to the field
+    else if (defending) yo = lerp(yo, d, .9 * (m.al || 0) * (1 - sm((vs - 1.5) / 1))); // (alive-shape) a defender off the ball, on his toes: he faces the ball
   }
   m.yo = damp(m.yo, carrying ? 0 : yo, carrying ? 6 : 9, rdt); // the body follows it smoothly (below), never in one jump; with the ball he squares up over a moment
   // A turn with the ball: his body turns through it at most about 8.5 radians a second (the game turns his facing in
@@ -255,7 +274,8 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   // His body turns after it as a spring would (its turning speed never jumps, even when the game turns him at once);
   // while the game's clock is stopped he still turns, on the picture's clock.
   u.yaw = sdamp(u.yaw, m.yv, u.yaw + wrap(aim - u.yaw), .06, dt || rdt); m.yv = SDV;
-  m.w = damp(m.w, sm(vs / 1.1), 10, rdt); // w: how much he runs (0 standing): it follows his speed over a step, not in a frame or two as he sets off
+  const vOff = carrying || a.id === 'hero' ? vs : Math.min(vs, m.va ?? vs) * (1 - .4 * clamp(1 - (m.va ?? vs) / Math.max(vs, .01))); // (the deeper the slow motion, the sooner he steps rather than strides)
+  m.w = damp(m.w, sm(vOff / 1.1), 10, rdt); // w: how much he runs (0 standing): it follows his speed over a step, not in a frame or two as he sets off
   m.gv = damp(m.gv, vs, 10, rdt); // the speed his stride is shaped for: it follows the game's speed over a moment (that can drop at once, as a turn starts)
   const run = clamp(m.gv / 5.4), w = m.w, idle = 1 - w;
   m.kj = damp(m.kj, defending && carrier && dc < 5 && vs < 4 ? 1 : 0, 6, rdt); const kj = m.kj; // jockeying: low, wide, small quick steps
@@ -373,7 +393,34 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   // stand on their toes with bent knees; the rest stand easier, each his own way. He breathes harder after a run,
   // and his weight drifts from one leg to the other.
   const passIn = !carrying && b.state === 'flying' && Math.hypot(b.tx - a.x, b.ty - a.y) < 1.6, left = passIn ? (1 - b.t) * b.dur : 9;
-  m.ready = damp(m.ready, defending ? (bd < 7 ? 1 : .5) : carrying ? .4 : passIn ? .95 : ours && dc < 20 ? .6 : m.sr, 3, rdt);
+  m.ready = damp(m.ready, defending ? (bd < 7 ? 1 : Math.max(.5, .9 * (m.al || 0))) : carrying ? .4 : passIn ? .95 : ours && dc < 20 ? .6 : m.sr, 3, rdt);
+  // (alive-shape) His own small moves off the ball (ALIVE): AX, AY, the drawn offset (world metres) from where the game has him.
+  const alive = a.id !== 'hero' && !a.gk && !carrying && !mood && !a.track?.comer && !passIn && kt > .7 && !(act && act.k === 'trap');
+  m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 2.2), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 5, rdt); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out)
+  let AX = 0, AY = 0;
+  if (m.al > .002) {
+    // (in a choice's slow motion the picture's clock runs at a third of real time: there his moves come a little quicker
+    // by it, about one a second on the screen; sim.prate, set by game/window.js)
+    const per = ALIVE.per * (.85 + .3 * m.se) * lerp(ALIVE.slow, 1, ((sim.prate ?? 1) - .35) / .65), ph = (T + u.seed * 3.1) / per, n = Math.floor(ph);
+    if (m.an !== n) { // the next move: from where he is drawn now, to a new place round his own
+      const first = m.an == null; m.an = n; m.af = first ? [0, 0] : [...(m.ao || [0, 0])];
+      const r = frac(Math.sin(n * 12.9898 + u.seed * 78.233) * 43758.5453), ux = bd > .1 ? bx / bd : Math.cos(face), uy = bd > .1 ? by / bd : Math.sin(face), A = ALIVE.amp, sg = n & 1 ? 1 : -1;
+      let tx, ty;
+      if (ours) { // across into the gap, short, across, back out; "across" is across the screen when the view is known (sim.view: a move straight at the camera hardly shows)
+        const k = ((n % 4) + 4) % 4, c = [sg * A * (.7 + .3 * r), [.1, .6, -.1, -.5][k] * A], qx = sim.view != null ? -Math.sin(sim.view) : -uy, qy = sim.view != null ? Math.cos(sim.view) : ux;
+        tx = qx * c[0] + ux * c[1] * (.8 + .4 * r); ty = qy * c[0] + uy * c[1] * (.8 + .4 * r); }
+      else { const s1 = sg * A * (.75 + .25 * r), s2 = A * (.35 * r - .1); tx = -uy * s1 + ux * s2; ty = ux * s1 + uy * s2; } // side to side across the line to the ball, a touch in and out
+      const l = Math.hypot(tx, ty); if (l > A) { tx *= A / l; ty *= A / l; }
+      m.at = [tx, ty];
+    }
+    const e = sm((ph - n) / .6); m.ao = [m.af[0] + (m.at[0] - m.af[0]) * e, m.af[1] + (m.at[1] - m.af[1]) * e];
+    AX = m.ao[0] * m.al; AY = m.ao[1] * m.al;
+    // a defender marking a man (nearer him than the ball, within 2.6 m, and not the one on it) goes with that man's moves
+    const man = defending && foe && foe !== carrier && fd < 2.6 && fd < bd ? OFF.get(foe) : null;
+    if (man) { AX = man[0] + AX * ALIVE.mark; AY = man[1] + AY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own)
+  }
+  { let o = OFF.get(a); if (!o) OFF.set(a, o = [0, 0]); o[0] = AX; o[1] = AY; }
+  m.ax = AX; m.ay = AY; // (read by scripts/stand-audit.js and scripts/motion-audit.js: the grade of what is drawn)
   m.puff = damp(m.puff, run, run > m.puff ? .5 : .1, rdt); m.br += rdt * (2 + 2.5 * m.puff);
   const rd = m.ready * (.85 + .3 * m.se), breath = Math.sin(m.br) * (1 + 2 * m.puff), sway = Math.sin(T * .8 + u.seed * 2) + .5 * Math.sin(T * .33 + u.seed);
   const bounce = rd * rd * (.5 + .5 * Math.sin(T * 8.5 + u.seed * 3)), tip = .035 * sway * idle * (1 - .5 * rd);
@@ -399,7 +446,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     - .03 * K[9] * kw - .04 * m.fb - .03 * (fe + rw) - .06 * jf + air - (mood > 0 ? .05 * (1 - hop) * mood : 0);
   const PITCH = sat(m.acc * .02, .16) + .05 * run, roll = -m.bank * .6 + fs * .32 * fe + .24 * rw * ry;
   CP = Math.cos(PITCH); SP = Math.sin(PITCH); CR = Math.cos(roll); SR = Math.sin(roll);
-  g.position.set(a.x + cyaw * ox - syaw * oy, a.y + syaw * ox + cyaw * oy, LIFT); g.rotation.set(roll, PITCH, u.yaw);
+  g.position.set(a.x + AX + cyaw * ox - syaw * oy, a.y + AY + syaw * ox + cyaw * oy, LIFT); g.rotation.set(roll, PITCH, u.yaw);
   u.blob.position.set(-ox, -oy, .012 - LIFT); u.blob.rotation.set(-roll, -PITCH, 0); u.blob.scale.setScalar(1 - air);
   const twist = -w * lerp(.08, .2, run) * c1 - ks * kX * .5 * kw; // the hip on the leading leg's side goes forward
   // A dribble touch: the foot swinging through as the touch comes turns to send the ball on. Straight ahead it is
@@ -440,11 +487,11 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     let sx = sgn * (m.stag * .045 - m.ss * .13 * kj * kd) - (carrying ? .06 : 0), sy = sgn * wid + (sgn * ry > 0 ? .3 * ry * rw : 0), up = 0;
     const fl = m.fl[i], busy = kw || (fW && i === fLeg);
     if (w < .6 && !busy && !air) {
-      const tx = a.x + cyaw * sx - syaw * sy, ty = a.y + syaw * sx + cyaw * sy;
+      const tx = a.x + AX + cyaw * sx - syaw * sy, ty = a.y + AY + syaw * sx + cyaw * sy;
       if (!fl.on) { fl.on = 1; fl.s = -1; fl.x = fl.px; fl.y = fl.py; }
       if (fl.s < 0 && m.fl[1 - i].s < 0 && Math.hypot(tx - fl.x, ty - fl.y) > .07) { fl.s = T; fl.fx = fl.x; fl.fy = fl.y; }
       if (fl.s >= 0) { const e = clamp((T - fl.s) / .2); fl.x = lerp(fl.fx, tx, sm(e)); fl.y = lerp(fl.fy, ty, sm(e)); up = Math.sin(Math.PI * e) * (1 - w); if (e >= 1) fl.s = -1; }
-      const rx = fl.x - a.x, ry = fl.y - a.y; sx = cyaw * rx + syaw * ry; sy = cyaw * ry - syaw * rx;
+      const rx = fl.x - a.x - AX, ry = fl.y - a.y - AY; sx = cyaw * rx + syaw * ry; sy = cyaw * ry - syaw * rx;
     } else fl.on = 0;
     const heel = .1 * rd * (1 + bounce) + .2 * up;
     let x = lerp(sx, F.x * m.cx, w), y = lerp(sy - oy, sgn * lerp(lerp(.085, .05, run), .15, low) + F.x * m.cy, w); // feet step the way he moves, even sideways
@@ -478,7 +525,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     const key = (i === fLeg && fW > 0 ? (tm ? 4 + PART[tm.part] : act.k === 'trap' ? 2 : 3) : 0) + (kw > 0 ? 16 : 0) + (sw > 0 ? 32 : 0) + (fk > 0 && i === fkL ? 64 : 0) + (pw > 0 && i !== fkL ? 128 : 0) + (fl.on ? 256 : 0) + (tch ? 512 : 0) + (air > 0 ? 1024 : 0);
     const J = join(fl, key, x - ox, y, z, p, turn, kq, time, i === fLeg && tm && fW > 0 ? 34 : JW); // a foot going to the ball in a turn gets there sooner (about 0.1 s)
     if (bd < 1.2 && b.state !== 'flying' && !(kw && i === m.kf) && !(act?.k === 'trap' && i === fLeg) && !(tm && i === fLeg && fW > .5 && b.move.k === 'first')) bootOut(J, ox - bf, oy - bl, BALL, fl); else fl.bo = null; // (a kick's foot, a trap's and the foot taking a pass on with a turn meet it as they are made to)
-    fl.px = a.x + cyaw * (J[0] + ox) - syaw * (J[1] + oy); fl.py = a.y + syaw * (J[0] + ox) + cyaw * (J[1] + oy); // where this foot is on the grass now
+    fl.px = a.x + AX + cyaw * (J[0] + ox) - syaw * (J[1] + oy); fl.py = a.y + AY + syaw * (J[0] + ox) + cyaw * (J[1] + oy); // where this foot is on the grass now
     leg.hip.position.x = -sgn * HALF * twist;
     fl.kn = sdamp(fl.kn, fl.kv, J[5], .1, rdt); fl.kv = SDV; // the knee's way round never snaps (the foot's place is not touched)
     reach(leg, J[0], J[1], J[2], J[3], J[4], fl.kn);
