@@ -31,12 +31,23 @@ export function pauseFrame() {
   const c = inPlay() && !rate.classList.contains('show');
   if (c !== can) { can = c; hudEl.classList.toggle('canpause', c); }
 }
+// Where the big triangle goes as it pauses: low in the middle, or in the very middle (css: #hud.playmid), whichever is
+// farther from his player and the ball on the screen (his head down, he is in the middle; head up, low). In the keeper
+// game, always the middle: his goal, its gold spots and the hand are low.
+const R = 58;
+function place() {
+  const g = goalie.on ? goalie : game, s = g.sim, h = s?.a?.('hero'), b = s?.ball, w = innerWidth, ht = innerHeight;
+  const pts = []; try { if (h) pts.push(world.project(h.x, h.y, 0), world.project(h.x, h.y, 1.8)); if (b) pts.push(world.project(b.x, b.y, b.z || 0)); } catch { /* no picture yet */ }
+  const near = (cx, cy) => Math.min(...pts.filter(Boolean).map(p => Math.hypot(p[0] - cx, p[1] - cy)), 1e9);
+  const low = near(w / 2, ht - 14 - R), mid = near(w / 2, ht / 2);
+  hudEl.classList.toggle('playmid', goalie.on || mid > low);
+}
 onPress(btn, () => { if (held.on) setPause(false); else if (inPlay()) setPause(true, 'button'); });
 onPress(big, () => setPause(false));
 onPause((on, why, sec) => {
   hudEl.classList.toggle('paused', on);
   btn.setAttribute('aria-label', on ? 'Play' : 'Pause');
-  holdMusic(on); mark(on ? `pause ${why}` : `resume ${sec.toFixed(1)}s`); look.t = 0;
+  if (on) place(); holdMusic(on); mark(on ? `pause ${why}` : `resume ${sec.toFixed(1)}s`); look.t = 0;
 });
 // The app goes to the background, or the phone locks: paused, and still paused on return (the triangle shows).
 const away = () => { if (inPlay()) setPause(true, 'hidden'); };
