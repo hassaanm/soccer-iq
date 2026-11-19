@@ -18,7 +18,7 @@ import { sfx } from '../sound.js';
 import { PITCH } from '../geom.js';
 import { later } from '../pause.js';
 import { fast } from '../fast/fast.js';
-import { AttackMatch, attackScene } from './attack.js';
+import { AttackMatch, attackScene, cueMove } from './attack.js';
 import { startRun, runStep, endRun, runOff } from './run.js';
 import { miniById } from './games.js';
 
@@ -51,9 +51,9 @@ function cueRing() {
   ring = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false }));
   ring.renderOrder = 4; ring.visible = false; world.scene.add(ring); return ring;
 }
-// What would have worked (attack.js rightMove, as it stood the last time he had the ball): the free friend, or the way to goal.
+// What would have worked (attack.js cueMove): the free friend, or the way to goal.
 function showCue(m) {
-  const s = m.sim, h = s.a(m.me), a = m.advice; if (!h || !a) return null;
+  const s = m.sim, h = s.a(m.me), a = cueMove(m); if (!h || !a) return null;
   const f = a.kind === 'pass' && s.a(a.id);
   if (f) { const r = cueRing(); r.position.set(f.x, f.y, .03); r.visible = true; fast.ui.lines = [{ a: { x: h.x, y: h.y }, b: { x: f.x, y: f.y }, color: '#ffd23f' }]; return 'friend'; }
   if (a.kind === 'go' || a.kind === 'shoot') { const gx = m.L - .8, gy = m.W / 2, d = Math.hypot(gx - h.x, gy - h.y), k = Math.min(1, 6 / d); fast.ui.lines = [{ a: { x: h.x, y: h.y }, b: { x: h.x + (gx - h.x) * k, y: h.y + (gy - h.y) * k }, color: '#ffd23f' }]; return a.kind; }

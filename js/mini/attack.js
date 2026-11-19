@@ -37,8 +37,8 @@ export const kindById = id => KINDS.find(k => k.id === id);
 //   time    real s of the timer; startD: m from goal where he starts
 export function attackLevel(L) {
   L = Math.max(0, L);
-  const centre = 6 * (1 - Math.exp(-L / 7));
-  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.05) ** 2)) * (i > centre ? Math.exp(-(i - centre)) : 1)), sum = w.reduce((a, b) => a + b, 0);
+  const centre = 6 * (1 - Math.exp(-L / 10));
+  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.3) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .5) : 1)), sum = w.reduce((a, b) => a + b, 0);
   return {
     level: L, centre, mix: KINDS.map((k, i) => ({ id: k.id, w: w[i] / sum })),
     opp: 1 - Math.exp(-L / 10), react: ease(.8, .25, 7)(L), stand: ease(4.2, 2.2, 8)(L), boost: ramp(0, .06, .8)(L), into: .4 + ramp(0, .15, 1)(L),
@@ -78,6 +78,7 @@ export function attackScene(level, r, n = 0, last = [], P = PITCH) {
     const span = Math.min(W * .62, 4 + K.them * 3.2), mid = cy + (hy - cy) * .35;
     for (let i = 0; i < K.them; i++) opps.push([line + j() * 1.4 + (i % 2) * .8, clamp(mid - span / 2 + span * i / (K.them - 1) + j() * 1.1, 1.2, W - 1.2)]);
   }
+  for (const o of opps) o[0] = Math.max(o[0], hero[0] + 2.5); // (all of theirs goal-side of him)
   return { kind, us: K.us, them: K.them, style, hero, mates, opps, D, n, level };
 }
 
@@ -319,4 +320,19 @@ export function rightMove(m) {
   // pressure in front and no free friend: across, to the side with more room
   const o = ahead[0], dir = o.y > me.y ? -1 : 1, open = [dir, -dir].find(d => me.y + d * 3 > 1.2 && me.y + d * 3 < m.W - 1.2) ?? dir;
   return { kind: 'dodge', x: clamp(me.x - 1.2, 1, L - 2), y: clamp(me.y + open * 3, 1.2, m.W - 1.2) };
+}
+
+// ---------- the cue after a miss ----------
+// What would have worked, from where everyone is as the attempt ends (as if he had the ball there): the friend with the
+// most room whose line from him is clear of theirs (the free friend: he lights up); else, with nobody of theirs between
+// him and the goal, the way to goal; else the friend with the most room. { kind: 'pass', id } or { kind: 'go' }.
+export function cueMove(m) {
+  const s = m.sim, me = s.a(m.me); if (!me) return null;
+  const foes = m.foes('us'), L = m.L, gy = m.W / 2;
+  const fr = m.usIds.filter(id => id !== m.me).map(id => s.a(id)).filter(Boolean).map(f => ({ id: f.id, room: roomOf(m, f), clear: foes.every(o => onLane(o, me, f).d > .9) })).sort((p, q) => q.room - p.room);
+  const free = fr.find(f => f.clear && f.room >= 2.5);
+  if (free) return { kind: 'pass', id: free.id };
+  const inWay = foes.some(o => onLane(o, me, { x: L, y: gy }, .05).d < 1.5 && o.x > me.x);
+  if (!inWay) return { kind: 'go' };
+  return fr[0] ? { kind: 'pass', id: fr[0].id } : { kind: 'go' };
 }
