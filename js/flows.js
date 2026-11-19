@@ -286,7 +286,7 @@ export async function gated(run) {
 async function playFast() {
   const us = teamById(P.us), them = teamById(P.them);
   setStage(us, them, 'crowd'); game.home();
-  await card({ emoji: '⚡', title: 'Match time!', sub: `First to ${FAST_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
+  await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${FAST_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
   hud.caption(''); await fast.pick(us);
   const c = await fast.play({ us, them }), won = c.score.us > c.score.them;
   if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
@@ -294,7 +294,7 @@ async function playFast() {
   const mm = Math.floor(c.time / 60), ss = String(c.time % 60).padStart(2, '0');
   const counts = [['🙋', c.touches, 'touches'], ['⚽', c.passes, 'passes'], ['👍', c.good, 'good passes'], ['🥅', c.goals, 'goals'], ['🦶', c.steals, 'steals'], ['⏱', `${mm}:${ss}`, 'time']];
   fillResults({
-    emoji: '⚡', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: `${us.short} ${c.score.us} – ${c.score.them} ${them.short}`,
+    emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: `${us.short} ${c.score.us} – ${c.score.them} ${them.short}`,
     extra: `<div class="fCounts">${counts.map(([i, n, w]) => `<span><i>${i}</i><b>${n}</b><small>${w}</small></span>`).join('')}</div>`,
     match: toMatch(), cup: toCup(), lesson: toLessons(), paper: won ? 70 : 0,
   });
