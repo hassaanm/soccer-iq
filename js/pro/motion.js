@@ -20,17 +20,18 @@ import { PITCH as FIELD } from '../geom.js';
 
 const JAB = .34; // (round 13) how far a jockeying defender's weight goes in at the ball in a feint lunge (m)
 // (alive-shape) Off the ball nobody stands still (the owner's son: "players just stand around"). A player round his own
-// with no run to make (standing, or at a walk) moves on the picture's clock, the one that keeps life in slow motion
-// (game/skill.js: never under 0.35 of real time): a small move every `per` s (his own tempo, a little quicker or slower),
-// to a place up to `amp` m from where the game has him, his feet stepping there (short shuffle steps), and back. A
+// with no run to make (standing, or at a walk) makes calm small moves, paced by real time: one every `per` s (his own
+// tempo, 1.15 to 1.45 s), each `move` s long, eased in and out, then a moment's settle; to a place up to `amp` m from
+// where the game has him, never more than `step` m in one move (so never faster than `v` m/s), his feet stepping there. A
 // defender slides side to side across the line to the ball, a touch in and out, on his toes and facing it; a defender
-// marking a man goes with that man's own moves, and makes smaller ones of his own (`mark` of the move); a friend shows for the ball:
+// marking a man goes with that man's own moves, and makes smaller ones of his own (`mark`) only while his man stands; a friend shows for the ball:
 // across into the gap, a step short toward it, across the other way, back out. The game's own place for him (a.x) does
-// not move: every choice is graded from it, and `amp` is inside the slack its lines are read with (window.js TOL,
-// 0.3 m); scripts/motion-audit.js grades the drawn places too. At a dead ball before it is played (sim.dead: a kick-off,
+// not move: every choice is graded from it; the window grades the drawn picture ahead of time and makes a player's moves
+// smaller where they would tip a choice (game/window.js aliveGuard), and scripts/motion-audit.js grades the drawn places
+// at every tap. scripts/stand-audit.js checks the moves themselves on real time (MOTION). At a dead ball before it is played (sim.dead: a kick-off,
 // a goal kick, a pass in from the side) players stand: only their weight shifts (`dead` of the move). Not his own
 // player, the one who comes for the ball (a.track.comer), a keeper (pro/keeper.js), nor one the ball is coming to.
-export const ALIVE = { amp: .2, per: .42, slow: .7, dead: .3, mark: .6 };
+export const ALIVE = { amp: .3, per: [1.15, 1.45], move: 1, step: .4, v: .6, acc: 2.5, ease: .12, capRate: 3, dead: .3, mark: .6 };
 const OFF = new WeakMap(); // each player's drawn offset from his place in the game (a marker goes with his man's)
 const TAU = Math.PI * 2, ANKLE = .06, TOE = .12, REACH = THIGH + SHIN - .004, SOFT = .04, BALL = .125; // BALL: the ball's radius (world.js)
 const clamp = (v, a = 0, b = 1) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * clamp(t), sm = t => (t = clamp(t), t * t * (3 - 2 * t)), frac = v => v - Math.floor(v);
@@ -396,14 +397,23 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   m.ready = damp(m.ready, defending ? (bd < 7 ? 1 : Math.max(.5, .9 * (m.al || 0))) : carrying ? .4 : passIn ? .95 : ours && dc < 20 ? .6 : m.sr, 3, rdt);
   // (alive-shape) His own small moves off the ball (ALIVE): AX, AY, the drawn offset (world metres) from where the game has him.
   const alive = a.id !== 'hero' && !a.gk && !carrying && !mood && !a.track?.comer && !passIn && kt > .7 && !(act && act.k === 'trap');
-  m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 2.2), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 5, rdt); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out)
+  m.al = damp(m.al || 0, alive ? Math.min(1 - sm(vOff / 2.2), 2 * idle) * (sim.dead ? ALIVE.dead : 1) : 0, 4, rdt / clamp(sim.prate ?? 1, .2, 1)); // (creeping by the picture's clock, under a slow jog's pace; and never as he strides out; it comes and goes by real time)
+  // (his moves are paced by real time: the picture's clock runs at sim.prate of it in a choice's slow motion, set by
+  // game/window.js; outside a window that is 1, and a skill moment's slower picture only makes them calmer still)
+  const rT = rdt / clamp(sim.prate ?? 1, .2, 1);
   let AX = 0, AY = 0, TX = 0, TY = 0; // (TX, TY: where his move now takes him, drawn: game/window.js aliveGuard grades it ahead of time)
-  m.cap = damp(m.cap ?? 1, (sim.aliveCap ?? 1) * (a.aliveK ?? 1), 12, rdt); // (the window's own check may make everyone's moves smaller: game/window.js aliveGuard)
+  m.cap = damp(m.cap ?? 1, (sim.aliveCap ?? 1) * (a.aliveK ?? 1), ALIVE.capRate, rT); // (the window's own check may make everyone's moves smaller: game/window.js aliveGuard)
+  if (m.al < .15) m.alOn = false;
   if (m.al > .002) {
-    // (in a choice's slow motion the picture's clock runs at a third of real time: there his moves come a little quicker
-    // by it, about one a second on the screen; sim.prate, set by game/window.js)
-    const per = ALIVE.per * (.85 + .3 * m.se) * lerp(ALIVE.slow, 1, ((sim.prate ?? 1) - .35) / .65), ph = (T + u.seed * 3.1) / per, n = Math.floor(ph);
-    if (m.an !== n) { // the next move: from where he is drawn now, to a new place round his own
+    // One move every P s of real time, his own tempo (ALIVE.per), started from a phase of his own so nobody moves in step:
+    // the move itself takes ALIVE.move s, eased in and out, and he settles there for the rest. (The phase is added up frame
+    // by frame: v80's first version read it off the picture's whole clock divided by a pace that changes as the slow
+    // motion eases in, so a small change of pace jumped it on by whole moves: three moves a second, a nervous shuffle.)
+    const P = ALIVE.per[0] + (ALIVE.per[1] - ALIVE.per[0]) * frac(u.seed * 7.31);
+    m.aph = (m.aph ?? frac(u.seed * 3.1)) + rT / P;
+    if (m.al > .3 && !m.alOn) { m.alOn = true; m.aph = Math.ceil(m.aph) + frac(u.seed * 5.3) * .25; } // (as he comes to rest round his place, a choice opening: his first move starts at once, give or take a moment of his own)
+    const n = Math.floor(m.aph);
+    if (m.an !== n) { // the next move: from where his move now is, to a new place round his own
       const first = m.an == null; m.an = n; m.af = first ? [0, 0] : [...(m.ao || [0, 0])];
       const r = frac(Math.sin(n * 12.9898 + u.seed * 78.233) * 43758.5453), ux = bd > .1 ? bx / bd : Math.cos(face), uy = bd > .1 ? by / bd : Math.sin(face), A = ALIVE.amp, sg = n & 1 ? 1 : -1;
       let tx, ty;
@@ -412,14 +422,24 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
         tx = qx * c[0] + ux * c[1] * (.8 + .4 * r); ty = qy * c[0] + uy * c[1] * (.8 + .4 * r); }
       else { const s1 = sg * A * (.75 + .25 * r), s2 = A * (.35 * r - .1); tx = -uy * s1 + ux * s2; ty = ux * s1 + uy * s2; } // side to side across the line to the ball, a touch in and out
       const l = Math.hypot(tx, ty); if (l > A) { tx *= A / l; ty *= A / l; }
+      const dx = tx - m.af[0], dy = ty - m.af[1], d = Math.hypot(dx, dy); if (d > ALIVE.step) { tx = m.af[0] + dx * ALIVE.step / d; ty = m.af[1] + dy * ALIVE.step / d; } // (no move longer than `step`: its top speed stays under ALIVE.v)
       m.at = [tx, ty];
     }
-    const e = sm((ph - n) / .6); m.ao = [m.af[0] + (m.at[0] - m.af[0]) * e, m.af[1] + (m.at[1] - m.af[1]) * e];
+    const e = sm((m.aph - n) * P / ALIVE.move); m.ao = [m.af[0] + (m.at[0] - m.af[0]) * e, m.af[1] + (m.at[1] - m.af[1]) * e];
     const k = m.al * m.cap; AX = m.ao[0] * k; AY = m.ao[1] * k; TX = m.at[0] * k; TY = m.at[1] * k;
-    // a defender marking a man (nearer him than the ball, within 2.6 m, and not the one on it) goes with that man's moves
+    // a defender marking a man (nearer him than the ball, within 2.6 m, and not the one on it) goes with that man's moves;
+    // only while his man stands does he make small moves of his own (`mark` of the move)
     const man = defending && foe && foe !== carrier && fd < 2.6 && fd < bd ? OFF.get(foe) : null;
-    if (man) { const c = m.cap; AX = man[0] * c + AX * ALIVE.mark; AY = man[1] * c + AY * ALIVE.mark; TX = man[2] * c + TX * ALIVE.mark; TY = man[3] * c + TY * ALIVE.mark; } // (and on his toes round that: a smaller move of his own; the window's check makes all of it smaller)
+    if (man) { const c = m.cap, own = ALIVE.mark * (1 - sm(Math.hypot(man[2], man[3]) / .05)); AX = man[0] * c + AX * own; AY = man[1] * c + AY * own; TX = man[2] * c + TX * own; TY = man[3] * c + TY * own; }
   }
+  // What is drawn follows that smoothly (a critically damped spring, ALIVE.ease s), never faster than ALIVE.v m/s of real
+  // time: so his drawn body never jumps, nor turns straight back, whatever changes it (a marker taking another man, the
+  // window's check making his moves smaller, his moves fading as he sets off).
+  if (rT > 0) { const x0 = m.dx ?? 0, y0 = m.dy ?? 0, vx0 = m.dvx ?? 0, vy0 = m.dvy ?? 0; sdamp(x0, vx0, AX, ALIVE.ease, rT); let vx = SDV; sdamp(y0, vy0, AY, ALIVE.ease, rT); let vy = SDV;
+    const ax = vx - vx0, ay = vy - vy0, al = Math.hypot(ax, ay), amax = ALIVE.acc * rT; if (al > amax) { vx = vx0 + ax * amax / al; vy = vy0 + ay * amax / al; } // (it speeds up and slows down no harder than ALIVE.acc)
+    const sv = Math.hypot(vx, vy); if (sv > ALIVE.v) { vx *= ALIVE.v / sv; vy *= ALIVE.v / sv; }
+    m.dvx = vx; m.dvy = vy; m.dx = x0 + vx * rT; m.dy = y0 + vy * rT; }
+  AX = m.dx ?? 0; AY = m.dy ?? 0;
   { let o = OFF.get(a); if (!o) OFF.set(a, o = [0, 0, 0, 0]); o[0] = AX; o[1] = AY; o[2] = TX; o[3] = TY; a.alive = o; }
   m.ax = AX; m.ay = AY; // (read by scripts/stand-audit.js and scripts/motion-audit.js: the grade of what is drawn)
   m.puff = damp(m.puff, run, run > m.puff ? .5 : .1, rdt); m.br += rdt * (2 + 2.5 * m.puff);

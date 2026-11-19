@@ -7,7 +7,7 @@ import { time } from '../perf.js';
 import { planHold, planSteps, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, agreeAt, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
-const GUARD = 1.5; // (alive-shape) how much farther than his own small move takes him the picture is graded (aliveGuard)
+const GUARD = 1.25; // (alive-shape) how much farther than his own small move takes him the picture is graded (aliveGuard)
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
 // VIEW_OFF of the way he carries it (a): it looks the way he goes, never across it. CARRY_BACK: the most (rad) his carry on
 // after a touch away from one of theirs turns off the way to their goal (settle).

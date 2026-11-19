@@ -585,7 +585,7 @@ export class World {
       if (Math.hypot(a.x - eye[0], a.y - eye[1]) < (ui.aims?.length ? 3 : 1.7) && eye[2] < 5) { g.visible = false; continue; } // (v66: while he aims, from a little farther off: nobody's head in front of the goal and his ring)
       const s = ui.glow?.[id] || 0, mats = g.userData.mats;
       for (let j = 0; j < mats.length; j++) { mats[j].emissive.setRGB(1, .78, .2); mats[j].emissiveIntensity = s * pulse * .22; }
-      if (s) { glow.visible = true; glow.position.set(a.x, a.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); }
+      if (s) { glow.visible = true; glow.position.set(g.position.x, g.position.y, .03); glow.material.opacity = s * pulse; glow.scale.setScalar(.8 + .4 * s); } // (alive-shape: under his body as it is drawn, pro/motion.js ALIVE: not where the game has him)
     }
     const h = sim.a('hero');
     this.heroRing.visible = !!ui.heroRing && !!h; if (h) this.heroRing.position.set(h.x, h.y, .02);

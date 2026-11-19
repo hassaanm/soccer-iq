@@ -18,7 +18,8 @@
 // demo of every lesson, and MATCHES whole matches by a bot that looks up and taps the best choice part way in.
 // The limit (LIMIT, by phase): the share of standing seconds, at every size. Before alive-shape (v78, 10 matches a size)
 // the players stood in 32-35% of a window's seconds, 82-84% of a demo's crawl, 26% of the play after a lesson's choice,
-// 5-12% of a match's live play and 3-4% of a run-up; after it, 11-12%, 12-15%, 3%, 2% and 3%. What still stands in a
+// 5-12% of a match's live play and 3-4% of a run-up; after it, 11-12%, 12-15%, 3%, 2% and 3%, with the moves three a
+// second; with calm moves (about one a real second, MOTION) about 19%, 15-21%, 6-8%, 2% and 3%. What still stands in a
 // window: a friend on the ball in slow motion (his carry is the play), a passer in his follow-through, a marker whose man
 // stands. At a dead ball (restart, 44-51% before and after) the players stand until it is played, as they do.
 //   node scripts/stand-audit.js [size] [--matches N] [--v]     (also run by scripts/motion-audit.js, at the end)
@@ -33,7 +34,12 @@ export const STAND = { k: .12, yaw: 15, VW: 844, VH: 390 };
 // the game itself (his small moves on the spot not counted), less than ROOT.him m.
 export const ROOT = { ball: 2, him: .3 };
 // The most standing a phase may have (a share of its counted seconds).
-export const LIMIT = { runup: .08, window: .18, crawl: .25, outcome: .08, live: .06 };
+// The drawn moves (scripts/stand-audit.js motion): at most MOTION.rate moves a real second per player (over players moving
+// round their place for MOTION.minT s or more), a drawn speed off his place of at most MOTION.v m/s of real time (so at
+// most MOTION.v / 60 m in one frame of a 60 Hz screen), and no fast reversal (both ways over MOTION.fast m/s, one frame
+// to the next). The owner's reviewer saw three moves a second in v80's first version, as nervous shuffling.
+export const MOTION = { rate: 1.3, v: .65, fast: .3, minT: 4 };
+export const LIMIT = { runup: .08, window: .2, crawl: .25, outcome: .08, live: .06 };
 
 // ---- the poses: pro/motion.js, with three.js stood in for ----
 let animateRig = null;
@@ -97,6 +103,9 @@ export function standWatch(g, tally, { mode = '' } = {}) {
   const rigs = new Map(), spans = new Map(); let lastRestores = null;
   const add = (ph, role, still, who, v, rooted) => { const t = tally[ph] ||= { n: 0, still: 0, role: {}, who: [], v: [], live: 0, rooted: 0, rw: [] }; t.n++; t.v.push(v); if (rooted != null) { t.live++; if (rooted) { t.rooted++; if (t.rw.length < 400) t.rw.push(who); } } if (still) { t.still++; if (t.who.length < 400) t.who.push(who); } const r = t.role[role] ||= [0, 0]; r[0]++; if (still) r[1]++; };
   const close = (id, sp) => { spans.delete(id); };
+  // (the drawn moves themselves, pro/motion.js ALIVE, on real time: how often each player starts a move, how fast his
+  // drawn place moves off his place in the game, the largest step in a frame of a 60 Hz screen, fast reversals)
+  const mo = tally.motion ||= { n: 0, maxV: 0, maxStep: 0, rev: 0, worst: '', rates: [] }, track = new Map();
   const fn = () => {
     const s = g.sim, cam = g.cam, ph = phaseOf(g), skip = skipOf(g), T = g.realTime || 0, clock = g.ui?.clock ?? T;
     if (s.restores !== lastRestores) { lastRestores = s.restores; }
@@ -105,6 +114,16 @@ export function standWatch(g, tally, { mode = '' } = {}) {
       let r = rigs.get(a.id); if (!r || r.agent !== a) { r = { g: fakeRig(1 + (a.id.charCodeAt(1) * 7 + (a.team === 'us' ? 3 : 0)) % 10 * .5), agent: a }; rigs.set(a.id, r); }
       animateRig(r.g, a, s, 0, 0, clock);
       const m = r.g.userData.m, hp = r.g.pos, F = m.fl.map(f => [f.px, f.py, f.P[2]]), yaw = r.g.userData.yaw;
+      { let q = track.get(a.id); if (!q || q.agent !== a) track.set(a.id, q = { agent: a, T: null, o: null, v: null, an: m.an, moves: 0, aliveT: 0 });
+        const o = [m.ax || 0, m.ay || 0], dt = q.T == null ? 0 : T - q.T;
+        if (dt > 1e-4 && ph && !skip.has(a.id)) { mo.n++;
+          const v = [(o[0] - q.o[0]) / dt, (o[1] - q.o[1]) / dt], sp = Math.hypot(v[0], v[1]); if (sp > mo.maxV) { mo.maxV = sp; mo.worst = `${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(2)}s`; } mo.maxStep = Math.max(mo.maxStep, sp / 60);
+          if (q.v) { const s0 = Math.hypot(q.v[0], q.v[1]); if (s0 > MOTION.fast && sp > MOTION.fast && (v[0] * q.v[0] + v[1] * q.v[1]) / (s0 * sp) < -.5) { mo.rev++; if ((mo.revAt ||= []).length < 10) mo.revAt.push(`${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(2)}s ${s0.toFixed(2)}>${sp.toFixed(2)} m/s`); } }
+          q.v = sp > 1e-6 || !q.v ? v : q.v;
+          if ((m.al || 0) > .3) { q.aliveT += dt; if (m.an !== q.an && q.an != null) q.moves++; } }
+        else if (dt > 1e-4) q.v = null;
+        q.an = m.an; q.T = T; q.o = o; }
+      
       const counted = ph && !skip.has(a.id) && cam && onScreen(screen(cam, hp[0], hp[1], .9));
       let sp = spans.get(a.id);
       if (sp && (!counted || sp.ph !== ph)) { close(a.id, sp); sp = null; }
@@ -119,7 +138,7 @@ export function standWatch(g, tally, { mode = '' } = {}) {
       sp.mYaw = Math.max(sp.mYaw, Math.abs(Math.atan2(Math.sin(yaw - sp.yaw), Math.cos(yaw - sp.yaw))) * 180 / Math.PI);
       if (T - sp.t0 >= 1 - 1e-6) {
         const lim = STAND.k * Math.max(sp.H, 1), still = sp.mHip < lim && sp.mFoot < lim && sp.mYaw < STAND.yaw, role = a.team === s.a('hero')?.team ? 'friend' : 'foe';
-        add(ph, role, still, `${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(1)}s hip ${sp.mHip.toFixed(1)}px foot ${sp.mFoot.toFixed(1)}px of ${sp.H.toFixed(0)}px turn ${Math.round(sp.mYaw)}° al ${(m.al||0).toFixed(2)} w ${(m.w||0).toFixed(2)} va ${(m.va||0).toFixed(2)} car ${s.ball.carrier === a.id ? 1 : 0} kt ${a.kickAt != null ? (s.time - a.kickAt).toFixed(2) : '-'} ax ${(m.ax||0).toFixed(2)},${(m.ay||0).toFixed(2)}`, [sp.mHip / sp.H, sp.mFoot / sp.H, sp.mYaw],
+        add(ph, role, still, `${mode} ${g.sc?.id || ''} ${a.id} ${ph} ${T.toFixed(1)}s hip ${sp.mHip.toFixed(1)}px foot ${sp.mFoot.toFixed(1)}px of ${sp.H.toFixed(0)}px turn ${Math.round(sp.mYaw)}° al ${(m.al||0).toFixed(2)} w ${(m.w||0).toFixed(2)} va ${(m.va||0).toFixed(2)} car ${s.ball.carrier === a.id ? 1 : 0} kt ${a.kickAt != null ? (s.time - a.kickAt).toFixed(2) : '-'} ax ${(m.ax||0).toFixed(2)},${(m.ay||0).toFixed(2)} cap ${(m.cap ?? 1).toFixed(2)}`, [sp.mHip / sp.H, sp.mFoot / sp.H, sp.mYaw],
           // (rooted: in play at full speed, the ball moving 2 m or more in that second and he, in the game itself, less than 0.3 m)
           (ph === 'outcome' || ph === 'live' || ph === 'runup') && sp.bm >= ROOT.ball ? Math.hypot(a.x - sp.g0[0], a.y - sp.g0[1]) < ROOT.him : null);
         spans.set(a.id, { ph, t0: T, hp: [...hp], F: F.map(f => [...f]), yaw, mHip: 0, mFoot: 0, mYaw: 0, H: H(), g0: [a.x, a.y], b0: [s.ball.x, s.ball.y], bm: 0 });
@@ -127,6 +146,7 @@ export function standWatch(g, tally, { mode = '' } = {}) {
     }
   };
   fn.rigs = rigs;
+  fn.finish = () => { for (const q of track.values()) if (q.aliveT >= MOTION.minT) mo.rates.push(q.moves / q.aliveT); };
   // where each player is drawn (his place in the game and his own small move, pro/motion.js ALIVE): for the grade of what is seen
   fn.drawn = () => { const out = {}; for (const a of s0().agents.values()) { const m = rigs.get(a.id)?.g.userData.m; out[a.id] = [a.x + (m?.ax || 0), a.y + (m?.ay || 0)]; } return out; };
   return fn;
@@ -141,20 +161,20 @@ async function lessons(tally) {
     seeded(3); const { g } = makeGame(); setup(g); g.mode = 'lesson'; g.levelOf = () => 1; const w = standWatch(g, tally, { mode: 'lesson' });
     let ua = null; const best = sc.best || (sc.spots ? 'spot:' + sc.spots[0].id : 'drib:fwd');
     const pick = gm => { if (!gm.win) return best; ua ??= .5; return gm.win.u >= ua ? best : null; };
-    try { g.load(sc); await drive(g, g.pre(), { onFrame: w }); const o = await drive(g, g.decide(), { pick, onFrame: w }); await drive(g, g.outcome(o, g.isGood(o)), { onFrame: w }); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
+    try { g.load(sc); await drive(g, g.pre(), { onFrame: w }); const o = await drive(g, g.decide(), { pick, onFrame: w }); await drive(g, g.outcome(o, g.isGood(o)), { onFrame: w }); w.finish(); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
   }
 }
 async function demos(tally) {
   for (const sk of PATH) {
     seeded(4); const { g } = makeGame(); setup(g); const w = standWatch(g, tally, { mode: 'demo' });
-    try { await drive(g, g.demo(sk.id), { onFrame: w, maxSec: 120 }); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
+    try { await drive(g, g.demo(sk.id), { onFrame: w, maxSec: 120 }); w.finish(); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
   }
 }
 async function matches(tally, n) {
   for (let seed = 1; seed <= n; seed++) {
     seeded(seed); const { g } = makeGame(); setup(g); g.skills = new Set(PATH.map(s => s.id)); const w = standWatch(g, tally, { mode: 'match' + seed });
     const pick = gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null; if (!gm.lookUp) gm.lookUp = true; if (gm.win && gm.win.u < .45) return null; return gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:back'); };
-    try { await drive(g, g.match(PATH.map(s => s.id), [], 3, 'free'), { pick, onFrame: w, maxSec: 900 }); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
+    try { await drive(g, g.match(PATH.map(s => s.id), [], 3, 'free'), { pick, onFrame: w, maxSec: 900 }); w.finish(); } catch (e) { tally.errors = (tally.errors || 0) + 1; if (process.env.STAND_DEBUG) console.error(e); }
   }
 }
 
@@ -170,6 +190,8 @@ export async function standAudit({ sizes = Object.keys(SIZES).filter(k => SIZES[
       return `${bad ? 'MISS' : lim != null ? 'ok  ' : '    '} ${ph.padEnd(8)} ${(100 * sh).toFixed(1).padStart(5)}% standing of ${String(t.n).padStart(5)} player-seconds${lim != null ? ` (at most ${lim * 100}%)` : ' (not limited)'}; ${roles}${t.live ? `; rooted while the ball moves ${(100 * t.rooted / t.live).toFixed(1)}% of ${t.live}` : ''}`; };
     log(`  ${size}: ${['runup', 'window', 'crawl', 'outcome', 'live', 'restart'].map(row).join('\n  ' + size + ': ')}${tally.errors ? `\n  ${size}: ${tally.errors} flow(s) did not finish` : ''}`);
     if (tally.errors) fails += tally.errors;
+    { const mo = tally.motion, r = [...(mo?.rates || [])].sort((a, b) => a - b), top = r.at(-1) || 0, bad = [top > MOTION.rate, mo.maxV > MOTION.v, mo.rev > 0]; fails += bad.filter(Boolean).length;
+      log(`  ${size}: ${bad.some(Boolean) ? 'MISS' : 'ok  '} motion   moves a real second per player: median ${(r[r.length >> 1] || 0).toFixed(2)}, most ${top.toFixed(2)} (at most ${MOTION.rate}); fastest drawn move ${mo.maxV.toFixed(2)} m/s (at most ${MOTION.v}; ${mo.worst}), largest step in a 60 Hz frame ${mo.maxStep.toFixed(3)} m; fast reversals ${mo.rev} (none allowed) over ${mo.n} player-frames${mo.rev ? ': ' + mo.revAt.join('; ') : ''}`); }
     if (verbose) for (const ph of Object.keys(tally)) for (const w of (tally[ph].who || []).slice(0, 25)) log('     ' + w);
   }
   return { fails, tallies };
