@@ -866,6 +866,11 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fAct{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
 #fAct i{font-size:42px}
 #fAct.show{display:flex}
+#fAct{overflow:hidden}
+#fAct .fWait{position:absolute;inset:0;border-radius:50%;background:rgba(36,25,58,.62);transform:scaleY(0);transform-origin:50% 100%;pointer-events:none}
+#fAct.spent i,#fAct.spent span{opacity:.55}
+#fAct.nope{animation:fNope .35s ease-out}
+@keyframes fNope{25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
 #fHold{position:absolute;left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
 #fHold i,#fHold b{font-style:normal;font-weight:400}
 #fHold.show{opacity:1}

@@ -46,7 +46,7 @@ class Fast {
     const box = el('div', { id: 'fastHud' }, `
       <button id="fAvatar" class="btn btn-glass btn-icon" type="button" aria-label="Change your player"></button>
       <button id="fLook" class="btn btn-gold btn-round" type="button" aria-label="Look up"><i>👀</i><span>LOOK UP</span></button>
-      <button id="fAct" class="btn btn-gold btn-round" type="button"><i></i><span></span></button>
+      <button id="fAct" class="btn btn-gold btn-round" type="button"><b class="fWait" aria-hidden="true"></b><i></i><span></span></button>
       <div id="fHold" aria-hidden="true"><i>✋</i><b>⏳</b></div>
       <div id="fSlow" aria-hidden="true"></div><div id="fChevL" class="fChev" aria-hidden="true">‹‹</div><div id="fChevR" class="fChev" aria-hidden="true">››</div>
       <div id="fFoot" class="howpick"><button id="fIn" class="btn btn-gold" type="button" aria-label="Inside of the foot"></button><button id="fLaces" class="btn btn-gold" type="button" aria-label="Laces"></button></div>
@@ -106,7 +106,7 @@ class Fast {
     this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
     this.aiming = this.footing = false; this.ui.ballGlow = false; this.actKind = null; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
-    this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, skills: 0, chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
+    this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.camNow(1);
     hud.state({ phase: 'idle', mode: 'fast' }); hud.caption(''); hud.score(m.score, us, them);
     game.mode = 'fast'; this.drawAvatar(); this.dom.box.classList.add('on'); this.dom.hold.classList.add('show');
@@ -132,7 +132,7 @@ class Fast {
   counts() {
     const m = this.m, c = m.count, all = Object.values(c.touches).reduce((a, b) => a + b, 0);
     return { score: { ...m.score }, touches: c.touches[this.me] || 0, teamTouches: all, share: all ? +((c.touches[this.me] || 0) / all).toFixed(2) : 0, passes: c.passes, good: c.arrived, cut: c.cut, goals: c.goals, steals: c.steals, lost: c.lost,
-      time: Math.round(this.stats.played), actions: this.stats.actions, shots: this.stats.shots, skills: this.stats.skills, stealMiss: this.stats.stealMiss, keeperTurns: this.stats.keeperTurns, saves: this.stats.saves, cues: this.stats.cues, chipPasses: this.stats.chipPasses, holds: this.stats.holds, slowS: +this.stats.slowT.toFixed(1), looks: this.stats.looks,
+      time: Math.round(this.stats.played), actions: this.stats.actions, shots: this.stats.shots, skills: this.stats.skills, stealMiss: this.stats.stealMiss, spentTaps: this.stats.spentTaps, keeperTurns: this.stats.keeperTurns, saves: this.stats.saves, cues: this.stats.cues, chipPasses: this.stats.chipPasses, holds: this.stats.holds, slowS: +this.stats.slowT.toFixed(1), looks: this.stats.looks,
       pitch: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
       camBall: this.stats.camN ? +(this.stats.camBall / this.stats.camN).toFixed(3) : null, camGoal: this.stats.camN ? +(this.stats.camGoal / this.stats.camN).toFixed(3) : null };
   }
@@ -313,7 +313,7 @@ class Fast {
       if (d <= SHOT_EDGE) return 'shoot';
       return null;
     }
-    if (c && m.team(c) === 'them' && R.stealShown(s.a(c), me) && m.meMove?.kind !== 'lunge') return 'steal';
+    if (c && m.team(c) === 'them' && R.stealShown(s.a(c), me)) return 'steal'; // (after a press out of time it shows spent: drawSpent)
     return null;
   }
   drawAction(k) {
@@ -322,8 +322,15 @@ class Fast {
     b.dataset.kind = k; const [i, t] = k === 'shoot' ? ['🥅', 'SHOOT'] : k === 'steal' ? ['🦶', 'STEAL'] : ['✨', 'SKILL'];
     b.querySelector('i').textContent = i; b.querySelector('span').textContent = t; b.setAttribute('aria-label', t);
   }
+  // STEAL spent (a press out of time): the button dimmed, a dark cover over it that drains away as it comes back
+  // (m.stealLeft), and a press does nothing but a little shake.
+  drawSpent(left) {
+    const b = this.dom.act, v = Math.ceil(left * 20) / 20; if (v === this.spentV) return; this.spentV = v;
+    b.classList.toggle('spent', v > 0); b.querySelector('.fWait').style.transform = `scaleY(${v})`;
+  }
   action() {
     const k = this.actionNow(); if (!k || !this.on || held.on) return;
+    if (k === 'steal' && this.m.stealSpent()) { const b = this.dom.act; b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); sfx('tap'); this.stats.spentTaps++; return; }
     this.acted(k);
     if (k === 'shoot') this.aim(); else if (k === 'steal') this.steal(); else this.skill();
   }
@@ -355,11 +362,12 @@ class Fast {
     game.plog?.('fast', { is: 'shot', zone: this.zone, foot, res: res.res });
   }
   endAim() { this.aiming = this.footing = false; this.ui.aims = null; this.dom.foot.classList.remove('show'); hudEl.classList.remove('faiming'); if (!this.holding) this.slowTo = BASE; }
-  // STEAL: in time it is his (shown slow); too soon or too late he lunges, is slowed, and the carrier gets past.
+  // STEAL: in time it is his (shown slow); too soon or too late he lunges, the carrier gets past, and STEAL is spent a
+  // while (drawSpent).
   steal() {
     const r = this.m.steal(); if (!r) return;
     if (r === 'won') { this.stats.steals++; this.slowTo = .3; this.m.after(.5, () => { if (!this.holding) this.slowTo = BASE; }); }
-    else { this.stats.stealMiss++; sfx('tap'); this.slowTo = .45; this.m.after(.6, () => { if (!this.holding) this.slowTo = BASE; }); }
+    else { this.stats.stealMiss++; sfx('tap'); } // (no slow motion: the carrier gets away at full speed, and STEAL is spent a while: match.js)
     game.plog?.('fast', { is: 'steal', res: r });
   }
   // SKILL: one move, in slow motion, toward the open side (the side away from the defender who comes at him): a skill
@@ -408,7 +416,7 @@ class Fast {
     this.spots = h && !m.dead && !this.aiming ? R.spots(h, [...s.agents.values()].filter(a => a.id !== this.me), PITCH.L, PITCH.W) : [];
     for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me && m.passCheck(this.me, id).open ? .55 : 0; // (gold: a pass that will get there)
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
-    this.drawAction(this.aiming ? null : this.actionNow());
+    this.drawAction(this.aiming ? null : this.actionNow()); this.drawSpent(this.actKind === 'steal' ? m.stealLeft() : 0);
     this.scanCue(h);
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
     if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js; the next goal ends it, the score as it stands then)
