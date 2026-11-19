@@ -131,6 +131,9 @@ export const ENTRIES = [
     look: 'It opens with him on the ball near the halfway line, then play flows on.' },
   { id: 'match-defend', group: MATCH, title: 'A match from their ball (defend first)', pick: ALL, reach: 'defend', match: { goals: 5, first: { lesson: 'get-goal-side', pattern: 'goal-side' } },
     look: 'It opens with their ball: a defending choice first.' },
+  { id: 'match-won-new', group: MATCH, title: 'Win the ball before "Won it? Go!": the next situation comes in by play', pick: ALL, reach: 'defend',
+    match: { goals: 5, first: { lesson: 'get-goal-side', pattern: 'goal-side' }, without: ['won-it-go'] },
+    look: 'Pick the right spot and win the ball. No cut and no fade (v82): a short piece of play brings in the next situation (they win it back, or a pass on), everyone runs to his place and the camera follows, 2 to 4 s. After 60 s without a goal the same happens with a free kick, the ball out, a keeper catch or a tackle.' },
   { id: 'cup', group: MATCH, title: 'A cup round', screen: 'cups',
     look: 'The cup card (the road to the trophy), then Kick off plays the real cup round. Leaving it half way reloads the page.' },
 
