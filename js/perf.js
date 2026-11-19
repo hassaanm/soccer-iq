@@ -28,6 +28,9 @@ export function start(renderer) {
   }
 }
 export function stop() { rec.on = false; }
+// (v79) A frame of the loop while the game is paused: not counted, and the next counted frame is timed from here (so the
+// pause is neither a slow frame nor part of the totals).
+export function idle(t) { if (rec.on) last = t; }
 
 // Once a frame, from the frame loop: `g` the game (phase, mode, window), `r` the renderer (what was drawn and made).
 export function frame(t, g, r) {

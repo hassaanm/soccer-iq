@@ -2,6 +2,7 @@
 // The game calls these; none of them knows the rules.
 import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
+import { later as setTimeout, unlater as clearTimeout } from '../pause.js'; // (v79: the HUD's waits are held while the game is paused)
 
 export const hudEl = $('#hud');
 const ui = Object.fromEntries(['prompt', 'lookBtn', 'passBtn', 'dribBtn', 'shootBtn', 'tunnel', 'banner', 'rate', 'flash', 'seenNote', 'hand', 'toast', 'caption', 'dots', 'score', 'rateWatch', 'rateNext', 'skillA', 'skillB', 'skillName', 'skillTag', 'pop']

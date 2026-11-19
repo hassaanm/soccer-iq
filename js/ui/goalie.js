@@ -20,6 +20,7 @@ import { keeperDone } from '../progress.js';
 import { toMatch, toCup, toLessons, ASK } from '../flows.js';
 import { sfx } from '../sound.js';
 import { warmKeeper } from './voicewarm.js';
+import { held, later } from '../pause.js';
 
 export const goalie = new Goalie({ world, hud, say, sfx });
 // Said the first time, on the card that opens it; and the headline on the results card, by how many he saved.
@@ -96,7 +97,7 @@ goalie.onFrame = g => {
   if (hp) { if (!handOn) handTap++; handOn = true; hud.hand([hp[0], hp[1] + 6], handTap); } else if (handOn) { handOn = false; hud.hand(null); }
 };
 // A touch on the field picks a spot or a target as the finger goes down (no dragging to look around in goal).
-canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary) return; const r = canvas.getBoundingClientRect(); goalie.tapAt(e.clientX - r.left, e.clientY - r.top); });
+canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary || held.on) return; const r = canvas.getBoundingClientRect(); goalie.tapAt(e.clientX - r.left, e.clientY - r.top); });
 
 // ---------- a round ----------
 let busy = false;
@@ -140,7 +141,7 @@ game.keeperPlay = () => P.settings.keeperPlay || 'off';
 game.keeperMoment = (spec, shooter) => {
   const k = P.keeper ||= { best: 0, plays: 0, last: 0, day: -1, stickers: 0 };
   k.turns = (k.turns || 0) + 1; save();
-  if (k.turns <= TOLD) { hud.caption('🧤 ' + YOURE); say(YOURE); setTimeout(() => { if (hud.busy?.()) hud.caption(''); }, 1800); }
+  if (k.turns <= TOLD) { hud.caption('🧤 ' + YOURE); say(YOURE); later(() => { if (hud.busy?.()) hud.caption(''); }, 1800); }
   aimLook(true);
   return goalie.inMatch(game, spec, shooter).finally(() => aimLook(false));
 };
