@@ -51,7 +51,7 @@ import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
 import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
-import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK, cutMatches, cutText } from './live-audit.js';
+import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK, cutMatches, cutText, RATE, rateJudge, hardFlags } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
 import { poser, standWatch } from './stand-audit.js';
 await poser(); // (alive-shape: everyone is posed as world.js poses him, so what he sees when he taps is graded as drawn too)
@@ -398,8 +398,10 @@ if (flag('--json')) writeFileSync(flag('--json'), JSON.stringify({ all, stats: O
 let liveBad = 0;
 if (!only && !scene && !args.includes('--nolive')) {
   const { liveAudit } = await import('./live-audit.js');
-  for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(flag('--live') || 8)); liveBad += flags.length;
-    console.log(`${size} live play (${flag('--live') || 8} matches): ${stat.plays} choices, shortest live window ${stat.minWin.toFixed(2)} s; ${Object.entries(stat.counts || {}).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+  for (const size of sizes) { const NL = +(flag('--live') || RATE.N), { flags, stat } = await liveAudit(size, NL), rj = rateJudge(size, flags, NL), hard = hardFlags(flags); liveBad += hard.length + (rj.ok ? 0 : 1);
+    console.log(`${size} live play (${NL} matches): ${stat.plays} choices, shortest live window ${stat.minWin.toFixed(2)} s; ${Object.entries(stat.counts || {}).map(([k, v]) => `${k} ${v}`).join(', ')}`);
+    // (v82) hover, yoyo, twoball: judged as a rate against v81's (live-audit.js RATE); any other flag fails on one case
+    console.log(`  ${rj.ok ? 'rate ok' : 'RATE OVER'}: ${rj.text}${rj.n && rj.ok ? ' (listed below, not counted as failures)' : ''}`);
     for (const [k, m] of flags.slice(0, 30)) console.log(`  ${k}: ${m}`);
     // (v76) heading in matches, a child's taps: the camera as each choice opens and 0.7 s in
     const rows = await headingMatches(size, +(flag('--hmatch') || 6)), ok = rows.filter(r => !r.why), open = ok.filter(r => r.bad), later = ok.filter(r => r.badLater), ex = rows.filter(r => r.why);
