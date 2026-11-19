@@ -223,6 +223,7 @@ export class Match {
       if (f.kind === 'pass' || f.kind === 'push') {
         if (f.cut) { const c = s.a(f.cut); if (c && Math.hypot(c.x - b.x, c.y - b.y) < FOOT_REACH && (b.z || 0) < 1.2 && u > .05) { this.cutOut(f, f.cut); return; } }
         const hit = bodyHit(b, foes); if (hit) { this.cutOut(f, hit.id); return; }
+        const mate = f.kind === 'pass' ? bodyHit(b, this.ids(f.team).filter(id => id !== f.from && id !== f.to).map(id => s.a(id))) : null; if (mate) { this.giveTo(mate.id, 'pass'); return; } // (a friend in its way takes it: it never goes through anyone)
         const r = s.a(f.to); if (f.kind === 'pass' && r && u > .5 && Math.hypot(r.x - b.x, r.y - b.y) < .55) { this.arrive(f); return; }
       } else if (f.kind === 'shot') { // (a shot meets bodies too: a defender in its way blocks it)
         const hit = bodyHit(b, this.foes(f.team)); if (hit) { this.fx('stolen'); this.giveTo(hit.id, 'block'); return; }

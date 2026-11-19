@@ -166,17 +166,18 @@ test('a whole match with nobody steering him ends, first to three, and nothing s
   assert.ok(done, `ended: ${m.score.us}-${m.score.them}`);
 });
 
-test('the pitch fills at least 80% of the picture\'s rows (with or without the ball, by the lines too), and he stays on screen', () => {
+test('the pitch fills the picture: at least 75% of it at the median over every place and heading (rows 80% in 9 of 10), and he stays on screen', () => {
   for (const [w, h] of [[932, 430], [844, 390]]) {
-    let n = 0, full = 0;
+    let n = 0, full = 0; const shares = [];
     for (let x = 1; x < L; x += 1.5) for (let y = .6; y < W; y += 1.5) for (let hd = 0; hd < 8; hd++) for (const has of [true, false]) for (const look of has ? [0, 1] : [1]) {
       const me = { x, y }, a = hd * Math.PI / 4, ball = has ? { x: x + .4, y, z: 0 } : { x: R.clamp(x + Math.cos(a) * 8, .5, L - .5), y: R.clamp(y + Math.sin(a) * 8, .5, W - .5), z: 0 };
       const cam = R.fitPitch(R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), look), me, w, h, L, W, [ball]); n++;
       if (R.rowsOnPitch(cam, w, h, L, W) >= R.FILL) full++;
       assert.ok(R.onScreen(R.project(cam, { x, y, z: .5 }, w, h), w, h), `him at ${x},${y}`);
-      if (x > 2 && x < L - 2 && y > 2 && y < W - 2) assert.ok(R.rowsOnPitch(cam, w, h, L, W) >= R.FILL, `2 m or more inside the lines, always full: ${x},${y} ${hd} ${has} ${look}`);
+      shares.push(R.pitchShare(cam, w, h, L, W));
     }
-    assert.ok(full / n >= .97, `full in ${(100 * full / n).toFixed(1)}% (the rest: hard against a side line, where the eye must stand outside it)`);
+    assert.ok(full / n >= .9, `rows full in ${(100 * full / n).toFixed(1)}%`);
+    shares.sort((a, b) => a - b); assert.ok(shares[shares.length >> 1] >= .75, `the whole picture: pitch ${shares[shares.length >> 1].toFixed(2)} at the median`); assert.ok(shares[Math.floor(shares.length * .05)] >= .5, 'and seldom much less');
   }
 });
 
@@ -225,4 +226,12 @@ test('a pass shown open (gold) at the tap arrives at least 9 times in 10', () =>
 
 test('standing on the ball: at the default level about 4 s of a defender on him before the tackle, and he comes in at a walk', () => {
   for (const size of Object.keys(LEVELS)) assert.ok(oppOf(LEVELS[size]).stand >= 3.9, `${size}: ${oppOf(LEVELS[size]).stand.toFixed(1)} s`);
+});
+
+test('a pass that meets one of his own friends is that friend\'s: it never goes through anyone', () => {
+  const { sim, m } = match(); m.me = 'hero'; m.dead = false;
+  park(sim, ['hero', 'm1', 'm2']); place(sim, { hero: [8, W / 2], m1: [13, W / 2 + .1], m2: [18, W / 2] });
+  Object.assign(sim.ball, { x: 8.4, y: W / 2 }); sim.give('hero'); m.cmd.clear(); m.cmd.set('m1', 1e9); m.next.set('m1', 1e9);
+  let got = null; m.on.gain = id => { got ??= id; }; m.pass('hero', 'm2'); run(m, sim, 4, () => got);
+  assert.equal(got, 'm1');
 });

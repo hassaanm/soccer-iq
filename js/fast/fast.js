@@ -27,7 +27,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
+export const TURN_MAX = 2.5, SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -133,13 +133,15 @@ class Fast {
     const m = this.m, c = m.count, all = Object.values(c.touches).reduce((a, b) => a + b, 0);
     return { score: { ...m.score }, touches: c.touches[this.me] || 0, teamTouches: all, share: all ? +((c.touches[this.me] || 0) / all).toFixed(2) : 0, passes: c.passes, good: c.arrived, cut: c.cut, goals: c.goals, steals: c.steals, lost: c.lost,
       time: Math.round(this.stats.played), actions: this.stats.actions, shots: this.stats.shots, skills: this.stats.skills, stealMiss: this.stats.stealMiss, keeperTurns: this.stats.keeperTurns, saves: this.stats.saves, cues: this.stats.cues, chipPasses: this.stats.chipPasses, holds: this.stats.holds, slowS: +this.stats.slowT.toFixed(1), looks: this.stats.looks,
+      share: this.stats.shares?.length ? this.stats.shares.slice().sort((a, b) => a - b)[this.stats.shares.length >> 1] : null, shareLowMaxS: +(this.stats.lowMax || 0).toFixed(1), shareUnder60: this.stats.shares?.length ? +(this.stats.shares.filter(v => v < .6).length / this.stats.shares.length).toFixed(3) : null,
       camBall: this.stats.camN ? +(this.stats.camBall / this.stats.camN).toFixed(3) : null, camGoal: this.stats.camN ? +(this.stats.camGoal / this.stats.camN).toFixed(3) : null };
   }
   // ---------- events ----------
   gained(id, how) {
     const m = this.m;
     const s = this.sim, me = s.a(this.me), pressed = me && m.foes('us').some(o => Math.hypot(o.x - me.x, o.y - me.y) < 1.2);
-    if (R.headDownOn(id, this.me, how) || (id === this.me && how === 'push' && pressed)) { this.lookUp(false); this.stats.downs++; } // the ball comes to him (or a heavy touch under pressure, rare): head down
+    if (R.headDownOn(id, this.me, how)) { this.lookUp(false); this.stats.downs++; } // the ball comes to him: head down (only then)
+    void pressed;
     if (id !== this.me && this.up1 === false) this.lookUp(true); // (he lost it or passed it: head up)
     if (id === this.me && (how === 'tackle' || how === 'cut' || how === 'steal')) { hud.toast('🦶 Great steal!'); say('Great steal!'); }
     game.plog?.('fast', { is: 'gain', id, how });
@@ -391,6 +393,7 @@ class Fast {
     const gdt = dt * this.slow; if (this.slow < BASE * .9) st.slowT += dt; if (this.holding) st.holdT += dt; if (!this.up1) st.headDownT += dt;
     m.step(gdt);
     const n = Math.max(1, Math.ceil(gdt / (1 / 60))); for (let i = 0; i < n; i++) s.step(gdt / n);
+    for (const a of s.agents.values()) { a.x = R.clamp(a.x, .3, PITCH.L - .3); a.y = R.clamp(a.y, .3, PITCH.W - .3); } // (nobody drifts over a line)
     this.ui.clock += gdt;
     this.calm = m.dead;
     const h = s.a(this.me), has = m.owner() === this.me;
@@ -398,7 +401,7 @@ class Fast {
     this.look += ((this.up1 ? 1 : 0) - this.look) * (1 - Math.exp(-dt * 6));
     const nat = this.natural();
     if (this.finger?.moved && this.holdYaw != null) this.yaw = this.holdYaw;
-    else if (this.real > this.holdT) { const d = R.wrap(nat - this.yaw); this.yaw = R.wrap(this.yaw + d * (1 - Math.exp(-dt * 2.4))); this.holdYaw = null; }
+    else if (this.real > this.holdT) { const d = R.wrap(nat - this.yaw), st = R.clamp(d * (1 - Math.exp(-dt * 2.4)), -TURN_MAX * dt, TURN_MAX * dt); this.yaw = R.wrap(this.yaw + st); this.holdYaw = null; } // (eased, and never faster than TURN_MAX rad/s: the ball changing sides does not whip the view round)
     if (h) this.yaw = R.clampYaw(h, this.yaw, PITCH.L, PITCH.W, Math.min(R.LOOK_MIN, R.reachOut(h, nat, PITCH.L, PITCH.W))); // (never off the pitch; the ball or the goal near a line still in view)
     this.camNow(0, dt);
     // the spots round him, the glow on friends he can pass to, the warning on a defender about to tackle
@@ -427,6 +430,9 @@ class Fast {
       st.camN++; const b = s.ball; if (R.onScreen(R.project(this.cam, { x: b.x, y: b.y, z: b.z || 0 }, world.width, world.height), world.width, world.height)) st.camBall++;
       if (R.onScreen(R.project(this.cam, { x: PITCH.L, y: PITCH.W / 2, z: .8 }, world.width, world.height), world.width, world.height)) st.camGoal++;
     }
+    if (h && !m.dead && !this.aiming && (st.shareF = (st.shareF || 0) + 1) % 6 === 0) { // (the share of the picture that is pitch, for the counts: its median and the longest time under 0.6)
+      const v = R.pitchShare(this.cam, world.width, world.height, PITCH.L, PITCH.W, 10, 7); (st.shares ||= []).push(+v.toFixed(2)); if (st.shares.length > 6000) st.shares.splice(0, 3000);
+      st.lowRun = v < .6 ? (st.lowRun || 0) + 6 * dt : 0; st.lowMax = Math.max(st.lowMax || 0, st.lowRun); }
     const w = performance.now() - t0; st.work.push(w); if (st.work.length > 20000) st.work.splice(0, 10000); (this.workAll ||= []).push(w); if (this.workAll.length > 60000) this.workAll.splice(0, 30000);
   }
   // Friends he saw who are off screen now: a chip at the edge toward where he last saw them (rules.js chipList, edgeAt),
