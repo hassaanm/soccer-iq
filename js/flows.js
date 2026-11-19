@@ -294,7 +294,7 @@ async function playFast() {
   const now = fastLevelDone(P, size, start, levelAfter(was.level, c.score)), fresh = stars(now.best, size).n - stars(was.best, size).n; // (v86: the level follows him: js/fast/level.js)
   save();
   fillResults({
-    emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: `${us.short} ${c.score.us} – ${c.score.them} ${them.short}`,
+    emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: '', // (the score is big in the card itself, with the two shirts)
     extra: endCard({ c, img: { us: shirtImg(us), them: shirtImg(them) }, best: now.best, size, fresh }),
     match: toMatch(), cup: toCup(), lesson: toLessons(), paper: won ? 70 : 0,
   });

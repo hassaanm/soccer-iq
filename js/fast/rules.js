@@ -262,10 +262,10 @@ export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
 // on screen; in a corner also close behind him and lower, looking into the pitch (`close`). fast.js eases to it (the
 // turn capped at TURN_MAX rad/s, the side, the pull and the closeness at their own rates).
 export const VIEW_SPAN = .9, VIEW_COST = .25, VIEW_SIDES = [0, 2, 4];
-export const CLOSE = [3, 4, 4, -1]; // (the close view in a corner: back, height, ahead, target height)
+export const CLOSE = [3, 4, 4, -1], CLOSE_B = [5, 4, 0, -2.5]; // (the close view in a corner: back, height, ahead, target height; `close` 0 … 1 to CLOSE, 1 … 2 on to CLOSE_B, looking down at him from over the line)
 export function viewCam(me, ball, has, v, look, w, h, L, W, keep = [ball]) {
   const c = camSpec(me, ball, has, v.yaw, look), sd = v.side || 0, k = v.close || 0;
-  if (k) { const cx = Math.cos(v.yaw), cy = Math.sin(v.yaw), E = [me.x - cx * CLOSE[0], me.y - cy * CLOSE[0], CLOSE[1]], T = [me.x + cx * CLOSE[2], me.y + cy * CLOSE[2], CLOSE[3]]; for (let i = 0; i < 3; i++) { c.eye[i] = lerp(c.eye[i], E[i], k); c.tgt[i] = lerp(c.tgt[i], T[i], k); } }
+  if (k) { const C = k <= 1 ? CLOSE : CLOSE.map((v, i) => lerp(v, CLOSE_B[i], Math.min(1, k - 1))), kk = Math.min(1, k), cx = Math.cos(v.yaw), cy = Math.sin(v.yaw), E = [me.x - cx * C[0], me.y - cy * C[0], C[1]], T = [me.x + cx * C[2], me.y + cy * C[2], C[3]]; for (let i = 0; i < 3; i++) { c.eye[i] = lerp(c.eye[i], E[i], kk); c.tgt[i] = lerp(c.tgt[i], T[i], kk); } }
   if (sd) { const px = -Math.sin(v.yaw), py = Math.cos(v.yaw), sg = Math.sign((W / 2 - me.y) * py + (L / 2 - me.x) * px) || 1; c.eye[0] += px * sd * sg; c.eye[1] += py * sd * sg; }
   return fitPitch(c, me, w, h, L, W, keep, v.pull ?? 1);
 }
@@ -277,7 +277,10 @@ export function* viewSearch(me, ball, has, look, w, h, L, W, nat = naturalYaw(me
   const seen = c => onScreen(project(c, ball, w, h), w, h, 12), tryV = (v, cost) => { const c = viewCam(me, ball, has, v, look, w, h, L, W); if (!seen(c)) return; const s = pitchShare(c, w, h, L, W, 10, 7); if (s - cost > bs) { bs = s - cost; best = { ...v, share: s }; } };
   for (const side of VIEW_SIDES) for (let d = -VIEW_SPAN; d <= VIEW_SPAN + 1e-9; d += .15) if (side || Math.abs(d) > 1e-6) { tryV({ yaw: wrap(nat + d), rel: d, side, pull: 1, close: 0 }, VIEW_COST * Math.abs(d) + .02 * side); yield; }
   const toC = Math.atan2(W / 2 - me.y, L / 2 - me.x); // (the eye out over the line, looking into the pitch; and, in a corner, close behind him and lower: CLOSE)
-  for (let d = -1; d <= 1 + 1e-9; d += .2) { const y = wrap(toC + d), dy = VIEW_COST * .5 * Math.abs(wrap(y - nat)); tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 0 }, dy + .03); yield; tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 1 }, dy + .05); yield; }
+  const ys = []; for (let d = -1; d <= 1 + 1e-9; d += .2) ys.push(wrap(toC + d));
+  for (const [near, a] of [[me.x, 0], [L - me.x, Math.PI], [me.y, Math.PI / 2], [W - me.y, -Math.PI / 2]]) if (near < 5) ys.push(a); // (straight in from a line he is near)
+  if (Math.min(me.x, L - me.x) < 5 && Math.min(me.y, W - me.y) < 5) for (const d of [-.6, -.3, 0, .3, .6]) { tryV({ yaw: wrap(nat + d), rel: d, side: 0, pull: 0, close: 2 }, VIEW_COST * Math.abs(d) + .07); yield; } // (in a corner, looking at the ball steeply from in front of the line)
+  for (const y of ys) { const dy = VIEW_COST * .5 * Math.abs(wrap(y - nat)); tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 0 }, dy + .03); yield; tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 1 }, dy + .05); yield; if (Math.min(me.x, L - me.x) < 5 && Math.min(me.y, W - me.y) < 5) { tryV({ yaw: y, rel: null, side: 0, pull: 0, close: 2 }, dy + .07); yield; } }
   return best;
 }
 export function viewPick(...a) { const g = viewSearch(...a); for (;;) { const r = g.next(); if (r.done) return r.value; } }
@@ -286,7 +289,7 @@ export function viewPick(...a) { const g = viewSearch(...a); for (;;) { const r 
 // finger holds, or null), still (true: leave the yaw where it is, a moment after a drag) }. The target (viewSearch, again
 // every VIEW_EVERY s, at most `ms` of it a frame): its yaw relative to `nat` while it is one of those, so it follows him;
 // the yaw eased to it no faster than TURN_MAX rad/s; the side, the pull and the closeness at VIEW_RATE a second.
-export const TURN_MAX = 2.5, VIEW_EVERY = .2, VIEW_RATE = { side: 3, pull: 1.5, close: 1.2 };
+export const TURN_MAX = 2.5, VIEW_EVERY = .2, VIEW_RATE = { side: 3, pull: 1.5, close: 1.5 };
 export function viewStep(st, o, dt, ms = 1, now = () => performance.now()) {
   const { me, ball, has, look, w, h, L, W, nat } = o;
   st.t = (st.t || 0) + dt;

@@ -25,15 +25,15 @@ export const SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45,
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
 export const LEVELS = { '3v3': -.85, '4v4': -.5, '5v5': -.5 }, FIND = 16, FIND_P = .85; // (where his level starts at each team size: the tuning runs, v86; level.js moves it with his results)
 export let LEVEL = .5;
-export const LEVEL_MIN = -1, LEVEL_MAX = 1; // (below 0: gentler still, for a child just starting or having a hard time: v86)
+export const LEVEL_MIN = -1.2, LEVEL_MAX = 1; // (below 0: gentler still, for a child just starting or having a hard time: v86)
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   // Below 0 only what does not judge his choices gets gentler (how fast they dribble, how often and how well they shoot,
   // their first touch, their keeper, the steal's glow); what punishes a poor choice (a pass into a closed line, standing
   // on the ball, dribbling into them, a press) stays as at 0, so good play still beats weak play at every level.
   const k = clamp(level, LEVEL_MIN, LEVEL_MAX), j = clamp(level, 0, LEVEL_MAX), h = clamp(level, -.3, LEVEL_MAX); // (h: their shooting eases only so far, so a team that leaves it all to his friends still loses)
-  return { run: 2.2 + .8 * k, press: 2.8 + 1.3 * j, mark: 2.4 + .9 * j, markEvery: 1.1 - .6 * j, tackle: 1.2 - .5 * j, stand: 4.6 - 1.2 * j,
+  return { run: Math.max(1.4, 2.2 + .8 * k), press: 2.8 + 1.3 * j, mark: 2.4 + .9 * j, markEvery: 1.1 - .6 * j, tackle: 1.2 - .5 * j, stand: 4.6 - 1.2 * j,
     cutRun: 3.3 + 1.5 * j, cutReact: .5 - .3 * j, passK: .82 + .18 * j, shootP: .4 + .45 * h, range: 8.5 + 3 * h, loose: .3 * (1 - k), keeper: Math.max(0, .12 + .23 * k),
-    glow: 1 - .45 * k, glowGap: 2 + 1.4 * k, glowFirst: .42 + .1 * j, slip: .85 - .45 * k, recover: 1.8 + .4 * j }; // (glow: the steal window, game s; glowGap: until the next one can open; glowFirst: on a carrier he has just reached; slip: how often that carrier's touch runs loose (he keeps it close to his feet until then); recover: STEAL spent after a press out of time, game s)
+    glow: 1 - .45 * k, glowGap: Math.max(.4, 2 + 1.4 * k), glowFirst: .42 + .1 * j, slip: .85 - .45 * k, recover: 1.8 + .4 * j }; // (glow: the steal window, game s; glowGap: until the next one can open; glowFirst: on a carrier he has just reached; slip: how often that carrier's touch runs loose (he keeps it close to his feet until then); recover: STEAL spent after a press out of time, game s)
 }
 
 export class Match {
