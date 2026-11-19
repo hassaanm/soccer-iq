@@ -301,8 +301,9 @@ export const moving = {
   // the picture is graded as it will be drawn: everyone where his own move now takes him, GUARD times as far (ahead of
   // time, with room to spare). A choice that would look other than its grade, and does not already in the game's own
   // places, halves the moves of the player whose move does it, for the rest of the window (a.aliveK; none after three
-  // halvings), or everyone's if no one alone does it (sim.aliveCap). Cheap: one grading (at most 0.2 ms here at 5v5
-  // attack), only where somebody is moving round his place; one more for each such player in the rare step that finds one.
+  // halvings), or everyone's if no one alone does it (sim.aliveCap). Cheap: one grading (0.06 ms here at 5v5, 0.2 ms at
+  // the most but for one step in a hundred), only where somebody is moving round his place; in the rare step that finds
+  // one, one more for each player tried until the one who does it.
   aliveGuard(w) {
     const s = this.sim, cap = s.aliveCap ?? 1; if (cap <= 0) return;
     let any = false; for (const a of s.agents.values()) if (a.alive && (a.alive[2] || a.alive[3])) { any = true; break; } if (!any) return;
@@ -311,8 +312,10 @@ export const moving = {
     const drawn = agreeAt(sc, w.plan, at(null), t, opts); if (!drawn.dis.length && !drawn.threat.length) return;
     const own = agreeAt(sc, w.plan, id => s.a(id), t, opts), was = new Set([...own.dis, ...own.threat]); if (!worse(drawn, was)) return;
     const half = k => (k > .2 ? k / 2 : 0);
-    let found = false; for (const a of s.agents.values()) if (a.alive && (a.alive[2] || a.alive[3]) && worse(agreeAt(sc, w.plan, at(a.id), t, opts), was)) { a.aliveK = half(a.aliveK ?? 1); found = true; }
-    if (!found) s.aliveCap = half(cap);
+    // (the one whose move goes farthest first; the first found is enough this step: the next looks again)
+    const movers = [...s.agents.values()].filter(a => a.alive && (a.alive[2] || a.alive[3])).sort((p, q) => Math.hypot(q.alive[2], q.alive[3]) - Math.hypot(p.alive[2], p.alive[3]));
+    const who = movers.find(a => worse(agreeAt(sc, w.plan, at(a.id), t, opts), was));
+    if (who) who.aliveK = half(who.aliveK ?? 1); else s.aliveCap = half(cap);
   },
   // His choice (or the time-out) ends the window: everyone goes on as he was going until the play moves him.
   closeWindow() {
