@@ -63,7 +63,7 @@ export async function runPenalties() {
     dress(us, them); sizeGoal(true, false); onStage(pens);
     const run = startRun('pens'), next = i => { if (run.over) return null; const k = penKick(run.level, r, i, sides); sides.push(k.side); return k; };
     const k0 = next(0); pens.on = true; pens.setup(); show(null);
-    if (first) await card({ emoji: '⚽', title: PEN_SAID.intro, sub: 'Watch the keeper. Then tap where to shoot!', button: 'Play' });
+    if (first) await card({ emoji: '⚽', title: PEN_SAID.intro, sub: 'He steps one way. Shoot the other way!', button: 'Play' });
     await pens.endless(i => (i ? next(i) : k0), { first, onKick: x => runStep(run, x.res === 'goal', { level: x.kick.level, side: x.kick.side, fake: x.kick.fake, tap: x.tap, sec: x.sec, res: x.res, why: x.why }) });
     end();
     endRun(run, { again: runPenalties });
