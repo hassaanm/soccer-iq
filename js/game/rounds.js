@@ -97,14 +97,18 @@ export const rounds = {
     this.hud.caption('');
   },
   // "Peek, then turn": he checks toward his friend, the friend passes, and he chooses his turn while the ball comes.
-  async passIn() {
-    const sc = this.sc, s = this.sim, m = s.a('m1'), [hx, hy] = sc.heroTo, b = s.ball;
+  async passIn() { await this.plannedRunUp(this.passInRun()); },
+  // (v82) What the run-up of a pass to him needs (game/window.js plannedRunUp, or a new situation brought in from play,
+  // live.js bridgeRun): the passer's own place (skip), the window as long as the pass's flight (G), and the pass itself,
+  // played as the window opens (during).
+  passInRun() {
+    const sc = this.sc, s = this.sim, [hx, hy] = sc.heroTo, b = s.ball, m0 = (this.bridging && this.sceneState(sc).at.m1) || s.a('m1'); // (brought in from play, live.js: where he will pass from)
     // (round 2) Everyone comes on as the pass travels, and is where the scene has him as it gets to him: the window is
     // the pass's flight (it is played as the window opens), and he picks his turn before it arrives.
     // (round 5: a pass no faster than leaves him the window's floor of time: a firm pass, never under 3.2 m/s)
-    const far = Math.hypot(hx - .45 - (m.x + .4), hy - m.y), need = PACE * (Math.min(this.windowReal(), this.windowMin()) - .1) + .12;
+    const far = Math.hypot(hx - .45 - (m0.x + .4), hy - m0.y), need = PACE * (Math.min(this.windowReal(), this.windowMin()) - .1) + .12;
     const dur = Math.max(.25, far / PASS_IN, Math.min(need, far / 3.2));
-    await this.plannedRunUp({ skip: ['m1'], G: dur, during: async T => {
+    return { skip: ['m1'], G: dur, during: async T => { const m = s.a('m1');
       await this.delay(Math.max(0, T - .2));
       const foot = pickFoot(m, hx, hy, 'pass', s.team('them')); // before he turns: the foot depends on which way the pass goes
       this.scripted.add('m1'); faceTo(m, hx, hy); s.windup('m1', 'pass', foot); await this.delay(.2); // (the passer: not one to step out of his own pass's way)
@@ -112,16 +116,14 @@ export const rounds = {
       // Pass and move: he steps on after it, off its line.
       const dx = hx - m.x, dy = hy - m.y, l = Math.hypot(dx, dy) || 1, side = Math.sign(W / 2 - m.y) || 1;
       if (this.wplan?.paths) this.wplan.paths.m1 = { go: true, S: [m.x, m.y], E: [m.x + dx / l * .9 - dy / l * side * .9, m.y + dy / l * .9 + dx / l * side * .9], a: 2.5, vMax: 1.2, t0: 0 };
-    } });
+    } };
   },
   // "Pass in front!": he dribbles up while his friend (and a defender chasing him) run up the field; the choice opens
   // mid-run and the run goes on while he chooses, the rings with the runner.
-  async runIn() {
-    const sc = this.sc, mv = sc.moves, d = sc.dir;
-    // His friend (and a defender chasing him) run on through the window, where the scene has them at its own moment;
-    // the rings go with the runner.
-    await this.plannedRunUp({ keep: { m1: [d[0] * mv.m1.speed, d[1] * mv.m1.speed], ...(mv.o2 ? { o2: [d[0] * mv.o2.speed, d[1] * mv.o2.speed] } : {}) } });
-  },
+  async runIn() { await this.plannedRunUp(this.runInRun()); },
+  // His friend (and a defender chasing him) run on through the window, where the scene has them at its own moment;
+  // the rings go with the runner. (v82: also what live.js bridgeRun plans with)
+  runInRun() { const sc = this.sc, mv = sc.moves, d = sc.dir; return { keep: { m1: [d[0] * mv.m1.speed, d[1] * mv.m1.speed], ...(mv.o2 ? { o2: [d[0] * mv.o2.speed, d[1] * mv.o2.speed] } : {}) } }; },
   // "Follow your shot!": the shooter (he, or a friend) dribbles up and shoots; it comes back out off the post or a
   // defender's leg, and a short call says which. The choice opens as the rebound slows down, loose in front of the
   // goal (it rolls the last bit while he decides, and their players set off for it: v64). Meanwhile the others go to where they stand at the freeze, and the

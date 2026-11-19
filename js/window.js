@@ -466,6 +466,13 @@ export function planSteps(sc, st, opts = {}, n = 3, it = null) {
   for (let k = 0; ; k++) { const r = it.next(); if (r.done) { const p = r.value; planStats.made++; if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return { done: true, plan: clonePlan(p) }; } return { done: true, plan: p }; }
     if (k >= n) return { done: false, it }; }
 }
+// (v83) The same steps as planSteps, only to count them: nothing is kept, nothing is counted in planStats. Returns { done, plan,
+// it } as planSteps does; `calls` of it (each up to n + 1 steps) are as many frames as game/window.js prePlan makes the plan in.
+export function planTry(sc, st, opts = {}, n = 3, it = null) {
+  const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return { done: true, plan: null };
+  it ||= planHold0(sc, st, opts, kind);
+  for (let k = 0; ; k++) { const r = it.next(); if (r.done) return { done: true, plan: r.value }; if (k >= n) return { done: false, it }; }
+}
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
   const key = keyOf(st, opts);

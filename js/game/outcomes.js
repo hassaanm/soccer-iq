@@ -861,7 +861,7 @@ export const outcomes = {
         s.give('hero'); h.face = [1, 0]; s.go('hero', h.x + 2.5, lerp(h.y, W / 2, .2), 3.4);
         // (round 6) The one he took it from is beaten: he stumbles on the way he was running, off balance, as his player goes the other way with it.
         c.beat = s.time + 1.7; s.go(c.id, Math.max(1, c.x - 1.5), clamp(c.y + (c.y >= h.y ? .5 : -.5), 1, W - 1), 2.4);
-        this.result = 'won'; this.emit('won'); yield 1.3; s.stopAll(); return;
+        this.result = 'won'; this.emit('won'); yield (this.mode === 'match' || this.mode === 'free') && !this.has('won-it-go') ? this.hold('won', 1.3) : 1.3; s.stopAll(); return; // (v82: before "Won it? Go!" a new situation is brought in from here at once, live.js bridgeTo: the hold of any won ball in a match)
       }
     } else if (opt !== 'tackle:none') {
       // He dives in. The attacker gets there first and takes it around him; he lands where the ball was.

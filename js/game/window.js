@@ -4,7 +4,7 @@
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
-import { planHold, planSteps, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, agreeAt, PACE, jockPace, jockFeint, JOCK } from '../window.js';
+import { planHold, planSteps, planTry, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, agreeAt, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 const GUARD = 1.25, GUARD_DT = .05; // (alive-shape) how much farther than his own small move takes him the picture is graded, and how often (real s: aliveGuard)
@@ -17,6 +17,9 @@ import { SHOT, shotLook } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
+const PLAN_LIMIT = 170, PLAN_CHUNK = 80; // (v83) the most frames prePlan may take for a scene (60 per second: 1.2 s of the celebration it is made over, and 1.5 s of still picture at the most); how many steps vetRounds makes in a frame
+const planCost = new WeakMap(); // (a scene: its prePlan frames, found by prePlanFrames)
+export { PLAN_LIMIT };
 const PLAN_STEPS = 4; // (v78) how many steps of a plan prePlan makes in a frame (window.js planSteps: each one moment of one try, a millisecond or less here)
 // In demos and in the replay of the better play nobody runs out of time: the window is this long (real seconds), and
 // the hand taps well inside it.
@@ -145,10 +148,16 @@ export const moving = {
   // the last picture is still on the screen. planHold keeps each, so as the scene is set up plannedRunUp finds them made:
   // the frame it is set up in used to make them all (41 ms on a phone). It plans on a stand-in for the game with that
   // scene in it (the scene as load() makes it), so nothing on the screen changes.
-  async prePlan(sc) {
-    if (this.skipping || !sc || sc.spots || sc.intro === 'won' || sc.kind === 'receive' || sc.kind === 'lead' || sc.kind === 'tackle' || sc.run === 'follow' || kindOf(sc) !== 'attack') return;
+  // (v83) Whether prePlan plans this scene (the others are planned as they are set up: live.js planFrames, or by plannedRunUp).
+  prePlanned(sc) { return !!sc && !sc.spots && sc.intro !== 'won' && sc.kind !== 'receive' && sc.kind !== 'lead' && sc.kind !== 'tackle' && sc.run !== 'follow' && kindOf(sc) === 'attack'; },
+  // The stand-in for the game that a scene is planned on (see prePlan).
+  planGhost(sc) {
     const sim = new this.sim.constructor(); sim.setup(sc);
-    const ghost = Object.create(this); Object.assign(ghost, { sc, sim, timeouts: 0, yaw: sc.shots && sc.shotPlan ? shotLook(sc.heroTo, sc.mates) : 0 });
+    return Object.assign(Object.create(this), { sc, sim, timeouts: 0, yaw: sc.shots && sc.shotPlan ? shotLook(sc.heroTo, sc.mates) : 0 });
+  },
+  async prePlan(sc) {
+    if (this.skipping || !this.prePlanned(sc)) return;
+    const ghost = this.planGhost(sc);
     const frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; }; // (the next frame)
     for (const rCap of [0, 5.2, 4.2, 3.4]) {
       const [s0, st, opts] = ghost.planArgs(false, rCap ? { rCap } : {}); let r = { done: false, it: null }, p = null;
@@ -157,6 +166,33 @@ export const moving = {
       const t = ghost.threatFit(p); if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break;
     }
     await frame(); // (and the scene is set up in a frame of its own)
+  },
+  // (v83) How many frames prePlan takes to plan this scene, counted the way prePlan makes it (the same tries, PLAN_STEPS + 1 steps a
+  // frame) but without keeping any plan, and given up on as soon as it is past PLAN_LIMIT. Only the scene says (and the size and
+  // the window's length the game plays it with), never how long anything took or what was played before. null: not prePlanned.
+  // `spend(n)`: waits for the next frame once PLAN_CHUNK steps of work have been made in this one (over all the scenes), so that
+  // finding out is no long frame either.
+  async prePlanFrames(sc, spend, cap = PLAN_LIMIT) {
+    if (!this.prePlanned(sc)) return null;
+    const per = PLAN_STEPS + 1; let frames = 1;
+    await spend(2); const ghost = this.planGhost(sc);
+    for (const rCap of [0, 5.2, 4.2, 3.4]) {
+      await spend(1); const [s0, st, opts] = ghost.planArgs(false, rCap ? { rCap } : {}); let r = { done: false, it: null };
+      do { await spend(per); r = planTry(s0, st, opts, PLAN_STEPS, r.it); frames++; if (frames > cap) return frames; } while (!r.done);
+      const p = r.plan; if (!p) break;
+      await spend(2); const t = ghost.threatFit(p); if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break;
+    }
+    return frames;
+  },
+  // (v83) The scenes of a match's list that are not left out: one whose plan takes more than PLAN_LIMIT frames would leave the
+  // picture still for seconds after a goal (gen-shot-open-110: 30 s). It depends on the scene alone, so the same match plays
+  // the same twice, and the next scene is never swapped for another. Found once for each scene (a scene is one object).
+  async vetRounds(rounds) {
+    if (this.skipping) return rounds;
+    const kept = [], frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; };
+    let left = 0; const spend = async n => { if (left < n) { await frame(); left = PLAN_CHUNK; } left -= n; }; // (PLAN_CHUNK steps of work a frame, over all the scenes)
+    for (const sc of rounds) { let f = planCost.get(sc); if (f === undefined) { try { f = await this.prePlanFrames(sc, spend); } catch (e) { console.error(e); f = null; } planCost.set(sc, f); } if (f == null || f <= PLAN_LIMIT) kept.push(sc); }
+    return kept.length ? kept : rounds;
   },
   // ---------- the run-up ----------
   // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window

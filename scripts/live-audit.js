@@ -13,10 +13,11 @@
 //   passback after his pass in a match the friend never gives it back with a clear shot or open space ahead of him, and
 //           at most once in a move
 //   walk    (v78) his own pass or shot with nobody on him is played from where he is (WALK, kickWatch, walkMatches)
+//   cut     (v82) no new situation starts with a cut, except at the start and after a goal (cutWatch, cutMatches)
 //   twoball after a defending play, never two of ours on the ball (within 2 m of their player on it, with the ball as
 //           their job: his own player, and a friend who is pressing, chasing or has no job) while another of theirs
 //           within 12 m of it has nobody of ours within 3 m
-// Usage: node scripts/live-audit.js [size] [matches] [wrong share] [--v]   (exit 1 on any flag)
+// Usage: node scripts/live-audit.js [size] [matches] [wrong share] [--v]   (exit 1 on any flag, or hover/yoyo/twoball over RATE)
 import { PATH } from '../js/skills.js';
 import { SIZES, setSize, PITCH } from '../js/geom.js';
 import { makeGame, drive, optionsFor } from '../tests/harness.js';
@@ -133,6 +134,71 @@ export async function walkMatches(size, N = 4) {
   return rows;
 }
 
+// (v82) cut: no new situation starts with a cut: a player's body jumping more than CUT.jump m in one frame (a sprint covers
+// 0.15 m), or the camera put somewhere new (game.js load: cam = null) or its eye more than CUT.cam m in a frame (its
+// quickest swing round, to a defending choice, is about 4 m). Allowed only where the game shows a break: before the first choice of a
+// match, and after a goal until the next choice opens. Bodies, not ids: a team's ids are handed round with the bodies (a
+// hand-over: his player becomes the friend with the ball; a new situation brought in from play, live.js adopt). The owner
+// (v81): "Whenever you make a decision and all of a sudden it fades out and there's a new scenario, it's really confusing."
+export const CUT = { jump: .8, cam: 6 };
+export function cutWatch(g, done) {
+  let prev = null, eye = null, cam0 = null, open = true;
+  return () => {
+    const s = g.sim, now = [...s.agents.values()].map(a => [a.x, a.y, a.team, a.id]), c = g.cam;
+    if (g.phase === 'decide') open = false;
+    if (g.phase === 'outcome' && (g.result === 'goal' || g.result === 'goalAgainst')) open = true;
+    if (prev) {
+      const ids = now.filter(p => Math.min(...prev.filter(q => q[2] === p[2]).map(q => Math.hypot(p[0] - q[0], p[1] - q[1]))) > CUT.jump).map(p => p[3]);
+      const camJump = !!(c && eye && (c !== cam0 || Math.hypot(c.eye[0] - eye[0], c.eye[1] - eye[1], c.eye[2] - eye[2]) > CUT.cam));
+      // (one body alone stepping more than CUT.jump in a frame is not a new situation: two left overlapping are pushed apart,
+      // sim.js SPACE; a new picture moves everyone, or the camera)
+      if ((ids.length >= 2 || camJump) && !open) done({ t: s.time, ids, cam: camJump, sc: g.sc?.id, result: g.result, phase: g.phase });
+    }
+    prev = now; eye = c ? [...c.eye] : null; cam0 = c;
+  };
+}
+// (v82) Whole matches as a child plays them (he taps at 45 to 80 % of the ring, a wrong option one time in four): every
+// cut (cutWatch) and every new situation brought in from play (live.js bridgeTo: its event, how long it took, how long
+// after the situation began). mode 'free': every lesson passed (Matches); 'mini': the "Steal it!" lesson's mini match (no
+// "Won it? Go!" yet: winning the ball brings in the next situation). stall: seconds of play without a goal before a new
+// situation (live.js STALL; shorter here to see more of them).
+export async function cutMatches(size, N = 3, mode = 'free', stall = null) {
+  setSize(size); const real = Math.random, cuts = [], bridges = [];
+  try {
+    for (let seed = 1; seed <= N; seed++) {
+      let x = seed * 7907 + (mode === 'mini' ? 99991 : 0); Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+      let y = seed * 31337; const rnd = () => (y = (y * 48271) % 2147483647) / 2147483647;
+      const { g } = makeGame(), all = PATH.map(s => s.id), mini = mode === 'mini'; g.skills = new Set(mini ? all.slice(0, all.indexOf('steal-it') + 1) : all); if (stall != null) g.stallAfter = stall;
+      let T = 0, last = null, st = null, br = null, start = 0; const cw = cutWatch(g, r => cuts.push({ seed, mode, T: +T.toFixed(2), ...r }));
+      g.plog = (k, o) => { if (k === 'fresh' && o.why && !/no scene/.test(o.why)) bridges.push(br = { seed, mode, why: o.why, T, since: o.sec ?? T - start }); };
+      const ld = g.load.bind(g); g.load = sc => { if (!g.bridging) start = T; return ld(sc); };
+      const bt = g.bridgeTo?.bind(g); if (bt) g.bridgeTo = async p => { const b = br, t0 = T, ok = await bt(p); if (b && !ok) bridges.splice(bridges.indexOf(b), 1); else if (b) { b.sec = T - t0; b.ev = p.ev.kind; } start = T; return ok; }; // (false: nothing was brought in, play went on)
+      await drive(g, g.match(mini ? ['steal-it', 'get-goal-side'] : all, [], mini ? 2 : 5, mini ? 'match' : 'free'), { maxSec: 9000, onFrame: () => { T += 1 / 30; cw(); },
+        pick: gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
+          if (gm._choose !== last) { last = gm._choose; st = { u: .45 + rnd() * .35, t: T, wrong: rnd() < .25 }; }
+          if (gm.win ? (gm.win.u ?? 0) < st.u : T - st.t < 2) return null;
+          let o = gm.sc.best || (gm.sc.spots ? 'spot:' + gm.sc.spots[0].id : 'drib:fwd');
+          if (st.wrong) { const bad = optionsFor(gm.sc).filter(q => !q.startsWith('then:') && gm.rating(q) === 'bad'); if (bad.length) o = bad[Math.floor(rnd() * bad.length)]; }
+          return o; } });
+    }
+  } finally { Math.random = real; }
+  return { cuts, bridges };
+}
+export const cutText = r => `${r.mode} match ${r.seed} at ${r.T} s (${r.phase}, after ${r.result || '-'}, ${r.sc}): ${r.ids.length ? r.ids.join(',') + ' jumped' : ''}${r.cam ? ' the camera jumped' : ''}`;
+
+// (v82) hover, yoyo and twoball are judged as a rate, not one by one. They are rare faults of the team's shape that v81
+// already had: over 160 matches a size (seeds 1 to 160, this bot) v81 gave hover, yoyo or twoball 4 times at 3v3 (2.5 in
+// 100 matches), 2 at 4v4 (1.25) and 17 at 5v5 (10.6), from 0 to 6 in a batch of 40 at 5v5; v82 gave 0, 5 and 25 (0 to 10 a
+// batch). In 8 matches one case is luck either way. So the live audit plays RATE.N matches a size and fails only when
+// these come more often than v81's rate allows: more than its expected number plus three times its square root, plus one
+// (Poisson: about 1 in 700 for v81's own rate). Every other live-play flag still fails on a single case.
+export const RATE = { kinds: ['hover', 'yoyo', 'twoball'], N: 40, v81: { '3v3': 2.5, '4v4': 1.25, '5v5': 10.6 } };
+export function rateJudge(size, flags, N) {
+  const n = flags.filter(f => RATE.kinds.includes(f[0])).length, exp = (RATE.v81[size] ?? 5) * N / 100, limit = Math.floor(exp + 3 * Math.sqrt(exp) + 1);
+  return { n, limit, ok: n <= limit, text: `${size} ${RATE.kinds.join('/')}: ${n} in ${N} matches (${(n / N * 100).toFixed(1)} in 100; v81 ${RATE.v81[size] ?? '?'} in 100), at most ${limit} allowed` };
+}
+export const hardFlags = flags => flags.filter(f => !RATE.kinds.includes(f[0]));
+
 export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of choices where the bot taps a bad option (more defending choices and lost balls)
   setSize(size); const flags = [], real = Math.random, stat = { plays: 0, windows: 0, minWin: 9, hover: 0, yoyo: 0 };
   try {
@@ -209,9 +275,12 @@ export async function liveAudit(size, N = 4, wrong = 0) { // wrong: the share of
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2).filter(a => !a.startsWith('--')), sizes = args[0] ? [args[0]] : Object.keys(SIZES).filter(k => SIZES[k].offer); let bad = 0;
-  for (const size of sizes) { const { flags, stat } = await liveAudit(size, +(args[1] || 4), +(args[2] || 0)); bad += flags.length;
+  for (const size of sizes) { const N = +(args[1] || RATE.N), { flags, stat } = await liveAudit(size, N, +(args[2] || 0)), rj = rateJudge(size, flags, N); bad += hardFlags(flags).length + (rj.ok ? 0 : 1); console.log((rj.ok ? 'rate ok: ' : 'RATE OVER: ') + rj.text);
     console.log(`${size} live play: ${stat.plays} choices, ${stat.windows} windows (shortest live ${stat.minWin.toFixed(2)} s); ${Object.entries(stat.counts).map(([k, v]) => `${k} ${v}`).join(', ')}`);
     const by = {}; for (const [k, m] of flags) (by[k] ||= []).push(m); for (const [k, v] of Object.entries(by)) { console.log(`  ${k}: ${v.length}`); for (const m of v.slice(0, process.argv.includes('--v') ? 99 : 6)) console.log('    ' + m); }
+    for (const mode of ['free', 'mini']) { const { cuts, bridges } = await cutMatches(size, +(args[1] || 4), mode); bad += cuts.length;
+      console.log(`${size} cut (${mode}, ${args[1] || 4} matches, a child's taps): ${bridges.length} new situations brought in from play (${bridges.map(b => b.ev).join(', ') || 'none'}), ${cuts.length} cut(s) with no goal before them`);
+      for (const r of cuts.slice(0, 10)) console.log('  cut: ' + cutText(r)); }
     const wr = await walkMatches(size, +(args[1] || 4)), wb = wr.filter(r => r.bad); bad += wb.length;
     console.log(`${size} walk: ${wr.length} passes and shots after a choice in ${args[1] || 4} matches (${wr.filter(r => r.calm).length} with nobody within ${WALK.pressure} m); played from where he is in all but ${wb.length}`);
     for (const r of wb.slice(0, 10)) console.log(`  walk: match ${r.seed} ${walkText(r)}`); }

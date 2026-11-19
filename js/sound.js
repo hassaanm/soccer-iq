@@ -149,6 +149,7 @@ const SFX = {
   // He did it: a sparkle of high notes running up.
   skill: s => { [1047, 1319, 1568, 2093].forEach((f, i) => s.tone(f, .22, { vol: .09, type: 'sine', at: i * .05 })); s.noise(.35, { type: 'highpass', f0: 5000, f1: 7000, vol: .04, attack: .02 }); },
   aww: s => { s.tone(330, .5, { vol: .08, type: 'triangle', f1: 220 }); s.noise(.9, { type: 'lowpass', f0: 900, f1: 300, vol: .06, attack: .15 }); },
+  whistle: s => [0, .08, .16, .24, .32].forEach((t, i) => s.tone(i % 2 ? 2650 : 2950, .09, { vol: .06, at: t, attack: .006 })), // (v82) the referee's trill: play stops for a free kick or the ball out (game/live.js bridgeEvent), and full time
 };
 // Every recording, by key ('star:1' is the second star's note). Footsteps are gone on purpose: they fired several
 // times a second, each one a new sound starting, and they were the least missed sound in the game.
