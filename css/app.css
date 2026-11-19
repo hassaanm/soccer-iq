@@ -983,7 +983,8 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #pz .bad{opacity:0;transition:opacity .2s}
 #pz .bad.show{opacity:1}
 #pz .pzball{position:absolute;left:0;top:0;width:calc(var(--c) * .42);height:calc(var(--c) * .42);will-change:transform;pointer-events:none}
-#pz .box.flash{animation:pzBox .9s ease-out}
+#pz .boxlit{opacity:0}
+#pz .boxlit.flash{animation:pzBox 1s ease-out}
 #pz.in .pitch,#pz.in .pcs,#pz.in .pzball{animation:pzIn .35s ease-out}
 #pz .balls{position:absolute;left:calc(16px + var(--safe-l));top:70px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
 #pz .balls i{display:block;width:34px;height:34px;transition:opacity .3s,transform .3s var(--bounce)}
@@ -996,6 +997,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #hud[data-mode=puzzles] #caption{top:16px;left:auto;right:calc(76px + var(--safe-r));transform:none;max-width:38vw;text-align:right;font-size:clamp(16px,2.4vw,22px)} /* (the words for a grown-up: up in the corner, off the board) */
 @keyframes pzPulse{0%,100%{opacity:1}50%{opacity:.45}}
 @keyframes pzFlash{0%{opacity:1}30%{opacity:.2}60%{opacity:1}80%{opacity:.4}100%{opacity:.85}}
-@keyframes pzBox{0%,60%{stroke:#ffd23f;opacity:1}100%{stroke:#fff}}
+@keyframes pzBox{0%{opacity:0}15%,55%{opacity:.45}100%{opacity:0}}
 @keyframes pzIn{0%{opacity:0}100%{opacity:1}}
 @media (prefers-reduced-motion:reduce){#pz .ring.show,#pz.in .pitch,#pz.in .pcs,#pz.in .pzball{animation:none}}

@@ -107,7 +107,7 @@ function drawPitch(pz) {
   for (let x = 0; x < W; x += 2) s += `<rect x="${x}" y="-.15" width="1" height="${H + .3}" fill="#47a352"/>`;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) s += `<circle cx="${x + .5}" cy="${y + .5}" r=".055" fill="#fff" opacity=".3"/>`;
   const b0 = Math.max(0, M - 2), b1 = Math.min(H, M + 3);
-  s += `<rect x="${W - 2}" y="${b0}" width="2" height="${b1 - b0}" fill="#fff" opacity=".1"/>`; // (the box: he shoots from here)
+  s += `<rect x="${W - 2}" y="${b0}" width="2" height="${b1 - b0}" fill="#fff" opacity=".1"/><rect class="boxlit" x="${W - 2}" y="${b0}" width="2" height="${b1 - b0}" fill="${GOLD}"/>`; // (the box: he shoots from here; it lights up when he shoots from outside it)
   s += `<g fill="none" stroke="#fff" stroke-width=".05" opacity=".9"><rect x="0" y="0" width="${W}" height="${H}"/><path class="box" d="M${W} ${b0}H${W - 2}V${b1}H${W}"/>`
     + `<path d="M0 ${H / 2 - 1.1}A1.1 1.1 0 0 1 0 ${H / 2 + 1.1}"/></g>`;
   // the goal: three places past the line, a net, white posts
@@ -182,8 +182,8 @@ function tap(mv) {
 // A tap that is not a move costs nothing: the places he can dribble to, or the box, light up for a moment.
 function refused(mv) {
   if (stage.t - refuseAt < .5) return; refuseAt = stage.t;
-  const box = pitchEl.querySelector('.box');
-  if (mv[0] === 's' && box) { box.classList.remove('flash'); void box.getBBox?.(); box.classList.add('flash'); stage.anim(.9, u => { if (u >= 1) box.classList.remove('flash'); }); }
+  const box = pitchEl.querySelector('.boxlit');
+  if (mv[0] === 's' && box) { box.classList.remove('flash'); void pitchEl.getBoundingClientRect(); box.classList.add('flash'); }
   else for (const h of pool.hint) { h.classList.remove('flash'); void h.offsetWidth; h.classList.add('flash'); }
 }
 const lerp = (a, b, u) => a + (b - a) * u, ease = u => u * u * (3 - 2 * u);
@@ -252,7 +252,7 @@ function frame() {
     if (left <= 0 && board.timeUp()) { phase = 'busy'; failSay('time'); }
   }
   if (hint && phase === 'wait' && stage.t - tStart > hint.after && !hint.on) { hint.on = true; hud.hand(toScreen(...hint.at), 1); }
-  if (gen.it) stepGen();
+  if (gen.it && phase === 'wait') stepGen(); // (only while the board stands still: a long step there shows nothing)
 }
 
 // ---------- one puzzle ----------
