@@ -259,7 +259,7 @@ export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
 // less than SHARE of pitch (near a side line, a goal line, a corner), viewPick tries others close to it: the yaw turned
 // up to VIEW_SPAN rad along the pitch, the eye up to 4 m in from the line, or left out over the line looking in, and
 // keeps the one that shows the most pitch for the least change (VIEW_COST per rad turned), always with him and the ball
-// on screen; in a corner also close behind him and lower, looking into the pitch (`close`). fast.js eases to it (the
+// on screen, clear of the bar along the top; in a corner also close behind him and lower, looking into the pitch (`close`). fast.js eases to it (the
 // turn capped at TURN_MAX rad/s, the side, the pull and the closeness at their own rates).
 export const VIEW_SPAN = .9, VIEW_COST = .25, VIEW_SIDES = [0, 2, 4];
 export const CLOSE = [3, 4, 4, -1], CLOSE_B = [5, 4, 0, -2.5]; // (the close view in a corner: back, height, ahead, target height; `close` 0 … 1 to CLOSE, 1 … 2 on to CLOSE_B, looking down at him from over the line)
@@ -274,7 +274,8 @@ export function viewCam(me, ball, has, v, look, w, h, L, W, keep = [ball]) {
 export function* viewSearch(me, ball, has, look, w, h, L, W, nat = naturalYaw(me, ball, has, L, W)) {
   let best = { yaw: nat, rel: 0, side: 0, pull: 1, close: 0 }; const c0 = viewCam(me, ball, has, best, look, w, h, L, W);
   let bs = pitchShare(c0, w, h, L, W, 10, 7); best.share = bs; if (bs >= SHARE) return best;
-  const seen = c => onScreen(project(c, ball, w, h), w, h, 12), tryV = (v, cost) => { const c = viewCam(me, ball, has, v, look, w, h, L, W); if (!seen(c)) return; const s = pitchShare(c, w, h, L, W, 10, 7); if (s - cost > bs) { bs = s - cost; best = { ...v, share: s }; } };
+  // (him and the ball clear of the score bar along the top and the buttons along the bottom)
+  const safe = q => !!q && q[0] > w * .06 && q[0] < w * .94 && q[1] > h * .2 && q[1] < h * .9, seen = c => safe(project(c, ball, w, h)) && safe(project(c, { x: me.x, y: me.y, z: .9 }, w, h)), tryV = (v, cost) => { const c = viewCam(me, ball, has, v, look, w, h, L, W); if (!seen(c)) return; const s = pitchShare(c, w, h, L, W, 10, 7); if (s - cost > bs) { bs = s - cost; best = { ...v, share: s }; } };
   for (const side of VIEW_SIDES) for (let d = -VIEW_SPAN; d <= VIEW_SPAN + 1e-9; d += .15) if (side || Math.abs(d) > 1e-6) { tryV({ yaw: wrap(nat + d), rel: d, side, pull: 1, close: 0 }, VIEW_COST * Math.abs(d) + .02 * side); yield; }
   const toC = Math.atan2(W / 2 - me.y, L / 2 - me.x); // (the eye out over the line, looking into the pitch; and, in a corner, close behind him and lower: CLOSE)
   const ys = []; for (let d = -1; d <= 1 + 1e-9; d += .2) ys.push(wrap(toC + d));
