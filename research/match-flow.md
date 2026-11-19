@@ -131,9 +131,12 @@ Go!", a short piece of soccer with the same players carries it in, on screen, in
 
 - The score changes as the goal goes in, with the GOAL! banner (it changed after the celebration, as the next scene cut in).
 - The goal that ends a match brings the final whistle and "Full time!" over its own celebration.
-- The next scene's plan is made over the goal's celebration. A plan that is still not ready 0.8 s after it swaps the
-  scene with the next one (one scene, `gen-shot-open-110`, needed 60 s of frames: a frozen picture for a minute after a
-  goal in v81).
+- The next scene's plan is made over the goal's celebration. (A version that also swapped out a scene whose plan was
+  still slow was dropped: it made the order of play depend on which plans were already made, so a match did not play the
+  same twice. One scene, `gen-shot-open-110`, still needs about 60 s of frames to plan, a frozen picture after a goal as
+  in v81: a `game/window.js` matter.)
+- The live audit judges hover, yoyo and twoball as a rate over 40 matches a size against v81's measured rate
+  (`scripts/live-audit.js` RATE).
 - A 1v1 won before "Won it? Go!" holds 0.7 s like any won ball in a match (`MATCH_HOLD`), not 1.3 s: the new
   situation follows from there. With "Won it? Go!" (and in lessons) it stays 1.3 s.
 

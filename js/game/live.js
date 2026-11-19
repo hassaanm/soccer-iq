@@ -18,7 +18,7 @@ const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y
 // to his place in the new picture and the camera follows. Only a goal (and the start) still cuts, to the next scene.
 export const STALL = 60;
 const BRIDGE = { vMax: 5.4, T: [1, 2.8], run: 10.5, wait: .15, max: 4, min: 2, ahead: 4 }; // the run to the new picture: fastest drawn speed (m/s), its length (s), the farthest anyone runs (m); how long it waits for its plan after the event (s); the longest and shortest it all takes (s); how many of the next scenes it picks from
-const PLAN_WAIT = .8, FRAME_STEPS = 60; // (see nextPlanned; planFrames: steps of these plans a frame, 0.01 to 0.05 ms each here, never 3 ms in all: a scene with rings takes 2 to 1850 steps)
+const FRAME_STEPS = 60; // (planFrames: steps of these plans a frame, 0.01 to 0.05 ms each here, never 3 ms in all: a scene with rings takes 2 to 1850 steps)
 export const SIDE_IN = new Set(['side-in', 'side-take', 'side-pass', 'side-two']);
 // A scene that can be reached from play: one whose run-up is a planned one (game/window.js plannedRunUp: with a pass to
 // him, a friend's run for a pass in front), or a 1v1 (everyone to his place, the attacker on the ball). Not one with an
@@ -291,15 +291,10 @@ export const live = {
   // everyone where he is (adopt), and everyone runs to his place in its picture as the ball goes to the one who has it
   // there (bridgeRun). The next choice opens as they get there, with its usual window.
   // (v82) The next scene of the match's order, with its plan made (game/window.js prePlan, started as the goal went in:
-  // early). A plan that takes more than PLAN_WAIT s more (a few do: one took 60 s of frames on a still picture after a
-  // goal) is left to finish on its own, and that scene changes places with the next one; three tries, then it waits.
-  async nextPlanned(rounds, i, early) {
-    const n = rounds.length, k = i % n, ready = p => Promise.race([p.then(() => true), this.delay(PLAN_WAIT).then(() => false)]), slow = this.slowScenes ||= new Set();
-    for (let j = 1; j < n && slow.has(rounds[k]); j++) { const m = (k + j) % n; if (!slow.has(rounds[m])) [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; } // (one found slow before: not again)
-    let p = early?.nx === rounds[k] ? early.p : this.planAhead(rounds[k]);
-    for (let j = 1; j < Math.min(4, n); j++) { if (await ready(p)) break; p.stop?.(); slow.add(rounds[k]); const m = (i + j) % n; [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; p = this.planAhead(rounds[k]); }
-    await p; return rounds[k];
-  },
+  // early). (Not swapped for a quicker one when its plan is slow: which plans are already made depends on what was
+  // played before, so the match would not play the same twice, and the frame audit compares two runs. One scene,
+  // gen-shot-open-110, needs about 60 s of frames to plan: a game/window.js matter, reported.)
+  async nextPlanned(rounds, i, early) { const nx = rounds[i % rounds.length]; await (early?.nx === nx ? early.p : this.planAhead(nx)); return nx; },
   // (v82) game/window.js prePlan, which can be stopped: a plan given up on stops stepping (nothing goes on planning in
   // the frames of play). It plans as the game it is called on, with its own `skipping`.
   planAhead(sc) {
