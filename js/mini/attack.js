@@ -37,8 +37,8 @@ export const kindById = id => KINDS.find(k => k.id === id);
 //   time    real s of the timer; startD: m from goal where he starts
 export function attackLevel(L) {
   L = Math.max(0, L);
-  const centre = 6 * (1 - Math.exp(-L / 10));
-  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.3) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .5) : 1)), sum = w.reduce((a, b) => a + b, 0);
+  const centre = 6 * (1 - Math.exp(-L / 6.5));
+  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.7) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .3) : 1)), sum = w.reduce((a, b) => a + b, 0);
   return {
     level: L, centre, mix: KINDS.map((k, i) => ({ id: k.id, w: w[i] / sum })),
     opp: 1 - Math.exp(-L / 10), react: ease(.8, .25, 7)(L), stand: ease(4.2, 2.2, 8)(L), boost: ramp(0, .06, .8)(L), into: .4 + ramp(0, .15, 1)(L),
@@ -50,16 +50,23 @@ export function attackLevel(L) {
 const pickKind = (mix, u) => { let a = 0; for (const m of mix) { a += m.w; if (u < a) return m.id; } return mix.at(-1).id; };
 
 // ---------- one situation ----------
-// attackScene(level, r, n, last): r a stream 0..1 (shot.js stream); n: the attempt's number in the run (the first is
-// always a 2 against 1); last: the kinds before, newest last (never three of a kind in a row while others are likely).
+// attackScene(level, r, n, last, ctx): r a stream 0..1 (shot.js stream); n: the attempt's number in the run (the first
+// is always a 2 against 1); last: the kinds before, newest last (never three of a kind in a row while others are likely);
+// ctx: { lost (the attempt before cost a life), challenge (the attempt before was a challenge), P (the pitch) }.
+// A challenge: from CHALLENGE_L on (goal 4), about one attempt in CHALLENGE_N is two or three steps harder than the
+// centre of the usual mix (a 2 against 2 early, a 2 against 3 by goal 9 or so): never two in a row, never straight
+// after a lost life. Its numbers (speeds, keeper, timer) stay the level's.
 // Returns { kind, us, them, style, hero, mates, opps (each [x, y]), D (attackLevel), n }. style: how their players defend:
 // 'press' (the one comes to the ball), 'drop' (he holds off between the ball and the goal, covering the pass, and comes
 // only near the goal), 'mark' (he stays with the friend), 'zone' (2 or more: one presses, the rest hold a line goal-side
 // and shift to the ball), 'man' (2 or more, later: one presses, the rest each stay with an attacker).
-export function attackScene(level, r, n = 0, last = [], P = PITCH) {
+export const CHALLENGE_L = 4 / 3 - 1e-9, CHALLENGE_N = 6;
+export function attackScene(level, r, n = 0, last = [], { lost = false, challenge: was = false, P = PITCH } = {}) {
   const D = attackLevel(level), { L, W } = P, cy = W / 2;
   let kind = n === 0 ? '2v1' : pickKind(D.mix, r());
   if (n > 0 && last.length >= 2 && last.slice(-2).every(k => k === kind)) { const k2 = pickKind(D.mix, r()); if (k2 !== kind) kind = k2; }
+  const u0 = r(), challenge = n > 0 && level >= CHALLENGE_L && !lost && !was && u0 < 1 / CHALLENGE_N;
+  if (challenge) kind = KINDS[Math.min(KINDS.length - 1, Math.round(D.centre) + 2 + (r() < .5 ? 1 : 0))].id;
   const K = kindById(kind), u = r();
   const style = K.them === 1 ? (K.us === 3 ? (u < .6 ? 'press' : 'drop') : u < .5 ? 'press' : u < .8 ? 'drop' : 'mark') : (u < Math.min(.45, .1 + D.level * .03) ? 'man' : 'zone');
   const side = r() < .5 ? -1 : 1, sx = L - Math.min(D.startD, L * .62), j = () => r() * 2 - 1;
@@ -79,7 +86,7 @@ export function attackScene(level, r, n = 0, last = [], P = PITCH) {
     for (let i = 0; i < K.them; i++) opps.push([line + j() * 1.4 + (i % 2) * .8, clamp(mid - span / 2 + span * i / (K.them - 1) + j() * 1.1, 1.2, W - 1.2)]);
   }
   for (const o of opps) o[0] = Math.max(o[0], hero[0] + 2.5); // (all of theirs goal-side of him)
-  return { kind, us: K.us, them: K.them, style, hero, mates, opps, D, n, level };
+  return { kind, us: K.us, them: K.them, style, hero, mates, opps, D, n, level, challenge };
 }
 
 // ---------- one attempt on the Fast match ----------

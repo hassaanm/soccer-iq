@@ -18,6 +18,7 @@ import { sfx } from '../sound.js';
 import { PITCH } from '../geom.js';
 import { later } from '../pause.js';
 import { fast } from '../fast/fast.js';
+import { project } from '../fast/rules.js';
 import { AttackMatch, attackScene, cueMove } from './attack.js';
 import { startRun, runStep, endRun, runOff } from './run.js';
 import { miniById } from './games.js';
@@ -61,13 +62,41 @@ function showCue(m) {
 }
 function hideCue() { if (ring) ring.visible = false; fast.ui.lines = null; }
 
+// ---------- the start of an attempt: the goal and their keeper in sight, no confetti left ----------
+// The Fast camera fills the picture with the pitch, which can put their goal just over the top edge as an attempt
+// starts. For the first START_S real s the camera is tipped up (its target raised, a step at a time) until the bar's
+// two ends and the keeper's head are KEEP_PX px inside the top, as long as his own feet stay on screen; over the next
+// FADE_S s the tip goes, and the Fast camera eases back to its own view. (fast.camNow is wrapped on the instance while
+// a run plays: js/fast is not changed.)
+const START_S = 1.6, FADE_S = .8, KEEP_PX = 20, STEP_Z = .12;
+const baseCam = Object.getPrototypeOf(fast).camNow;
+function camNow(snap, dt) {
+  baseCam.call(this, snap, dt);
+  const m = this.m, t = this.real || 0, k = t < START_S ? 1 : 1 - (t - START_S) / FADE_S; if (k <= 0 || !m?.sim || this.aiming) return;
+  const c = this.cam, W = world.width || 932, H = world.height || 430, kp = m.sim.a('k2'), h = m.sim.a(m.me); if (!h) return;
+  const pts = [{ x: m.L, y: m.gy0, z: m.gh }, { x: m.L, y: m.gy1, z: m.gh }, ...(kp ? [{ x: kp.x, y: kp.y, z: 1.8 }] : [])];
+  const top = cam => Math.min(...pts.map(p => project(cam, p, W, H)?.[1] ?? -1e9));
+  const tip = { ...c, eye: [...c.eye], tgt: [...c.tgt] }; let dz = 0;
+  for (let i = 0; i < 24 && top(tip) < KEEP_PX; i++) {
+    tip.tgt[2] += STEP_Z; const f = project(tip, { x: h.x, y: h.y, z: 0 }, W, H);
+    if (!f || f[1] > H - 12) { tip.tgt[2] -= STEP_Z; break; } dz += STEP_Z;
+  }
+  c.tgt[2] += dz * k;
+}
+// Confetti from the last goal is cleared as the next attempt starts (a new scene: it would fall on it).
+function clearFx() {
+  const P = world.particles; if (!P?.live) return;
+  for (let i = 0; i < P.list.length; i++) if (P.list[i].life) { P.list[i].life = 0; P.mesh.setMatrixAt(i, P.zero); }
+  P.live = 0; P.mesh.instanceMatrix.needsUpdate = true;
+}
+
 // ---------- one attempt ----------
 // Starts the Fast controller as for a match (its own state all fresh), then gives it this attempt's match. Resolves
 // the attempt's result (attack.js AttackMatch end) once it has been shown.
 function attempt(sc, us, them) {
   return new Promise(done => {
     let res = null;
-    fast.me = 'hero';
+    clearFx(); fast.me = 'hero';
     const pl = game.plog; game.plog = (k, o) => (k === 'fast' && o?.is === 'start' ? undefined : pl?.(k, o)); // (not a Fast match: its start is not logged)
     try { fast.play({ us, them }); } finally { game.plog = pl; }
     const m = new AttackMatch({ sim: fast.sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, scene: sc, fx: ev => world.fx(ev), sfx: n => sfx(n),
@@ -79,7 +108,7 @@ function attempt(sc, us, them) {
     fast.m = m; m.setup();
     fast.sudden = true; // (no "next goal wins": an attempt is short)
     fast.yaw = fast.natural(); fast.camNow(1); fast.calm = false; hud.hideScore();
-    game.plog?.('attack', { is: 'try', n: sc.n, kind: sc.kind, style: sc.style, level: Math.round(sc.level * 100) / 100, time: Math.round(sc.D.time) });
+    game.plog?.('attack', { is: 'try', n: sc.n, kind: sc.kind, style: sc.style, challenge: sc.challenge ? 1 : 0, level: Math.round(sc.level * 100) / 100, time: Math.round(sc.D.time) });
     // the end: shown, then resolved
     const shown = async () => {
       if (!res.goal) { const cue = showCue(m); res.cue = cue; sfx('aww'); game.plog?.('attack', { is: 'miss', why: res.why, cue, advice: m.advice?.kind || null }); await wait(AFTER_MISS); hideCue(); }
@@ -96,21 +125,21 @@ export async function runAttack(opts) {
   if (busy) return; busy = true; unlockSpeech();
   const plan = Array.isArray(opts?.plan) ? opts.plan : null;
   try {
-    const us = teamById(P.us), them = teamById(P.them), first = !P.mini?.attack?.plays, r = stream(Math.random()), kinds = [];
+    const us = teamById(P.us), them = teamById(P.them), first = !P.mini?.attack?.plays, r = stream(Math.random()), kinds = [], ctx = { lost: false, challenge: false };
     game.setTeams(us, them); world.setEnv('crowd'); hud.caption(''); hud.dots?.([], 0);
-    dress(us, them); hudEl.classList.add('fattack');
+    dress(us, them); hudEl.classList.add('fattack'); fast.camNow = camNow;
     const run = startRun('attack');
     show(null);
     if (first && !plan) await card({ emoji: '⚽', title: miniById('attack').say, sub: 'Draw the defender, then pass to the free friend. Nobody in front? Go and shoot!', button: 'Play' });
     while (!run.over) {
-      const sc = plan ? planned(plan[run.n % plan.length], r, run.n) : attackScene(run.level, r, run.n, kinds); kinds.push(sc.kind);
-      const res = await attempt(sc, us, them);
-      runStep(run, res.goal, { kind: sc.kind, style: sc.style, why: res.why, sec: res.sec, by: res.by, cue: res.cue || null });
+      const sc = plan ? planned(plan[run.n % plan.length], r, run.n) : attackScene(run.level, r, run.n, kinds, ctx); kinds.push(sc.kind);
+      const res = await attempt(sc, us, them); ctx.lost = !res.goal; ctx.challenge = !!sc.challenge;
+      runStep(run, res.goal, { kind: sc.kind, style: sc.style, challenge: sc.challenge ? 1 : 0, why: res.why, sec: res.sec, by: res.by, cue: res.cue || null });
     }
     end();
     endRun(run, { again: runAttack });
   } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 function planned(p, r, n) { let sc = null; for (let i = 0; i < 400; i++) { sc = attackScene(p.level ?? 0, r, 1 + i, []); if (sc.kind === p.kind && (!p.style || sc.style === p.style)) break; } sc.n = n; return sc; }
-function end() { hideCue(); fast.ui.timer = null; fast.stop(); undress(); hudEl.classList.remove('fattack'); game.home(); }
+function end() { hideCue(); fast.ui.timer = null; delete fast.camNow; fast.stop(); undress(); hudEl.classList.remove('fattack'); game.home(); }
 if (typeof window !== 'undefined') window.__attack = { runAttack, fast };

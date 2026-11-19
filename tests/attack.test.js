@@ -77,10 +77,27 @@ test('the situations: the first is a 2 against 1; the mix moves from overloads t
     prev = { D, mean };
   }
   const at = lv => Object.fromEntries(attackLevel(lv).mix.map(x => [x.id, x.w]));
-  assert.ok(at(0)['2v1'] > .7, 'at first: mostly 2 against 1');
-  assert.ok(at(0)['2v1'] + at(0)['3v1'] > .97 && at(1)['2v1'] + at(1)['3v1'] > .8, 'then clear advantages');
+  assert.ok(at(0)['2v1'] > .5 && at(0)['2v1'] + at(0)['3v1'] > .85, 'at first: mostly 2 against 1, and 3 against 1');
+  assert.ok(at(1)['2v1'] + at(1)['3v1'] + at(1)['3v2'] > .9, 'then clear advantages');
   assert.ok(at(20)['2v3'] + at(20)['3v4'] > .6, 'late: mostly fewer attackers than defenders');
   for (let i = 0; i < 30; i++) assert.equal(attackScene(5, stream(i / 31), 0, []).kind, '2v1');
+});
+
+test('a challenge now and then: from goal 4, about one attempt in six two or three steps harder; never two in a row, never after a lost life', () => {
+  const idx = id => KINDS.findIndex(k => k.id === id), r = stream(.77);
+  let n = 0, ch = 0;
+  for (let i = 0; i < 6000; i++) {
+    const lv = (i % 60) * STEP, ctx = { lost: i % 7 === 0, challenge: i % 11 === 0 }, sc = attackScene(lv, r, 1 + (i % 5), [], ctx);
+    if (sc.challenge) {
+      assert.ok(lv >= 4 * STEP - 1e-9 && !ctx.lost && !ctx.challenge, 'only from goal 4, not after a lost life or a challenge');
+      assert.ok(idx(sc.kind) >= Math.min(6, Math.round(sc.D.centre) + 2), `${sc.kind} is harder than the usual mix (level ${lv.toFixed(2)})`);
+    }
+    if (lv >= 4 * STEP && !ctx.lost && !ctx.challenge) { n++; if (sc.challenge) ch++; }
+  }
+  assert.ok(Math.abs(ch / n - 1 / 6) < .03, `about one in six (${(ch / n).toFixed(3)})`);
+  assert.equal(attackScene(10, stream(.5), 0, [], {}).challenge, false, 'never the first attempt');
+  const at = g => { const s = new Set(); for (let i = 0; i < 400; i++) { const sc = attackScene(g * STEP, stream(i / 401), 3, [], {}); if (sc.challenge) s.add(sc.kind); } return s; };
+  assert.ok(at(4).has('2v2'), 'a 2 against 2 early'); assert.ok(at(9).has('2v3'), 'a 2 against 3 by goal 9');
 });
 
 test('every situation is on the pitch, theirs between him and the goal, nobody on top of anybody', () => {
@@ -119,12 +136,12 @@ function bot(kind, p = 1) {
   };
 }
 function playRun(b, seed) {
-  const r = stream(seed), rnd = stream(seed / 3 + .1), run = newRun(), kinds = [], ends = [];
+  const r = stream(seed), rnd = stream(seed / 3 + .1), run = newRun(), kinds = [], ends = [], ctx = { lost: false, challenge: false };
   while (!run.over && run.n < 200) {
-    const sc = attackScene(run.level, r, run.n, kinds); kinds.push(sc.kind);
+    const sc = attackScene(run.level, r, run.n, kinds, ctx); kinds.push(sc.kind);
     const s = setup(sc, { seed: seed / 7 + .05 }); let next = .8;
     let t = 0; const res = s.step(200, () => { t += 1 / 30; if (t >= next) { b(s.m, rnd); next = t + .8 + rnd() * .7; } });
-    ends.push(res.why); attempt(run, res.goal);
+    ends.push(res.why); attempt(run, res.goal); ctx.lost = !res.goal; ctx.challenge = sc.challenge;
   }
   return { score: run.score, n: run.n, ends };
 }
