@@ -83,5 +83,6 @@ export function endRun(run, { again, sticker = null, title = null } = {}) {
   (async () => { for (const l of lines) await say(l); })().then(() => setTimeout(() => { if (!$('#results').classList.contains('hidden')) say(ASK); }, 300));
   return d;
 }
-// Any other results card is not a mini game's (its own look goes).
-if (typeof MutationObserver === 'function') { const r = $('#results'); if (r) new MutationObserver(() => { if (r.classList.contains('hidden')) r.classList.remove('mini'); }).observe(r, { attributes: true, attributeFilter: ['class'] }); }
+// Any other results card is not a mini game's (its own look goes). (Removed only when it is there: a remove sets the
+// attribute again, which would call this again, for ever.)
+if (typeof MutationObserver === 'function') { const r = $('#results'); if (r) new MutationObserver(() => { if (r.classList.contains('hidden') && r.classList.contains('mini')) r.classList.remove('mini'); }).observe(r, { attributes: true, attributeFilter: ['class'] }); }
