@@ -23,7 +23,7 @@ export const WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1;
 // to a pass line, how hard they pass, how often and from how far they shoot, how often their first touch runs loose, and
 // how well their keeper (5 v 5) follows the ball across his goal. The default makes his team win about two matches in
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
-export const LEVELS = { '3v3': .55, '4v4': .6, '5v5': .55 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
+export const LEVELS = { '3v3': .5, '4v4': .6, '5v5': .55 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
 export let LEVEL = .5;
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   const k = clamp(level, 0, 1);
