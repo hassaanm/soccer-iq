@@ -18,7 +18,7 @@
 // After each of his moves (not a shot) the defenders answer, in this order:
 //   1. the keeper steps one place toward the ball's row (within the goal);
 //   2. each marker steps one place toward the place next to his man that is nearest the ball (with his man on the
-//      ball, the place next to him nearest the goal);
+//      ball, the place next to him nearest the goal), never to a place that is not next to his man if he can help it;
 //   3. the nearest presser (the `press` nearest, later) steps one place toward the ball, and stops next to it.
 import { ease } from './rules.js';
 
@@ -174,7 +174,16 @@ export function answer(pz, s, steps = []) {
       const nx = mx + dx, ny = my + dy; if (!(nx === x && ny === y) && !free(pz, s, nx, ny)) continue;
       const k = e2(nx, ny, ax, ay); if (k < tk) { tk = k; tx = nx; ty = ny; }
     }
-    if (tx >= 0 && !(tx === x && ty === y)) step(i, tx, ty);
+    if (tx < 0 || (tx === x && ty === y)) continue;
+    // one place toward it, never leaving his man: of the places he can be (staying first), next to his man before
+    // anything, then nearest the target
+    let bx2 = x, by2 = y, k0 = [cheb(x, y, mx, my) <= 1 ? 0 : 1, cheb(x, y, tx, ty), e2(x, y, tx, ty)];
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy; if (!free(pz, s, nx, ny)) continue;
+      const k = [cheb(nx, ny, mx, my) <= 1 ? 0 : 1, cheb(nx, ny, tx, ty), e2(nx, ny, tx, ty)];
+      if (k[0] < k0[0] || (k[0] === k0[0] && (k[1] < k0[1] || (k[1] === k0[1] && k[2] < k0[2])))) { k0 = k; bx2 = nx; by2 = ny; }
+    }
+    if (bx2 !== x || by2 !== y) { steps?.push([i, [x, y], [bx2, by2]]); d[2 * i] = bx2; d[2 * i + 1] = by2; }
   }
   let ps = null; // 3. the pressers, nearest first
   for (let i = 0; i < roles.length; i++) if (roles[i] < 0) (ps ||= []).push([cheb(d[2 * i], d[2 * i + 1], bx, by), e2(d[2 * i], d[2 * i + 1], bx, by), i]);

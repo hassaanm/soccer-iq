@@ -9,8 +9,10 @@ import { MINI, MINI_SAID } from './games.js';
 import { hooks } from './run.js';
 import { runKeeper } from '../ui/goalie.js';
 import { runPenalties } from './pens-ui.js';
+import { runPuzzles } from './puzzle-ui.js';
 
 const RUN = { keeper: runKeeper, pens: runPenalties };
+RUN.puzzles = runPuzzles; // (v90: soccer puzzles)
 
 // The sheet, made once (the lesson picker's look: css .sheet).
 const sheet = document.createElement('section');
