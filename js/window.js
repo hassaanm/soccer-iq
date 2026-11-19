@@ -446,11 +446,27 @@ export function agreeAt(sc, plan, pos, t, opts = {}) {
 // drift), paths, threat: { id }, virt, bear, rP (the threat's place, bearing and distance in P), watch, at0, role, cls,
 // dis (what still disagrees: empty), look, wide }.
 const cache = new WeakMap();
+// (v78) How many plans have been made (not found kept): scripts/frame-audit.js counts them in each frame.
+export const planStats = { made: 0 };
+// (v78) A plan is made in steps (planHold0 yields after each moment of a try it looks at): all at once (runSteps), or a
+// few milliseconds of it a frame (planSteps, for a scene about to be set up: game/window.js prePlan).
+const keyOf = (st, opts) => (opts.live ? null : JSON.stringify([opts.R, opts.Rfloor, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]));
+const runSteps = it => { for (;;) { const r = it.next(); if (r.done) return r.value; } };
+// Steps the plan for (sc, st, opts) on for at most `ms` milliseconds; returns { done, plan } and, once done, keeps it as
+// planHold does (the same plan, found kept when asked for again). `it`: the steps so far (from an earlier call).
+export function planSteps(sc, st, opts = {}, ms = 3, it = null) {
+  const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return { done: true, plan: null };
+  const key = keyOf(st, opts);
+  if (key && cache.get(sc)?.[key]) return { done: true, plan: clonePlan(cache.get(sc)[key]) };
+  it ||= planHold0(sc, st, opts, kind); const t0 = performance.now();
+  for (;;) { const r = it.next(); if (r.done) { const p = r.value; planStats.made++; if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return { done: true, plan: clonePlan(p) }; } return { done: true, plan: p }; }
+    if (performance.now() - t0 > ms) return { done: false, it }; }
+}
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
-  const key = opts.live ? null : JSON.stringify([opts.R, opts.Rfloor, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]);
+  const key = keyOf(st, opts);
   if (key) { const hit = cache.get(sc)?.[key]; if (hit) return clonePlan(hit); }
-  const p = planHold0(sc, st, opts, kind);
+  const p = runSteps(planHold0(sc, st, opts, kind)); planStats.made++;
   if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return clonePlan(p); }
   return p;
 }
@@ -464,7 +480,7 @@ const clonePlan = p => ({ ...p, paths: Object.fromEntries(Object.entries(p.paths
 // not just after winning it ("Won it? Go!": that idea is to go at once).
 export const CALM = { r: 4.5, rMax: 9, behind: 1.92, speeds: [.5, .8, .25] }; // (rMax: one coming from farther is off the screen as it opens at a walk's drift)
 const SPEEDS = { attack: [1.3, 1, .8, .5, .25], lead: [1.2, 1, .8, .5, .25], defense: [1.8, 1.4, 1, .8, .5, .25], support: [.9, .7, .5, .25], goal: [1.6, 1.3, 1, .8, .5, .25], receive: [.9, .6, .4], dead: [0] };
-function planHold0(sc, st, opts, kind) {
+function* planHold0(sc, st, opts, kind) {
   const live = !!opts.live, at = st.at, R = opts.R || 8, never = opts.never || [], keep = opts.keep || {};
   const ro = rolesOf(sc, at, { skip: opts.skip, never: [...never, ...Object.keys(keep)] }), { holder, ballTeam, defTeam, out, ids, mark } = ro;
   if (!at[holder]) return null;
@@ -552,13 +568,14 @@ function planHold0(sc, st, opts, kind) {
   // Which moments of the window agree (ok[i]: at i·STEP_T), and whether everyone stays on the pitch.
   // (frame time) `bound`: a try that can no longer cost less than this is given up (pruned) part of the way through.
   let samples = 0;
-  function score(b, bound = null) {
+  function* score(b, bound = null) {
     const tmp = {}, ok = [], vd = [], onp = Object.keys(b.paths).filter(id => !at[id].gk && onPitch(at[id].x, at[id].y, .4)); let bad = 0, first = null;
     const n = Math.max(1, Math.ceil(b.G / STEP_T - 1e-6)), dtS = b.G / n; b.dtS = dtS;
     for (let i = 0; i <= n; i++) {
       const t = i * dtS, d = disagree(sc, posOf(b, t, null, tmp), t, o2), off = onp.some(id => { const q = pathAt(b.paths[id], t, tmp[id] ||= {}); return !onPitch(q.x, q.y, .4); });
       ok.push(!d.length && !off); vd.push(d); if (d.length || off) { bad++; first ||= d.length ? d : ['off the pitch']; }
       samples++; if (bound != null && bad * 10 - n >= bound) return Object.assign(b, { pruned: true });
+      yield; // (v78: a plan can be made over several frames: planSteps)
     }
     let run = 0, r0 = 0, r1 = -1; for (let i = 0, s = 0; i <= ok.length; i++) { if (i < ok.length && ok[i]) continue; if (i - s > run) { run = i - s; r0 = s; r1 = i - 1; } s = i + 1; }
     return Object.assign(b, { bad, first, offp: 0, ok, vd, runOk: [r0, r1] });
@@ -573,34 +590,34 @@ function planHold0(sc, st, opts, kind) {
     // few whole tries cost and none agrees all the way: the best so far is the plan. A try that cannot beat the best so
     // far is given up early (not where a friend is about to shoot: there every try's own moments are looked at below).
     if ((live || opts.from) && best && samples > 150) break search;
-    const eps = (speeds.indexOf(sp) + (1 - k)) * .01, b = score(build(sp, k, frac * G, G), best && !shotOn ? best.cost - eps : null); if (b.pruned) continue;
+    const eps = (speeds.indexOf(sp) + (1 - k)) * .01, b = (yield* score(build(sp, k, frac * G, G), best && !shotOn ? best.cost - eps : null)); if (b.pruned) continue;
     const cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + eps;
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
     if (!b.bad && !b.offp) break search;
     // (a friend about to shoot: rather than a slower play, a shorter stretch of this one, the last of it up to his strike,
     // as long as it is no shorter than the window's floor needs)
     // (round 6: the longest such stretch over all the speeds is taken, not the first found: a slower carry that holds for longer is the better passage)
-    if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6 && (!tail || Gs > tail.Gs + .15)) { const c = score(build(sp, k, Gs, Gs)); if (!c.bad) tail = { c, Gs, cost }; } }
+    if (shotOn && sp >= .5) { let n = 0; while (n < b.ok.length && b.ok[b.ok.length - 1 - n]) n++; const Gs = (n - 1) * b.dtS; if (Gs >= Math.max(.9, Gfloor) - 1e-6 && (!tail || Gs > tail.Gs + .15)) { const c = (yield* score(build(sp, k, Gs, Gs))); if (!c.bad) tail = { c, Gs, cost }; } }
   }
   if (tail && (best.bad || best.offp || best.sp < .5)) { best = tail.c; best.cost = tail.cost; G = tail.Gs; fixedG = true; }
   // (round 5) A dead ball whose runs had to be made smaller to keep the picture: each player whose own run can be
   // bigger (its full size, or half, the way he would go or another way) without spoiling anything gets it, one by one.
   if (dead && !best.bad && best.k < 1) { const ks = {};
     for (const id of Object.keys(own)) { if (mark[id]) continue; let done = false;
-      for (const lv of [1, .5, .3]) { if (lv <= best.k || done) break; for (const a of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) { const b = score(build(best.sp, best.k, best.tP, best.G, { ...ks, [id]: { k: lv, a } })); if (!b.bad) { ks[id] = { k: lv, a }; b.cost = best.cost; best = b; done = true; break; } } } } }
+      for (const lv of [1, .5, .3]) { if (lv <= best.k || done) break; for (const a of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) { const b = (yield* score(build(best.sp, best.k, best.tP, best.G, { ...ks, [id]: { k: lv, a } }))); if (!b.bad) { ks[id] = { k: lv, a }; b.cost = best.cost; best = b; done = true; break; } } } } }
   // (no try agrees all the way: the window is the longest stretch of the best try that does, never under .6 s of play;
   // the picture itself may then lie just outside it, and play is as near it as it ever is)
   if (best.bad && !live && !fixedG) for (let m = 0; m < 3 && best.bad; m++) {
     const [i0, i1] = best.runOk, a0 = i0 + (m && i0 > 0 ? 1 : 0), a1 = i1 - (m && i1 < best.ok.length - 1 ? 1 : 0), Gs = (a1 - a0) * best.dtS; // (a step in from the edge of what agrees, if the first cut does not)
     if (Gs < .6 - 1e-6) break;
-    const b = score(build(best.sp, best.k, best.tP - a0 * best.dtS, Gs)); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
+    const b = (yield* score(build(best.sp, best.k, best.tP - a0 * best.dtS, Gs))); if (b.bad <= best.bad) { best = b; G = Gs; fixedG = true; } else break;
   }
   // ---- the runs in ----
   let r0 = 0, shift = 0, tviol = 0, tclash = 0, jock = false; const g0 = kind === 'attack' ? sc.grades || grade(sc) : null;
   if (th) {
     const tmp = {};
     let noSecond = false;
-    const tryRun = (b, G, r, sh, own = false) => { // (own: from his own place in the picture, wherever that is)
+    const tryRun = function* (b, G, r, sh, own = false) { // (own: from his own place in the picture, wherever that is)
       const hp0 = pathAt(b.paths[holder], 0), hp1 = pathAt(b.paths[holder], G), B0 = ballOf(sc, kind, holder, hp0), B1 = ballOf(sc, kind, holder, hp1), u = [Math.cos(bearA + sh), Math.sin(bearA + sh)];
       const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + u[0] * r, B0.y + u[1] * r]; // (cur: he sets off from where he is now, `lead` s before it opens)
       if (!live && !cur && !onPitch(S[0], S[1], .8)) return null;
@@ -637,14 +654,15 @@ function planHold0(sc, st, opts, kind) {
         const t = i * b.dtS, q = pathAt(path, t, tmp.th ||= {});
         const Bt = ballOf(sc, kind, holder, pathAt(b.paths[holder], t, tmp.h ||= {})), r1 = Math.hypot(q.x - Bt.x, q.y - Bt.y);
         if (r1 > rP + .3) { const rd = disagree(sc, posOf(b, t, real, {}), t, o2), virt = b.vd?.[i] || []; for (const o of rd) if (!virt.includes(o) && ratedAs(sc, o, kind, g0) !== 'bad') viol++; }
+        yield;
       }
       return { real, path, L, viol, clash };
     };
-    const pick = (b, G, fixed) => {
+    const pick = function* (b, G, fixed) {
       let got = null, fall = null;
       const top = fixed && !toP ? Math.min(rMax, CONTACT + G * V_RUN.max) : rMax, rs = []; for (let r = top; r >= rLow - 1e-6 && rs.length < 14; r -= .5) rs.push(r); if (live || opts.from?.[th] || !rs.length) { rs.length = 0; rs.push(live || opts.from?.[th] ? rP : rLow); }
       outer: for (const r of rs) for (const sh of live || opts.from?.[th] ? [0] : [0, .1, -.1, .2, -.2, .3, -.3, .4, -.4]) {
-        const t = tryRun(b, G, r, sh); if (!t) continue;
+        const t = (yield* tryRun(b, G, r, sh)); if (!t) continue;
         if (!t.viol && !t.clash) { got = { ...t, r, sh }; break outer; }
         if (!fall || t.viol * 3 + t.clash < fall.viol * 3 + fall.clash) fall = { ...t, r, sh };
       }
@@ -652,27 +670,27 @@ function planHold0(sc, st, opts, kind) {
     };
     // The window is as long as his run takes (a shorter run than hoped for, or a chase after a ball going away from him:
     // the shape is built again for that length, a few times over until the two agree).
-    const solve = (best, G) => {
+    const solve = function* (best, G) {
       let got = null;
       for (let n = 0; n < 7; n++) {
-        const g1 = pick(best, G, fixedG || n > 0); if (g1) { got = g1; got.G = G; }
+        const g1 = (yield* pick(best, G, fixedG || n > 0)); if (g1) { got = g1; got.G = G; }
         if (fixedG) break;
         const G2 = g1 ? Gfor(g1.L) : Math.min(4.6, G * 1.4);
         if ((g1 && Math.abs(G2 - G) <= .05) || (!g1 && G >= 4.6 - 1e-6)) break;
-        const b = score(build(best.sp, best.k, live ? 0 : best.tP * G2 / G, G2)); if (!live && b.bad > best.bad) break;
+        const b = (yield* score(build(best.sp, best.k, live ? 0 : best.tP * G2 / G, G2))); if (!live && b.bad > best.bad) break;
         b.cost = best.cost; best = b; G = G2; if (!g1) got = null;
       }
-      if (got && Math.abs(got.G - G) > 1e-6) { const g2 = pick(best, G, true) || tryRun(best, G, got.r, got.sh); if (g2) got = { r: got.r, sh: got.sh, ...g2 }; } // (the run for the length it ended at)
+      if (got && Math.abs(got.G - G) > 1e-6) { const g2 = (yield* pick(best, G, true)) || (yield* tryRun(best, G, got.r, got.sh)); if (g2) got = { r: got.r, sh: got.sh, ...g2 }; } // (the run for the length it ended at)
       // (and never shorter than his run needs at a jog: a short run-in is walked through at its own pace, not rushed)
-      if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = score(build(best.sp, best.k, best.tP * Gf / G, Gf)); if (b.bad <= best.bad) { const g2 = tryRun(b, Gf, got.r, got.sh); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
+      if (got && !fixedG) { const Gf = Gfor(got.L); if (Gf > G + .05) { const b = (yield* score(build(best.sp, best.k, best.tP * Gf / G, Gf))); if (b.bad <= best.bad) { const g2 = (yield* tryRun(b, Gf, got.r, got.sh)); if (g2) { best = b; G = Gf; got = { ...g2, r: got.r, sh: got.sh }; } } } }
       return { best, G, got };
     };
-    let { got } = (r => { best = r.best; G = r.G; return r; })(solve(best, G));
+    let { got } = (r => { best = r.best; G = r.G; return r; })((yield* solve(best, G)));
     // (round 5) Still shorter than the window's floor: the play drifts on more slowly (the ball is not carried into the one
     // who comes), which leaves him a longer way in. The slowest drift that agrees and gives the longest window is taken.
     if (!fixedG && !live && G < Gfloor - .02 && !best.bad) for (const sp of speeds.filter(v => v < best.sp)) {
-      const b = score(build(sp, best.k, best.tP, G)); if (b.bad) continue; b.cost = best.cost;
-      const r = solve(b, G); if (r.got && !r.best.bad && r.G > G + .03) { best = r.best; G = r.G; got = r.got; if (G >= Gfloor - .02) break; }
+      const b = (yield* score(build(sp, best.k, best.tP, G))); if (b.bad) continue; b.cost = best.cost;
+      const r = (yield* solve(b, G)); if (r.got && !r.best.bad && r.G > G + .03) { best = r.best; G = r.G; got = r.got; if (G >= Gfloor - .02) break; }
     }
     if (got) { Object.assign(best.paths, got.real); r0 = got.r; shift = got.sh; tviol = got.viol; tclash = got.clash; }
     else for (const id of [th, second].filter(Boolean)) { const a = at[id]; best.paths[id] = { x: a.x - best.D[0] * best.tP, y: a.y - best.D[1] * best.tP, v0: [...best.D], v1: [...best.D], t1: 0, tau: 0 }; }
@@ -682,7 +700,7 @@ function planHold0(sc, st, opts, kind) {
     if (got && !toP && !live && !opts.from?.[th] && got.r < rP - .3 && got.r < 3 && rP < RUNIN) {
       let t = null, b = best, Gt = G;
       for (const ns of second ? [false, true] : [false]) { noSecond = ns;
-        for (const g2 of fixedG ? [G] : [G, Gfor(rP + .6), Gfor(rP + .6) + .35, Gfor(rP + .6) + .7].filter(x => x <= 4.2)) { const c = g2 === G ? best : score(build(best.sp, best.k, best.tP * g2 / G, g2)); if (c !== best && c.bad > best.bad) continue; const q = tryRun(c, g2, rP, 0, true); if (q) { t = q; b = c; Gt = g2; break; } }
+        for (const g2 of fixedG ? [G] : [G, Gfor(rP + .6), Gfor(rP + .6) + .35, Gfor(rP + .6) + .7].filter(x => x <= 4.2)) { const c = g2 === G ? best : (yield* score(build(best.sp, best.k, best.tP * g2 / G, g2))); if (c !== best && c.bad > best.bad) continue; const q = (yield* tryRun(c, g2, rP, 0, true)); if (q) { t = q; b = c; Gt = g2; break; } }
         if (t) break; }
       if (!t) noSecond = false;
       if (t) { if (b !== best) { b.cost = best.cost; best = b; G = Gt; } got = { ...t, r: rP, sh: 0 }; Object.assign(best.paths, got.real); r0 = rP; shift = 0; tviol = t.viol; tclash = t.clash;
@@ -693,7 +711,7 @@ function planHold0(sc, st, opts, kind) {
     // window is then as long a stretch of play as one with nobody coming (the world is not slowed to a crawl for him).
     if (got && !toP && !at[th].gk && !second && got.L < JOCK.L && kind !== 'defense') {
       let b = best, Gj = G;
-      if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = score(build(sp, best.k, live ? 0 : best.tP * want / G, want)); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }
+      if (!fixedG) { const want = clamp(Gpace, 1.6, 2.6); for (const sp of [best.sp, ...speeds.filter(v => v < best.sp)]) { const c = (yield* score(build(sp, best.k, live ? 0 : best.tP * want / G, want))); if (!c.bad || c.bad <= best.bad) { c.cost = best.cost; b = c; Gj = want; break; } } }
       const hp = b.paths[holder], h0 = pathAt(hp, 0), hG = pathAt(hp, Gj), B0 = ballOf(sc, kind, holder, h0), BG = ballOf(sc, kind, holder, hG), bo = [B0.x - h0.x, B0.y - h0.y];
       const cur = opts.from?.[th], S = live ? [at[th].x, at[th].y] : cur ? [cur.x, cur.y] : [B0.x + Math.cos(bearA + got.sh) * Math.max(rP, JOCK.r[0]), B0.y + Math.sin(bearA + got.sh) * Math.max(rP, JOCK.r[0])];
       const rS = dd(S, [B0.x, B0.y]), rJ = clamp(rS, Math.min(rS, JOCK.r[0]), JOCK.r[1]); let a0 = Math.atan2(S[1] - B0.y, S[0] - B0.x);

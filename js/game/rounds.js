@@ -272,7 +272,7 @@ export const rounds = {
   async round(sc, { hint, light = false, level = 1, first = false }) {
     this.mode = 'lesson'; this.light = light; this.shown = new Set(); // shown: wrong choices already replayed in this round
     this.level1 = level <= 1; this.firstRound = first; // (v64: the window's length, window.js; a new idea's very first round has the longest)
-    this.load(sc); await this.pre();
+    await this.prePlan(sc); this.load(sc); await this.pre(); // (v78: the plan made in the frames before the scene is set up: game/window.js prePlan)
     let firstTry = true;
     for (;;) {
       const more = !!this.sc.then, r = await this.attempt(hint, more);

@@ -4,7 +4,7 @@
 // chooses or the threat gets to the ball (the time-out: outcomes.js timeoutGen). The ring round his own player shows how
 // long he has (ui.timer, drawn by world.js).
 import { time } from '../perf.js';
-import { planHold, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
+import { planHold, planSteps, planLive, pathAt, windowSeconds, windowFloor, kindOf, attackOptions, spotsNow, PACE, jockPace, jockFeint, JOCK } from '../window.js';
 import { L, W, gy0, gy1, facesBall, spotKind } from './shared.js';
 const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // (v76) The view for his own player carrying the ball from live play: as near the way to their goal (ga) as keeps it within
@@ -12,10 +12,11 @@ const LIVE_PASS = 5; // real seconds (Normal) for a pass to him in a match
 // after a touch away from one of theirs turns off the way to their goal (settle).
 const VIEW_OFF = .3, CARRY_BACK = 1.4, ACROSS = 1.3, wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
 const viewFor = (a, ga) => { const d = wrapA(ga - a); return a + Math.sign(d) * Math.min(Math.abs(d), VIEW_OFF); };
-import { SHOT } from '../generate.js';
+import { SHOT, shotLook } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
+const PLAN_MS = 3; // (v78) the most of a frame (ms, here; about four times that on a phone) prePlan spends on a plan
 // In demos and in the replay of the better play nobody runs out of time: the window is this long (real seconds), and
 // the hand taps well inside it.
 const SHOW = { demo: 16, replay: 7 };
@@ -60,14 +61,15 @@ export const moving = {
   // The plan for this choice (window.js planHold). live: from play already going (a match, a give-and-go's second step):
   // the picture is where everyone is now. Else the scene's own picture, planned before the run-up. `extra`: options for
   // planHold (who the scene's own script moves, runs the scene gives, a length the play gives).
+  // What planHold is asked (plan, and prePlan's steps).
+  planArgs(live, extra = {}) { const sc = this.sc; return [sc, live ? this.liveState() : this.sceneState(sc), { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra }]; },
   plan(live, extra = {}) {
     const sc = this.sc;
     if (kindOf(sc) === 'tackle') return null;
-    const st = live ? this.liveState() : this.sceneState(sc);
     this.heavyAt = this.frameNo | 0; // (frame time: see view.js spotView)
     const timed = time('plan'); // (the frame recorder, perf.js)
     try {
-      const p = planHold(sc, st, { live, options: this.offerList(), yaw: this.yaw, R: this.windowReal(), Rfloor: this.windowMin(), ...extra });
+      const p = planHold(...this.planArgs(live, extra));
       if (p) p.live = live;
       return p;
     } catch (e) { console.error(e); return null; } finally { timed(); } // (never a stuck choice: without a plan the choice opens as before v64)
@@ -137,6 +139,23 @@ export const moving = {
     { const ce = pathAt(c.setPath, T); for (const a of s.agents.values()) { if (a.gk || a.team === c.team || !a.setPath) continue; const e = pathAt(a.setPath, T), d = Math.hypot(e.x - ce.x, e.y - ce.y);
       if (d < 2.2) { for (let n = 0; n < 4; n++) { const q = pathAt(a.setPath, T), dq = Math.hypot(q.x - ce.x, q.y - ce.y); if (dq >= 2.1) break; const k = (2.3 - dq) / (T * .6), l = dq || 1; a.setPath.v1 = [a.setPath.v1[0] + (q.x - ce.x) / l * k, a.setPath.v1[1] + (q.y - ce.y) / l * k]; } } } } // (round 7: until it does hold him off)
     await this.delay(T);
+  },
+  // (v78) The plan for a scene that is about to be set up: its tries (plannedRunUp: one for each rCap), PLAN_MS a frame, while
+  // the last picture is still on the screen. planHold keeps each, so as the scene is set up plannedRunUp finds them made:
+  // the frame it is set up in used to make them all (41 ms on a phone). It plans on a stand-in for the game with that
+  // scene in it (the scene as load() makes it), so nothing on the screen changes.
+  async prePlan(sc) {
+    if (this.skipping || !sc || sc.spots || sc.intro === 'won' || sc.kind === 'receive' || sc.kind === 'lead' || sc.kind === 'tackle' || sc.run === 'follow' || kindOf(sc) !== 'attack') return;
+    const sim = new this.sim.constructor(); sim.setup(sc);
+    const ghost = Object.create(this); Object.assign(ghost, { sc, sim, timeouts: 0, yaw: sc.shots && sc.shotPlan ? shotLook(sc.heroTo, sc.mates) : 0 });
+    const frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; }; // (the next frame)
+    for (const rCap of [0, 5.2, 4.2, 3.4]) {
+      const [s0, st, opts] = ghost.planArgs(false, rCap ? { rCap } : {}); let r = { done: false, it: null }, p = null;
+      try { do { await frame(); if (this.skipping) return; r = planSteps(s0, st, opts, PLAN_MS, r.it); } while (!r.done); p = r.plan; } catch (e) { console.error(e); return; } // (PLAN_MS of it a frame)
+      if (!p) break;
+      const t = ghost.threatFit(p); if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break;
+    }
+    await frame(); // (and the scene is set up in a frame of its own)
   },
   // ---------- the run-up ----------
   // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window

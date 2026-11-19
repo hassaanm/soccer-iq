@@ -146,7 +146,7 @@ export const outcomes = {
     // (v78) One running across toward its line, told to stop, slows over a step or two (sim.js momentum) and drifted onto it:
     // judged by where that drift takes him, he steps off it the other way instead.
     const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0, dr = ls > 1.5 && p.mom && c.d >= .8 ? closestOnLane({ x: p.x + lv[0] * .35, y: p.y + lv[1] * .35 }, from, to, 0) : null;
-    if (low && dr && dr.d < .8) c = { ...closestOnLane(p, from, to, 0), d: dr.d };
+    const drift = low && dr && dr.d < .8; if (drift) c = { ...closestOnLane(p, from, to, 0), d: dr.d };
     if (c.d < 1.1) p.mom = null; p.momOff = this.sim.time + .6; // (on its line or nearly: he gets out of its way at once, whatever he was doing)
     if (!low || c.d >= .8) { this.sim.stop(p.id); return; }
     const dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy);
@@ -154,7 +154,7 @@ export const outcomes = {
     // (v66) Someone standing on that side, in his way (a defender marking him close): he steps off it to the other side.
     const at = k => ({ x: clamp(c.x + nx * 1.3 * k, .5, L - .5), y: clamp(c.y + ny * 1.3 * k, .5, W - .5) });
     const shut = q => [...this.sim.agents.values()].some(o => { if (o === p) return false; const k = closestOnLane(o, p, q, 0); return k.d < .8 && k.t > .15; }); // (on his way there, not merely beside him)
-    const q = shut(at(1)) && !shut(at(-1)) ? at(-1) : at(1);
+    const q = !drift && shut(at(1)) && !shut(at(-1)) ? at(-1) : at(1); // (v78: one drifting onto it steps back off it on his own side, never across it)
     // (round 7: running the other way, he sets off for it from a stop, a little softer: off the line in time, without flipping at a run)
     { const lv = p.lv, ls = lv ? Math.hypot(lv[0], lv[1]) : 0; if (p.team === 'them' && ls >= 2 && (lv[0] * (q.x - p.x) + lv[1] * (q.y - p.y)) / (ls * (Math.hypot(q.x - p.x, q.y - p.y) || 1)) < -.4) { p.rv = 0; p.rA = 13; } }
     this.sim.go(p.id, q.x, q.y, 4.5);

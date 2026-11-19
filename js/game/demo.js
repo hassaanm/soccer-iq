@@ -242,7 +242,7 @@ export const demo = {
   // Demo for any lesson: run up, look up, show the idea in words, then play the 3-star choice.
   async demo(skillId) {
     this.mode = 'demo';
-    const sc = demoScenario(skillId); this.load(sc);
+    const sc = demoScenario(skillId); await this.prePlan(sc); this.load(sc); // (v78: its plan made in the frames before: game/window.js prePlan)
     const hero = this.name('hero'), tip = skillById(skillId)?.tip || '', capTip = skillById(skillId)?.capTip; // capTip: a shorter caption for a long tip, so it covers no gold place (v64)
     const shot = !!sc.best?.startsWith('shoot'), mateId = MATE[sc.best];
     // (v76) "Watch …" over the run-up; then, from the moment the choice's window opens, play crawls on (CRAWL: a few

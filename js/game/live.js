@@ -176,7 +176,7 @@ export const live = {
       if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
         if (!(await this.continueDefense())) { tally(); streak = this.result === 'goalAgainst' ? 0 : streak + 1; live = streak > 0 && streak <= 4; continue; }
       } else if (live) await this.continueLive();
-      else { streak = 0; this.load(rounds[next++ % rounds.length]); await this.pre(); }
+      else { streak = 0; const nx = rounds[next++ % rounds.length]; await this.prePlan(nx); this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
       const opt = await this.decide(), good = this.isGood(opt);
       this.react(opt);
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
