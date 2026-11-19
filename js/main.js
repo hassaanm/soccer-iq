@@ -13,8 +13,8 @@ import * as perf from './perf.js';
 import './ui/soundmenu.js';
 import './ui/menu.js';
 import './ui/input.js';
-import { held, share } from './pause.js';
-import { pauseFrame, stillView } from './ui/pause.js';
+import { held, share, easing } from './pause.js';
+import { pauseFrame, stillView, easeMark, easeDraw } from './ui/pause.js';
 
 $('#playBtn').onclick = () => runSession();
 $('#freeBtn').onclick = () => gated(runFreePlay);
@@ -49,14 +49,15 @@ const STRIP = (() => { try {
   return pad && navigator.standalone === true && Math.min(screen.width, screen.height) >= 700;
 } catch { return false; } })();
 function one(now, ms, judge) { // judge: the slow-device governor looks at this frame's length (not when the loop is held back on purpose)
-  const dt = share(Math.min(.05, ms / 1000)); time += dt; // (v79: none of it while paused, and part of it as play eases back in)
+  const eased = easing(), dt = share(Math.min(.05, ms / 1000)); time += dt; // (v79: none of it while paused; as play eases back in, a frame goes to the game whole or not at all)
   pauseFrame();
   try {
     if (judge) world.pace(ms);
     if (world.pending != null && (goalie.on ? false : game.phase === 'idle' || (game.phase === 'pre' && lastPhase !== 'pre'))) world.applyPending(); lastPhase = game.phase;
+    const go = dt || !eased; if (eased && go) easeMark(goalie.on ? goalie : game, time - dt);
     let end = perf.time('game');
-    if (goalie.on) { goalie.tick(dt); end(); end = perf.time('draw'); world.render(goalie.sim, goalie.cam, goalie.ui, time); } // (the keeper game draws its own play: ui/goalie.js)
-    else { goalie.tick(dt); game.tick(dt, time); end(); end = perf.time('draw'); world.render(game.sim, game.cam, game.ui, time); }
+    if (goalie.on) { if (go) goalie.tick(dt); end(); end = perf.time('draw'); easeDraw(goalie, time); } // (the keeper game draws its own play: ui/goalie.js)
+    else { if (go) { goalie.tick(dt); game.tick(dt, time); } end(); end = perf.time('draw'); easeDraw(game, time); }
     end(); end = perf.time('strip'); if (TEST.strip ?? STRIP) matchStrip(now); end();
     if (TEST.onFrame) TEST.onFrame(now);
     perf.frame(now, goalie.on ? { phase: 'keeper', mode: 'keeper' } : game, world.renderer);

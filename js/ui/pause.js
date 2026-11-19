@@ -6,9 +6,9 @@
 // until a triangle is tapped. With his head already up, a drag still looks around while paused: the camera only.
 import { $, onPress } from './dom.js';
 import { hudEl } from './hud.js';
-import { game } from './stage.js';
+import { game, world } from './stage.js';
 import { goalie } from './goalie.js';
-import { held, setPause, onPause } from '../pause.js';
+import { held, setPause, onPause, easing } from '../pause.js';
 import { holdMusic } from '../sound.js';
 import { mark } from '../perf.js';
 
@@ -55,4 +55,33 @@ export function stillView(dt) {
   const keep = { frameNo: game.frameNo, glide: game.glide, camSlow: game.camSlow, camT0: game.camT0, camWas: game.camWas, lastWant: game.lastWant, camAsk: game.camAsk };
   try { game.updateCamera(dt, game.clock); } finally { Object.assign(game, keep); }
   return true;
+}
+
+// (Easing back in, js/pause.js share) Before each frame the game gets: where everything is. Each picture is then drawn
+// `held.lerp` of the way from there to where the game is now (the players, the ball, the camera, the picture's clock),
+// and everything is put back after: the game never sees it.
+const tw = { sim: null, at: new Map(), ball: [0, 0, 0], eye: [0, 0, 0], tgt: [0, 0, 0], cam: null, clock: 0, time: 0 };
+const keep = { at: new Map(), ball: [0, 0, 0], eye: [0, 0, 0], tgt: [0, 0, 0], clock: 0 };
+export function easeMark(g, time) {
+  const s = g.sim, b = s.ball; tw.sim = s; tw.at.clear();
+  for (const a of s.agents.values()) tw.at.set(a, [a.x, a.y]);
+  tw.ball[0] = b.x; tw.ball[1] = b.y; tw.ball[2] = b.z || 0; tw.cam = g.cam;
+  if (g.cam) for (let i = 0; i < 3; i++) { tw.eye[i] = g.cam.eye[i]; tw.tgt[i] = g.cam.tgt[i]; }
+  tw.clock = g.ui.clock; tw.time = time;
+}
+const mix = (a, b, k) => a + (b - a) * k;
+export function easeDraw(g, time) {
+  const s = g.sim, k = held.lerp, on = easing() && tw.sim === s && k < 1;
+  if (!on) { world.render(s, g.cam, g.ui, time); return; }
+  const b = s.ball, c = tw.cam === g.cam ? g.cam : null; keep.at.clear();
+  for (const a of s.agents.values()) { const q = tw.at.get(a); if (!q) continue; keep.at.set(a, [a.x, a.y]); a.x = mix(q[0], a.x, k); a.y = mix(q[1], a.y, k); }
+  keep.ball[0] = b.x; keep.ball[1] = b.y; keep.ball[2] = b.z; b.x = mix(tw.ball[0], b.x, k); b.y = mix(tw.ball[1], b.y, k); if (b.z != null) b.z = mix(tw.ball[2], b.z, k);
+  if (c) for (let i = 0; i < 3; i++) { keep.eye[i] = c.eye[i]; keep.tgt[i] = c.tgt[i]; c.eye[i] = mix(tw.eye[i], c.eye[i], k); c.tgt[i] = mix(tw.tgt[i], c.tgt[i], k); }
+  keep.clock = g.ui.clock; if (g.ui.clock != null && tw.clock != null) g.ui.clock = mix(tw.clock, g.ui.clock, k);
+  try { world.render(s, g.cam, g.ui, mix(tw.time, time, k)); } finally {
+    for (const [a, p] of keep.at) { a.x = p[0]; a.y = p[1]; }
+    b.x = keep.ball[0]; b.y = keep.ball[1]; b.z = keep.ball[2];
+    if (c) for (let i = 0; i < 3; i++) { c.eye[i] = keep.eye[i]; c.tgt[i] = keep.tgt[i]; }
+    g.ui.clock = keep.clock;
+  }
 }
