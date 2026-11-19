@@ -21,7 +21,7 @@ const lab = await boot({ letter: 'D', name: 'One player: step by step', version:
   onPick: id => setMe(id), onStart: () => setTimeout(next, 500) });
 const { sim, L, W } = lab;
 const m = new Match(lab, { n: 4, isAI: id => id !== me });
-m.favor = me; m.favorW = FAVOR;
+m.favor = me; m.favorW = FAVOR; m.tackleT = { us: .4, them: .7 }; m.aiSpeed = { them: 2.7 }; // (the same slight tilt to his team as common/flow.js)
 m.setup('us');
 lab.base = lab.slowTo = CALM;
 const view = eyes(lab, { me, natural: () => { const h = sim.a(me), b = sim.ball; if (!h) return null; return m.owner() === me ? Math.atan2(W / 2 - h.y, L - h.x) : Math.atan2(b.y - h.y, b.x - h.x); } });

@@ -82,7 +82,7 @@ export class Match {
     return worst ? { good: false, why: 'defender', by: worst.o.id } : inside ? { good: true } : { good: false, why: 'line' };
   }
   // ---------- actions ----------
-  giveTo(id, how) { this.sim.give(id); this.flight = null; this.lastTeam = this.team(id); this.contact.clear(); this.on.gain(id, how); }
+  giveTo(id, how) { const f = this.flight; if (f) for (const x of [f.to, f.cut, f.by]) if (x) this.cmd.delete(x); this.cmd.delete(id); this.sim.give(id); this.flight = null; this.lastTeam = this.team(id); this.contact.clear(); this.safeT = this.sim.time + (how === 'tackle' ? 1.4 : .5); this.on.gain(id, how); } // (safeT: a moment to get away after winning it, so two players standing together do not take it back and forth)
   // A pass. `cut`: the defender who will cut it out (the pass was graded closed), or null (it gets there).
   pass(fromId, toId, cut = null) {
     const s = this.sim, a = s.a(fromId), b = s.a(toId); if (!a || !b) return;
@@ -150,10 +150,10 @@ export class Match {
     // tackles: a defender on an unprotected carrier for TACKLE_T s wins the ball
     const c = this.owner();
     if (c && !b.reach) {
-      const ca = s.a(c), safe = this.protect === c || this.hold;
+      const ca = s.a(c), safe = this.protect === c || this.hold || s.time < (this.safeT || 0);
       for (const o of this.foes(this.team(c))) {
         const d = dist(o, ca), k = o.id;
-        if (d < .95 && !safe && !b.move) { const v = (this.contact.get(k) || 0) + dt; this.contact.set(k, v); if (v > TACKLE_T) { this.lab.world.fx('stolen'); this.lab.sfx('down'); const was = c; this.giveTo(k, 'tackle'); this.on.lost?.(was, k); return; } }
+        if (d < .95 && !safe) { const v = (this.contact.get(k) || 0) + dt; this.contact.set(k, v); if (v > (this.tackleT?.[o.team] ?? TACKLE_T)) { this.lab.world.fx('stolen'); this.lab.sfx('down'); const was = c; this.giveTo(k, 'tackle'); this.on.lost?.(was, k); return; } }
         else this.contact.delete(k);
       }
     }
@@ -181,14 +181,14 @@ export class Match {
     if (c && this.isAI(c) && !this.cmd.has(c) && !this.flight) this.aiCarrier(c, dt);
     // the side with the ball: support places
     for (const id of this.ids(team)) {
-      if (id === c || this.cmd.has(id) || (this.flight?.to === id)) continue;
+      if (id === c || this.cmd.has(id) || id === this.manual || (this.flight?.to === id)) continue;
       if ((this.next.get(id) || 0) > t) continue;
       this.next.set(id, t + SUPPORT_EVERY * (.85 + .3 * Math.random()));
       const p = this.supportSpot(id, team); s.go(id, p.x, p.y, this.hold ? 2.4 : 3.3);
     }
     // the other side: one presses the ball, the rest mark goal-side
     const def = team === 'us' ? 'them' : 'us', dx = this.dir(def), ownX = def === 'us' ? 0 : this.L;
-    const free = this.ids(def).filter(id => !this.cmd.has(id) && this.flight?.cut !== id);
+    const free = this.ids(def).filter(id => !this.cmd.has(id) && id !== this.manual && this.flight?.cut !== id); // (manual: his own player, moved only by him: Lab E, H, I)
     let presser = def === 'us' ? this.pressUs : this.pressThem;
     if (presser === undefined || (presser && !free.includes(presser))) presser = null;
     if (presser === 'auto' || (def === 'them' && !presser)) presser = free.slice().sort((p, q) => dist(s.a(p), b) - dist(s.a(q), b))[0] || null;
@@ -250,10 +250,15 @@ export class Match {
     if (pref) { this.pass(id, pref); return; }
     // (round 2) Friends favour his player: when he is open they pass more often, and to him over an equally open friend
     // by `favorW` to 1, unless another friend has a much better chance (6 m or more farther forward).
+    // (and they count him open a little sooner than anyone else: a gap of 0.55 m on the line and 1.1 m of room)
+    if (this.favor && this.favor !== id && this.team(this.favor) === team && !opts.some(o => o.m === this.favor)) {
+      const f = s.a(this.favor), ln = this.lane(a, f, team), room = Math.min(...this.foes(team).map(o => dist(o, f)));
+      if (ln.d >= .55 && room >= 1.1 && dist(a, f) > 2.5) opts.push({ m: this.favor, open: true, fwd: (f.x - a.x) * dx });
+    }
     const fav = this.favor && opts.find(o => o.m === this.favor);
-    if (opts.length && (press || (opts[0].fwd > 5 && Math.random() < .35) || (fav && Math.random() < .3))) { this.pass(id, this.pickPass(opts)); return; }
+    if (opts.length && (press || (opts[0].fwd > 5 && Math.random() < .35) || (fav && Math.random() < (this.favorP ?? .55)))) { this.pass(id, this.pickPass(opts)); return; }
     const near = this.foes(team).sort((p, q) => dist(p, a) - dist(q, a))[0], side = near && Math.abs(near.y - a.y) < 2.5 && (near.x - a.x) * dx > 0 ? (near.y > a.y ? -1 : 1) * 2.2 : 0;
-    s.go(id, clamp(a.x + dx * 3, 1, this.L - 1), clamp(a.y + side + (this.W / 2 - a.y) * .15, 1.2, this.W - 1.2), 3.1);
+    s.go(id, clamp(a.x + dx * 3, 1, this.L - 1), clamp(a.y + side + (this.W / 2 - a.y) * .15, 1.2, this.W - 1.2), this.aiSpeed?.[team] ?? 3.1);
   }
 }
 const lerp = (a, b, k) => a + (b - a) * k;

@@ -181,7 +181,7 @@ export async function boot(cfg) {
     unlock(); if (lab.paused || lab.ended || !lab.started) return null;
     const w = lab.win, reach = Math.max(64, Math.min(world.width, world.height) * .17);
     let best = null, bd = 1e9;
-    for (const o of (w ? w.options : lab.free?.() || [])) {
+    for (const o of (w ? w.options : lab.freeWin?.options || [])) {
       if (cfg.mustSee && o.kind !== 'btn' && !lab.seen(o)) continue;
       const pts = [lab.pointOf(o), lab.pointOf(o, true)].filter(Boolean);
       for (const p of pts) { const s = world.project(p.x, p.y, p.z); if (!onScr(s)) continue; const d = Math.hypot(s[0] - x, s[1] - y); if (d < bd) { bd = d; best = o; } }
@@ -198,6 +198,13 @@ export async function boot(cfg) {
     const r = canvas.getBoundingClientRect(); if (lab.win) lab.tapAt(e.clientX - r.left, e.clientY - r.top);
   });
   // For the bots and the checks: tap an option the way a finger would (its marker's place on screen).
+  // (free play, Lab E and F) one action of his that is not a picked option: counted, and graded when `good` is not null
+  lab.record = (kind, id, good, best = false, word, emo, line, quiet = false) => {
+    const st = lab.stats; st.actions = (st.actions || 0) + 1;
+    if (good == null) return;
+    st.decisions++; if (good) st.good++; st.picks.push({ t: +lab.real.toFixed(1), kind, id, good: !!good, best: !!best, rt: 0, n: 0 });
+    if (!quiet) { lab.feedback(good, word, emo); sfx(good ? 'star' : 'tap', good ? (best ? 2 : 1) : undefined); say(line); }
+  };
   lab.tapPoint = id => { const o = lab.win?.options.find(x => x.id === id); if (!o) return null; const p = lab.pointOf(o); if (!p) return null; const s = world.project(p.x, p.y, p.z); return s && { x: s[0], y: s[1] }; };
 
   // ---------- chrome ----------
@@ -245,7 +252,7 @@ export async function boot(cfg) {
 
   // ---------- markers each frame ----------
   function drawMarkers(t) {
-    const w = lab.win, pulse = 1 + .08 * Math.sin(t * 6);
+    const w = lab.win || lab.freeWin, pulse = 1 + .08 * Math.sin(t * 6);
     let ri = 0, ai = 0; target.visible = false; for (const k in lab.ui.glow) delete lab.ui.glow[k];
     const hint = w && w.hinted;
     if (w) for (const o of w.options) {

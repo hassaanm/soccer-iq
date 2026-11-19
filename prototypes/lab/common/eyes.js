@@ -18,21 +18,25 @@ const lerp = (a, b, k) => a + (b - a) * k;
 
 export function eyes(lab, opt) {
   const sim = lab.sim, world = lab.world, canvas = world.canvas;
-  const v = lab.eyes = { me: opt.me, yaw: 0, look: 0, lookUp: true, drag: null, holdT: 0, looks: 0, natural: opt.natural, auto: true };
+  const v = lab.eyes = { me: opt.me, yaw: 0, look: 0, lookUp: true, drag: null, holdT: 0, looks: 0, natural: opt.natural, auto: true, holding: false, holds: 0 };
   const tun = document.createElement('div'); tun.id = 'tunnel'; document.body.insertBefore(tun, document.querySelector('#chrome'));
   const btn = document.createElement('button'); btn.id = 'lookB'; btn.className = 'lb gold'; btn.innerHTML = '<i>👀</i><span>LOOK UP</span>'; btn.setAttribute('aria-label', 'Look up');
-  document.querySelector('#chrome').append(btn);
+  document.querySelector('#chrome').append(btn); btn.classList.add('up'); btn.querySelector('span').textContent = 'HEAD DOWN';
   const setUp = up => { if (v.lookUp !== up) { v.lookUp = up; lab.sfx(up ? 'up' : 'down'); if (up) v.looks++; } btn.classList.toggle('up', up); btn.querySelector('span').textContent = up ? 'HEAD DOWN' : 'LOOK UP'; };
   v.setUp = setUp;
   btn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (lab.paused || !lab.started) return; setUp(!v.lookUp); v.holdT = lab.real + 4; });
   // a finger on the pitch: a drag turns his head, a tap (lifted where it went down) is a tap
-  canvas.addEventListener('pointerdown', e => { const r = canvas.getBoundingClientRect(); v.drag = { x0: e.clientX - r.left, y0: e.clientY - r.top, yaw0: v.yaw, moved: false, w: r.width || world.width }; });
+  // (opt.hold, Lab H) a finger held still for HOLD_MS slows the world to opt.hold while it stays down; letting go plays on
+  // (a hold is not a tap). Moving the held finger turns his head as any drag does.
+  const HOLD_MS = 280;
+  canvas.addEventListener('pointerdown', e => { const r = canvas.getBoundingClientRect(); const d = v.drag = { x0: e.clientX - r.left, y0: e.clientY - r.top, yaw0: v.yaw, moved: false, w: r.width || world.width, held: false };
+    if (opt.hold && !lab.paused) d.timer = setTimeout(() => { if (v.drag === d && !d.moved) { d.held = true; v.holding = true; v.holds++; lab.slowTo = opt.hold; lab.sfx('down'); } }, HOLD_MS); });
   canvas.addEventListener('pointermove', e => {
     const d = v.drag; if (!d || lab.paused) return; const r = canvas.getBoundingClientRect(), dx = e.clientX - r.left - d.x0;
-    if (!d.moved && Math.abs(dx) > 12) { d.moved = true; v.looks++; if (!v.lookUp) setUp(true); }
+    if (!d.moved && Math.abs(dx) > 12) { d.moved = true; if (!d.held) clearTimeout(d.timer); v.looks++; if (!v.lookUp) setUp(true); }
     if (d.moved) { v.yaw = wrap(d.yaw0 - dx / d.w * 3.2); v.holdT = lab.real + 4; }
   });
-  const up = e => { const d = v.drag; v.drag = null; if (!d) return; if (!d.moved && e.type === 'pointerup') { const r = canvas.getBoundingClientRect(); lab.tapAt(e.clientX - r.left, e.clientY - r.top); } };
+  const up = e => { const d = v.drag; v.drag = null; if (!d) return; clearTimeout(d.timer); if (d.held) { v.holding = false; lab.slowTo = lab.win ? lab.slowTo : lab.base; lab.sfx('up'); return; } if (!d.moved && e.type === 'pointerup') { const r = canvas.getBoundingClientRect(); lab.tapAt(e.clientX - r.left, e.clientY - r.top); } };
   canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
 
   // each frame: his look eases up or down; his head comes back round when he has not looked for a while
@@ -99,6 +103,6 @@ export function trackSight(lab, v) {
     const pick = w.onPick; let off = null, looks0 = v.looks;
     w.onPick = (o, rt) => { if (off) { S.offAtOpen++; if (v.looks > looks0 && lab.seen(w.options.find(x => x.best) || o)) S.foundByLook++; } S.looks += v.looks - looks0; return pick?.(o, rt); };
     open0(w); S.wins++;
-    setTimeout(() => { if (lab.win && lab.win.onPick === w.onPick) { const b = lab.win.options.find(x => x.best); off = !!b && !lab.seen(b); } }, 60);
+    setTimeout(() => { if (lab.win && lab.win.onPick === w.onPick) { const b = lab.win.options.find(x => x.best); off = !!b && !lab.seen(b); } }, 700);
   };
 }

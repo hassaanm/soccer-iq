@@ -15,7 +15,7 @@ export function ballWindow(lab, m, id, opt = {}) {
 }
 // What each choice is worth now. Best: a shot when it is on; else a pass that gains clearly more than running with it
 // (at this age staying on the ball comes first); else the run; else the most forward open pass.
-function judgeBall(lab, m, id, os) {
+export function judgeBall(lab, m, id, os) {
   const me = lab.sim.a(id);
   for (const o of os) {
     o.best = false;
