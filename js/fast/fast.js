@@ -161,7 +161,7 @@ class Fast {
   }
   camNow(snap = 0, dt = 0) {
     const s = this.sim, h = s.a(this.me); if (!h) return;
-    const w = R.camSpec(h, s.ball, s.ball.state === 'carried' && s.ball.carrier === this.me, this.yaw, this.look), k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam;
+    const b = s.ball, w = R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), // (the pitch fills the picture: rules.js fitPitch) k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam;
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
     c.Ff += (w.Ff - c.Ff) * k; c.Fw += (w.Fw - c.Fw) * k;
   }

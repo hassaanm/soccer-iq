@@ -106,7 +106,7 @@ test('the camera he does not move always holds the ball, or (with it) the goal h
     const ball = has ? { x: me.x + .4, y: me.y, z: 0 } : { x: 1 + rnd() * (L - 2), y: 1 + rnd() * (W - 2), z: 0 };
     const yaw = R.naturalYaw(me, ball, has, L, W);
     for (const look of has ? [0, 1] : [1]) { // (his head is down only with the ball)
-      const cam = R.camSpec(me, ball, has, yaw, look); n++;
+      const cam = R.fitPitch(R.camSpec(me, ball, has, yaw, look), me, w, h, L, W, [ball]); n++;
       const seesBall = R.onScreen(R.project(cam, ball, w, h), w, h), seesGoal = R.onScreen(R.project(cam, { x: L, y: W / 2, z: .8 }, w, h), w, h);
       if (has ? seesBall || seesGoal : seesBall) held++; else assert.fail(`no ball${has ? ' or goal' : ''} at ${me.x.toFixed(1)},${me.y.toFixed(1)} look ${look}`);
     }
@@ -135,4 +135,18 @@ test('a whole match with nobody steering him ends, first to three, and nothing s
   let still = 0, last = null;
   const done = run(m, sim, 1500, () => { const p = sim.ball.x + sim.ball.y; still = last != null && Math.abs(p - last) < 1e-5 && !m.dead ? still + 1 / 60 : 0; last = p; assert.ok(still < 8, 'the ball moves'); return Math.max(m.score.us, m.score.them) >= 3; });
   assert.ok(done, `ended: ${m.score.us}-${m.score.them}`);
+});
+
+test('the pitch fills at least 80% of the picture\'s rows (with or without the ball, by the lines too), and he stays on screen', () => {
+  for (const [w, h] of [[932, 430], [844, 390]]) {
+    let n = 0, full = 0;
+    for (let x = 1; x < L; x += 1.5) for (let y = .6; y < W; y += 1.5) for (let hd = 0; hd < 8; hd++) for (const has of [true, false]) for (const look of has ? [0, 1] : [1]) {
+      const me = { x, y }, a = hd * Math.PI / 4, ball = has ? { x: x + .4, y, z: 0 } : { x: R.clamp(x + Math.cos(a) * 8, .5, L - .5), y: R.clamp(y + Math.sin(a) * 8, .5, W - .5), z: 0 };
+      const cam = R.fitPitch(R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), look), me, w, h, L, W, [ball]); n++;
+      if (R.rowsOnPitch(cam, w, h, L, W) >= R.FILL) full++;
+      assert.ok(R.onScreen(R.project(cam, { x, y, z: .5 }, w, h), w, h), `him at ${x},${y}`);
+      if (x > 2 && x < L - 2 && y > 2 && y < W - 2) assert.ok(R.rowsOnPitch(cam, w, h, L, W) >= R.FILL, `2 m or more inside the lines, always full: ${x},${y} ${hd} ${has} ${look}`);
+    }
+    assert.ok(full / n >= .97, `full in ${(100 * full / n).toFixed(1)}% (the rest: hard against a side line, where the eye must stand outside it)`);
+  }
 });

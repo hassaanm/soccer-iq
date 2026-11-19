@@ -151,3 +151,35 @@ export function edgeAt(q, behind, w, h, m = 34) {
   const cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy, k = Math.min(Math.abs(dx) > 1e-6 ? (cx - m) / Math.abs(dx) : 1e9, Math.abs(dy) > 1e-6 ? (cy - m) / Math.abs(dy) : 1e9);
   return k >= 1 ? [clamp(x, m, w - m), clamp(y, m, h - m)] : [cx + dx * k, cy + dy * k];
 }
+
+// ---------- the pitch fills the picture ----------
+// The share of screen rows whose middle pixel looks at the pitch (not the stands, the boards or the sky), for a camera
+// spec on a w x h screen (n rows sampled).
+export function rowsOnPitch(cam, w, h, L, W, n = 40) {
+  const e = cam.eye, t = cam.tgt; let fx = t[0] - e[0], fy = t[1] - e[1], fz = t[2] - e[2]; const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+  let rx = fy, ry = -fx; const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;
+  const ux = ry * fz, uy = -rx * fz, uz = rx * fy - ry * fx, k = (h / 2) / Math.max(h * cam.Ff, w * (cam.Fw || 0));
+  let on = 0;
+  for (let i = 0; i < n; i++) {
+    const yn = 1 - (i + .5) / n * 2, dx = fx + ux * yn * k, dy = fy + uy * yn * k, dz = fz + uz * yn * k;
+    if (dz >= -1e-6) continue; const s = -e[2] / dz, x = e[0] + dx * s, y = e[1] + dy * s;
+    if (x >= 0 && x <= L && y >= 0 && y <= W) on++;
+  }
+  return on / n;
+}
+// The camera made to fill the picture with the pitch (FILL of the rows): its eye brought back over the pitch along the
+// line to him (never past him), then raised and tipped down step by step until the pitch fills it, as long as his player
+// and the points in `keep` (the ball) stay on screen. Changes and returns `cam`.
+export const FILL = .8;
+export function fitPitch(cam, me, w, h, L, W, keep = []) {
+  const e = cam.eye, t = cam.tgt, m = .3, inside = () => e[0] >= m && e[0] <= L - m && e[1] >= m && e[1] <= W - m;
+  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 4));
+  if (!inside()) { const s0 = [...e]; e[0] = clamp(e[0], m, L - m); e[1] = clamp(e[1], m, W - m); if (!ok()) e.splice(0, 3, ...s0); } // (moved in over the line, if he stays in view)
+  for (let i = 0; i < 12 && !inside() && Math.hypot(e[0] - me.x, e[1] - me.y) > 3; i++) { const s0 = [...e], k = .9; e[0] = me.x + (e[0] - me.x) * k; e[1] = me.y + (e[1] - me.y) * k; if (!ok()) { e.splice(0, 3, ...s0); break; } }
+  for (let i = 0; i < 40 && rowsOnPitch(cam, w, h, L, W) < FILL; i++) {
+    const s0 = [...e], t0 = [...t];
+    if (e[2] < 9) e[2] += .25; t[2] -= .3; t[0] = me.x + (t[0] - me.x) * .96; t[1] = me.y + (t[1] - me.y) * .96;
+    if (!ok()) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; }
+  }
+  return cam;
+}
