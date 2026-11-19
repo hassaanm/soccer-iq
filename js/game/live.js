@@ -193,6 +193,7 @@ export const live = {
     this.mode = mode;
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
+    { const kept = await this.vetRounds(rounds); rounds.splice(0, rounds.length, ...kept); this.matchRounds = rounds; } // (v83: a scene whose plan takes too many frames is left out, game/window.js vetRounds)
     this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
     // Play flows on from wherever the last play ended: after "Kept the ball!" or "Stole it!" the next choice starts from
     // right there; after a lost ball he defends from there; after "Stopped him!" he defends again. A goal (and the start)

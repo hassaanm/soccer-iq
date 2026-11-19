@@ -158,3 +158,26 @@ frame when two overlap (`sim.js` SPACE, about once in 50 matches); that is not a
 
 The check: `tests/match-flow.test.js` and the `cut` line of `scripts/live-audit.js` (in `audit:motion`). Both fail on
 v81 and pass on v82.
+
+## A scene whose plan takes too long is left out of the match (v83)
+
+The next scene's plan is made PLAN_STEPS + 1 = 5 steps a frame (game/window.js prePlan), so how many frames it takes is the
+scene's own. Over the scenes a match can use (a lesson's ten, the first-time ones, and a sample of the random seeds a
+match's fresh scenes come from; about 900 a size) the middle scene needs 28 to 32 frames (0.5 s at 60 a second), the 90th
+percentile 121 to 125, and the 99th 156 to 191. The tail is a few scenes: gen-shot-open-110 (3v3) 1814 frames, gen-shot-open-109
+(5v5) 1306, and a random seed at 4v4 (gen-shot-open-88109) 2128. Those are 30 s or more at 60 a second.
+
+Why: in these the plan has no run for the one who comes that is clean (a try that agrees all the way, with nothing too near).
+`pick` then looks at every distance and angle (up to 14 by 9 runs, about 20 steps each) and gives the best of them, and `solve`
+asks again for each new window length, up to 8 times: about 1100 steps for each. A bound that leaves every other plan the
+same was not found: the plans of other scenes also fail to find a clean run once or three times and then go on to find one
+(one at 4v4 does so on 3 of 4 asks), so any cap on those asks changes a plan that is quick today.
+
+So the guarantee is a limit: game/window.js `vetRounds` counts, for each scene in a match's list, the frames prePlan will take
+(`prePlanFrames`: the same tries, 5 steps a frame, nothing kept), up to PLAN_LIMIT = 170 frames (1.2 s of celebration it is made
+over, and about 1.6 s of picture still after it), and leaves out a scene past it. The count depends on the scene (and the
+size and the window the game plays it with), never on timing or on what was played before. It is made a frame at a time, 80 steps a
+frame, as the match starts. Left out at 170 over the sample: 3v3 3 (gen-shot-open-110 and two random seeds), 4v4 1 (a random
+seed), 5v5 8 (gen-shot-open-109, seven random seeds). With a limit of 90 frames (1.5 s from the start of the plan) 94 to 112 of
+the sample (about one in nine) would go: that is not a handful. tests/plan-limit.test.js checks it.
+
