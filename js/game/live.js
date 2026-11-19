@@ -262,8 +262,8 @@ export const live = {
       const P = this.sceneState(sc).at, T = sceneTeam(sc), cid = sc.carrier || 'hero', ball = P[cid]; if (!P.hero || !ball || usIds.some(id => !P[id]) || themIds.some(id => !P[id])) continue;
       const db = Math.hypot(b.x - ball.x, b.y - ball.y);
       let ev = null;
-      if (SIDE_IN.has(sc.pattern)) { if (db > 12) continue; ev = { kind: 'out', to: [ball.x, ball.y < W / 2 ? -.5 : W + .5], at: [ball.x, ball.y] }; } // (over the side line by the place the pass-in is taken from)
-      else if (sc.pattern === 'goal-kick') { if (cur !== 'them' || b.x > 16) continue; const y = clamp(ball.y, 1, W - 1), side = y < W / 2 ? -1 : 1; ev = { kind: 'out', to: [-.6, W / 2 + side * Math.max(Math.abs(y - W / 2), (gy1 - gy0) / 2 + 1.2)], at: [ball.x, ball.y], goalKick: true }; } // (wide of our post, over our goal line)
+      if (SIDE_IN.has(sc.pattern)) { if (db > 12 || !c || c.gk) continue; ev = { kind: 'out', to: [ball.x, ball.y < W / 2 ? -.5 : W + .5], at: [ball.x, ball.y] }; } // (over the side line by the place the pass-in is taken from)
+      else if (sc.pattern === 'goal-kick') { if (cur !== 'them' || b.x > 16 || c.gk) continue; const y = clamp(ball.y, 1, W - 1), side = y < W / 2 ? -1 : 1; ev = { kind: 'out', to: [-.6, W / 2 + side * Math.max(Math.abs(y - W / 2), (gy1 - gy0) / 2 + 1.2)], at: [ball.x, ball.y], goalKick: true }; } // (wide of our post, over our goal line)
       else if (sc.pattern === 'keeper-ball') { if (cur !== 'them' || !s.keeper('us') || b.x > 15 || c.gk) continue; ev = { kind: 'keeper', by: c.id }; }
       else if (cur === T || !c) { const o = c && T === 'us' && s.team('them').filter(o => !o.gk && Math.hypot(o.x - c.x, o.y - c.y) < 2.2 && o.tk > s.time - 2).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
         ev = o && why === 'stall' ? { kind: 'foul', by: o.id } : { kind: 'pass' }; }
@@ -276,7 +276,7 @@ export const live = {
       const mu = mu1 && mu1.max < mu0.max + 2 ? mu1 : mu0, mt = mt1 && mt1.max < mt0.max + 2 ? mt1 : mt0;
       const run = Math.max(Math.hypot(h.x - P.hero.x, h.y - P.hero.y), mu.max, mt.max); if (run > BRIDGE.run) continue;
       const map = { hero: 'hero', ...mu.map, ...mt.map };
-      if (sc === this.sc || sc === this.lastBridge) continue; // (never the same situation again straight away)
+      if (sc === this.sc || sc.id === this.sc?.id || sc === this.lastBridge) continue; // (never the same situation again straight away)
       // (the whole of it, the event and the run, in BRIDGE.max s: the event's own time, as bridgeEvent plays it, and the run's)
       const near = id => { const o = id && s.a(id); return o && c ? Math.hypot(o.x - c.x, o.y - c.y) : 0; }, theirs = c && s.team('them').filter(o => !o.gk).sort((p, q) => dist(p, b) - dist(q, b))[0];
       ev.T = ev.kind === 'pass' ? .15 : ev.kind === 'foul' ? 1 : ev.kind === 'tackle' ? near(ev.by) / 5.4 + .3 : ev.kind === 'keeper' ? 1.3 : (cur === 'us' && theirs ? dist(theirs, b) / 4.6 : 0) + .2 + .9 + .5;
@@ -304,7 +304,7 @@ export const live = {
   *bridgeEvent(pick) {
     const s = this.sim, b = s.ball, ev = pick.ev;
     if (b.state === 'flying') yield () => b.state !== 'flying';
-    if (!b.carrier || b.state !== 'carried' && b.state !== 'held') { const n = [...s.agents.values()].filter(a => !a.gk).sort((p, q) => dist(p, b) - dist(q, b))[0], t0 = s.time;
+    if (ev.kind !== 'out' && (!b.carrier || b.state !== 'carried' && b.state !== 'held')) { const n = s.team(sceneTeam(pick.sc)).sort((p, q) => dist(p, b) - dist(q, b))[0], t0 = s.time; // (a loose ball: the new picture's team gets to it)
       yield () => { s.go(n.id, b.x, b.y, 4); return dist(n, b) < .6 || s.time - t0 > 1.5; }; s.give(n.id); s.stop(n.id); }
     const c = s.a(b.carrier), whistle = (line) => { this.sfx('whistle'); if (line) this.hud.caption(line); };
     // Everyone not in the event already sets off for his place in the new picture (the event and their runs at the same time).
@@ -341,7 +341,8 @@ export const live = {
       const o = s.a(ev.by), t0 = s.time; this.spice(null); s.go(c.id, c.x + (c.tx - c.x) * .2, c.y + (c.ty - c.y) * .2, 1); // (he slows, shielding it)
       yield () => { s.go(o.id, b.x, b.y, 5.4); return dist(o, b) < .65 || s.time - t0 > 1.4; };
       c.beat = s.time + .8; o.tk = s.time; s.give(o.id); s.stop(o.id);
-      if (o.id === 'hero') { this.sfx('tap'); this.hud.caption('You won the ball! 💪'); this.say('You won the ball!'); } else this.emit(o.team === 'us' ? 'held' : 'lost');
+      // (words as a caption: the new scene's setup takes a banner off at once, game.js load)
+      if (o.id === 'hero') { this.sfx('tap'); this.hud.caption('You won the ball! 💪'); this.say('You won the ball!'); } else if (o.team === 'us') { this.sfx('tap'); this.hud.caption('We won it! 💪'); } else { this.fx('stolen'); this.hud.caption('They got it!'); }
       yield .1;
     } else yield .15; // ('pass': the play simply goes on, bridgeRun)
     this.spice(null);
