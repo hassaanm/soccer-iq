@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Sim } from '../js/sim.js';
 import { PITCH, sizeOf } from '../js/geom.js';
-import { Match } from '../js/fast/match.js';
+import { Match, LEVELS, oppOf } from '../js/fast/match.js';
 import * as R from '../js/fast/rules.js';
 
 const L = PITCH.L, W = PITCH.W;
@@ -162,7 +162,7 @@ test('a whole match with nobody steering him ends, first to three, and nothing s
   const { sim, m } = match(21); m.kickoff('us');
   m.on.goal = team => { if (m.score[team] < 3) m.after(1.8, () => m.kickoff(team === 'us' ? 'them' : 'us')); };
   let still = 0, last = null;
-  const done = run(m, sim, 1500, () => { const p = sim.ball.x + sim.ball.y; still = last != null && Math.abs(p - last) < 1e-5 && !m.dead ? still + 1 / 60 : 0; last = p; assert.ok(still < 8, 'the ball moves'); return Math.max(m.score.us, m.score.them) >= 3; });
+  const done = run(m, sim, 1500, () => { const p = sim.ball.x + sim.ball.y; still = last != null && Math.abs(p - last) < 1e-5 && !m.dead ? still + 1 / 60 : 0; last = p; assert.ok(still < 12, 'the ball moves'); return Math.max(m.score.us, m.score.them) >= 3; }); // (a player standing on the ball: the defender walks in and needs about 4 s on him)
   assert.ok(done, `ended: ${m.score.us}-${m.score.them}`);
 });
 
@@ -208,4 +208,21 @@ test('hints: only after he has done nothing for the delay (and is not on his way
       assert.ok(h.length <= 3); for (const p of h) assert.ok(p.x >= R.EDGE && p.x <= L - R.EDGE && p.y >= R.EDGE && p.y <= W - R.EDGE);
     }
   }
+});
+
+test('a pass shown open (gold) at the tap arrives at least 9 times in 10', () => {
+  const rnd = seeded(13); let open = 0, arrived = 0;
+  for (let k = 0; k < 400 && open < 120; k++) {
+    const { sim, m } = match(k + 3); m.me = 'hero'; m.dead = false; m.cmd.clear(); m.restart = null;
+    for (const a of sim.agents.values()) if (!a.gk) { const x = 4 + rnd() * (L - 8), y = 2 + rnd() * (W - 4); Object.assign(a, { x, y, tx: x, ty: y }); }
+    const h = sim.a('hero'); Object.assign(sim.ball, { x: h.x + .4, y: h.y }); sim.give('hero');
+    const to = m.usIds.filter(id => id !== 'hero').find(id => m.passCheck('hero', id).open); if (!to) continue;
+    open++; let got = null; m.on.gain = id => { got ??= id; }; m.pass('hero', to); run(m, sim, 5, () => got);
+    if (got === to) arrived++;
+  }
+  assert.ok(open >= 60, `${open} open passes`); assert.ok(arrived / open >= .9, `${arrived} of ${open} arrived`);
+});
+
+test('standing on the ball: at the default level about 4 s of a defender on him before the tackle, and he comes in at a walk', () => {
+  for (const size of Object.keys(LEVELS)) assert.ok(oppOf(LEVELS[size]).stand >= 3.9, `${size}: ${oppOf(LEVELS[size]).stand.toFixed(1)} s`);
 });

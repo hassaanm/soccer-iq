@@ -123,10 +123,10 @@ export const onScreen = (s, w, h, m = 6) => !!s && s[0] > m && s[0] < w - m && s
 // gets there in time cuts it out, there (null: it gets through). Also used in flight, frame by frame, with the ball's
 // own place: a ball that goes through a body (BODY_R m) low enough (under 1.2 m) is his, whatever was planned.
 export const REACH = .75, RUN = 4.8, REACT = .2, BODY_R = .42;
-export function cutBy(from, to, speed, foes, run = RUN, react = REACT) {
+export function cutBy(from, to, speed, foes, run = RUN, react = REACT, margin = 0) { // (margin: m more reach, for a stricter "open")
   const d = dist(from, to) || 1; let best = null;
   for (const o of foes) {
-    const c = onLane(o, from, to, Math.min(.5, 1 / d)), tBall = c.along / speed, need = Math.max(0, c.d - REACH), tFoot = need ? react + need / run : 0;
+    const c = onLane(o, from, to, Math.min(.5, 1 / d)), tBall = c.along / speed, need = Math.max(0, c.d - REACH - margin), tFoot = need ? react + need / run : 0;
     if (tFoot <= tBall && c.t < .97 && (!best || c.along < best.along)) best = { id: o.id, x: c.x, y: c.y, along: c.along, t: tBall };
   }
   return best;

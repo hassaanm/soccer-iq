@@ -27,7 +27,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 300, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
+export const SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -403,12 +403,13 @@ class Fast {
     this.camNow(0, dt);
     // the spots round him, the glow on friends he can pass to, the warning on a defender about to tackle
     this.spots = h && !m.dead && !this.aiming ? R.spots(h, [...s.agents.values()].filter(a => a.id !== this.me), PITCH.L, PITCH.W) : [];
-    for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me ? .5 : 0;
+    for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me && m.passCheck(this.me, id).open ? .55 : 0; // (gold: a pass that will get there)
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
     this.drawAction(this.aiming ? null : this.actionNow());
     this.scanCue(h);
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
-    if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = true; this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); game.plog?.('fast', { is: 'nextGoalWins' }); }
+    if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js)
+      this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); game.plog?.('fast', { is: 'nextGoalWins' }); }
     if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
     this.ui.ballGlow = this.actKind === 'steal' && m.stealOpen(); this.stealGlow = this.ui.ballGlow;
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > 8)) this.endAim();
@@ -444,6 +445,7 @@ class Fast {
       c.p = R.chipSpot(q, rel, w, hh); c.q = q;
     }
     R.layoutChips(chips.map(c => c.p), hh);
+    for (const c of chips) if (c.gold) c.gold = this.m.passCheck(this.me, c.id).open; // (gold only for a pass that will get there; any chip passes)
     for (const c of chips) c.ang = c.q ? Math.atan2(c.q[1] - c.p[1], c.q[0] - c.p[0]) : (c.p[0] < w / 2 ? Math.PI * .75 : Math.PI * .25);
     this.dom.chips.forEach((d, i) => {
       const c = chips[i]; d.id = c?.id || null; d.tap = !!c?.tap;

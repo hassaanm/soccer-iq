@@ -16,18 +16,18 @@ import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, REACH as FOOT_
 import { shotResult } from '../shot.js';
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
-export const WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
+export const ALONE_SHOT = .12, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
 // LEVEL, 0 (gentle) to 1 (as quick as his own friends), scales everything about them: how fast they dribble, close him
 // down and mark, how long they need on a player to take the ball (from him standing on it: STAND), how quickly they get
 // to a pass line, how hard they pass, how often and from how far they shoot, how often their first touch runs loose, and
 // how well their keeper (5 v 5) follows the ball across his goal. The default makes his team win about two matches in
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
-export const LEVELS = { '3v3': .5, '4v4': .6, '5v5': .55 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
+export const LEVELS = { '3v3': .1, '4v4': .3, '5v5': .3 }, FIND = 16, FIND_P = .85; // (the default by team size: the tuning runs, v84)
 export let LEVEL = .5;
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   const k = clamp(level, 0, 1);
-  return { run: 2.2 + .8 * k, press: 2.8 + 1.3 * k, mark: 2.4 + .9 * k, markEvery: 1.1 - .6 * k, tackle: 1.2 - .5 * k, stand: 3.6 - 1.6 * k,
+  return { run: 2.2 + .8 * k, press: 2.8 + 1.3 * k, mark: 2.4 + .9 * k, markEvery: 1.1 - .6 * k, tackle: 1.2 - .5 * k, stand: 4.6 - 1.2 * k,
     cutRun: 3.3 + 1.5 * k, cutReact: .5 - .3 * k, passK: .82 + .18 * k, shootP: .4 + .45 * k, range: 8.5 + 3 * k, loose: .3 * (1 - k), keeper: .12 + .23 * k, glow: 1.15 - .7 * k, glowGap: 1.6 + 1.2 * k }; // (glow: the steal window, game s; glowGap: until the next one can open)
 }
 
@@ -95,14 +95,14 @@ export class Match {
     const markedBy = mk && mk.d < 1.35 && (mk.o.x - b.x) * (a.x - b.x) + (mk.o.y - b.y) * (a.y - b.y) > -.3 ? mk.o : null;
     if (ln.d < need && ln.t < .95) return { open: false, why: 'lane', by: ln.o.id, gap: ln.d };
     if (markedBy) return { open: false, why: 'marked', by: markedBy.id, gap: ln.d };
-    const pt = this.passTarget(a, b), cut = cutBy({ x: a.x, y: a.y }, pt, pt.sp, this.allFoes(team), cr.run, cr.react); // (and the ball itself would get there)
+    const strict = fromId === this.me, pt = this.passTarget(a, b), cut = cutBy({ x: a.x, y: a.y }, pt, pt.sp, this.allFoes(team), strict ? cr.run * 1.3 : cr.run, strict ? cr.react * .5 : cr.react, strict ? OPEN_MARGIN : 0); // (and the ball itself would get there; for his own passes with a margin: a pass shown open is a promise)
     if (cut) return { open: false, why: 'lane', by: cut.id, gap: ln.d };
     return { open: true, gap: ln.d, fwd: (b.x - a.x) * this.dir(team) };
   }
   // How fast the side defending a pass of `team` gets to its line (their players: by the level).
   cutPace(team) { return team === 'us' ? { run: this.opp.cutRun, react: this.opp.cutReact } : { run: 4, react: .3 }; } // (his friends, a little slower than their best: he can cut out more himself)
   shotCheck(id) {
-    const a = this.sim.a(id), team = this.team(id), gx = this.goalX(team), d = Math.hypot(gx - a.x, this.W / 2 - a.y), range = team === 'them' ? this.opp.range : 11.5;
+    const a = this.sim.a(id), team = this.team(id), gx = this.goalX(team), d = Math.hypot(gx - a.x, this.W / 2 - a.y), range = team === 'them' ? this.opp.range + (this.sudden ? 2 : 0) : 11.5;
     const ys = [this.gy0 + .6, (this.gy0 + this.gy1) / 2, this.gy1 - .6], lanes = ys.map(y => ({ y, ...this.lane(a, { x: gx, y }, team) })).filter(l => !this.keeper(team === 'us' ? 'them' : 'us') || l.o?.id[0] !== 'k').sort((p, q) => q.d - p.d);
     const best = lanes[0] || { d: 99, y: this.W / 2 };
     if (d > range) return { good: false, why: 'far', d };
@@ -118,6 +118,7 @@ export class Match {
     if (id === this.me && (how === 'tackle' || how === 'steal' || how === 'cut')) this.count.steals++;
     if (was === this.me && this.team(id) !== 'us' && how !== 'pass') { this.count.lost++; this.meGo = this.sim.time + GO_T; }
     if (id === this.me) this.meMove = null;
+    if (id === this.me) this.involved = true; else if (this.team(id) === 'them') this.involved = false; // (his team's move has him in it: he had the ball since they won it)
     if (how === 'pass') this.passTo = id; else { this.passFrom = null; this.passTo = null; }
     if (this.team(id) === 'them') { const me = this.sim.a(this.me), b = this.sim.ball, nearest = this.ids('us').map(x => this.sim.a(x)).sort((p, q) => dist(p, b) - dist(q, b))[0]; if (me && nearest === me) this.meGo = Math.max(this.meGo, this.sim.time + GO_T); }
     this.on.gain(id, how);
@@ -175,7 +176,8 @@ export class Match {
     // a big push: the ball 1.5 m short of the spot, fast along the grass; he sprints onto it
     const ang = Math.atan2(y - a.y, x - a.x), bx = clamp(x - Math.cos(ang) * 1.2, .8, this.L - .8), by = clamp(y - Math.sin(ang) * 1.2, .8, this.W - .8);
     s.windup(this.me, 'pass'); this.cmd.set(this.me, t + .25);
-    this.flight = { kind: 'push', from: this.me, to: this.me, team: 'us', t0: t };
+    const contest = new Set(this.allFoes('us').filter(o => onLane(o, a, { x, y }, 0).d < PUSH_NEAR).map(o => o.id)); // (only one near its line can win it)
+    this.flight = { kind: 'push', from: this.me, to: this.me, team: 'us', t0: t, contest };
     this.meMove = { kind: 'push', until: t + 2.2 };
     this.after(.1, () => { if (s.ball.carrier === this.me) { s.kick(bx, by, { speed: 7.5, arc: 0, touch: true }); s.go(this.me, x, y, 6); this.cmd.set(this.me, s.time + 2); } });
   }
@@ -232,7 +234,7 @@ export class Match {
         if (near && dist(near, b) < LOOSE_R && (!r || dist(near, b) < dist(r, b))) { this.cutOut(f, near.id); return; }
         if (r && dist(r, b) < (f.kind === 'push' ? LOOSE_R : 1.8)) { if (f.kind === 'push') this.giveTo(f.to, 'push'); else this.arrive(f); return; }
         if (f.cut) { const c = s.a(f.cut); if (c && dist(c, b) < 1.2) { this.cutOut(f, f.cut); return; } }
-        if (f.kind === 'push' && s.time - f.t0 < 3) { this.chase(b); this.moveTeams(dt); return; }
+        if (f.kind === 'push' && s.time - f.t0 < 3) { this.chase(b, f.contest); this.moveTeams(dt); return; }
       }
       if (f?.kind === 'shot' && f.res && (f.res.res === 'save' || f.res.res === 'cleared')) { const k = f.res.res === 'save' ? this.keeper(f.team === 'us' ? 'them' : 'us') : s.a(f.res.by?.id); if (k) { this.giveTo(k.id, 'save'); this.flight = null; return; } }
       if (f) for (const x of [f.cut, f.to]) if (x && x !== this.me) this.cmd.delete(x); // (a pass that ended loose: its runners go back to playing)
@@ -251,7 +253,7 @@ export class Match {
           if (c === this.me) {
             const mv = this.meMove, moving = mv && mv.kind === 'near' && t < mv.until, ahead = (o.x - ca.x) * (ca.tx - ca.x) + (o.y - ca.y) * (ca.ty - ca.y) > 0;
             if (moving && !ahead) { this.contact.delete(k); continue; } // dribbling away from him: he cannot get it
-            need = moving ? TACKLE_T + .3 : this.standT; // standing on it: he closes in, a warning, then the tackle (by the level)
+            need = moving ? TACKLE_T + .75 : this.standT; // standing on it: he closes in, a warning, then the tackle (by the level)
           }
           if (o.id === this.me) need = 1.2;
           const v = (this.contact.get(k) || 0) + dt; this.contact.set(k, v);
@@ -275,10 +277,11 @@ export class Match {
   }
   cutOut(f, id) { if (f.me) this.count.cut++; else if (f.team === 'them' && id === this.me) { /* his own cut: counted in giveTo */ } if (f.team === 'us' && !f.me) this.count.theirCut++; this.fx('stolen'); this.on.cutOut?.(f, id); this.giveTo(id, 'cut'); }
   // A loose ball: the nearest of each side (not his player: he goes when he says) runs to it; anyone within reach has it.
-  chase(b) {
+  chase(b, contest = null) { // (contest: during his big push, only these of theirs go for it)
     const s = this.sim;
     for (const team of ['us', 'them']) {
       if (this.restart && this.restart.team !== team) continue;
+      if (contest && team === 'them') { const c = [...contest].map(id => s.a(id)).filter(Boolean).sort((p, q) => dist(p, b) - dist(q, b))[0]; if (c && dist(c, b) < LOOSE_R) { this.giveTo(c.id, 'loose'); return; } if (c && !this.cmd.has(c.id)) s.go(c.id, b.x, b.y, 4.6); continue; }
       const all = [...this.ids(team).map(id => s.a(id)), ...(this.keeper(team) && dist(this.keeper(team), b) < 4 ? [this.keeper(team)] : [])].sort((p, q) => dist(p, b) - dist(q, b));
       if (all[0] && dist(all[0], b) < LOOSE_R) { this.giveTo(all[0].id, 'loose'); return; }
       const near = all.find(a => a.id !== this.me); if (!near) continue;
@@ -342,7 +345,8 @@ export class Match {
     if (presser && b.state !== 'loose') {
       const ca = c ? s.a(c) : b, gx = ownX - ca.x, gy = this.W / 2 - ca.y, gl = Math.hypot(gx, gy) || 1;
       const meDrib = c === this.me && this.meMove?.kind === 'near' && t < this.meMove.until, off = c !== this.me ? .75 : meDrib ? .9 : .45; // (on a player standing on the ball he comes right in: the tackle comes after the warning)
-      s.go(presser, ca.x + gx / gl * off, ca.y + gy / gl * off, def === 'us' ? 4.4 : this.opp.press);
+      const standing = c === this.me && !(this.meMove && t < this.meMove.until); // (on him standing on the ball: he comes in at a walk, to be seen coming)
+      s.go(presser, ca.x + gx / gl * off, ca.y + gy / gl * off, def === 'us' ? 4.4 : standing ? Math.min(this.opp.press, 2) : this.opp.press);
     }
     // markers: each takes the attacker nearest his own goal that nobody has yet
     const att = this.ids(team).filter(id => id !== c).map(id => s.a(id)).sort((p, q) => (p.x - q.x) * -dx);
@@ -396,7 +400,7 @@ export class Match {
     // his friends look for him near goal: when his line is open and he is within FIND m of their goal, they pass to him
     // FIND_P of the time before they would shoot themselves
     if (team === 'us' && this.favor !== id && this.nearGoal(this.favor) && this.passCheck(id, this.favor).open && this.rnd() < FIND_P) { this.pass(id, this.favor); return; }
-    const shot = this.shotCheck(id), sp = team === 'them' ? this.opp.shootP : .7; if ((shot.good && this.rnd() < sp) || (shot.why === 'blocked' && shot.d < 7 && this.rnd() < sp * .35)) { // (close in, now and then he tries it anyway: a body may block it)
+    const shot = this.shotCheck(id), sp = team === 'them' ? this.opp.shootP * (this.sudden ? 1.6 : 1) : this.involved ? .7 : ALONE_SHOT; if ((shot.good && this.rnd() < sp) || (shot.why === 'blocked' && shot.d < 7 && this.rnd() < sp * .35)) { // (close in, now and then he tries it anyway: a body may block it) // (his friends finish when he was in the move; without him they keep it and build)
       const res = this.aiShot(id);
       if (team === 'them' && this.on.theirShot(id, res)) return; // (the keeper turn: fast.js takes it from here)
       this.shoot(id, res); return;
