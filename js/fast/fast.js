@@ -410,7 +410,8 @@ class Fast {
     for (const c of chips) {
       const sn = this.seen[c.id], q = world.project(sn.x, sn.y, .9);
       let p;
-      if (q) p = R.edgeAt(q, false, w, hh, 34);
+      if (q && !R.onScreen(q, w, hh, 34)) p = R.edgeAt(q, false, w, hh, 34);
+      else if (q) p = [q[0] < w / 2 ? 34 : w - 34, q[1]]; // (his last place is on screen but he is not to be seen there: the nearer side edge, never over the play)
       else { const rel = R.wrap(Math.atan2(sn.y - h.y, sn.x - h.x) - this.yaw); p = [rel > 0 ? 34 : w - 34, hh * .62]; }
       p[1] = R.clamp(p[1], 84, hh - 150); // (clear of the score at the top and of LOOK UP and the action button at the bottom)
       for (let k = 0; k < 4; k++) for (const o of placed) if (Math.hypot(o[0] - p[0], o[1] - p[1]) < 58) p[1] = p[1] + 60 > hh - 150 ? p[1] - 60 : p[1] + 60;
