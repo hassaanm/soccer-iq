@@ -123,10 +123,10 @@ export const onScreen = (s, w, h, m = 6) => !!s && s[0] > m && s[0] < w - m && s
 // gets there in time cuts it out, there (null: it gets through). Also used in flight, frame by frame, with the ball's
 // own place: a ball that goes through a body (BODY_R m) low enough (under 1.2 m) is his, whatever was planned.
 export const REACH = .75, RUN = 4.8, REACT = .2, BODY_R = .42;
-export function cutBy(from, to, speed, foes, run = RUN, react = REACT) {
+export function cutBy(from, to, speed, foes, run = RUN, react = REACT, margin = 0) { // (margin: m more reach, for a stricter "open")
   const d = dist(from, to) || 1; let best = null;
   for (const o of foes) {
-    const c = onLane(o, from, to, Math.min(.5, 1 / d)), tBall = c.along / speed, need = Math.max(0, c.d - REACH), tFoot = need ? react + need / run : 0;
+    const c = onLane(o, from, to, Math.min(.5, 1 / d)), tBall = c.along / speed, need = Math.max(0, c.d - REACH - margin), tFoot = need ? react + need / run : 0;
     if (tFoot <= tBall && c.t < .97 && (!best || c.along < best.along)) best = { id: o.id, x: c.x, y: c.y, along: c.along, t: tBall };
   }
   return best;
@@ -144,8 +144,8 @@ export function pickPass(opts, fav, w = 1.6, rnd = Math.random) {
 }
 
 // ---------- a steal ----------
-// The right time: the ball is off the carrier's foot (OFF m or more from him, between touches) and within his own reach
-// of it (STEAL_R m). A press then wins it; any other press is a lunge that misses.
+// The ball off the carrier's foot (OFF m or more from him, between touches) and within his own reach of it (STEAL_R m)
+// opens a steal window (match.js: it lasts by the level, at least 0.7 s at the default); a press in it wins.
 export const OFF = .62, STEAL_R = 1.5, CLOSE_TO = 2.4;
 export const stealNow = (carrier, ball, me) => dist(carrier, ball) >= OFF && dist(me, ball) <= STEAL_R;
 export const stealShown = (carrier, me) => dist(carrier, me) <= CLOSE_TO;
@@ -194,19 +194,72 @@ export function rowsOnPitch(cam, w, h, L, W, n = 40) {
   }
   return on / n;
 }
+// The share of the whole picture that is pitch (cols x n points over the screen), the measure the owner sees.
+export function pitchShare(cam, w, h, L, W, n = 24, cols = 9) {
+  const e = cam.eye, t = cam.tgt; let fx = t[0] - e[0], fy = t[1] - e[1], fz = t[2] - e[2]; const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl;
+  let rx = fy, ry = -fx; const rl = Math.hypot(rx, ry) || 1; rx /= rl; ry /= rl;
+  const ux = ry * fz, uy = -rx * fz, uz = rx * fy - ry * fx, F = Math.max(h * cam.Ff, w * (cam.Fw || 0));
+  let on = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < cols; j++) {
+    const sx = ((j + .5) / cols - .5) * w / F, sy = -((i + .5) / n - .5) * h / F, dx = fx + rx * sx + ux * sy, dy = fy + ry * sx + uy * sy, dz = fz + uz * sy;
+    if (dz >= -1e-6) continue; const k = -e[2] / dz, x = e[0] + dx * k, y = e[1] + dy * k; if (x >= 0 && x <= L && y >= 0 && y <= W) on++;
+  }
+  return on / n / cols;
+}
 // The camera made to fill the picture with the pitch (FILL of the rows): its eye brought back over the pitch along the
 // line to him (never past him), then raised and tipped down step by step until the pitch fills it, as long as his player
 // and the points in `keep` (the ball) stay on screen. Changes and returns `cam`.
-export const FILL = .8;
+export const FILL = .8, SHARE = .78; // (SHARE: of the whole picture, as the owner sees it)
 export function fitPitch(cam, me, w, h, L, W, keep = []) {
   const e = cam.eye, t = cam.tgt, m = .3, inside = () => e[0] >= m && e[0] <= L - m && e[1] >= m && e[1] <= W - m;
-  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 4));
+  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); // (the ball on screen, not at its very edge)
   if (!inside()) { const s0 = [...e]; e[0] = clamp(e[0], m, L - m); e[1] = clamp(e[1], m, W - m); if (!ok()) e.splice(0, 3, ...s0); } // (moved in over the line, if he stays in view)
   for (let i = 0; i < 12 && !inside() && Math.hypot(e[0] - me.x, e[1] - me.y) > 3; i++) { const s0 = [...e], k = .9; e[0] = me.x + (e[0] - me.x) * k; e[1] = me.y + (e[1] - me.y) * k; if (!ok()) { e.splice(0, 3, ...s0); break; } }
-  for (let i = 0; i < 40 && rowsOnPitch(cam, w, h, L, W) < FILL; i++) {
+  cam.best = rowsOnPitch(cam, w, h, L, W) + pitchShare(cam, w, h, L, W, 12, 7);
+  for (let i = 0; i < 40 && (rowsOnPitch(cam, w, h, L, W) < FILL || pitchShare(cam, w, h, L, W, 12, 7) < SHARE); i++) {
     const s0 = [...e], t0 = [...t];
     if (e[2] < 9) e[2] += .25; t[2] -= .3; t[0] = me.x + (t[0] - me.x) * .96; t[1] = me.y + (t[1] - me.y) * .96;
-    if (!ok()) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; }
+    const score = rowsOnPitch(cam, w, h, L, W) + pitchShare(cam, w, h, L, W, 12, 7);
+    if (!ok() || score < (cam.best ?? -1) - 1e-6) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; } cam.best = score; // (a step that loses him or the ball, or shows less pitch, is taken back)
   }
   return cam;
+}
+
+// ---------- the shot view (SHOOT) ----------
+// From behind him toward the goal (the angle kept within AIM_DEV of straight on, so the goal is never seen edge-on), the
+// goal large in the clear band under the HUD: the posts AIM_SPAN of the screen's width apart, the highest target at least
+// HUD_PX + 12 px down. Returns a camera spec. targets: the six shot targets ({ y, z } on the line x = L).
+export const AIM_DEV = .6, AIM_SPAN = .6, HUD_PX = 60;
+export function aimCam(me, L, gy0, gy1, gh, w, h, targets) {
+  const gc = (gy0 + gy1) / 2, d0 = Math.hypot(L - me.x, gc - me.y);
+  let a = Math.atan2(me.y - gc, me.x - L); const dev = wrap(a - Math.PI); a = Math.PI + clamp(dev, -AIM_DEV, AIM_DEV);
+  const de = Math.max(d0 + 2.4, 7.5), cam = { eye: [L + Math.cos(a) * de, gc + Math.sin(a) * de, 2.1], tgt: [L, gc, gh * .45], Ff: 1.2, Fw: 0 };
+  for (let i = 0; i < 4; i++) {
+    const p0 = project(cam, { x: L, y: gy0, z: gh / 2 }, w, h), p1 = project(cam, { x: L, y: gy1, z: gh / 2 }, w, h); if (!p0 || !p1) break;
+    cam.Ff *= (AIM_SPAN * w) / Math.max(1, Math.abs(p1[0] - p0[0]));
+    const top = Math.min(...targets.map(t => project(cam, { x: L, y: t.y, z: t.z }, w, h)?.[1] ?? 0)), want = HUD_PX + 16;
+    if (top < want) cam.tgt[2] += (want - top) / (h * cam.Ff) * de * 1.05; // (tip up: the goal moves down the screen)
+  }
+  return cam;
+}
+// ---------- where a chip sits ----------
+// Only on the left or right edge (CHIP_X px in), between CHIP_Y0 px from the top (under the HUD) and the bottom buttons
+// (CHIP_Y1 px from the bottom): q the screen point of his last place (null: behind the camera, rel > 0 to his left).
+// A friend above the picture goes to the top of the nearer side, one behind him to its lower part. layoutChips keeps
+// them CHIP_GAP px apart on a side.
+export const CHIP_X = 30, CHIP_Y0 = 84, CHIP_Y1 = 150, CHIP_GAP = 56;
+export function chipSpot(q, rel, w, h) {
+  const y1 = h - CHIP_Y1;
+  if (!q) return [rel > 0 ? CHIP_X : w - CHIP_X, y1];
+  return [q[0] < w / 2 ? CHIP_X : w - CHIP_X, clamp(q[1], CHIP_Y0, y1)];
+}
+export function layoutChips(ps, h) {
+  const y1 = h - CHIP_Y1;
+  for (const side of [CHIP_X, -1]) {
+    const col = ps.filter(p => (side === CHIP_X ? p[0] === CHIP_X : p[0] !== CHIP_X)).sort((p, q) => p[1] - q[1]);
+    for (let i = 1; i < col.length; i++) col[i][1] = Math.max(col[i][1], col[i - 1][1] + CHIP_GAP);
+    for (let i = col.length - 1; i >= 0; i--) { const lim = i === col.length - 1 ? y1 : col[i + 1][1] - CHIP_GAP; if (col[i][1] > lim) col[i][1] = lim; }
+    for (const p of col) p[1] = clamp(p[1], CHIP_Y0, y1);
+  }
+  return ps;
 }

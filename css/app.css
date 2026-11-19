@@ -851,7 +851,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
    who are off screen: chips at the edge (gold when he has the ball: a tap passes). All on
    the HUD's layer; nothing over the picture changes but transform and opacity. */
 .modepick{display:flex;gap:6px}
-.modepick .btn{width:40px;height:32px;padding:0;border-radius:11px;display:grid;place-items:center;border:2.5px solid transparent;box-shadow:0 3px 0 rgba(36,25,58,.25)}
+.modepick .btn{width:48px;height:44px;padding:0;border-radius:11px;display:grid;place-items:center;border:2.5px solid transparent;box-shadow:0 3px 0 rgba(36,25,58,.25)}
 .modepick .btn svg{width:30px;height:23px;display:block}
 .modepick .btn.on{border-color:var(--gold);background:#fff6d6;box-shadow:0 3px 0 var(--gold-e)}
 .modepick .btn:not(.on){opacity:.72}
@@ -866,8 +866,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fAct{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
 #fAct i{font-size:42px}
 #fAct.show{display:flex}
-#fAct.glow{--top:#fff2b8}
-#fHold{position:absolute;left:50%;top:64px;transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
+#fHold{position:absolute;left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
 #fHold i,#fHold b{font-style:normal;font-weight:400}
 #fHold.show{opacity:1}
 #fSheet{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(36,25,58,.5);pointer-events:auto}
@@ -899,7 +898,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 .fChip .ptr{position:absolute;left:50%;top:50%;width:0;height:0;margin:-7px 0 0 -7px;border:7px solid transparent;border-left:9px solid #fff;transform:rotate(var(--a,0deg)) translateX(28px)}
 .fChip.gold .ptr{border-left-color:var(--gold)}
 #fFoot.show{display:flex}
-#fCue{position:absolute;left:50%;top:64px;transform:translateX(-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
+#fCue{position:absolute;left:50%;bottom:calc(22px + var(--safe-b));transform:translateX(-50%) scale(.8);display:flex;align-items:center;gap:2px;padding:6px 14px;border-radius:999px;background:rgba(255,210,63,.92);color:#24193a;font:700 26px/1 var(--font);opacity:0;transition:opacity .3s,transform .3s;pointer-events:none}
 #fCue i{font-style:normal}
 #fCue.show{opacity:1;transform:translateX(-50%) scale(1)}
 #fNext{position:absolute;left:calc(26px + var(--safe-l));top:70px;display:flex;align-items:center;gap:2px;padding:5px 10px;border-radius:999px;background:rgba(36,25,58,.7);color:#fff;font:700 22px/1 var(--font);opacity:0;transition:opacity .3s;pointer-events:none}
@@ -962,3 +961,8 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 
 /* (v87) The Slow / Fast picker stays hidden until Fast mode has passed its review. Remove this rule to show it. */
 #modePick{display:none!important}
+#hud.faiming #score,#hud.faiming #fChips,#hud.faiming #fHold,#hud.faiming #fCue{opacity:0!important}
+#fPic{position:absolute;left:50%;top:22%;display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:22px;background:rgba(255,250,242,.94);opacity:0;transform:translateX(-50%) scale(.85);transition:opacity .2s,transform .2s;pointer-events:none}
+#fPic.show{opacity:1;transform:translateX(-50%) scale(1)}
+#fPic svg{width:64px;height:64px;display:block}
+#fPic i{font-style:normal;font-size:30px}

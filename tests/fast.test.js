@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Sim } from '../js/sim.js';
 import { PITCH, sizeOf } from '../js/geom.js';
-import { Match } from '../js/fast/match.js';
+import { Match, LEVELS, oppOf } from '../js/fast/match.js';
 import * as R from '../js/fast/rules.js';
 
 const L = PITCH.L, W = PITCH.W;
@@ -68,16 +68,44 @@ test('his head goes down only as a ball comes to him, never on his own dribble, 
   assert.equal(R.headDownOn('m1', 'hero', 'pass'), false, 'a friend getting it: his head stays up');
 });
 
-test('a steal at the wrong time fails (he lunges, the carrier goes on); at the right time it wins', () => {
-  for (const right of [false, true]) {
+test('a steal: the ball off his foot opens a window (at least 0.7 s at the default level); a press in it wins, one outside it is a lunge', () => {
+  for (const when of ['in', 'none', 'after']) {
     const { sim, m } = match(); m.me = 'hero'; m.meAuto = false; m.dead = false;
+    assert.ok(m.opp.glow / .75 >= .7, `the window lasts ${(m.opp.glow / .75).toFixed(2)} s of real time`);
     park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); sim.give('o1');
-    const b = sim.ball; Object.assign(b, { x: right ? 14.3 : 15.3, y: W / 2 }); // (right: rolled off his foot, toward him)
-    assert.equal(R.stealNow(sim.a('o1'), b, sim.a('hero')), right);
+    Object.assign(sim.ball, { x: when === 'none' ? 15.3 : 14.3, y: W / 2 }); // (off his foot toward him, or at his foot)
+    m.stealWindow(); assert.equal(m.stealOpen(), when !== 'none');
+    if (when === 'after') sim.time += m.opp.glow + .01;
     const r = m.steal();
-    assert.equal(r, right ? 'won' : 'missed'); assert.equal(m.owner(), right ? 'hero' : 'o1');
-    if (!right) { run(m, sim, .5); assert.equal(m.owner(), 'o1', 'the carrier keeps it'); }
+    assert.equal(r, when === 'in' ? 'won' : 'missed', when); assert.equal(m.owner(), when === 'in' ? 'hero' : 'o1');
+    if (r === 'missed') assert.ok(m.meMove.kind === 'lunge' && m.meMove.until - sim.time >= 1, 'a lunge costs him about 1.5 s');
   }
+});
+
+test('the shot view: from every place SHOOT shows, all six targets on screen, under the HUD, at least 56 px apart', async () => {
+  const { spaces, EDGE } = await import('../js/shot.js');
+  for (const [w, h] of [[844, 390], [932, 430]]) {
+    let n = 0;
+    for (let x = L - EDGE; x <= L - 1; x += .5) for (let y = .7; y <= W - .7; y += .5) {
+      if (Math.hypot(L - x, W / 2 - y) > EDGE) continue; n++;
+      const t = spaces(), cam = R.aimCam({ x, y }, L, PITCH.gy0, PITCH.gy1, PITCH.gh, w, h, t), q = t.map(z => R.project(cam, { x: L + .02, y: z.y, z: z.z }, w, h));
+      for (const p of q) { assert.ok(R.onScreen(p, w, h, 30), `on screen from ${x},${y}`); assert.ok(p[1] >= R.HUD_PX + 4, `under the HUD from ${x},${y}: ${p[1].toFixed(0)}`); }
+      let g = 1e9; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) g = Math.min(g, Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]));
+      assert.ok(g >= 56, `${g.toFixed(0)} px apart from ${x},${y} at ${w}x${h}`);
+    }
+    assert.ok(n > 20);
+  }
+});
+
+test('chips sit only on the side edges, clear of the HUD and the bottom buttons, never over each other or the middle', () => {
+  const rnd = seeded(4), w = 844, h = 390;
+  for (let i = 0; i < 300; i++) {
+    const ps = Array.from({ length: 3 }, () => R.chipSpot(rnd() < .2 ? null : [rnd() * 3000 - 1000, rnd() * 1600 - 600], rnd() - .5, w, h));
+    R.layoutChips(ps, h);
+    for (const p of ps) { assert.ok(p[0] <= 56 || p[0] >= w - 56, 'an edge'); assert.ok(p[1] >= R.CHIP_Y0 && p[1] <= h - R.CHIP_Y1, 'clear of the HUD and the buttons'); }
+    for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++) if (ps[a][0] === ps[b][0]) assert.ok(Math.abs(ps[a][1] - ps[b][1]) >= R.CHIP_GAP - 1e-9 || h - R.CHIP_Y1 - R.CHIP_Y0 < 2 * R.CHIP_GAP, 'apart');
+  }
+  assert.deepEqual(R.chipSpot(null, 1, w, h), [R.CHIP_X, h - R.CHIP_Y1], 'behind him to his left: low on the left edge');
 });
 
 test('friends pass to him clearly more when his line is open, and never when it is blocked', () => {
@@ -134,21 +162,22 @@ test('a whole match with nobody steering him ends, first to three, and nothing s
   const { sim, m } = match(21); m.kickoff('us');
   m.on.goal = team => { if (m.score[team] < 3) m.after(1.8, () => m.kickoff(team === 'us' ? 'them' : 'us')); };
   let still = 0, last = null;
-  const done = run(m, sim, 1500, () => { const p = sim.ball.x + sim.ball.y; still = last != null && Math.abs(p - last) < 1e-5 && !m.dead ? still + 1 / 60 : 0; last = p; assert.ok(still < 8, 'the ball moves'); return Math.max(m.score.us, m.score.them) >= 3; });
+  const done = run(m, sim, 1500, () => { const p = sim.ball.x + sim.ball.y; still = last != null && Math.abs(p - last) < 1e-5 && !m.dead ? still + 1 / 60 : 0; last = p; assert.ok(still < 12, 'the ball moves'); return Math.max(m.score.us, m.score.them) >= 3; }); // (a player standing on the ball: the defender walks in and needs about 4 s on him)
   assert.ok(done, `ended: ${m.score.us}-${m.score.them}`);
 });
 
-test('the pitch fills at least 80% of the picture\'s rows (with or without the ball, by the lines too), and he stays on screen', () => {
+test('the pitch fills the picture: at least 75% of it at the median over every place and heading (rows 80% in 9 of 10), and he stays on screen', () => {
   for (const [w, h] of [[932, 430], [844, 390]]) {
-    let n = 0, full = 0;
+    let n = 0, full = 0; const shares = [];
     for (let x = 1; x < L; x += 1.5) for (let y = .6; y < W; y += 1.5) for (let hd = 0; hd < 8; hd++) for (const has of [true, false]) for (const look of has ? [0, 1] : [1]) {
       const me = { x, y }, a = hd * Math.PI / 4, ball = has ? { x: x + .4, y, z: 0 } : { x: R.clamp(x + Math.cos(a) * 8, .5, L - .5), y: R.clamp(y + Math.sin(a) * 8, .5, W - .5), z: 0 };
       const cam = R.fitPitch(R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), look), me, w, h, L, W, [ball]); n++;
       if (R.rowsOnPitch(cam, w, h, L, W) >= R.FILL) full++;
       assert.ok(R.onScreen(R.project(cam, { x, y, z: .5 }, w, h), w, h), `him at ${x},${y}`);
-      if (x > 2 && x < L - 2 && y > 2 && y < W - 2) assert.ok(R.rowsOnPitch(cam, w, h, L, W) >= R.FILL, `2 m or more inside the lines, always full: ${x},${y} ${hd} ${has} ${look}`);
+      shares.push(R.pitchShare(cam, w, h, L, W));
     }
-    assert.ok(full / n >= .97, `full in ${(100 * full / n).toFixed(1)}% (the rest: hard against a side line, where the eye must stand outside it)`);
+    assert.ok(full / n >= .9, `rows full in ${(100 * full / n).toFixed(1)}%`);
+    shares.sort((a, b) => a - b); assert.ok(shares[shares.length >> 1] >= .75, `the whole picture: pitch ${shares[shares.length >> 1].toFixed(2)} at the median`); assert.ok(shares[Math.floor(shares.length * .05)] >= .5, 'and seldom much less');
   }
 });
 
@@ -180,4 +209,29 @@ test('hints: only after he has done nothing for the delay (and is not on his way
       assert.ok(h.length <= 3); for (const p of h) assert.ok(p.x >= R.EDGE && p.x <= L - R.EDGE && p.y >= R.EDGE && p.y <= W - R.EDGE);
     }
   }
+});
+
+test('a pass shown open (gold) at the tap arrives at least 9 times in 10', () => {
+  const rnd = seeded(13); let open = 0, arrived = 0;
+  for (let k = 0; k < 400 && open < 120; k++) {
+    const { sim, m } = match(k + 3); m.me = 'hero'; m.dead = false; m.cmd.clear(); m.restart = null;
+    for (const a of sim.agents.values()) if (!a.gk) { const x = 4 + rnd() * (L - 8), y = 2 + rnd() * (W - 4); Object.assign(a, { x, y, tx: x, ty: y }); }
+    const h = sim.a('hero'); Object.assign(sim.ball, { x: h.x + .4, y: h.y }); sim.give('hero');
+    const to = m.usIds.filter(id => id !== 'hero').find(id => m.passCheck('hero', id).open); if (!to) continue;
+    open++; let got = null; m.on.gain = id => { got ??= id; }; m.pass('hero', to); run(m, sim, 5, () => got);
+    if (got === to) arrived++;
+  }
+  assert.ok(open >= 60, `${open} open passes`); assert.ok(arrived / open >= .9, `${arrived} of ${open} arrived`);
+});
+
+test('standing on the ball: at the default level about 4 s of a defender on him before the tackle, and he comes in at a walk', () => {
+  for (const size of Object.keys(LEVELS)) assert.ok(oppOf(LEVELS[size]).stand >= 3.9, `${size}: ${oppOf(LEVELS[size]).stand.toFixed(1)} s`);
+});
+
+test('a pass that meets one of his own friends is that friend\'s: it never goes through anyone', () => {
+  const { sim, m } = match(); m.me = 'hero'; m.dead = false;
+  park(sim, ['hero', 'm1', 'm2']); place(sim, { hero: [8, W / 2], m1: [13, W / 2 + .1], m2: [18, W / 2] });
+  Object.assign(sim.ball, { x: 8.4, y: W / 2 }); sim.give('hero'); m.cmd.clear(); m.cmd.set('m1', 1e9); m.next.set('m1', 1e9);
+  let got = null; m.on.gain = id => { got ??= id; }; m.pass('hero', 'm2'); run(m, sim, 4, () => got);
+  assert.equal(got, 'm1');
 });
