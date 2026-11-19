@@ -150,7 +150,9 @@ export function cutWatch(g, done) {
     if (prev) {
       const ids = now.filter(p => Math.min(...prev.filter(q => q[2] === p[2]).map(q => Math.hypot(p[0] - q[0], p[1] - q[1]))) > CUT.jump).map(p => p[3]);
       const camJump = !!(c && eye && (c !== cam0 || Math.hypot(c.eye[0] - eye[0], c.eye[1] - eye[1], c.eye[2] - eye[2]) > CUT.cam));
-      if ((ids.length || camJump) && !open) done({ t: s.time, ids, cam: camJump, sc: g.sc?.id, result: g.result, phase: g.phase });
+      // (one body alone stepping more than CUT.jump in a frame is not a new situation: two left overlapping are pushed apart,
+      // sim.js SPACE; a new picture moves everyone, or the camera)
+      if ((ids.length >= 2 || camJump) && !open) done({ t: s.time, ids, cam: camJump, sc: g.sc?.id, result: g.result, phase: g.phase });
     }
     prev = now; eye = c ? [...c.eye] : null; cam0 = c;
   };
@@ -170,7 +172,7 @@ export async function cutMatches(size, N = 3, mode = 'free', stall = null) {
       let T = 0, last = null, st = null, br = null, start = 0; const cw = cutWatch(g, r => cuts.push({ seed, mode, T: +T.toFixed(2), ...r }));
       g.plog = (k, o) => { if (k === 'fresh' && o.why && !/no scene/.test(o.why)) bridges.push(br = { seed, mode, why: o.why, T, since: o.sec ?? T - start }); };
       const ld = g.load.bind(g); g.load = sc => { if (!g.bridging) start = T; return ld(sc); };
-      const bt = g.bridgeTo?.bind(g); if (bt) g.bridgeTo = async p => { const b = br, t0 = T; await bt(p); if (b) { b.sec = T - t0; b.ev = p.ev.kind; } start = T; };
+      const bt = g.bridgeTo?.bind(g); if (bt) g.bridgeTo = async p => { const b = br, t0 = T, ok = await bt(p); if (b && !ok) bridges.splice(bridges.indexOf(b), 1); else if (b) { b.sec = T - t0; b.ev = p.ev.kind; } start = T; return ok; }; // (false: nothing was brought in, play went on)
       await drive(g, g.match(mini ? ['steal-it', 'get-goal-side'] : all, [], mini ? 2 : 5, mini ? 'match' : 'free'), { maxSec: 9000, onFrame: () => { T += 1 / 30; cw(); },
         pick: gm => { if (gm.sc.kind === 'tackle') return gm.tackleState() === 'good' ? gm.sc.best : null;
           if (gm._choose !== last) { last = gm._choose; st = { u: .45 + rnd() * .35, t: T, wrong: rnd() < .25 }; }

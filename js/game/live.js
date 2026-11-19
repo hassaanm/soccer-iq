@@ -18,6 +18,7 @@ const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y
 // to his place in the new picture and the camera follows. Only a goal (and the start) still cuts, to the next scene.
 export const STALL = 60;
 const BRIDGE = { vMax: 5.4, T: [1, 2.8], run: 10.5, wait: .15, max: 4, min: 2, ahead: 4 }; // the run to the new picture: fastest drawn speed (m/s), its length (s), the farthest anyone runs (m); how long it waits for its plan after the event (s); the longest and shortest it all takes (s); how many of the next scenes it picks from
+const PLAN_WAIT = .8; // (see nextPlanned)
 export const SIDE_IN = new Set(['side-in', 'side-take', 'side-pass', 'side-two']);
 // A scene that can be reached from play: one whose run-up is a planned one (game/window.js plannedRunUp: with a pass to
 // him, a friend's run for a pass in front), or a 1v1 (everyone to his place, the attacker on the ball). Not one with an
@@ -219,7 +220,7 @@ export const live = {
         const sec = Math.round(((this.realTime || 0) - since) * 10) / 10;
         if (!why || pick) this.plog?.('fresh', { after: this.result, streak, sec, ...(why ? { why: `${why === 'won' ? 'he won it (no "Won it? Go!" yet)' : `${this.stallAfter ?? STALL} s without a goal`}: ${pick.ev.kind} into ${pick.sc.pattern || pick.sc.id}` } : {}) });
         else this.plog?.('stall', { after: this.result, streak, sec, why: `${why}: no scene to reach from here, play goes on` });
-        if (pick) { const k = next % rounds.length; [rounds[k], rounds[pick.i]] = [rounds[pick.i], rounds[k]]; next++; this.lastBridge = pick.sc; streak = 0; since = this.realTime || 0; await this.bridgeTo(pick); bridged = true; } // (the scenes come in the match's own order: the one picked takes the next one's turn)
+        if (pick) { const k = next % rounds.length; [rounds[k], rounds[pick.i]] = [rounds[pick.i], rounds[k]]; next++; this.lastBridge = pick.sc; streak = 0; since = this.realTime || 0; bridged = await this.bridgeTo(pick); if (!bridged) live = true; } // (the scenes come in the match's own order: the one picked takes the next one's turn; its plan not ready in time: play goes on from the event)
         else if (why) live = true; // (nothing near enough to reach: play goes on, and the next play's end tries again)
       }
       this.result = null; const gw = goalWatch(); // (from here on: a goal in what follows)
@@ -227,7 +228,7 @@ export const live = {
       else if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
         if (!(await this.continueDefense())) { this.cancel(gw); tally(); streak = isGoal() ? 0 : streak + 1; live = goOn(); continue; }
       } else if (live) await this.continueLive();
-      else { streak = 0; since = this.realTime || 0; const nx = rounds[next++ % rounds.length]; await (early?.nx === nx ? early.p : this.prePlan(nx)); early = null; this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
+      else { streak = 0; since = this.realTime || 0; const nx = await this.nextPlanned(rounds, next++, early); early = null; this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
       const opt = await this.decide(), good = this.isGood(opt);
       this.react(opt);
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
@@ -289,16 +290,30 @@ export const live = {
   // Brings in the new situation, on screen: the event (bridgeEvent) on the old picture, then the new scene is set up around
   // everyone where he is (adopt), and everyone runs to his place in its picture as the ball goes to the one who has it
   // there (bridgeRun). The next choice opens as they get there, with its usual window.
+  // (v82) The next scene of the match's order, with its plan made (game/window.js prePlan, started as the goal went in:
+  // early). A plan that takes more than PLAN_WAIT s more (a few do: one took 60 s of frames on a still picture after a
+  // goal) is left to finish on its own, and that scene changes places with the next one; three tries, then it waits.
+  async nextPlanned(rounds, i, early) {
+    const n = rounds.length, k = i % n, ready = p => Promise.race([p.then(() => true), this.delay(PLAN_WAIT).then(() => false)]);
+    let p = early?.nx === rounds[k] ? early.p : this.prePlan(rounds[k]);
+    for (let j = 1; j < Math.min(4, n); j++) { if (await ready(p)) break; const m = (i + j) % n; [rounds[k], rounds[m]] = [rounds[m], rounds[k]]; p = this.prePlan(rounds[k]); }
+    await p; return rounds[k];
+  },
+  // false: its plan was not made in time (BRIDGE.wait): nothing more is brought in, and play goes on from where the event
+  // left it (a free kick taken, their ball after their tackle). A restart from out of play waits for its plan first.
   async bridgeTo(pick) {
     const s = this.sim, sc = pick.sc, h = s.a('hero');
+    const planning = this.prePlan(sc), ready = () => Promise.race([planning.then(() => true), this.delay(BRIDGE.wait).then(() => false)]); // (made over the event's frames: game/window.js)
+    if ((pick.ev.kind === 'out' || pick.ev.kind === 'keeper') && !(await ready())) { this.plog?.('stall', { why: `${sc.pattern || sc.id}: its plan was not ready, play goes on` }); return false; }
     this.closeWindow?.();
     Object.assign(this, { phase: 'outcome', step: null, ai: false, scripted: new Set([...s.agents.keys()]), camMode: 'follow', lines: [], aimAt: null, teamJob: null, roles: null });
     this.follow ||= { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
     s.untrackAll(); for (const a of s.agents.values()) { a.mom = null; a.ease = false; }
-    const planning = this.prePlan(sc); // (made over the event's frames: game/window.js)
     this.bridging = true;
-    const t0 = s.time; try { await this.play(this.bridgeEvent(pick)); await Promise.race([planning, this.delay(BRIDGE.wait)]); // (not made yet: made now, in one frame)
+    const t0 = s.time; try { await this.play(this.bridgeEvent(pick));
+      if (!(await ready())) { this.plog?.('stall', { why: `${sc.pattern || sc.id}: its plan was not ready, play goes on` }); return false; }
       this.adopt(sc, pick.map); await this.bridgeRun(pick, BRIDGE.max - (s.time - t0), BRIDGE.min - (s.time - t0)); } finally { this.bridging = false; }
+    return true;
   },
   // The event, on the old picture. It ends with the ball still, with the player who has it (or on the line for a restart).
   *bridgeEvent(pick) {
