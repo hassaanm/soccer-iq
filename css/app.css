@@ -995,3 +995,12 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 /* ---------- score attack (v88: js/mini/attack-ui.js) ---------- */
 /* He is one player the whole attempt: no changing player. */
 #hud.fattack #fAvatar{display:none}
+
+/* ---------- rondo (v88: js/mini/rondo-ui.js) ---------- */
+#rondoHud{display:none}
+#rondoHud.on{display:block}
+#rSteal{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
+#rSteal i{font-size:42px}
+#rSteal.show{display:flex}
+#rSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none}
+#rondoHud.slowing #rSlow{opacity:1}

@@ -32,4 +32,4 @@ export function linesFor(scenes = []) {
 }
 export const keeperLines = () => [SAVED, ...Object.values(WHY), ...Object.values(SAID), 'What do you want to play?', 'You won! You got a new sticker!', 'Great try! You got a new sticker!', ...miniLines()];
 // (v87) The mini games' own lines (the screen, the end of a run, penalties): loaded with the keeper game's.
-export const miniLines = () => [...MINI.map(g => g.say), ...Object.values(MINI_SAID), ...Object.values(PEN_SAID), ...Object.values(PEN_WHY)];
+export const miniLines = () => [...MINI.map(g => g.say), ...Object.values(MINI_SAID), ...Object.values(PEN_SAID), ...Object.values(PEN_WHY), ...MINI.flatMap(g => g.lines || [])]; // (v88: a game's own lines, games.js `lines`)

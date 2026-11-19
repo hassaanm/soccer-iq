@@ -9,11 +9,10 @@ import { MINI, MINI_SAID } from './games.js';
 import { hooks } from './run.js';
 import { runKeeper } from '../ui/goalie.js';
 import { runPenalties } from './pens-ui.js';
+import { runRondoKeep, runRondoWin } from './rondo-ui.js'; // (v88)
 import { runAttack } from './attack-ui.js';
 
-const RUN = { keeper: runKeeper, pens: runPenalties,
-  attack: runAttack,
-};
+const RUN = { keeper: runKeeper, pens: runPenalties, rondoKeep: runRondoKeep, rondoWin: runRondoWin, attack: runAttack };
 
 // The sheet, made once (the lesson picker's look: css .sheet).
 const sheet = document.createElement('section');
