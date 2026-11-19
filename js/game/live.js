@@ -3,10 +3,37 @@
 import { pickRounds, skillById } from '../skills.js';
 import { lerp, clamp, dist, interceptor, dribbleEnd, shuffle, closestOnLane, DRIBBLE_DIRS } from '../geom.js';
 import { grade, pushEnd, goalSide, exploit, laneClear, laneBlocked, inPitch, moreSpots, OKAY, RING_GAP } from '../generate.js';
-import { L, W, MATES, wrap } from './shared.js';
-import { planHold, rolesOf, pathAt } from '../window.js';
+import { L, W, gy0, gy1, MATES, ROSTER, wrap, faceTo } from './shared.js';
+import { planHold, rolesOf, pathAt, hermAt, kindOf } from '../window.js';
 // His friends' and their players' places, m1 m2 (m3) and o1 o2 o3 (o4): as many as the team size has.
 const friends = s => MATES.filter(id => s.a(id)).map(id => [s.a(id).x, s.a(id).y]), foes = s => s.team('them').map(a => [a.x, a.y]);
+
+// ---------- a new situation from play going on (v82) ----------
+// The owner (v81): "Whenever you make a decision and all of a sudden it fades out and there's a new scenario, it's really
+// confusing what happened." A match used to cut to a fresh scene after five plays without a goal (about 30 s), and the
+// moment he won the ball before "Won it? Go!". Now play goes on for STALL real seconds without a goal, and then (or when
+// he wins the ball before that lesson) a real piece of soccer, played on screen with the same players, brings in the new
+// situation (bridgeTo): the ball goes out and a friend takes the pass-in, it goes out behind our goal for a goal kick,
+// our keeper catches their shot, a foul and a free kick, one team wins it off the other, or a pass on. Everyone then runs
+// to his place in the new picture and the camera follows. Only a goal (and the start) still cuts, to the next scene.
+export const STALL = 60;
+const BRIDGE = { vMax: 5.4, T: [1, 2.8], run: 10.5, wait: .15, max: 4, min: 2, ahead: 4 }; // the run to the new picture: fastest drawn speed (m/s), its length (s), the farthest anyone runs (m); how long it waits for its plan after the event (s); the longest and shortest it all takes (s); how many of the next scenes it picks from
+export const SIDE_IN = new Set(['side-in', 'side-take', 'side-pass', 'side-two']);
+// A scene that can be reached from play: one whose run-up is a planned one (game/window.js plannedRunUp: with a pass to
+// him, a friend's run for a pass in front), or a 1v1 (everyone to his place, the attacker on the ball). Not one with an
+// intro of its own (he wins the ball: "Won it? Go!"; a shot that comes back out: "Follow your shot!"). A kick-off only
+// follows a goal.
+export const bridgeable = sc => !!sc && !sc.intro && sc.run !== 'follow' && sc.pattern !== 'kick-off';
+export const sceneTeam = sc => { const c = sc.carrier || 'hero'; return c[0] === 'o' || c === 'k2' ? 'them' : 'us'; };
+const perms = n => (n ? perms(n - 1).flatMap(p => Array.from({ length: n }, (_, i) => [...p.slice(0, i), n - 1, ...p.slice(i)])) : [[]]);
+// Who of a team goes to which place: the way that keeps the longest run shortest (then the runs' sum). { map: { id: new id }, max }
+// fix: [id, new id], one who must go to that place (the one with the ball, to the place of the one who has it there).
+function assign(ids, from, to, fix = null) {
+  let best = null; const fi = fix ? ids.indexOf(fix[0]) : -1, fj = fix ? ids.indexOf(fix[1]) : -1;
+  for (const p of perms(ids.length)) { if (fi >= 0 && fj >= 0 && p[fi] !== fj) continue; let max = 0, sum = 0; for (let i = 0; i < ids.length; i++) { const d = Math.hypot(from[i].x - to[p[i]].x, from[i].y - to[p[i]].y); max = Math.max(max, d); sum += d; }
+    if (!best || max < best.max - .01 || (max < best.max + .01 && sum < best.sum)) best = { p, max, sum }; }
+  return { map: Object.fromEntries(ids.map((id, i) => [id, ids[best.p[i]]])), max: best.max };
+}
 
 // A decision built from wherever play is right now (continuous matches). The best choice is the good option that
 // moves the ball farthest toward goal; other good options also earn 3 stars; backing away into space is "safe".
@@ -166,18 +193,37 @@ export const live = {
     const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
     this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
-    // Play flows on: after "Kept the ball!" or "Stole it!" the next choice starts from right there.
-    // Only a goal resets to a fresh situation, like a kickoff.
-    // After a lost ball he defends from right there; after "Stopped him!" he defends again; after a win he attacks.
-    let live = false, next = 0, streak = 0;
+    // Play flows on from wherever the last play ended: after "Kept the ball!" or "Stole it!" the next choice starts from
+    // right there; after a lost ball he defends from there; after "Stopped him!" he defends again. A goal (and the start)
+    // cuts to the next scene, the break the game shows as one. After STALL s of play without a goal, and when he wins the
+    // ball before "Won it? Go!", a piece of play on screen brings in the next situation (bridgeTo; v82: it used to cut
+    // after four plays without a goal, about 30 s, and at once after a won ball).
+    let live = false, next = 0, streak = 0, since = this.realTime || 0, early = null;
+    const isGoal = () => this.result === 'goal' || this.result === 'goalAgainst';
     this.missed = {}; this.misses = 0; this.timeoutsInMatch = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match'; this.firstRound = false; this.timeouts = 0;
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
+    // Whether play goes on from where it is (true), or a new situation comes in (a goal: the cut; else a bridge).
+    const goOn = () => !isGoal() && (this.realTime || 0) - since < (this.stallAfter ?? STALL) && (this.result !== 'won' || this.has('won-it-go')); // (play on after winning it: Won it? Go!) (stallAfter: tests)
+    // (v82) As a goal goes in, the next scene's plan is made over the celebration's frames, not after them on a still picture.
+    const goalWatch = () => this.job(1e9, null, () => { if (!isGoal()) return false;
+      const nx = rounds[next % rounds.length]; early = { nx, p: this.prePlan(nx) };
+      return true; });
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
-      if (i && !live) this.plog?.('fresh', { after: this.result, streak }); // (v76: the play log, ui/playlog.js: play starts again from a new situation)
-      if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
-        if (!(await this.continueDefense())) { tally(); streak = this.result === 'goalAgainst' ? 0 : streak + 1; live = streak > 0 && streak <= 4; continue; }
+      let bridged = false;
+      if (i && !live) { // (v76: the play log, ui/playlog.js: play starts again from a new situation)
+        const why = isGoal() ? null : this.result === 'won' && !this.has('won-it-go') ? 'won' : 'stall', pick = why ? this.bridgePick(rounds, next, why) : null;
+        const sec = Math.round(((this.realTime || 0) - since) * 10) / 10;
+        if (!why || pick) this.plog?.('fresh', { after: this.result, streak, sec, ...(why ? { why: `${why === 'won' ? 'he won it (no "Won it? Go!" yet)' : `${this.stallAfter ?? STALL} s without a goal`}: ${pick.ev.kind} into ${pick.sc.pattern || pick.sc.id}` } : {}) });
+        else this.plog?.('stall', { after: this.result, streak, sec, why: `${why}: no scene to reach from here, play goes on` });
+        if (pick) { const k = next % rounds.length; [rounds[k], rounds[pick.i]] = [rounds[pick.i], rounds[k]]; next++; this.lastBridge = pick.sc; streak = 0; since = this.realTime || 0; await this.bridgeTo(pick); bridged = true; } // (the scenes come in the match's own order: the one picked takes the next one's turn)
+        else if (why) live = true; // (nothing near enough to reach: play goes on, and the next play's end tries again)
+      }
+      this.result = null; const gw = goalWatch(); // (from here on: a goal in what follows)
+      if (bridged) { /* the new situation is set up, on screen */ }
+      else if (live && this.sim.a(this.sim.ball.carrier)?.team === 'them') {
+        if (!(await this.continueDefense())) { this.cancel(gw); tally(); streak = isGoal() ? 0 : streak + 1; live = goOn(); continue; }
       } else if (live) await this.continueLive();
-      else { streak = 0; const nx = rounds[next++ % rounds.length]; await this.prePlan(nx); this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
+      else { streak = 0; since = this.realTime || 0; const nx = rounds[next++ % rounds.length]; await (early?.nx === nx ? early.p : this.prePlan(nx)); early = null; this.load(nx); await this.pre(); } // (v78: game/window.js prePlan)
       const opt = await this.decide(), good = this.isGood(opt);
       this.react(opt);
       // Chances that come from lessons he has passed (only some of the time, so play keeps flowing).
@@ -186,13 +232,190 @@ export const live = {
       this.reboundOK = this.has('follow-shot') && opt === 'shoot' && !good && Math.random() < .7; // a blocked shot can come back out to him
       await this.outcome(opt, good);
       await this.chain(); this.offBall = this.duelOK = this.reboundOK = false;
-      tally();
-      // Play flows on until a goal; after 4 plays in a row without one, start a fresh situation.
-      streak = this.result === 'goal' || this.result === 'goalAgainst' ? 0 : streak + 1;
-      live = streak > 0 && streak <= 4 && (this.result !== 'won' || this.has('won-it-go')); // play on after winning it: Won it? Go!
+      this.cancel(gw); tally();
+      streak = isGoal() ? 0 : streak + 1;
+      live = goOn();
       if (i >= toWin * 25) break; // safety: don't let a match run forever
     }
     return score;
+  },
+
+  // ---------- a new situation from play going on (v82, see STALL) ----------
+  // The scene to bring in, from where everyone is now: of the scenes that can be reached from play (bridgeable), the one
+  // quickest to reach (each player runs to the nearest free place of his team in it, the longest run as short as it can
+  // be), with a soccer event that fits (bridgeEvent), of the next few in the match's own order. null: none near enough.
+  // { sc, i (its place in rounds), map: { old id: new id }, ev: { kind, by, to, T }, run (m) }
+  bridgePick(rounds, next, why) {
+    const s = this.sim, b = s.ball, c = b.carrier && s.a(b.carrier), cur = c ? c.team : null, h = s.a('hero'); if (!h) return null;
+    const usIds = MATES.filter(id => s.a(id)), themIds = s.team('them').map(a => a.id);
+    let best = null; const n = rounds.length, seen = new Set();
+    // (the next BRIDGE.ahead scenes of the match's own order first, so the mix of situations stays the match's; then any)
+    for (let j = 0; j < n; j++) { if (j === BRIDGE.ahead && best) break; const i = (next + j) % n, sc = rounds[i];
+      if (seen.has(sc) || !bridgeable(sc)) continue; seen.add(sc);
+      const P = this.sceneState(sc).at, T = sceneTeam(sc), cid = sc.carrier || 'hero', ball = P[cid]; if (!P.hero || !ball || usIds.some(id => !P[id]) || themIds.some(id => !P[id])) continue;
+      const db = Math.hypot(b.x - ball.x, b.y - ball.y);
+      let ev = null;
+      if (SIDE_IN.has(sc.pattern)) { if (db > 12) continue; ev = { kind: 'out', to: [ball.x, ball.y < W / 2 ? -.5 : W + .5], at: [ball.x, ball.y] }; } // (over the side line by the place the pass-in is taken from)
+      else if (sc.pattern === 'goal-kick') { if (cur !== 'them' || b.x > 16) continue; const y = clamp(ball.y, 1, W - 1), side = y < W / 2 ? -1 : 1; ev = { kind: 'out', to: [-.6, W / 2 + side * Math.max(Math.abs(y - W / 2), (gy1 - gy0) / 2 + 1.2)], at: [ball.x, ball.y], goalKick: true }; } // (wide of our post, over our goal line)
+      else if (sc.pattern === 'keeper-ball') { if (cur !== 'them' || !s.keeper('us') || b.x > 15 || c.gk) continue; ev = { kind: 'keeper', by: c.id }; }
+      else if (cur === T || !c) { const o = c && T === 'us' && s.team('them').filter(o => !o.gk && Math.hypot(o.x - c.x, o.y - c.y) < 2.2 && o.tk > s.time - 2).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0];
+        ev = o && why === 'stall' ? { kind: 'foul', by: o.id } : { kind: 'pass' }; }
+      else { if (c.gk) continue; const o = s.team(T).filter(o => !o.gk).sort((p, q) => Math.hypot(p.x - c.x, p.y - c.y) - Math.hypot(q.x - c.x, q.y - c.y))[0]; if (!o) continue; ev = { kind: 'tackle', by: o.id }; }
+      // Each team's players to the places of its team (the longest run as short as it can be); the one who has the ball after
+      // the event goes to the place of the one who has it in the new picture, when that keeps the runs about as short: no pass then.
+      const has = ev.kind === 'tackle' ? ev.by : ev.kind === 'pass' || ev.kind === 'foul' ? c?.id : null, fix = has && has !== 'hero' && cid !== 'hero' && has[0] === cid[0] ? [has, cid] : null;
+      const team = (ids, f) => assign(ids, ids.map(id => s.a(id)), ids.map(id => P[id]), f), mu0 = team(usIds), mt0 = team(themIds);
+      const mu1 = fix?.[0][0] === 'm' ? team(usIds, fix) : null, mt1 = fix?.[0][0] === 'o' ? team(themIds, fix) : null;
+      const mu = mu1 && mu1.max < mu0.max + 2 ? mu1 : mu0, mt = mt1 && mt1.max < mt0.max + 2 ? mt1 : mt0;
+      const run = Math.max(Math.hypot(h.x - P.hero.x, h.y - P.hero.y), mu.max, mt.max); if (run > BRIDGE.run) continue;
+      const map = { hero: 'hero', ...mu.map, ...mt.map };
+      if (sc === this.sc || sc === this.lastBridge) continue; // (never the same situation again straight away)
+      // (the whole of it, the event and the run, in BRIDGE.max s: the event's own time, as bridgeEvent plays it, and the run's)
+      const near = id => { const o = id && s.a(id); return o && c ? Math.hypot(o.x - c.x, o.y - c.y) : 0; }, theirs = c && s.team('them').filter(o => !o.gk).sort((p, q) => dist(p, b) - dist(q, b))[0];
+      ev.T = ev.kind === 'pass' ? .15 : ev.kind === 'foul' ? 1 : ev.kind === 'tackle' ? near(ev.by) / 5.4 + .3 : ev.kind === 'keeper' ? 1.3 : (cur === 'us' && theirs ? dist(theirs, b) / 4.6 : 0) + .2 + .9 + .5;
+      if (ev.T + clamp(run / 3.4, BRIDGE.T[0], BRIDGE.T[1]) + (ev.kind === 'out' ? .6 : 0) > BRIDGE.max) continue;
+      const cost = ev.T + run / 3.4 + (j >= BRIDGE.ahead ? 3 : 0); // (about how long it takes, s)
+      if (!best || cost < best.cost) best = { sc, i, map, ev, run, cost };
+    }
+    return best;
+  },
+  // Brings in the new situation, on screen: the event (bridgeEvent) on the old picture, then the new scene is set up around
+  // everyone where he is (adopt), and everyone runs to his place in its picture as the ball goes to the one who has it
+  // there (bridgeRun). The next choice opens as they get there, with its usual window.
+  async bridgeTo(pick) {
+    const s = this.sim, sc = pick.sc, h = s.a('hero');
+    this.closeWindow?.();
+    Object.assign(this, { phase: 'outcome', step: null, ai: false, scripted: new Set([...s.agents.keys()]), camMode: 'follow', lines: [], aimAt: null, teamJob: null, roles: null });
+    this.follow ||= { x: h.x + 2, y: lerp(h.y, W / 2, .4), yaw: 0, yawT: 0 };
+    s.untrackAll(); for (const a of s.agents.values()) { a.mom = null; a.ease = false; }
+    const planning = this.prePlan(sc); // (made over the event's frames: game/window.js)
+    this.bridging = true;
+    const t0 = s.time; try { await this.play(this.bridgeEvent(pick)); await Promise.race([planning, this.delay(BRIDGE.wait)]); // (not made yet: made now, in one frame)
+      this.adopt(sc, pick.map); await this.bridgeRun(pick, BRIDGE.max - (s.time - t0), BRIDGE.min - (s.time - t0)); } finally { this.bridging = false; }
+  },
+  // The event, on the old picture. It ends with the ball still, with the player who has it (or on the line for a restart).
+  *bridgeEvent(pick) {
+    const s = this.sim, b = s.ball, ev = pick.ev;
+    if (b.state === 'flying') yield () => b.state !== 'flying';
+    if (!b.carrier || b.state !== 'carried' && b.state !== 'held') { const n = [...s.agents.values()].filter(a => !a.gk).sort((p, q) => dist(p, b) - dist(q, b))[0], t0 = s.time;
+      yield () => { s.go(n.id, b.x, b.y, 4); return dist(n, b) < .6 || s.time - t0 > 1.5; }; s.give(n.id); s.stop(n.id); }
+    const c = s.a(b.carrier), whistle = (line) => { this.sfx('whistle'); if (line) this.hud.caption(line); };
+    // Everyone not in the event already sets off for his place in the new picture (the event and their runs at the same time).
+    const P = this.sceneState(pick.sc).at, actors = new Set([c.id, ev.by, ev.kind === 'out' && c.team === 'us' ? s.team('them').filter(o => !o.gk).sort((p, q) => dist(p, b) - dist(q, b))[0]?.id : null]);
+    for (const a of s.agents.values()) { const q = P[pick.map[a.id] || a.id]; if (a.gk || actors.has(a.id) || !q) continue; const d = Math.hypot(q.x - a.x, q.y - a.y); s.go(a.id, q.x, q.y, clamp(d / 2, 1.2, 4.2)); }
+    if (ev.kind === 'out') {
+      // Out of play off their player: their pass goes astray, or (our ball) one of theirs gets a foot to it.
+      let k = c;
+      if (c.team === 'us' || c.gk) { const o = s.team('them').filter(o => !o.gk).sort((p, q) => dist(p, b) - dist(q, b))[0], t0 = s.time; this.spice(null);
+        s.go(c.id, c.x + (c.tx - c.x) * .3, c.y + (c.ty - c.y) * .3, 1.2); o.tk = s.time;
+        yield () => { s.go(o.id, b.x, b.y, 4.6); return dist(o, b) < .7 || s.time - t0 > 1.4; }; k = o; c.beat = s.time + .8; }
+      s.windup(k.id, k === c ? 'pass' : 'touch'); yield .2;
+      const [tx, ty] = ev.to; s.kick(tx, ty, { speed: clamp(Math.hypot(tx - b.x, ty - b.y) / .9, 5, 11), arc: .12, touch: true }); this.kicked = true;
+      if (k !== c) s.go(k.id, k.x + (tx - k.x) * .25, k.y + (ty - k.y) * .25, 2.4);
+      yield () => b.state !== 'flying';
+      whistle(ev.goalKick ? '⚽ Goal kick!' : '⚽ Our ball!'); yield .4;
+    } else if (ev.kind === 'keeper') {
+      // Their shot, at our keeper: he catches it and holds it.
+      const gk = s.keeper('us'), y = clamp(gk.y + (c.y > gk.y ? .3 : -.3), gy0 + .5, gy1 - .5), at = { x: gk.x + .35, y, z: .9 };
+      this.scripted.add(gk.id); s.stop(gk.id); faceTo(c, at.x, at.y); s.windup(c.id, 'shot'); yield .25;
+      this.keeperReact(gk, { res: 'save', at, t: Math.max(.3, dist(c, at) / 14), held: true }, { x: b.x, y: b.y });
+      s.kick(at.x, at.y, { speed: 14, arc: .1, z1: .9 }); this.kicked = true;
+      yield () => b.state !== 'flying';
+      Object.assign(b, { state: 'held', carrier: gk.id, move: null, reach: null }); // (his hands are on it: he stands up with it, game/keeper.js keeperMotion)
+      this.hud.caption('🧤 Saved!'); this.say('Saved!'); yield .6;
+    } else if (ev.kind === 'foul') {
+      // One of theirs comes in late on our player with the ball: a foul. The whistle; the ball stays where it is.
+      const o = s.a(ev.by), l = dist(o, b) || 1; o.tk = s.time; o.beat = s.time + 1.2;
+      s.go(o.id, clamp(b.x + (b.x - o.x) / l * .4, .5, L - .5), clamp(b.y + (b.y - o.y) / l * .4, .5, W - .5), 4.8); yield .3;
+      c.beat = s.time + .8; s.stop(c.id); s.go(o.id, o.x + (b.x - o.x) * .3, o.y + (b.y - o.y) * .3, 1.5); yield .15;
+      whistle('Free kick! ⚽'); yield .45;
+    } else if (ev.kind === 'tackle') {
+      // The other team wins it: their nearest player gets to it and takes it.
+      const o = s.a(ev.by), t0 = s.time; this.spice(null); s.go(c.id, c.x + (c.tx - c.x) * .2, c.y + (c.ty - c.y) * .2, 1); // (he slows, shielding it)
+      yield () => { s.go(o.id, b.x, b.y, 5.4); return dist(o, b) < .65 || s.time - t0 > 1.4; };
+      c.beat = s.time + .8; o.tk = s.time; s.give(o.id); s.stop(o.id);
+      if (o.id === 'hero') { this.sfx('tap'); this.hud.caption('You won the ball! 💪'); this.say('You won the ball!'); } else this.emit(o.team === 'us' ? 'held' : 'lost');
+      yield .1;
+    } else yield .15; // ('pass': the play simply goes on, bridgeRun)
+    this.spice(null);
+  },
+  // The new scene, set up around everyone where he is now: the same players (each of a team to the place picked for him,
+  // map), the ball where it is, the camera where it is. Nobody moves and nothing cuts.
+  adopt(sc, map) {
+    const s = this.sim, keepF = ['x', 'y', 'face', 'lv', 'dist', 'd0', 'tA', 'tL', 'tN', 'gkm', 'upUntil', 'beat', 'tk'], was = {};
+    for (const a of s.agents.values()) was[map[a.id] || a.id] = Object.fromEntries(keepF.map(k => [k, Array.isArray(a[k]) ? [...a[k]] : a[k]]));
+    const ball = { ...s.ball, carrier: s.ball.carrier ? map[s.ball.carrier] || s.ball.carrier : null }, roster = { ...this.roster }, cam = this.cam, follow = this.follow;
+    // Which body each id has: ours by the roster (takeOver swaps the two together), theirs their own.
+    const body = id => (id in roster ? 'u' + roster[id] : id), want = {}; for (const [o, n] of Object.entries(map)) want[n] = body(o);
+    this.load(sc); // (the scene's own setup: its rings, its plan, the play's state; it puts everyone in its picture and resets the bodies and the camera)
+    const now = {}; for (const id of s.agents.keys()) now[id] = id in ROSTER ? 'u' + ROSTER[id] : id;
+    for (const id of Object.keys(want)) { if (now[id] === want[id]) continue; const o = Object.keys(now).find(k => now[k] === want[id]); if (!o) continue; this.world.swapRigs?.(id, o); [now[id], now[o]] = [now[o], now[id]]; }
+    this.roster = Object.fromEntries(Object.keys(ROSTER).map(id => [id, now[id] ? +now[id].slice(1) : ROSTER[id]]));
+    for (const a of s.agents.values()) { const w = was[a.id]; if (!w) continue; Object.assign(a, w, { tx: w.x, ty: w.y, speed: 0, sp: 0, track: null }); }
+    Object.assign(s.ball, ball, { move: null, reach: null });
+    this.cam = cam; this.follow = follow; this.camMode = 'follow'; this.phase = 'outcome'; // (load's reset made it 'idle': play is going on)
+  },
+  // Everyone runs from where he is to his place as the new scene's window opens (its plan, as a run-up would bring him
+  // there: game/window.js plannedRunUp), and the ball goes to the one who has it there: carried, passed (a free kick,
+  // a pass on, the pass after winning it), rolled out by our keeper, or picked up on the line. The camera follows the
+  // ball, then comes round to the new scene's view as the choice opens. BRIDGE.T s, as the longest run needs.
+  async bridgeRun(pick, budget = BRIDGE.T[1], least = BRIDGE.T[0]) {
+    const s = this.sim, sc = this.sc, b = s.ball;
+    // (the run-up's own needs: a pass to him, game/rounds.js passInRun; a friend's run for a pass in front, runInRun)
+    const extra = sc.kind === 'receive' ? this.passInRun() : sc.kind === 'lead' ? this.runInRun() : {}, oneOnOne = sc.kind === 'tackle';
+    let plan = null, tv = null;
+    if (!oneOnOne) for (const rCap of kindOf(sc) === 'attack' ? [0, 5.2, 4.2, 3.4] : [0]) { const p = this.plan(false, rCap ? { ...extra, rCap } : extra); if (!p) break; const t = kindOf(sc) === 'attack' ? this.threatFit(p) : null; if (!plan || t?.seen) { plan = p; tv = t; } if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break; }
+    if (!plan && !oneOnOne) { this.cam = null; await this.pre(); return; } // (no plan: the scene's own run-up, as before v82)
+    if (plan) { this.wplan = plan; plan.sc = sc; }
+    if (tv) { plan.wideK = tv.k; plan.seen = tv.seen; if (tv.off) this.yaw += tv.off; }
+    const at0 = id => (plan?.paths[id] ? pathAt(plan.paths[id], 0) : null);
+    if (sc.run === 'goal') { const hq = at0('hero'), m = at0('m1'); if (hq && m) { this.yaw = this.frameYaw(sc, hq, { x: (m.x + L) / 2, y: (m.y + W / 2) / 2 }); } }
+    else if (sc.even && !sc.run && sc.spots) { const hq = at0('hero'), c = at0(sc.carrier), pts = [...sc.spots, c || hq]; if (hq) this.yaw = this.frameYaw(sc, hq, { x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length }); }
+    const cid = sc.carrier || 'hero', holder = b.carrier && s.a(b.carrier), keeperBall = !!sc.gk?.hold;
+    const goal = id => { const q = at0(id); if (q) return q; const P = this.sceneState(sc).at[id]; return P ? { x: P.x, y: P.y, vx: 0, vy: 0 } : null; };
+    // The ball's way to the one who has it in the new picture. kickAt: when it is played (s from now); by: who plays it.
+    const passes = holder && holder.id !== cid && b.state !== 'loose', loose = !holder || b.state === 'loose', kickAt = passes ? .35 : 0;
+    // Each one's way: a moment still (the one who plays the ball, until it is played), then a smooth run (hermite) from how
+    // he moves now to his place, arriving with the plan's own velocity. A ball left on a line (out of play) is picked up on
+    // the way: the one who has it in the new picture runs to it first, then walks it onto its place.
+    const ways = {}, B = { x: b.x, y: b.y };
+    for (const a of s.agents.values()) { const e = goal(a.id); if (!e) continue; const lv = a.lv || [0, 0], v0 = Math.hypot(lv[0], lv[1]), k0 = v0 > 4 ? 4 / v0 : 1, kicker = a.id === holder?.id && passes;
+      const V0 = kicker ? [0, 0] : [lv[0] * k0, lv[1] * k0], E = [e.x, e.y], V1 = [e.vx, e.vy];
+      if (loose && a.id === cid && Math.hypot(e.x - B.x, e.y - B.y) > .5) { const d = Math.hypot(e.x - B.x, e.y - B.y), P = [B.x - (e.x - B.x) / d * .3, B.y - (e.y - B.y) / d * .3];
+        ways[a.id] = { delay: 0, legs: [{ herm: true, S: [a.x, a.y], V0, E: P, V1: [0, 0] }, { herm: true, S: P, V0: [0, 0], E, V1, T: clamp(d / 2.2, .5, 1.8) }] }; }
+      else ways[a.id] = { delay: kicker ? kickAt + .15 : 0, legs: [{ herm: true, S: [a.x, a.y], V0, E, V1 }] }; }
+    const fit = (w, Tb) => { const T1 = Tb - w.delay - (w.legs[1]?.T || 0); return T1 > .3 && w.legs.every((l, i) => { const T = i ? l.T : T1; for (let k = 1; k < 12; k++) { const q = hermAt({ ...l, T }, T * k / 12); if (Math.hypot(q.vx, q.vy) > BRIDGE.vMax) return false; } return true; }); };
+    let Tb = Math.max(BRIDGE.T[0], least);
+    while (Tb < BRIDGE.T[1] && !Object.values(ways).every(w => fit(w, Tb))) Tb += .1;
+    if (passes) { const e = goal(cid), d = e ? Math.hypot(e.x - b.x, e.y - b.y) : 0; Tb = Math.max(Tb, kickAt + .2 + d / 13 + .35); } // (a pass no faster than 13 m/s, there a moment before the choice opens)
+    Tb = Math.max(BRIDGE.T[0], Math.min(Tb, BRIDGE.T[1] + .2, budget)); // (within the whole bridge's time: a run a little quicker, rarely)
+    s.dead = !!sc.restart; s.reactFrom = null; s.aliveCap = 1; for (const a of s.agents.values()) a.aliveK = 1;
+    if (plan) plan.openAt = s.time + Tb; this.scripted = new Set([...s.agents.keys()]);
+    for (const [id, w] of Object.entries(ways)) {
+      const a = s.a(id), p = plan?.paths[id], S = { x: a.x, y: a.y, vx: 0, vy: 0 }, E = goal(id), T2 = w.legs[1]?.T || 0, T1 = Math.max(.3, Tb - w.delay - T2), l1 = { ...w.legs[0], T: T1 }, l2 = w.legs[1];
+      a.track = { at: tt => { const u = tt - w.delay; return u < 0 ? S : u < T1 ? hermAt(l1, u) : l2 && u < T1 + T2 ? hermAt(l2, u - T1) : p ? pathAt(p, tt - Tb) : { x: E.x, y: E.y, vx: 0, vy: 0 }; }, t0: s.time, watch: false };
+    }
+    const t0 = s.time, carrier = s.a(cid), during = extra.during?.(Tb); // (a pass to him: played as the choice opens)
+    if (keeperBall && carrier) { Object.assign(b, { state: 'held', carrier: cid, move: null, reach: null }); carrier.gkm ||= { k: 'hold', t0: s.time, low: false }; }
+    // The ball: carried by the one who has it there already; else played to where he will be a moment before the choice.
+    if (passes) {
+      await this.delay(kickAt - .2); const k = s.a(holder.id), e = carrier.track.at(Tb - .3), dd = Math.hypot(e.x - b.x, e.y - b.y);
+      if (k.gk && b.state === 'held') { k.face = [(e.x - k.x) / (dd || 1), (e.y - k.y) / (dd || 1)]; k.gkm = { k: 'roll', t0: s.time, low: true }; await this.delay(.2); Object.assign(b, { state: 'carried', carrier: k.id, z: 0 }); k.gkm = null; } // (our keeper rolls it out)
+      else { faceTo(k, e.x, e.y); s.windup(k.id, 'pass'); await this.delay(.2); }
+      s.kick(e.x, e.y, { speed: clamp(dd / Math.max(.3, Tb - .3 - (s.time - t0)), 4, 13), arc: dd > 9 ? .3 : .15 }); this.kicked = true;
+    }
+    const pick0 = this.job(Tb + 1, null, () => { if (b.carrier === cid && b.state === 'carried' || b.state === 'held') return true; if (b.state !== 'flying' && carrier && dist(carrier, b) < (loose ? 1.1 : .8)) { s.give(cid); return true; } return false; });
+    // The camera: from the event's view of the ball it comes round behind his player as everyone runs to his place, so it
+    // follows him there, slowly (glide); in the last moment it takes the new scene's own view, with the head-down edge.
+    this.camMode = 'player'; this.glide = Math.min(Tb, 1.2); // (eased over a second, then it keeps up with him)
+    await this.delay(Math.max(0, Tb - .8)); this.phase = 'pre'; this.returns = 0; this.cameFrom = null; this.hud.caption('');
+    await this.delay(Math.max(0, Tb - (s.time - t0)));
+    this.cancel(pick0);
+    if (b.carrier !== cid && carrier && !keeperBall && b.state !== 'flying') { s.give(cid); } // (late: it is his as the choice opens)
+    if (carrier && !carrier.gk && b.carrier === cid) { const c = carrier; if (b.state === 'carried' && dist(b, c) > .6) Object.assign(b, { x: c.x + c.face[0] * .4, y: c.y + c.face[1] * .4 }); }
+    await during;
+    if (plan) plan.ready = true;
+    else { s.untrackAll(); s.stopAll(); this.yaw = Math.atan2(s.ball.y - s.a('hero').y, s.ball.x - s.a('hero').x); this.faceYaw(s.a('hero')); } // (a 1v1: he faces the one coming at him, game/rounds.js pre)
   },
 
   // In matches, a good choice gets a quick word that names what he did (the play doesn't stop for stars).

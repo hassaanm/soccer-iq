@@ -51,7 +51,7 @@ import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
 import { agreeAt, kindOf, SPEED, ACC, PACE } from '../js/window.js';
 import { optionsFor, makeGame, drive } from '../tests/harness.js';
-import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK } from './live-audit.js';
+import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK, cutMatches, cutText } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
 import { poser, standWatch } from './stand-audit.js';
 await poser(); // (alive-shape: everyone is posed as world.js poses him, so what he sees when he taps is graded as drawn too)
@@ -409,7 +409,11 @@ if (!only && !scene && !args.includes('--nolive')) {
     // (v78) walk in matches: a bot that looks up and passes or shoots
     const wr = await walkMatches(size, +(flag('--wmatch') || 6)), wb = wr.filter(r => r.bad); liveBad += wb.length;
     console.log(`${size} walk in matches (${flag('--wmatch') || 6}): ${wr.length} passes and shots after a choice, ${wr.filter(r => r.calm).length} with nobody within ${WALK.pressure} m; not played from where he is: ${wb.length}`);
-    for (const r of wb.slice(0, 10)) console.log(`  walk: match ${r.seed} ${walkText(r)}`); }
+    for (const r of wb.slice(0, 10)) console.log(`  walk: match ${r.seed} ${walkText(r)}`);
+    // (v82) cut: a new situation never starts with a cut, except at the start and after a goal (Matches, and a mini match before "Won it? Go!")
+    for (const mode of ['free', 'mini']) { const { cuts, bridges } = await cutMatches(size, +(flag('--cmatch') || 6), mode); liveBad += cuts.length;
+      console.log(`${size} cut in matches (${mode}, ${flag('--cmatch') || 6}, a child's taps): ${bridges.length} new situations brought in from play, ${cuts.length} cut(s) with no goal before them`);
+      for (const r of cuts.slice(0, 10)) console.log('  cut: ' + cutText(r)); } }
 }
 // (round 7) Frame time: no long frame as a choice opens or closes (scripts/frame-audit.js), with the live audit.
 let frameBad = 0;

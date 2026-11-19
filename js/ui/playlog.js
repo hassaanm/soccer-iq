@@ -217,7 +217,7 @@ function install() {
   // starts again from a new situation; the row before and the scene after show both pictures).
   g.plog = (kind, o = {}) => {
     if (!L.LOG.on) return;
-    if (kind === 'fresh') { forceRow(); L.ev('FRESH', kv({ ...o, why: o.after === 'goal' || o.after === 'goalAgainst' ? 'kick-off after a goal' : o.streak > 4 ? 'play went on 4 times without a goal' : 'he won it (no "Won it? Go!" yet)' })); }
+    if (kind === 'fresh') { forceRow(); L.ev('FRESH', kv({ ...o, why: o.why || (o.after === 'goal' || o.after === 'goalAgainst' ? 'kick-off after a goal' : o.streak > 4 ? 'play went on 4 times without a goal' : 'he won it (no "Won it? Go!" yet)') })); } // (v82: o.why, a new situation brought in from play, game/live.js)
     else L.ev(String(kind).toUpperCase(), kv(o));
   };
   for (const k of ['banner', 'caption', 'toast', 'seen', 'pop']) wrap(hud, k, (...a) => {
