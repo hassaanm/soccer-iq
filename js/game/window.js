@@ -16,7 +16,7 @@ import { SHOT, shotLook } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
-const PLAN_MS = 3; // (v78) the most of a frame (ms, here; about four times that on a phone) prePlan spends on a plan
+const PLAN_STEPS = 4; // (v78) how many steps of a plan prePlan makes in a frame (window.js planSteps: each one moment of one try, a millisecond or less here)
 // In demos and in the replay of the better play nobody runs out of time: the window is this long (real seconds), and
 // the hand taps well inside it.
 const SHOW = { demo: 16, replay: 7 };
@@ -140,7 +140,7 @@ export const moving = {
       if (d < 2.2) { for (let n = 0; n < 4; n++) { const q = pathAt(a.setPath, T), dq = Math.hypot(q.x - ce.x, q.y - ce.y); if (dq >= 2.1) break; const k = (2.3 - dq) / (T * .6), l = dq || 1; a.setPath.v1 = [a.setPath.v1[0] + (q.x - ce.x) / l * k, a.setPath.v1[1] + (q.y - ce.y) / l * k]; } } } } // (round 7: until it does hold him off)
     await this.delay(T);
   },
-  // (v78) The plan for a scene that is about to be set up: its tries (plannedRunUp: one for each rCap), PLAN_MS a frame, while
+  // (v78) The plan for a scene that is about to be set up: its tries (plannedRunUp: one for each rCap), PLAN_STEPS steps a frame, while
   // the last picture is still on the screen. planHold keeps each, so as the scene is set up plannedRunUp finds them made:
   // the frame it is set up in used to make them all (41 ms on a phone). It plans on a stand-in for the game with that
   // scene in it (the scene as load() makes it), so nothing on the screen changes.
@@ -151,7 +151,7 @@ export const moving = {
     const frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; }; // (the next frame)
     for (const rCap of [0, 5.2, 4.2, 3.4]) {
       const [s0, st, opts] = ghost.planArgs(false, rCap ? { rCap } : {}); let r = { done: false, it: null }, p = null;
-      try { do { await frame(); if (this.skipping) return; r = planSteps(s0, st, opts, PLAN_MS, r.it); } while (!r.done); p = r.plan; } catch (e) { console.error(e); return; } // (PLAN_MS of it a frame)
+      try { do { await frame(); if (this.skipping) return; r = planSteps(s0, st, opts, PLAN_STEPS, r.it); } while (!r.done); p = r.plan; } catch (e) { console.error(e); return; } // (PLAN_STEPS of it a frame)
       if (!p) break;
       const t = ghost.threatFit(p); if (!t || t.seen || !p.threat || p.rP >= (rCap || 9)) break;
     }

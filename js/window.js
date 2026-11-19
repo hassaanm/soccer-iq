@@ -356,6 +356,9 @@ function whyHolds(why, c, q, opps, goal, sc = null, h = null) {
 export const PACE = .12;                       // the slowest the world goes in a window (as a share of real time)
 export const RUNIN = 6.5, CONTACT = .6;        // how far out the threat starts where there is room (m); how near the ball he gets (m)
 export const V_RUN = { min: 2, tight: 1.3, slow: 1, pref: 3.3, max: 4.1 }; // his average speed over the run-in (m/s): a jog at the least, a run by choice
+// (v78) LIVE_SAMPLES: the moments a plan from live play looks at before it takes the best try so far (frame time: it was
+// 150, and one choice's opening frame at 5v5 took 17 ms here; scripts/frame-audit.js).
+const LIVE_SAMPLES = 100;
 const ROOM = .85, STEP_T = .1, MOVE = .45, STEP_OWN = .9, BEAR = .45; // BEAR: how far (rad) his bearing may differ from P's
 const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], mul = (a, k) => [a[0] * k, a[1] * k], len = a => Math.hypot(a[0], a[1]);
 const U = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, perp = u => [-u[1], u[0]], rotv = (u, a) => [u[0] * Math.cos(a) - u[1] * Math.sin(a), u[0] * Math.sin(a) + u[1] * Math.cos(a)];
@@ -452,15 +455,16 @@ export const planStats = { made: 0 };
 // few milliseconds of it a frame (planSteps, for a scene about to be set up: game/window.js prePlan).
 const keyOf = (st, opts) => (opts.live ? null : JSON.stringify([opts.R, opts.Rfloor, opts.rCap, opts.from, opts.lead, opts.skip, opts.never, opts.G, opts.keep, opts.options, opts.fracs, Object.keys(st.at).length, Math.round((opts.yaw || 0) * 100)]));
 const runSteps = it => { for (;;) { const r = it.next(); if (r.done) return r.value; } };
-// Steps the plan for (sc, st, opts) on for at most `ms` milliseconds; returns { done, plan } and, once done, keeps it as
-// planHold does (the same plan, found kept when asked for again). `it`: the steps so far (from an earlier call).
-export function planSteps(sc, st, opts = {}, ms = 3, it = null) {
+// Steps the plan for (sc, st, opts) on by `n` steps (a step: one moment of one try); returns { done, plan } and, once
+// done, keeps it as planHold does (the same plan, found kept when asked for again). `it`: the steps so far (from an
+// earlier call). (A count, not a time: how a match goes on must not hang on how fast the machine is.)
+export function planSteps(sc, st, opts = {}, n = 3, it = null) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return { done: true, plan: null };
   const key = keyOf(st, opts);
   if (key && cache.get(sc)?.[key]) return { done: true, plan: clonePlan(cache.get(sc)[key]) };
-  it ||= planHold0(sc, st, opts, kind); const t0 = performance.now();
-  for (;;) { const r = it.next(); if (r.done) { const p = r.value; planStats.made++; if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return { done: true, plan: clonePlan(p) }; } return { done: true, plan: p }; }
-    if (performance.now() - t0 > ms) return { done: false, it }; }
+  it ||= planHold0(sc, st, opts, kind);
+  for (let k = 0; ; k++) { const r = it.next(); if (r.done) { const p = r.value; planStats.made++; if (key && p) { const m = cache.get(sc) || {}; m[key] = p; cache.set(sc, m); return { done: true, plan: clonePlan(p) }; } return { done: true, plan: p }; }
+    if (k >= n) return { done: false, it }; }
 }
 export function planHold(sc, st, opts = {}) {
   const kind = kindOf(sc); if (kind === 'tackle' || kind === 'follow') return null;
@@ -589,7 +593,7 @@ function* planHold0(sc, st, opts, kind) {
     // (frame time) In a match (planned in the frame the choice opens) the search is cut short once it has cost what a
     // few whole tries cost and none agrees all the way: the best so far is the plan. A try that cannot beat the best so
     // far is given up early (not where a friend is about to shoot: there every try's own moments are looked at below).
-    if ((live || opts.from) && best && samples > 150) break search;
+    if ((live || opts.from) && best && samples > LIVE_SAMPLES) break search;
     const eps = (speeds.indexOf(sp) + (1 - k)) * .01, b = (yield* score(build(sp, k, frac * G, G), best && !shotOn ? best.cost - eps : null)); if (b.pruned) continue;
     const cost = b.offp * 100 + b.bad * 10 - (b.runOk[1] - b.runOk[0]) + eps;
     if (!best || cost < best.cost) { best = b; best.cost = cost; }
