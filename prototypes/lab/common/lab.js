@@ -101,12 +101,15 @@ export async function boot(cfg) {
   const arrows = Array.from({ length: 3 }, () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.2).translate(1.6 + .55, 0, 0), flatMat(aTex)); m.visible = false; m.renderOrder = 2; world.scene.add(m); return m; });
   const target = new THREE.Sprite(new THREE.SpriteMaterial({ map: tTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false })); target.visible = false; target.renderOrder = 9; target.scale.set(1.5, 1.5, 1); world.scene.add(target);
   // Cones (the rondo's box): small orange cones, one mesh each, made on request.
-  const coneGeo = new THREE.ConeGeometry(.16, .4, 12).rotateX(Math.PI / 2).translate(0, 0, .2), coneMat = new THREE.MeshStandardMaterial({ color: '#ff7a1a', roughness: .6 });
+  const coneGeo = new THREE.ConeGeometry(.24, .55, 14).rotateX(Math.PI / 2).translate(0, 0, .275), coneMat = new THREE.MeshStandardMaterial({ color: '#ff7a1a', roughness: .6 });
   const cones = pts => { for (const [x, y] of pts) { const m = new THREE.Mesh(coneGeo, coneMat); m.position.set(x, y, 0); m.castShadow = true; world.scene.add(m); } };
+  // A box painted on the grass (the rondo's square): four orange strips.
+  const box = (x0, y0, x1, y1, w = .12) => { const mat = new THREE.MeshBasicMaterial({ color: '#ffb066', transparent: true, opacity: .85, depthWrite: false, toneMapped: false });
+    for (const [cx, cy, sx, sy] of [[(x0 + x1) / 2, y0, x1 - x0, w], [(x0 + x1) / 2, y1, x1 - x0, w], [x0, (y0 + y1) / 2, w, y1 - y0], [x1, (y0 + y1) / 2, w, y1 - y0]]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sy), mat); m.position.set(cx, cy, .03); world.scene.add(m); } };
 
   // ---------- the lab object ----------
   const lab = {
-    world, sim, THREE, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, geom, us, them, sfx, say, nameOf, cones, cfg,
+    world, sim, THREE, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, geom, us, them, sfx, say, nameOf, cones, box, cfg,
     time: 0, real: 0, slow: 1, slowTo: 1, paused: true, ended: false, started: false, waiting: false,
     ctrl: null, ctrlSoft: false, ui: { glow: {}, lines: null, heroRing: false },
     win: null, tick: null, cam: null, camWant: null, onEnd: null,
