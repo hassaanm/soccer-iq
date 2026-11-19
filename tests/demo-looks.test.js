@@ -63,6 +63,8 @@ test('demos: a look only with a reason, and the choice with about half the ring 
     assert.ok(rc.length > 3 && rc.every(v => v > .005 && v < .12), `${sk.id}: the ring drains slowly and steadily while the idea is said (${rc.map(v => v.toFixed(3)).join(' ')} a second)`);
     const gone = 1 - cr.at(-1).L; assert.ok(gone > .08 && gone < .3, `${sk.id}: ${(gone * 100).toFixed(0)}% of the ring gone as the idea ends (8–30%)`);
     assert.ok(ra.every(v => v < 3 * med + .01), `${sk.id}: after the idea the ring drains no faster than three times its pace before (${med.toFixed(3)}; ${ra.map(v => v.toFixed(3)).join(' ')})`);
+    // (v78) and on the whole at the pace it had: from the idea's end to the choice, within 1.3 times its pace while the idea was said
+    { const rc0 = rate(cr[0], cr.at(-1)), ra0 = af.length > 2 ? rate(af[0], af.at(-1)) : rc0; assert.ok(Math.max(ra0 / rc0, rc0 / ra0) <= 1.3, `${sk.id}: the ring's pace goes from ${(rc0 * 100).toFixed(1)}% to ${(ra0 * 100).toFixed(1)}% a second as the idea ends (1.3 times at most)`); }
     assert.ok(chose, `${sk.id}: the demo chooses in a window`);
     assert.ok(chose.left >= .4 && chose.left <= .6, `${sk.id}: the choice lands with ${(chose.left * 100).toFixed(0)}% of the ring left (40–60%)`);
     // (one who jockeys, already on him by the scene's idea, works his way in from about 1.6 m to 0.9 m and lunges only as the ring empties)

@@ -12,7 +12,7 @@ const PLAY_MAX = 40;
 const TAP = 1.2; // tapAt: the hand's move to the button and its tap
 // (v76) A demo's crawl while its idea is said: the slowest and the fastest share of play's speed, and the most of the
 // window's play it may use up (demo.js crawlFor).
-const CRAWL = [.015, .06], CRAWL_U = .2, RING_DRAIN = [.12, .28]; // (RING_DRAIN: the least and most of the ring that drains while the idea is said)
+const CRAWL = [.015, .06], CRAWL_U = .2, RING_DRAIN = [.12, .29]; // (RING_DRAIN: the least and most of the ring that drains while the idea is said)
 // (v76) What each lesson's demo looks at once his head is up: the things the lesson is about. A look turns his head
 // only to those not on the screen yet; with all of them in sight (a view from above shows everything) he does not look
 // around at all. (See the coaching notes in the report: a scan is for finding what is around him before he decides;
@@ -121,7 +121,7 @@ export const demo = {
   // `left`: the share of the ring left as the choice lands (the ring counts from u0, where the demo's crawl ended).
   showClock(sec, left = .5) {
     const w = this.win; if (!w || this.skipping) return;
-    if (this.mode === 'demo' && this.sc?.run === 'follow') left = .44; // (after a shot: the hand taps once the ball is back out and rolling, not as it comes off the post or the keeper: a tap at that very moment left the rebound unplayed)
+    if (this.mode === 'demo' && this.sc?.run === 'follow') left = Math.min(left, .44); // (after a shot: the hand taps once the ball is back out and rolling, not as it comes off the post or the keeper: a tap at that very moment left the rebound unplayed)
     const u0 = w.demo?.u0 ?? 0, L0 = w.demo?.L0 ?? 1, u = u0 + (1 - Math.min(1, left / L0)) * (1 - u0); // (the ring shows L0 at u0: game/window.js timerUi)
     w.demo = { eta: w.real + Math.max(.5, sec), u: Math.max(u, Math.min(.9, (w.u || 0) + .05)), u0, L0 }; w.R = 99; // (R: no jockey's lunge at the end of a real window)
   },
@@ -133,10 +133,15 @@ export const demo = {
   crawlFor(sec, after = 5) {
     const w = this.win; if (!w || this.skipping) return;
     const crawl = Math.max(CRAWL[0], Math.min(CRAWL[1], CRAWL_U * w.G / Math.max(1, sec)));
-    w.demo = { crawl, u0: 0, r0: w.real, sec: Math.max(1, sec), drain: clamp(.5 * sec / (sec + after), RING_DRAIN[0], RING_DRAIN[1]) }; w.R = 99; // (the ring drains at about the pace it keeps after: half of it by the choice) // (the ring: RING_DRAIN over `sec`, evenly by real time)
+    const aim = this.sc?.run === 'follow' ? .44 : .5; // (v78: where showClock aims the ring after it: a demo after a shot taps a little later)
+    w.demo = { crawl, u0: 0, r0: w.real, sec: Math.max(1, sec), drain: clamp((1 - aim) * sec / (sec + after), RING_DRAIN[0], RING_DRAIN[1]) }; w.R = 99; // (the ring drains at about the pace it keeps after: half of it by the choice) // (the ring: RING_DRAIN over `sec`, evenly by real time)
     const P = this.push, rt = this.realTime || 0; if (P) Object.assign(P, { open: rt, peak: Math.min(1, (rt - P.t0) / P.out), end: rt + sec }); // (view.js PUSH: from here the view glides in, arriving as the idea ends)
   },
-  crawlEnd() { const w = this.win, d = w?.demo; if (d?.crawl != null) { const u = Math.min(.5, w.u || 0); w.demo = { u0: u, L0: Math.max(.6, 1 - d.drain * (w.real - d.r0) / d.sec) }; } this.push = null; },
+  crawlEnd() { const w = this.win, d = w?.demo; if (d?.crawl != null) { const u = Math.min(.5, w.u || 0); w.demo = { u0: u, L0: Math.max(.6, 1 - d.drain * (w.real - d.r0) / d.sec), rc: d.drain / d.sec }; } this.push = null; },
+  // (v78) Where the ring is aimed after the idea (the share left as the choice lands, 42% to 58%): the share that keeps it
+  // draining at the pace it had while the idea was said, over the `sec` seconds to the choice. Its pace used to jump as the
+  // idea ended (follow-shot: 3.9% to 7.0% a second).
+  ringAim(sec) { const d = this.win?.demo; return d?.rc ? clamp(d.L0 - d.rc * sec, .42, .58) : .5; },
   talkTime: (text, pause) => talkSec(text, pause),
   // How long showTaps takes for `opt` (real seconds), as it plays them.
   tapsSec(opt) {
@@ -188,7 +193,7 @@ export const demo = {
     this.showing = true; this.phase = 'decide'; this.pendingDir = null;
     if (!this.win && !this.skipping) this.openWindow(); // (v64: play goes on, slowly, while the hand shows the taps)
     if (this.skipping || !h) return;
-    this.showClock(this.tapsSec(opt)); // (v76: the choice lands with about half the ring left)
+    this.showClock(this.tapsSec(opt), this.mode === 'demo' && this.demoLeft != null ? this.demoLeft : .5); // (v76: the choice lands with about half the ring left; v78: a demo's, where ringAim put it)
     if (sc.kind === 'tackle') { this.step = 'tackle'; this.lookUp = true; this.handAt = 'stealBtn'; await this.delay(.6); return; } // tapped when the ball rolls loose (tackleGen)
     if (sc.kind === 'receive') { this.step = 'turn'; this.facePasser(); await this.delay(.4); }
     else if (!this.lookUp) { await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); await this.delay(.5); }
@@ -267,11 +272,12 @@ export const demo = {
     const K = this.sim.keeper('them'), goalLine = K ? 'Look at the goal. Where is the keeper?' : 'Look at the goal. Nobody in the way!', saw = sc.pattern === 'trap-one' ? 'Only one defender! ⚡' : 'Space ahead! 💨';
     const scan = sc.skill === 'look-up' && !mateId && !spotKind(sc) && !shot && sc.kind !== 'receive';
     if (sc.kind === 'tackle' || sc.kind === 'receive') this.lookUp = true;
+    const qPause = sc.run === 'follow' ? 2.8 : 1; // (v78: after a shot the time from the idea to the tap was short, and the ring's pace jumped as the idea ended: a longer look at the loose ball)
     const why = this.scanWhy(sc), sides = why === 'both' || why === 'around', back = why === 'shoulder' && !scan; // (v78: a scan with a reason, scanWhy)
     if (scan && why === 'shoulder') this.checkedBack = true; // ("Look up and scan!": its own look round goes as far as the one behind him)
     const lookSec = sides ? 3.5 : this.lookPoints(sc).filter(p => !this.onScreen({ x: p.x, y: p.y, z: p.z ?? .9 })).length * .8 + (back ? this.shoulderSec() : 0); // (lookTo: a glance for each thing not in sight yet; scanSides: left, right, on; shoulderLook)
     const after = () => (mateId ? lookSec + talkSec('Pass is open!', 1) : sc.kind === 'receive' ? talkSec(recv[0], .2) + 2.4 + talkSec(recv[1], .6) + .6
-      : sc.kind === 'lead' ? lookSec + talkSec('Pass is running!', .8) : spotKind(sc) ? lookSec + talkSec(q, 1) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : lookSec) + talkSec(saw, .8)) + (this.checkedBack || !back ? this.tapsSec(sc.best) : this.tapsSec(sc.best) - this.shoulderSec()); // (how long from the idea's end to the choice; his look over the shoulder is counted once)
+      : sc.kind === 'lead' ? lookSec + talkSec('Pass is running!', .8) : spotKind(sc) ? lookSec + talkSec(q, qPause) : shot ? talkSec(goalLine, .6) : (scan ? 3.5 : lookSec) + talkSec(saw, .8)) + (this.checkedBack || !back ? this.tapsSec(sc.best) : this.tapsSec(sc.best) - this.shoulderSec()); // (how long from the idea's end to the choice; his look over the shoulder is counted once)
     this.crawlFor(idea, after());
     await intro;
     if (tapLook) { await this.delay(.2); await this.tapAt('lookBtn'); this.lookUp = true; this.scanned = true; this.sfx('up'); this.handAt = null; if (shot) await this.glanceAtGoal(); }
@@ -279,7 +285,7 @@ export const demo = {
     if (this.push) this.push.end = (this.realTime || 0) + talkSec(tip, .8); // (the view arrives as the idea ends)
     await this.talk(tip, .8, capTip); // the lesson's one idea: let it sit (play crawls)
     this.crawlEnd();
-    this.showClock(after(), .52); // (aimed at 52% left until the taps start, where it is aimed at 50%: a line that runs long still leaves the choice in the middle, and the ring drains on at about the pace it had while the idea was said)
+    this.demoLeft = this.ringAim(after()); this.showClock(after(), Math.min(.6, this.demoLeft + .02)); // (aimed a little higher until the taps start: a line that runs long still leaves the choice in the middle; v78: the ring drains on at the pace it had while the idea was said, ringAim)
     const h = this.sim.a('hero');
     // (v76) Then he looks at what the lesson is about (LOOK_AT), and only where it is not in sight already: no look
     // left and right for nothing. "Look up!" itself looks around (that is the lesson); a shot, one glance at the goal.
@@ -305,7 +311,7 @@ export const demo = {
       await this.talk(`${this.name('m1')} is running!`, .8);
     } else if (spotKind(sc)) {
       if (why === 'around') await this.scanSides([...(sc.spots || []), this.sim.ball], this.yaw); else await this.lookTo(this.lookPoints(sc)); // (off the ball: he looks round for the space, and back to where he was looking)
-      await this.talk(q.replace(/ 👀$/, ''), 1, q);
+      await this.talk(q.replace(/ 👀$/, ''), qPause, q);
     } else if (shot) { // clear on goal (v72): one look at the goal and the keeper, then the shot (the ball is his to look at)
       await this.glanceAtGoal(.4); await this.talk(goalLine, .6, goalLine + (K ? ' 🧤' : ' 🥅'));
     } else {
@@ -328,6 +334,6 @@ export const demo = {
     // where the play happened (him and the ball), not the celebration camera, which by then shows his legs under the
     // words or an empty goal.
     if (!this.skipping) { const b = this.sim.ball; this.aimAt = { x: clamp(b.x, 2, L - 3), y: b.y }; this.camMode = 'overview'; await this.talk(this.cue(), 2.5); this.aimAt = null; }
-    this.hud.caption(''); this.skipping = false; this.showing = false; this.handAt = null; this.mode = 'between'; // the Skip button goes away
+    this.hud.caption(''); this.skipping = false; this.showing = false; this.handAt = null; this.demoLeft = null; this.mode = 'between'; // the Skip button goes away
   },
 };
