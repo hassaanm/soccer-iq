@@ -10,7 +10,7 @@ import { Sim } from '../sim.js';
 import { clamp, dist, cutBy, bodyHit, stealNow, REACH as FOOT, BODY_R, STEAL_R } from '../fast/rules.js';
 import * as K from './rondo.js';
 
-const PASS_R = 1.1, FREE = 3, PROTECT = 2.4, LOOK = .4, OFF_MAX = 2, LOOSE_R = .62, TACKLE_R = .95, WARN_AT = .15, SAFE = .5, FAVOR = .9, TAKE = 1;
+const PASS_R = 1.1, FREE = 2.5, PROTECT = 2.4, LOOK = .4, OFF_MAX = 2, LOOSE_R = .62, TACKLE_R = .95, WARN_AT = .15, SAFE = .5, FAVOR = .9, TAKE = 1;
 const SIDE = { keep: { hero: 'near', m1: 'left', m2: 'far', m3: 'right' }, win: { o1: 'far', o2: 'left', o3: 'right', o4: 'near' } };
 const unit = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1; return { x: dx / l, y: dy / l, l }; };
 
@@ -301,7 +301,9 @@ export class Rondo {
     }
   }
   // A friend with the ball: a touch to control it (fHold s), then a pass to an open friend (him, FAVOR of the time when
-  // his line is open; never when it is shut), else along his line away from the press.
+  // his line is open and no defender is within FREE m of where it would reach him; never when it is shut), else he
+  // protects it: along his line away from the press, then shielding it (tackles: only after his line stayed shut).
+  // A line that closes as he shapes to pass: he keeps it (pass).
   friendBall(id, dt) {
     const s = this.sim, D = this.D; if (this.busy.has(id) || this.flight || s.time - this.gotAt < D.fHold) return;
     if ((this.aiT -= dt) > 0) return; this.aiT = .3;
