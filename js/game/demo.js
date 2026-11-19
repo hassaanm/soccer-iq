@@ -81,11 +81,13 @@ export const demo = {
   // "Look up!"'s demo: he really looks around: head up, turn left, then right (past his shoulder, so he can see behind),
   // then settle on what he found. Shows a child that turning to look is part of the move.
   async lookAround(aim, wide = 1.5, right = wide) {
-    const turnTo = (to, sec) => { const y0 = this.yaw; return this.tween(sec, t => { this.yaw = y0 + wrap(to - y0) * smooth(t); }); };
+    // (v78) Each turn goes by its own angle from where the view is now, never `wrap(to - y0)`: with the view already far round
+    // (left 131°, then right 85° is 216° away) the short way is on round behind him, a full circle in the same direction.
+    const turnBy = (d, sec) => { const y0 = this.yaw; return this.tween(sec, t => { this.yaw = y0 + d * smooth(t); }); };
     const base = this.yaw;
-    this.hud.caption('👀 Look left…'); this.say('Look left.'); await turnTo(base + wide, 1);
-    this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnTo(base - right, 1.5);
-    await turnTo(aim, 1);
+    this.hud.caption('👀 Look left…'); this.say('Look left.'); await turnBy(wide, 1);
+    this.hud.caption('👀 …look right…'); this.say('Look right.'); await turnBy(-right - wide, 1.5); // (through straight ahead, to the other side)
+    await turnBy(base + wrap(aim - base) - this.yaw, 1); // (and on to `aim`, the short way from where he began)
   },
   // (v76) A look with a reason: his head turns to each of `pts` that is not on the screen yet, one glance each, and stays
   // on the last. Nothing to turn for: no turn.
