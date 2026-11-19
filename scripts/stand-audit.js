@@ -16,8 +16,11 @@
 //   restart  a dead ball before it is played (kick-off, a goal kick, a pass in from the side): reported, not limited
 // Flows: every lesson scene (generated, ids like gen-...-101) tapped at the middle of its window with its best choice, the
 // demo of every lesson, and MATCHES whole matches by a bot that looks up and taps the best choice part way in.
-// The limit (LIMIT, by phase): the share of standing seconds, at every size. Today's code (v78) stood in about half the
-// seconds of a window and of a match's live play.
+// The limit (LIMIT, by phase): the share of standing seconds, at every size. Before alive-shape (v78, 10 matches a size)
+// the players stood in 32-35% of a window's seconds, 82-84% of a demo's crawl, 26% of the play after a lesson's choice,
+// 5-12% of a match's live play and 3-4% of a run-up; after it, 11-12%, 12-15%, 3%, 2% and 3%. What still stands in a
+// window: a friend on the ball in slow motion (his carry is the play), a passer in his follow-through, a marker whose man
+// stands. At a dead ball (restart, 44-51% before and after) the players stand until it is played, as they do.
 //   node scripts/stand-audit.js [size] [--matches N] [--v]     (also run by scripts/motion-audit.js, at the end)
 import { register } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -30,7 +33,7 @@ export const STAND = { k: .12, yaw: 15, VW: 844, VH: 390 };
 // the game itself (his small moves on the spot not counted), less than ROOT.him m.
 export const ROOT = { ball: 2, him: .3 };
 // The most standing a phase may have (a share of its counted seconds).
-export const LIMIT = { runup: .25, window: .25, crawl: .25, outcome: .25, live: .25 };
+export const LIMIT = { runup: .08, window: .18, crawl: .2, outcome: .08, live: .06 };
 
 // ---- the poses: pro/motion.js, with three.js stood in for ----
 let animateRig = null;
