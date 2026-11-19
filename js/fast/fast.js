@@ -18,7 +18,7 @@ import { say } from '../ui/speech.js';
 import { sfx } from '../sound.js';
 import { Sim } from '../sim.js';
 import { PITCH, TEAM, sizeOf } from '../geom.js';
-import { held, setPause } from '../pause.js';
+import { held, setPause, onPause, later } from '../pause.js';
 import { FAST, FAST_GOALS } from './state.js';
 import { Match } from './match.js';
 import { makeMarks, shirt } from './marks.js';
@@ -33,7 +33,7 @@ const SLIDE = 12; // px a finger may wobble and still be a tap
 
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, html = '') { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); e.innerHTML = html; return e; }
-const press = (b, f) => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); f(e); });
+const press = (b, f) => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false) return; f(e); }); // (a second finger or a palm does nothing)
 
 class Fast {
   constructor() {
@@ -52,18 +52,24 @@ class Fast {
       <div id="fFoot" class="howpick"><button id="fIn" class="btn btn-gold" type="button" aria-label="Inside of the foot"></button><button id="fLaces" class="btn btn-gold" type="button" aria-label="Laces"></button></div>
       <div id="fNext" aria-hidden="true"><i>⚽</i><b>➜</b><i>🏆</i></div>
       <div id="fCue" aria-hidden="true"><i>👀</i><b>↔</b></div>
+      <div id="fPic" aria-hidden="true"></div>
       <div id="fChips">${'<button class="fChip" type="button" aria-label="A friend you saw"><span class="ptr"></span><span class="pic"></span></button>'.repeat(4)}</div>`);
     hudEl.appendChild(box); hudEl.appendChild(el('div', { id: 'fSheet', class: 'hidden' }, '<div class="fCard"><div class="fRow"></div></div>')); // (the sheet: also before play, while the rest is hidden)
     this.dom = { box, cue: $('#fCue'), avatar: $('#fAvatar'), look: $('#fLook'), act: $('#fAct'), hold: $('#fHold'), sheet: $('#fSheet'), row: $('#fSheet .fRow'), tunnel: $('#tunnel') };
-    // A press on a button (or a chip) acts as a tap; held longer it slows the world like a press anywhere (rules.js pressKind).
-    press(this.dom.look, e => this.down(e, () => { this.lookUp(true); this.acted('look'); }));
+    // LOOK UP and the action button act as the finger goes down, at once (a press that starts on them never slows the
+    // world); a chip acts as a tap and, held, slows the world like a press anywhere (rules.js pressKind).
+    press(this.dom.look, () => { if (!this.on || held.on) return; this.lookUp(true); this.acted('look'); });
     this.dom.chips = [...box.querySelectorAll('.fChip')].map(b => { const c = { b, id: null, key: '', tf: '', o: -1 }; press(b, e => this.down(e, () => { if (c.id && c.tap) { this.passTo(c.id); this.stats.chipPasses++; } })); return c; });
     press(this.dom.avatar, () => { if (!this.on || this.m?.over) return; if (!held.on) setPause(true, 'button'); this.openSheet(id => { this.setMe(id); setPause(false); }); });
-    press(this.dom.act, e => this.down(e, () => this.action()));
+    press(this.dom.act, () => { if (!this.on || held.on) return; this.action(); });
     // the foot (inside or laces): the game's own pictures (index.html #footIn, #footLaces), a tap picks
     this.dom.foot = $('#fFoot'); for (const [id, src, foot] of [['#fIn', '#footIn', 'in'], ['#fLaces', '#footLaces', 'las']]) { const b = $(id); b.innerHTML = $(src)?.innerHTML || foot; press(b, () => this.shootWith(foot)); }
     this.marks = makeMarks(world);
     canvas.addEventListener('pointerdown', e => this.down(e));
+    // a touch the page lost (the app hidden, the window left): drop it, so the next one works
+    const lost = () => this.dropFinger(); addEventListener('blur', lost); addEventListener('pagehide', lost); document.addEventListener('visibilitychange', lost);
+    onPause(on => { if (on && this.on) { this.resetTransient(); this.placePlay(); } });
+    this.dom.pic = $('#fPic');
     addEventListener('pointermove', e => this.move(e));
     addEventListener('pointerup', e => this.up(e));
     addEventListener('pointercancel', e => this.up(e, true));
@@ -79,6 +85,7 @@ class Fast {
   pick(us) { this.build(); this.us = us; this.me = this.me && this.ids().includes(this.me) ? this.me : 'hero'; return new Promise(res => this.openSheet(id => { this.me = id; res(id); })); }
   setMe(id) {
     const m = this.m; if (!m || id === this.me) { this.drawAvatar(); return; }
+    this.resetTransient();
     m.cmd.delete(this.me); this.me = m.me = m.favor = id; m.meMove = null; m.roles = null;
     this.yaw = this.natural(); this.drawAvatar(); this.lookUp(true); this.stats.swaps++;
     game.plog?.('fast', { is: 'swap', me: id });
@@ -96,7 +103,8 @@ class Fast {
     m.setup('us'); m.kickoff('us');
     this.real = 0; this.slow = this.slowTo = BASE; this.look = 1; this.up1 = true; this.yaw = 0; this.holdYaw = null; this.holdT = 0; this.finger = null; this.holding = false;
     this.ui.clock = 0; this.ui.glow = {}; this.ui.aims = null; this.ui.lines = null; this.warnAt = null; this.warnT = 0; this.over = false;
-    this.seen = {}; this.chipsKey = null;
+    this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
+    this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
     this.aiming = this.footing = false; this.ui.ballGlow = false; this.actKind = null; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, skills: 0, chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.camNow(1);
@@ -107,12 +115,15 @@ class Fast {
     m.on.goal = team => this.goal(team);
     m.on.warn = k => { this.warnAt = k; this.warnT = this.real + 1.6; sfx('ping'); };
     m.on.theirShot = (id, res) => this.keeperTurn(id, res);
+    m.on.cutOut = f => { if (f.me) this.showPic('<i class="cut">⚽</i><i>✋</i>'); }; // (his pass cut out: a ball and a stopping hand, not the skill's picture)
     this.lastScan = 0; this.cueT = -99; this.kBusy = false; this.kClear = 0; this.sudden = false; this.dom.box.querySelector('#fNext').classList.remove('show');
     m.on.lost = was => { if (was === this.me) { this.lookUp(true); say('Where is the ball?'); } };
     game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id });
     return new Promise(res => { this.done = res; });
   }
   stop() {
+    if (this.dom) this.resetTransient();
+    for (const k of ['look', 'cue', 'pic']) this.dom?.[k]?.classList.remove('show'); this.dom?.box.querySelector('#fNext')?.classList.remove('show');
     FAST.on = this.on = false; this.marks?.hide(); this.dom?.box.classList.remove('on'); this.dom?.sheet.classList.add('hidden'); hudEl.classList.remove('fpicking');
     const t = this.dom?.tunnel; if (t) { t.style.opacity = 0; t.classList.remove('on'); t.style.transform = ''; }
     this.ui.glow = {}; this.ui.aims = null; this.ui.ballGlow = false; this.aiming = this.footing = false; this.dom?.foot.classList.remove('show'); this.dom?.act.classList.remove('show'); this.actKind = null; this.finger = null; this.holding = false; this.dom?.box.classList.remove('slowing');
@@ -135,6 +146,7 @@ class Fast {
   }
   goal(team) {
     const m = this.m, won = m.score[team] >= GOALS || this.sudden;
+    this.resetTransient();
     hud.score(m.score, this.us, this.them); hud.banner(team === 'us' ? 'GOAL!' : 'Their goal', team === 'us' ? 'goal' : 'bad');
     if (team === 'us') say(m.lastOwner === this.me ? 'Great choice!' : 'Great pass!');
     game.plog?.('fast', { is: 'goal', team, us: m.score.us, them: m.score.them, by: m.lastOwner });
@@ -163,18 +175,37 @@ class Fast {
   }
   camNow(snap = 0, dt = 0) {
     const s = this.sim, h = s.a(this.me); if (!h) return;
-    const b = s.ball, w = R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam; // (the pitch fills the picture: rules.js fitPitch)
+    const b = s.ball, w = this.aiming ? R.aimCam(h, PITCH.L, PITCH.gy0, PITCH.gy1, PITCH.gh, world.width || 932, world.height || 430, spaces()) : R.fitPitch(R.camSpec(h, b, b.state === 'carried' && b.carrier === this.me, this.yaw, this.look), h, world.width || 932, world.height || 430, PITCH.L, PITCH.W, this.finger?.moved ? [] : [{ x: b.x, y: b.y, z: b.z || 0 }]), k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam; // (the pitch fills the picture: rules.js fitPitch)
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
-    c.Ff += (w.Ff - c.Ff) * k; c.Fw += (w.Fw - c.Fw) * k;
+    c.Ff += (w.Ff - c.Ff) * k; c.Fw += ((w.Fw || 0) - c.Fw) * k;
   }
   // ---------- touches ----------
   // A finger goes down: on the grass (onTap: none, a tap picks what is under it) or on a button (onTap: its action).
   down(e, onTap = null) {
+    if (this.finger && performance.now() - this.finger.t0 > 5000) this.dropFinger(); // (an old touch whose lift never came)
     if (!this.on || held.on || e.isPrimary === false || this.over || this.finger) return;
     e.preventDefault();
+    if (this.aiming) { if (!this.footing && !onTap) { const r = canvas.getBoundingClientRect(); this.aimAt(e.clientX - r.left, e.clientY - r.top); } return; } // (while he aims, a press of any length on a target picks it; nothing slows or speeds the world)
     const r = canvas.getBoundingClientRect(), f = this.finger = { id: e.pointerId, x0: e.clientX - r.left, y0: e.clientY - r.top, t0: performance.now(), yaw0: this.yaw, moved: false, held: false, w: r.width || world.width, onTap };
     f.timer = setTimeout(() => { if (this.finger === f && !held.on) this.hold(f); }, HOLD_MS);
   }
+  // Drops a touch in progress (and its hold), as if the finger had lifted with no tap.
+  dropFinger() { const f = this.finger; if (!f) return; clearTimeout(f.timer); this.finger = null; if (f.held) { this.holding = false; if (!this.aiming) this.slowTo = BASE; this.dom.box.classList.remove('slowing'); } }
+  // Everything that lasts only a moment, put back: a touch and its hold, the slow tint, the aim, a warning, where he was
+  // going, the hints, the reminder. At a goal, a keeper turn, a pause, a swap and the end.
+  resetTransient() {
+    this.dropFinger(); this.holding = false; this.holdYaw = null; this.holdT = 0; this.dom.box.classList.remove('slowing');
+    if (this.aiming) this.endAim(); this.slowTo = BASE; this.warnAt = null; this.goAt = null; this.hinted = null; this.hintCounted = false; this.lastAct = this.real || 0;
+    this.dom.cue.classList.remove('show'); hudEl.classList.remove('faiming');
+  }
+  // The big play button while paused: low in the middle, or in the very middle, whichever is farther from his player and
+  // the ball on the screen (as js/ui/pause.js place does for the Slow game's player).
+  placePlay() {
+    try { const s = this.sim, h = s.a(this.me), b = s.ball, W = innerWidth, H = innerHeight, pts = [h && world.project(h.x, h.y, 0), h && world.project(h.x, h.y, 1.8), b && world.project(b.x, b.y, b.z || 0)].filter(Boolean);
+      const near = (x, y) => Math.min(...pts.map(p => Math.hypot(p[0] - x, p[1] - y)), 1e9); hudEl.classList.toggle('playmid', near(W / 2, H / 2) > near(W / 2, H - 72)); } catch { /* no picture yet */ }
+  }
+  // A small picture over the play for a moment (a skill move's picture, a pass cut out): no words to read.
+  showPic(html) { const p = this.dom.pic; p.innerHTML = html; p.classList.remove('show'); void p.offsetWidth; p.classList.add('show'); clearTimeout(this.picT); this.picT = later(() => p.classList.remove('show'), 1500); }
   hold(f) { if (f.held) return; f.held = true; this.lastScan = this.real; this.holding = true; this.slowTo = HOLD; this.stats.holds++; sfx('down'); this.dom.hold.classList.remove('show'); this.dom.box.classList.add('slowing'); }
   move(e) {
     const f = this.finger; if (!f || e.pointerId !== f.id || held.on) return;
@@ -184,7 +215,7 @@ class Fast {
   }
   up(e, cancel = false) {
     const f = this.finger; if (!f || e.pointerId !== f.id) return; this.finger = null; clearTimeout(f.timer);
-    if (f.held) { this.holding = false; this.slowTo = BASE; this.holdT = this.real + VIEW_BACK; sfx('up'); this.dom.box.classList.remove('slowing'); return; } // (play eases back over BACK_S; the view stays where he left it a moment, then eases back)
+    if (f.held) { this.holding = false; if (!this.aiming) this.slowTo = BASE; this.holdT = this.real + VIEW_BACK; sfx('up'); this.dom.box.classList.remove('slowing'); return; } // (play eases back over BACK_S; the view stays where he left it a moment, then eases back)
     if (cancel || f.moved || held.on || !this.on) return;
     if (f.onTap) f.onTap(); else { const r = canvas.getBoundingClientRect(); this.tap(e.clientX - r.left, e.clientY - r.top); }
   }
@@ -255,12 +286,12 @@ class Fast {
     const spec = matchShot(from, start, Math.random()), lead = m.score.us - m.score.them, k = lead > 0 ? .7 : 1.2;
     spec.dive *= k; spec.stand *= k;
     this.stats.keeperTurns++; game.plog?.('fast', { is: 'keeper', shooter, lead, zone: spec.zone });
-    s.stopAll(); m.flight = null; this.finger = null; this.holding = false; this.endAim(); this.slowTo = this.slow = BASE;
+    s.stopAll(); m.flight = null; this.resetTransient(); this.slow = BASE;
     this.on = false; this.marks.hide(); this.dom.box.classList.remove('on'); const t = this.dom.tunnel; t.style.opacity = 0; t.classList.remove('on'); this.edgeO = 0;
     hud.caption('🧤 ' + SAID.youre); say(SAID.youre);
     const g = { sim: s, cam: this.cam, ui: this.ui };
     let r; try { r = await this.goalie.inMatch(g, spec, shooter); } catch (e) { console.error(e); r = { res: 'goal' }; }
-    hud.caption(''); this.cam = g.cam; this.on = true; this.dom.box.classList.add('on'); this.kBusy = false;
+    hud.caption(''); this.cam = g.cam; this.on = true; this.dom.box.classList.add('on'); this.kBusy = false; this.resetTransient();
     game.plog?.('fast', { is: 'keeperEnd', res: r?.res });
     if (r?.res === 'save') { this.stats.saves++; m.giveTo('k1', 'save'); hud.toast('🧤 Saved!'); }
     else m.goal('them');
@@ -297,8 +328,9 @@ class Fast {
   // SHOOT: the world nearly stops, his head comes up to the goal, the six targets show (the game's own); a tap on one,
   // then the foot; then it plays (js/shot.js shotResult says what it does).
   aim() {
-    this.aiming = true; this.footing = false; this.slowTo = .08; this.lookUp(true); this.holdT = 0; this.aimT = this.real;
+    this.dropFinger(); this.aiming = true; this.footing = false; this.slowTo = .08; this.lookUp(true); this.holdT = 0; this.aimT = this.real;
     this.ui.aims = spaces().map(z => ({ x: PITCH.L + .02, y: z.y, z: z.z, id: z.id }));
+    hudEl.classList.add('faiming'); // (the score bar, chips and marks step aside: the goal and its six targets fill the clear band)
     sfx('ping'); game.plog?.('fast', { is: 'aim' });
   }
   aimAt(x, y) {
@@ -320,7 +352,7 @@ class Fast {
     if (res.res === 'save') say('Saved!'); else if (res.res === 'over' || res.res === 'wide') say('So close!');
     game.plog?.('fast', { is: 'shot', zone: this.zone, foot, res: res.res });
   }
-  endAim() { this.aiming = this.footing = false; this.ui.aims = null; this.dom.foot.classList.remove('show'); if (!this.holding) this.slowTo = BASE; }
+  endAim() { this.aiming = this.footing = false; this.ui.aims = null; this.dom.foot.classList.remove('show'); hudEl.classList.remove('faiming'); if (!this.holding) this.slowTo = BASE; }
   // STEAL: in time it is his (shown slow); too soon or too late he lunges, is slowed, and the carrier gets past.
   steal() {
     const r = this.m.steal(); if (!r) return;
@@ -345,7 +377,7 @@ class Fast {
     this.skT = s.time; this.stats.skills++; m.safeT = s.time + 1.3;
     if (foe) { s.go(foe.id, foe.x, foe.y, 0); m.cmd.set(foe.id, s.time + .9); } // fooled: he stops a moment
     this.slowTo = .3; m.after(.9, () => { if (!this.holding) this.slowTo = BASE; s.flair = null; s.taps = null; });
-    hud.toast('✨ ' + (MOVE_NAME[mv] || 'Skill') + '!'); say((MOVE_NAME[mv] || 'Skill') + '!'); world.fx('skill');
+    this.showPic(`<svg viewBox="0 0 100 100" aria-hidden="true"><use href="#mv-${mv}"/><circle cx="50" cy="78" r="9" fill="#fff" stroke="#24193a" stroke-width="3"/></svg><i>✨</i>`); say((MOVE_NAME[mv] || 'Skill') + '!'); world.fx('skill');
     game.plog?.('fast', { is: 'skill', move: mv });
   }
 
@@ -378,7 +410,7 @@ class Fast {
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
     if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = true; this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); game.plog?.('fast', { is: 'nextGoalWins' }); }
     if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
-    const c = m.owner(); this.ui.ballGlow = this.actKind === 'steal' && !!c && R.stealNow(s.a(c), s.ball, h); this.stealGlow = this.ui.ballGlow;
+    this.ui.ballGlow = this.actKind === 'steal' && m.stealOpen(); this.stealGlow = this.ui.ballGlow;
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > 8)) this.endAim();
     if (this.aiming) this.yaw = R.wrap(this.yaw + R.wrap(Math.atan2(PITCH.W / 2 - h.y, PITCH.L - h.x) - this.yaw) * (1 - Math.exp(-dt * 6)));
     if (this.warnAt && (this.real > this.warnT || !has)) this.warnAt = null;
@@ -406,24 +438,20 @@ class Fast {
       if (on) { sn.seenAt = now; sn.x = a.x; sn.y = a.y; }
       list.push({ id, seenAt: this.m.dead ? null : sn.seenAt, on });
     }
-    const chips = h ? R.chipList(list, now, has) : [], placed = [];
-    for (const c of chips) {
-      const sn = this.seen[c.id], q = world.project(sn.x, sn.y, .9);
-      let p;
-      if (q && !R.onScreen(q, w, hh, 34)) p = R.edgeAt(q, false, w, hh, 34);
-      else if (q) p = [q[0] < w / 2 ? 34 : w - 34, q[1]]; // (his last place is on screen but he is not to be seen there: the nearer side edge, never over the play)
-      else { const rel = R.wrap(Math.atan2(sn.y - h.y, sn.x - h.x) - this.yaw); p = [rel > 0 ? 34 : w - 34, hh * .62]; }
-      p[1] = R.clamp(p[1], 84, hh - 150); // (clear of the score at the top and of LOOK UP and the action button at the bottom)
-      for (let k = 0; k < 4; k++) for (const o of placed) if (Math.hypot(o[0] - p[0], o[1] - p[1]) < 58) p[1] = p[1] + 60 > hh - 150 ? p[1] - 60 : p[1] + 60;
-      placed.push(p); c.p = p; c.ang = Math.atan2((q ? q[1] : hh * .62) - p[1], (q ? q[0] : p[0] < w / 2 ? -1e3 : 1e4) - p[0]);
+    const chips = h && !this.aiming ? R.chipList(list, now, has) : [];
+    for (const c of chips) { // (on the side edges only: rules.js chipSpot, layoutChips)
+      const sn = this.seen[c.id], q = world.project(sn.x, sn.y, .9), rel = R.wrap(Math.atan2(sn.y - h.y, sn.x - h.x) - this.yaw);
+      c.p = R.chipSpot(q, rel, w, hh); c.q = q;
     }
+    R.layoutChips(chips.map(c => c.p), hh);
+    for (const c of chips) c.ang = c.q ? Math.atan2(c.q[1] - c.p[1], c.q[0] - c.p[0]) : (c.p[0] < w / 2 ? Math.PI * .75 : Math.PI * .25);
     this.dom.chips.forEach((d, i) => {
       const c = chips[i]; d.id = c?.id || null; d.tap = !!c?.tap;
       const o = c ? Math.round(c.alpha * 20) / 20 : 0; if (o !== d.o) { d.o = o; d.b.style.opacity = o; d.b.style.pointerEvents = o > .05 ? 'auto' : 'none'; }
       if (!c) return;
       const key = c.id + (c.gold ? 'g' : ''); if (key !== d.key) { d.key = key; d.b.querySelector('.pic').innerHTML = shirt(this.us, this.player(c.id).num, 30); d.b.classList.toggle('gold', c.gold); }
       const tf = `translate(${Math.round(c.p[0] - 24)}px,${Math.round(c.p[1] - 24)}px)`; if (tf !== d.tf) { d.tf = tf; d.b.style.transform = tf; }
-      d.b.style.setProperty('--a', Math.round(c.ang * 57.3 / 5) * 5 + 'deg');
+      const a = Math.round(c.ang * 57.3 / 5) * 5 + 'deg'; if (a !== d.a) { d.a = a; d.b.style.setProperty('--a', a); }
     });
   }
   seen1(p, z) { const q = world.project(p.x, p.y, z); return !!q && R.onScreen(q, world.width, world.height, 10); }

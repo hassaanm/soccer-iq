@@ -68,16 +68,44 @@ test('his head goes down only as a ball comes to him, never on his own dribble, 
   assert.equal(R.headDownOn('m1', 'hero', 'pass'), false, 'a friend getting it: his head stays up');
 });
 
-test('a steal at the wrong time fails (he lunges, the carrier goes on); at the right time it wins', () => {
-  for (const right of [false, true]) {
+test('a steal: the ball off his foot opens a window (at least 0.7 s at the default level); a press in it wins, one outside it is a lunge', () => {
+  for (const when of ['in', 'none', 'after']) {
     const { sim, m } = match(); m.me = 'hero'; m.meAuto = false; m.dead = false;
+    assert.ok(m.opp.glow / .75 >= .7, `the window lasts ${(m.opp.glow / .75).toFixed(2)} s of real time`);
     park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); sim.give('o1');
-    const b = sim.ball; Object.assign(b, { x: right ? 14.3 : 15.3, y: W / 2 }); // (right: rolled off his foot, toward him)
-    assert.equal(R.stealNow(sim.a('o1'), b, sim.a('hero')), right);
+    Object.assign(sim.ball, { x: when === 'none' ? 15.3 : 14.3, y: W / 2 }); // (off his foot toward him, or at his foot)
+    m.stealWindow(); assert.equal(m.stealOpen(), when !== 'none');
+    if (when === 'after') sim.time += m.opp.glow + .01;
     const r = m.steal();
-    assert.equal(r, right ? 'won' : 'missed'); assert.equal(m.owner(), right ? 'hero' : 'o1');
-    if (!right) { run(m, sim, .5); assert.equal(m.owner(), 'o1', 'the carrier keeps it'); }
+    assert.equal(r, when === 'in' ? 'won' : 'missed', when); assert.equal(m.owner(), when === 'in' ? 'hero' : 'o1');
+    if (r === 'missed') assert.ok(m.meMove.kind === 'lunge' && m.meMove.until - sim.time >= 1, 'a lunge costs him about 1.5 s');
   }
+});
+
+test('the shot view: from every place SHOOT shows, all six targets on screen, under the HUD, at least 56 px apart', async () => {
+  const { spaces, EDGE } = await import('../js/shot.js');
+  for (const [w, h] of [[844, 390], [932, 430]]) {
+    let n = 0;
+    for (let x = L - EDGE; x <= L - 1; x += .5) for (let y = .7; y <= W - .7; y += .5) {
+      if (Math.hypot(L - x, W / 2 - y) > EDGE) continue; n++;
+      const t = spaces(), cam = R.aimCam({ x, y }, L, PITCH.gy0, PITCH.gy1, PITCH.gh, w, h, t), q = t.map(z => R.project(cam, { x: L + .02, y: z.y, z: z.z }, w, h));
+      for (const p of q) { assert.ok(R.onScreen(p, w, h, 30), `on screen from ${x},${y}`); assert.ok(p[1] >= R.HUD_PX + 4, `under the HUD from ${x},${y}: ${p[1].toFixed(0)}`); }
+      let g = 1e9; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) g = Math.min(g, Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]));
+      assert.ok(g >= 56, `${g.toFixed(0)} px apart from ${x},${y} at ${w}x${h}`);
+    }
+    assert.ok(n > 20);
+  }
+});
+
+test('chips sit only on the side edges, clear of the HUD and the bottom buttons, never over each other or the middle', () => {
+  const rnd = seeded(4), w = 844, h = 390;
+  for (let i = 0; i < 300; i++) {
+    const ps = Array.from({ length: 3 }, () => R.chipSpot(rnd() < .2 ? null : [rnd() * 3000 - 1000, rnd() * 1600 - 600], rnd() - .5, w, h));
+    R.layoutChips(ps, h);
+    for (const p of ps) { assert.ok(p[0] <= 56 || p[0] >= w - 56, 'an edge'); assert.ok(p[1] >= R.CHIP_Y0 && p[1] <= h - R.CHIP_Y1, 'clear of the HUD and the buttons'); }
+    for (let a = 0; a < 3; a++) for (let b = a + 1; b < 3; b++) if (ps[a][0] === ps[b][0]) assert.ok(Math.abs(ps[a][1] - ps[b][1]) >= R.CHIP_GAP - 1e-9 || h - R.CHIP_Y1 - R.CHIP_Y0 < 2 * R.CHIP_GAP, 'apart');
+  }
+  assert.deepEqual(R.chipSpot(null, 1, w, h), [R.CHIP_X, h - R.CHIP_Y1], 'behind him to his left: low on the left edge');
 });
 
 test('friends pass to him clearly more when his line is open, and never when it is blocked', () => {

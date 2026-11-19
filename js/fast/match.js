@@ -16,7 +16,7 @@ import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, REACH as FOOT_
 import { shotResult } from '../shot.js';
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
-export const WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1;
+export const WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
 // LEVEL, 0 (gentle) to 1 (as quick as his own friends), scales everything about them: how fast they dribble, close him
 // down and mark, how long they need on a player to take the ball (from him standing on it: STAND), how quickly they get
@@ -28,7 +28,7 @@ export let LEVEL = .5;
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
   const k = clamp(level, 0, 1);
   return { run: 2.2 + .8 * k, press: 2.8 + 1.3 * k, mark: 2.4 + .9 * k, markEvery: 1.1 - .6 * k, tackle: 1.2 - .5 * k, stand: 3.6 - 1.6 * k,
-    cutRun: 3.3 + 1.5 * k, cutReact: .5 - .3 * k, passK: .82 + .18 * k, shootP: .4 + .45 * k, range: 8.5 + 3 * k, loose: .3 * (1 - k), keeper: .12 + .23 * k };
+    cutRun: 3.3 + 1.5 * k, cutReact: .5 - .3 * k, passK: .82 + .18 * k, shootP: .4 + .45 * k, range: 8.5 + 3 * k, loose: .3 * (1 - k), keeper: .12 + .23 * k, glow: 1.15 - .7 * k, glowGap: 1.6 + 1.2 * k }; // (glow: the steal window, game s; glowGap: until the next one can open)
 }
 
 export class Match {
@@ -183,10 +183,19 @@ export class Match {
   // ---------- a steal (his STEAL button) ----------
   // At the right time (the ball off the carrier's foot, within his reach: rules.js stealNow) he wins it. Any other time
   // he lunges and misses: he is slowed a moment (LUNGE_T s) and the carrier gets past him.
+  // The window: opened when the ball first rolls off their carrier's foot within his reach (rules.js stealNow), it lasts
+  // opp.glow s (the ball glows; the carrier slows a little, a looser touch); after it, none for opp.glowGap s.
+  stealOpen() { const w = this.stealWin; return !!w && w.c === this.owner() && this.sim.time < w.until; }
+  stealWindow() {
+    const s = this.sim, c = this.owner(), me = s.a(this.me), t = s.time;
+    if (this.stealWin && (this.stealWin.c !== c || t >= this.stealWin.until)) { this.stealWin = null; this.stealNext = t + this.opp.glowGap; }
+    if (!this.stealWin && c && this.team(c) === 'them' && me && !this.dead && t >= (this.stealNext || 0) && this.meMove?.kind !== 'lunge' && stealNow(s.a(c), s.ball, me)) this.stealWin = { c, until: t + this.opp.glow };
+  }
   steal() {
     const s = this.sim, c = this.owner(), me = s.a(this.me); if (!c || this.team(c) !== 'them' || !me || this.dead) return null;
     const ca = s.a(c), b = s.ball;
-    if (stealNow(ca, b, me)) { this.fx('won'); this.giveTo(this.me, 'steal'); return 'won'; }
+    if (this.stealOpen()) { this.stealWin = null; this.fx('won'); this.giveTo(this.me, 'steal'); return 'won'; }
+    this.stealWin = null; this.stealNext = s.time + LUNGE_T;
     // the lunge: at the ball, short of it; he stops there a moment, and the carrier goes on past, safe for a moment
     const dx = b.x - me.x, dy = b.y - me.y, l = Math.hypot(dx, dy) || 1, r = Math.min(l, 1.1);
     s.go(this.me, me.x + dx / l * r, me.y + dy / l * r, 3); this.cmd.set(this.me, s.time + LUNGE_T); this.meMove = { kind: 'lunge', until: s.time + LUNGE_T };
@@ -230,6 +239,7 @@ export class Match {
       this.flight = null;
       this.chase(b);
     }
+    this.stealWindow();
     // tackles
     const c = this.owner();
     if (c && !b.reach) {
@@ -263,7 +273,7 @@ export class Match {
     }
     this.passFrom = f.from; this.giveTo(f.to, 'pass');
   }
-  cutOut(f, id) { if (f.me) this.count.cut++; else if (f.team === 'them' && id === this.me) { /* his own cut: counted in giveTo */ } if (f.team === 'us' && !f.me) this.count.theirCut++; this.fx('stolen'); this.giveTo(id, 'cut'); }
+  cutOut(f, id) { if (f.me) this.count.cut++; else if (f.team === 'them' && id === this.me) { /* his own cut: counted in giveTo */ } if (f.team === 'us' && !f.me) this.count.theirCut++; this.fx('stolen'); this.on.cutOut?.(f, id); this.giveTo(id, 'cut'); }
   // A loose ball: the nearest of each side (not his player: he goes when he says) runs to it; anyone within reach has it.
   chase(b) {
     const s = this.sim;
@@ -381,6 +391,7 @@ export class Match {
   // player FAVOR to 1 when his line is open), else dribble at goal, away from the nearest defender.
   aiCarrier(id, dt) {
     const s = this.sim, a = s.a(id), team = this.team(id), dx = this.dir(team);
+    if (this.stealOpen() && this.stealWin.c === id) { s.go(id, clamp(a.x + dx * .8, 1, this.L - 1), a.y, 1.3); return; } // (his steal window: a loose touch, the carrier slows and does nothing else)
     if ((this.aiT -= dt) > 0) return; this.aiT = .45;
     // his friends look for him near goal: when his line is open and he is within FIND m of their goal, they pass to him
     // FIND_P of the time before they would shoot themselves
