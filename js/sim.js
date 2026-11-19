@@ -386,13 +386,14 @@ export class Sim {
   // last touch a move can be set off at, the gap LATE m or more up to it), dl (metres of his run to it), T (game seconds
   // to it), and start(at): the touch a move wanting that gap starts at. `wary`: see WARY. j0: the first touch to count (1:
   // between touches, when this one has gone by).
-  moveEvents(a, tgt, upto = 12, wary = 0, j0 = 0) {
+  moveEvents(a, tgt, upto = 12, wary = 0, j0 = 0, raw = false) {
     const b = this.ball, ch = Math.cos(b.h), sh = Math.sin(b.h), sp = Math.max(a.sp, 1.5), now = touchAt(a), k0 = Math.floor(now + 1e-6);
     const dNext = (k0 + 1 - now) * (now - k0 < .05 ? touchLen(this, a) : a.tL || 1.4); // (his run to the next touch; just after a touch, the one it will be)
     let vx = tgt.lv?.[0] || 0, vy = tgt.lv?.[1] || 0; const rx = tgt.x - a.x, ry = tgt.y - a.y;
     if (wary) { const d = Math.hypot(rx, ry) || 1; vx -= rx / d * wary; vy -= ry / d * wary; } // (judging ahead: as if he came at him `wary` m/s faster, as a defender who sets off to press does)
     const at = j => { const d = dNext + j * 1.4, t = d / sp, x = rx + vx * t - ch * d, y = ry + vy * t - sh * d; return [x * ch + y * sh, y * ch - x * sh]; };
     const gap = j => at(j)[0], side = j => at(j)[1];
+    if (raw) return gap(j0); // (just the gap)
     if (gap(j0) < LATE) return null;
     let j = j0; while (j < upto && gap(j + 1) >= LATE) j++;
     const dl = j ? dNext + (j - 1) * 1.4 : 0;
@@ -405,9 +406,12 @@ export class Sim {
   // (a.fizzle: the game shows it). The move: a.skill, as any dribble skill, with `good` (false: the defender is not fooled).
   fireArmed(a) {
     const o = a.armed, t = this.a(o.tgt); if (!t) { a.armed = null; a.fizzle = this.time; a.fizzleWhy = 'gone'; return; }
-    const ev = this.moveEvents(a, t, 2), n0 = a.tN || 0;
-    if (!ev) { a.armed = null; a.fizzle = this.time; a.fizzleWhy = 'late'; return; }
-    const g = ev.gap(0), lastHere = ev.last === n0 || n0 >= o.last + 3; // (the last touch as things are now: a defender who slowed down gives more time than the offer judged)
+    const ev = this.moveEvents(a, t, 2), n0 = a.tN || 0, g = ev ? ev.gap(0) : this.moveEvents(a, t, 2, 0, 0, true);
+    // (review: a defender who came on faster than judged must not leave an armed move hanging: it starts now while he is still
+    // .6 m or more off as it would start (he goes in at it, and the play's rule takes over); only nearer than that is it dropped)
+    if (!ev) { if (g >= .6 && this.exitGap(a, n0 + 1) >= EXIT_FREE) { a.skill = { k: o.k, n: n0 + 1, fake: o.fake, yaw: this.ball.h, why: o.why, fl: o.fl, tgt: o.tgt, good: o.good, tap: o.tap, gap: g }; a.armed = null; return; }
+      a.armed = null; a.fizzle = this.time; a.fizzleWhy = 'late'; return; }
+    const lastHere = ev.last === n0 || n0 >= o.last + 3; // (the last touch as things are now: a defender who slowed down gives more time than the offer judged; one who came on faster: see above)
     if (g > o.at + .7 && !lastHere && n0 + 1 < o.n) return; // (not yet: neither at its distance, give or take half a touch, nor at the touch judged for it as it was offered)
     // (the touch after the fake takes the ball on: never to the side of the fake; if this touch's would, wait one more, when there is one)
     if (o.good && Math.sign(SIDE[(n0 + 2) % 3]) === o.fake && !lastHere && ev.gap(1) >= LATE) return;

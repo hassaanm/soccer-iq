@@ -4,6 +4,7 @@ import { lerp, clamp, dist, interceptor, dribbleEnd, closestOnLane, BACKWARD, PI
 import { pushEnd, DEF_RUN, takeOn, LEAD, SHOT, leadPoint, legBounce, grade, exploit as exploitOf } from '../generate.js';
 import { L, W, gy0, gy1, MATE, ROSTER, faceTo } from './shared.js';
 import { flairOf } from '../flair.js';
+import { SAW } from './skill.js'; // (v78: the words after a skill move to the wrong side)
 import { placedAim, rightFoot, shotResult, zone, zoneGrade, bestZone, stream, DUEL, GUESS_T, LOW_Z } from '../shot.js';
 
 const GUESS_PLACED = .1; // (see guessWrong)
@@ -46,6 +47,7 @@ export const outcomes = {
   // (round 6) Nobody ends a play standing at the shoulder of the player on the ball: one of the other team within a
   // step and a half of him goes in for it first, and misses (this.challenge): the play ends with him beaten, going past.
   *end(result, wait) {
+    if (this.sk?.phase === 'move') { const t0 = this.sim.time; yield () => this.sk?.phase !== 'move' || this.sim.time - t0 > .8; } // (v78: a skill move he picked plays to its end before the result shows, game/skill.js)
     const s = this.sim, c = s.ball.carrier && s.ball.state !== 'flying' ? s.a(s.ball.carrier) : null, o = c && !c.gk && (this.mode === 'match' || this.mode === 'free') ? this.onHim(c) : null;
     if (o && result !== 'goal' && result !== 'goalAgainst') { yield* this.challenge(o, c); s.stop(c.id); }
     // (One who went in a moment ago and is still at his shoulder is carried on past him, off balance, and turns: he does not stand there.)
@@ -54,7 +56,7 @@ export const outcomes = {
       const ux = (c.x - f.x) / (d || 1), uy = (c.y - f.y) / (d || 1), sd = Math.sign(ux * (f.ty - f.y) - uy * (f.tx - f.x)) || 1;
       f.beat = s.time + 1.3; f.bx = clamp(f.x + ux * (d + .9) - uy * sd * 1.3, .5, L - .5); f.by = clamp(f.y + uy * (d + .9) + ux * sd * 1.3, .5, W - .5); }
     this.result = result; this.ai = false; const live = this.mode === 'match' || this.mode === 'free', goOn = live && c ? [...s.agents.values()].filter(a => this.leaving(a) && dist(a, c) < 2.2).map(a => [a.id, a.tx, a.ty]) : []; s.stopAll(); for (const [id, x, y] of goOn) s.go(id, x, y, 3); // (a friend on his way round the ball to his player goes on: he does not stop at its shoulder)
-     if (live) for (const a of s.agents.values()) if (a.beat > s.time && a.bx != null) s.go(a.id, a.bx, a.by, 2.6); this.emit(result); yield this.hold(result, wait); },
+     if (live) for (const a of s.agents.values()) if (a.beat > s.time && a.bx != null) s.go(a.id, a.bx, a.by, 2.6); this.emit(result === 'kept' && this.skRead?.() ? 'read' : result); yield this.hold(result, wait); }, // (v78 'read': kept, after his skill move to the wrong side: shown as gone wrong)
   // In a match the next decision opens sooner once the picture has shown how the play ended: everyone stands still
   // here, so a shorter hold changes nothing on the pitch. A goal keeps a short celebration. Lessons keep their holds.
   hold(result, wait) { return this.mode === 'match' || this.mode === 'free' ? Math.min(wait, MATCH_HOLD[result] ?? wait) : wait; },
@@ -1148,11 +1150,11 @@ export const outcomes = {
   // Shows how the play ended. In a lesson round the stars and tip (set in `this.rated` before the play) come in
   // the same card, at the same moment.
   emit(ev) {
-    const [title, kind] = { timeout: [TIMEOUT_TITLE, 'soft'], keeperSave: ['Great save!', 'goal'], saved: ['Saved!', 'bad'], over: ['Over the bar!', 'bad'], wide: ['Wide!', 'bad'], cleared: ['Cleared!', 'bad'], goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'] }[ev];
+    const [title, kind] = { timeout: [TIMEOUT_TITLE, 'soft'], keeperSave: ['Great save!', 'goal'], saved: ['Saved!', 'bad'], over: ['Over the bar!', 'bad'], wide: ['Wide!', 'bad'], cleared: ['Cleared!', 'bad'], goal: ['GOAL!', 'goal'], goalAgainst: ['They scored', 'bad'], stolen: ['Stolen!', 'bad'], won: ['Stole it!', 'goal'], held: ['Stopped him!', 'goal'], kept: ['Kept the ball!', 'goal'], lost: ['They got it!', 'bad'], cut: ['Cut out!', 'bad'], read: [SAW, 'bad'] }[ev];
     if (ev === 'goal') this.sfx('net');
     const rated = this.rated; this.rated = null;
     // (v66: out of time and they score: the net moves, and nothing celebrates)
-    this.fx(rated?.soft && ev === 'goalAgainst' ? 'goalQuiet' : ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
+    this.fx(rated?.soft && ev === 'goalAgainst' ? 'goalQuiet' : ev === 'keeperSave' ? 'held' : ev === 'lost' || ev === 'cut' || ev === 'read' || ev === 'saved' || ev === 'over' || ev === 'wide' || ev === 'cleared' ? 'stolen' : ev);
     if (rated?.soft) { this.card = this.hud.banner(rated.title || TIMEOUT_TITLE, 'soft', rated); this.say(rated.said); return; } // (v64: out of time: whatever the play did, the card says it kindly)
     // A light result (a lesson round right on the first try, Level 2 and up: rounds.js attempt): the big words, stars
     // over his player and the praise said, then on to the next round with no card.

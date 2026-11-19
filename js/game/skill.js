@@ -25,7 +25,8 @@ const HOLD_G = .36;           // game seconds his turn is held while a turn is o
 const GAP = 20;               // in matches: real seconds from one offer to the next (v78: the owner, "it happens way too often")
 export const TURN_MOVES = ['double', 'chop', 'croqueta', 'roll', 'cruyff']; // the skill turns a take-on offers (sim.js skillPlan)
 export const EXPLAIN = 'Pick a trick! Go where the space is!'; // said the first time the moment comes (and in the take-him-on demo)
-export const SKILL_TIP = 'He saw it! Fake at him, then go to the space.'; // a lesson's card after the move to the wrong side
+export const SKILL_TIP = 'Fake at him, then go to the space!'; // a lesson's card after the move to the wrong side (under the words SAW)
+export const SAW = 'He saw it!'; // the result's words after the move to the wrong side (outcomes.js emit 'read'), said in a match
 export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
 
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
@@ -102,6 +103,8 @@ export const skill = {
   // session, so every move comes round within a few offers.
   movePair(pool, k = null) {
     const n = this.skSeen ||= {};
+    // (review) Each session starts the rotation at its own place (from Math.random, so a test's seeded random keeps it the same).
+    if (!this.skStart) { this.skStart = 1 + Math.floor(Math.random() * 97); for (const [i, m] of [...RUN_MOVES, ...TURN_MOVES].entries()) n[m] ??= ((i * 37 + this.skStart * 11) % 97) / 1000; }
     const rest = pool.filter(m => m !== k).sort((p, q) => (n[p] || 0) - (n[q] || 0) || pool.indexOf(p) - pool.indexOf(q));
     return k ? [k, rest[0]] : rest.slice(0, 2);
   },
@@ -119,10 +122,16 @@ export const skill = {
     const alts = o.alts.map((m, i) => { const exit = m.exit ?? -m.fake; return { ...m, i, exit, dir: exit * scr > 0 ? 'l' : 'r' }; }).sort((p, q) => (p.dir === 'l' ? 0 : 1) - (q.dir === 'l' ? 0 : 1));
     const T = o.kind === 'turn' ? this.holdG() : Math.max(.05, (o.last - touchAt(h)) * 1.4 / Math.max(1.5, h.sp)); // game seconds to the last moment a move can start
     const pace = Math.min(PACE[1], Math.max(PACE[0], T / (demo ? OFFER_DEMO : OFFER_REAL)));
-    this.sk = { kind: o.kind, alts, phase: 'offer', t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
+    // (review) The scene both pictures share: the defender on the side the better move fakes toward (where he stands, the
+    // run's bend away from him, or the crowded side), well over when he stands to one side, a little when nearly ahead.
+    const gm = alts.find(m => m.good), toward = gm.dir === 'l' ? 1 : -1, wide = o.kind === 'turn' || o.why === 'defender' || Math.abs(o.fl || 0) > .35;
+    const scene = { dx: toward * (wide ? .85 : .35), crowd: o.why === 'crowd' ? toward : 0, color: this.them?.kit?.colors?.[0] || null };
+    this.sk = { kind: o.kind, scene, alts, phase: 'offer', t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
     this.skDone = true; this.skLast = this.clock;
-    const n = this.skSeen ||= {}; for (const m of alts) n[m.k] = (n[m.k] || 0) + 1;
-    this.hud.skill(alts.map(m => ({ k: m.k, dir: m.dir })), 1); this.sfx('offer');
+    const n = this.skSeen ||= {};
+    // (review) Each session starts the rotation at its own place (from Math.random, so a test's seeded random keeps it the same).
+    if (!this.skStart) { this.skStart = 1 + Math.floor(Math.random() * 97); for (const [i, m] of [...RUN_MOVES, ...TURN_MOVES].entries()) n[m] ??= ((i * 37 + this.skStart * 11) % 97) / 1000; } for (const m of alts) n[m.k] = (n[m.k] || 0) + 1;
+    this.hud.skill(alts.map(m => ({ k: m.k, dir: m.dir })), 1, scene); this.sfx('offer');
     if (demo) { this.handAt = SKILL_IDS[alts.findIndex(m => m.good)]; this.hud.caption(EXPLAIN.replace('!', '! ✨').replace(/!$/, '! 👆')); this.say(EXPLAIN); this.skTold = true; }
     else if (!this.skTold) { this.skTold = true; this.say(EXPLAIN); } // (the first time in a session it is said once)
   },
@@ -162,11 +171,14 @@ export const skill = {
     const sk = this.sk, s = this.sim, o = s.a(sk.tgt);
     Object.assign(sk, { phase: 'move', good, ts: s.time, fired: this.clock });
     this.hud.skillName(MOVE_NAME[sk.pick.k] + '!'); this.fx('skill');
+    if (good && sk.kind === 'run' && o) { o.beat = Math.max(o.beat || 0, s.time + .8); o.tk = s.time; } // (review: he buys it, and is off balance as he goes by: he does not stop the play mid-move)
     if (!good) {
       if (o) { sk.blockOn = true; o.track = null; }
       if (this.rated && !this.rated.soft && this.rated.stars === 3) this.rated = { stars: 2, text: SKILL_TIP, said: SKILL_TIP, say: true, watch: false }; // (a lesson's card: 2 stars, and why)
     }
   },
+  // (review) The play ended after his move to the wrong side: the result shows as one that went wrong (outcomes.js emit).
+  skRead() { return this.sk?.good === false; },
   // After the frame's step: a new offer, the time left, the move starting and playing, and skill moves by everyone else.
   skillWatch(dt) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
@@ -175,7 +187,7 @@ export const skill = {
     if (sk?.phase === 'offer') {
       const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / this.holdG()) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));
       if (sk.kind === 'run' ? !h?.offer : !h?.holdTurn || left <= 0) this.skillEnd();
-      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .12)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
+      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50, sk.scene); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .12)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
     } else if (sk?.phase === 'armed') {
       if (sk.kind === 'run') {
         if (h?.skill && h.skill.k === sk.pick.k) this.skillGo(h.skill.good !== false); // (the move has started)
@@ -186,10 +198,11 @@ export const skill = {
       }
       if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt) && this.clock - sk.tm > .4) this.handAt = null;
     } else if (sk?.phase === 'move') {
-      const over = sk.kind === 'turn' ? !b.move || b.carrier !== 'hero' || (s.time - b.move.t0) / b.move.dur > .92 : !h?.skill || touchAt(h) - h.skill.n > 1.15;
+      const over = sk.kind === 'turn' ? !b.move || b.carrier !== 'hero' || (s.time - b.move.t0) / b.move.dur > .92 : !h?.skill || touchAt(h) - h.skill.n > 1.15 || h.sp < .3;
       if (over) { sk.phase = 'out'; this.hud.skill(null); }
       if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt)) this.handAt = null;
-    } else if (sk?.phase === 'out' && this.slow >= 1 && this.skCam <= 0 && !sk.blockOn) this.sk = null;
+    } else if (sk?.phase === 'out' && this.slow >= 1 && this.skCam <= 0 && !sk.blockOn && (sk.good !== false || this.phase !== 'outcome' || this.result)) this.sk = null; // (the wrong one is kept until the play has its result)
+    if (sk?.good === false && this.result && !sk.said) { sk.said = true; if (this.mode === 'match' || this.mode === 'free') this.say(SAW); } // (a lesson's card says its tip)
     // The close camera: once he taps, in over half a second or more (longer from farther away, see skillCamStart), held
     // through the move, back out over about 0.7 s. (Smoothed both ways in game/view.js, so it starts and stops softly.)
     this.skCam = Math.min(1, Math.max(0, (this.skCam || 0) + (sk?.phase === 'armed' || sk?.phase === 'move' ? dt / (this.skIn || .5) : -dt / .7)));

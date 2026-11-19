@@ -5,7 +5,7 @@ import { SIZES, TEAM, setSize } from '../js/geom.js';
 import { generate, OKAY, BAD } from '../js/generate.js';
 import { CUPS } from '../js/cups.js';
 import { MOVE_NAME } from '../js/flair.js';
-import { EXPLAIN, SKILL_TIP } from '../js/game/skill.js';
+import { EXPLAIN, SKILL_TIP, SAW } from '../js/game/skill.js';
 import { TIMEOUT } from '../js/game/rounds.js';
 import { SAVED, WHY, SAID } from '../js/saves.js';
 
@@ -42,7 +42,7 @@ export function spokenLines() {
     'You won! You got a new sticker!', 'Great try! You got a new sticker!', 'What do you want to play?', // the results card asks what next (flows.js ASK)
     'You won the match!', 'Good game!', 'Nice pass! You looked up!',
     'You looked up!', 'You looked early!', 'You peeked!', 'Great defending!', 'Great run!', 'Great choice!', 'Great steal!',
-    ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, SKILL_TIP, // (v78: and after the move to the wrong side, a lesson's card)
+    ...Object.values(MOVE_NAME).map(n => n + '!'), EXPLAIN, SKILL_TIP, SAW, // (v78: and after the move to the wrong side, a lesson's card)
     SAVED, ...Object.values(WHY), ...Object.values(SAID), // the keeper game (v67, saves.js)
     ...Object.values(OKAY), ...Object.values(BAD), // only-okay runs (v60), and why some wrong runs lost it (v64) // the skill move he tapped for, and the demo's line about the button (game/skill.js)
   ];

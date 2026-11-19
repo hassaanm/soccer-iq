@@ -7,7 +7,9 @@ import { Game } from '../js/game.js';
 import { Sim, EXIT_FREE, RUN_MOVES, MOVE_AT, touchAt } from '../js/sim.js';
 import { TEAMS } from '../js/teams.js';
 import { MOVE_NAME, MOVE_W } from '../js/flair.js';
-import { TURN_MOVES } from '../js/game/skill.js';
+import { TURN_MOVES, SAW } from '../js/game/skill.js';
+import { generate } from '../js/generate.js';
+import { setSize } from '../js/geom.js';
 import { allScenarios, PATH } from '../js/skills.js';
 import { optionsFor, pictureU } from './harness.js';
 // Opens the choice and lets play go on (nothing tapped) until it is at the scene's own picture.
@@ -42,9 +44,11 @@ async function play(sc, opt, tap = null) {
   const { g, events, offers } = makeGame(g => { g.sk.r0 ??= g.realTime; return pickOf(tap)(g); });
   g.mode = 'lesson'; g.load(sc); await frames(g, g.pre());
   toPicture(g); // (v66: he chooses in the window, when play is at the scene's own picture: the defender has come as near as the scene has him)
+  let cutMid = false; const em = g.emit; g.emit = function (ev) { if (this.sk?.phase === 'move') cutMid = true; return em.call(this, ev); };
+  g.rated = { stars: 3, text: 'x' }; // (as a lesson round sets it)
   await frames(g, g.outcome(opt, g.isGood(opt)));
   const s = g.sim, end = [...s.agents.values()].map(a => [a.id, a.x.toFixed(6), a.y.toFixed(6)].join(' ')).join('|');
-  return { result: g.result, banners: events.filter(e => e[0] === 'banner').map(e => e[1]), end, offers, moved: events.some(e => e[0] === 'skillName'), names: events.filter(e => e[0] === 'skillName').length, g, events };
+  return { cutMid, result: g.result, banners: events.filter(e => e[0] === 'banner').map(e => e[1]), end, offers, moved: events.some(e => e[0] === 'skillName'), names: events.filter(e => e[0] === 'skillName').length, g, events };
 }
 const SCENES = () => [...allScenarios('take-him-on'), ...allScenarios('dribble-to-space').slice(0, 5)].flatMap(sc => optionsFor(sc).filter(o => /^drib:/.test(o)).map(opt => [sc, opt]));
 let cache = null; // the plays with an offer, with no tap (the same for the tests below)
@@ -72,18 +76,22 @@ test('an offer: two different moves, one better, shown at least 1.5 s (real) and
   assert.ok(n >= plays.length * .8, `most offers show about 2.5 s or more (${n} of ${plays.length})`);
 });
 
-test('no tap, or the better move: the play ends the same, with everyone in the same place; the wrong one: he is stopped by the defender', async () => {
+test('no tap: the play as with no offer; the better move goes by him; the wrong one: he is stopped, and the result shows it went wrong', async () => {
   let worse = 0, stopped = 0, dropped = 0, sides = new Set(), btns = new Set(); const plays = await offered();
   for (const { sc, opt, none } of plays) {
     const better = await play(sc, opt, 'better'), bad = await play(sc, opt, 'worse');
-    assert.equal(better.result, none.result, `${sc.id} ${opt}`); assert.deepEqual(better.banners, none.banners, `${sc.id} ${opt}`);
-    if (none.offers[0].sk.kind === 'run') assert.equal(better.end, none.end, `${sc.id} ${opt}: everyone ends in the same place`);
+    assert.ok(!better.banners.includes(SAW), `${sc.id} ${opt}: the better move never shows as gone wrong`);
+    if (none.offers[0].sk.kind === 'turn') { assert.equal(better.result, none.result, `${sc.id} ${opt}`); assert.deepEqual(better.banners, none.banners, `${sc.id} ${opt}`); }
+    assert.ok(!none.banners.includes(SAW), 'no tap: the plain result');
+    // (review) a move he picked plays to its end before the result shows
+    for (const r of [better, bad]) if (r.moved) assert.notEqual(r.cutMid, true, `${sc.id} ${opt}: the result came mid-move`);
     if (!better.moved) { dropped++; continue; } // (the play stopped him before the move could start: another defender went in at him)
     assert.equal(better.names, 1, `${sc.id} ${opt}: its name once`);
     assert.ok(!none.moved, 'no tap: no move');
     const o = better.offers[0]; sides.add(o.sk.alts.find(x => x.good).dir); btns.add(o.sk.alts.findIndex(x => x.good));
     // the wrong one: the defender reads it and steps in (the play ends sooner, him stopped short of where it went)
-    if (bad.moved) { worse++; const h0 = none.g.sim.a('hero'), h1 = bad.g.sim.a('hero'); if (bad.g.sim.time < none.g.sim.time - .2 || Math.hypot(h1.x - h0.x, h1.y - h0.y) > .5) stopped++; }
+    if (bad.moved) { worse++; const h0 = none.g.sim.a('hero'), h1 = bad.g.sim.a('hero'); if (bad.g.sim.time < none.g.sim.time - .2 || Math.hypot(h1.x - h0.x, h1.y - h0.y) > .5) stopped++;
+      if (bad.result === 'kept') { const b = bad.events.find(e => e[0] === 'banner'); assert.equal(b[1], SAW, `${sc.id} ${opt}: the wrong move's result reads ${b[1]}`); assert.equal(b[2], 'bad', 'in the not-gold style'); assert.equal(b[3]?.stars, 2, 'and 2 stars on a lesson card'); } }
   }
   assert.ok(dropped <= Math.max(1, plays.length * .2), `the better move was made in nearly every play (${dropped} of ${plays.length} stopped first)`);
   assert.ok(worse > 3 && stopped >= worse * .6, `the wrong move gets him stopped (${stopped} of ${worse})`);
@@ -183,9 +191,32 @@ test('in matches, no skill move ends by a second defender, and offers are 20 s a
   assert.ok(moves > 0, 'skill moves were made');
 });
 
-test('every move comes round: four or more different moves within the first four offers of a session', () => {
+test('every move comes round: four or more different moves within the first four offers of a session; sessions start at different moves', () => {
   const g = new Game({ world: { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] }, hud: new Proxy({}, { get: () => () => {} }), say: () => {} });
   const seen = new Set();
   for (let i = 0; i < 4; i++) { const pair = i % 2 ? g.movePair(TURN_MOVES, 'double') : g.movePair(RUN_MOVES); for (const k of pair) { seen.add(k); g.skSeen[k] = (g.skSeen[k] || 0) + 1; } }
   assert.ok(seen.size >= 4, `moves offered: ${[...seen].join(', ')}`);
+  const firsts = new Set(); for (let i = 0; i < 8; i++) { const h = new Game({ world: { canvas: { clientWidth: 800, clientHeight: 400 }, setTeams() {}, swapRigs() {}, resetRigs() {}, project: () => [400, 200] }, hud: new Proxy({}, { get: () => () => {} }), say: () => {} }); firsts.add(h.movePair(RUN_MOVES).join() + '|' + h.movePair(TURN_MOVES).join()); }
+  assert.ok(firsts.size >= 3, `a session's first offer differs (${[...firsts].join(' ; ')})`);
+});
+
+// (review) Both buttons show the same scene (the defender where he really is, in their shirt colour); only the move and its
+// arrow differ, and the better arrow goes away from the defender's side.
+test('the two pictures share one scene and differ by the move and its arrow', async () => {
+  for (const { sc, opt, none } of (await offered()).slice(0, 8)) {
+    const sk = none.offers[0].sk, ev = none.events.filter(e => e[0] === 'skill' && e[1]), [, pair, , scene] = ev[0];
+    assert.ok(scene && scene.dx !== 0, `${sc.id} ${opt}: the defender has a place`); assert.equal(scene.color, TEAMS[13].kit.colors[0], 'in their shirt colour');
+    assert.deepEqual(pair.map(p => p.dir), ['l', 'r'], 'the arrows: left on the left button, right on the right');
+    const good = sk.alts.find(a => a.good); assert.equal(Math.sign(scene.dx), good.dir === 'l' ? 1 : -1, `${sc.id} ${opt}: the better arrow goes away from the defender`);
+  }
+});
+
+// (review) Regression scenes (5v5 take-him-on): an armed move always starts (gen-carry-9059 hung armed), and the result
+// waits for the move to finish (gen-carry-9073 showed it mid-move); and the moves of a session's first offer vary.
+test('regression: an armed move starts, and the result waits for it (5v5 take-him-on scenes)', { skip: (process.env.SOCCER_SIZE || '3v3') !== '5v5' && 'a 5v5 case' }, async () => {
+  setSize('5v5'); let n = 0;
+  for (const seed of [9048, 9059, 9073, 9052]) { const sc = generate('take-him-on', seed); if (!sc) continue;
+    for (const tap of ['better', 'worse']) { const r = await play(sc, sc.best, tap); if (!r.offers.length) continue; n++;
+      assert.ok(r.moved, `${sc.id} ${tap}: the armed move started`); assert.equal(r.cutMid, false, `${sc.id} ${tap}: the result came mid-move`); } }
+  assert.ok(n > 0, 'some of them offer');
 });
