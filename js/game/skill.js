@@ -55,14 +55,14 @@ export const skill = {
   skillHold() {
     const s = this.sim, h = s.a('hero');
     if (h?.holdTurn && (s.time - this.skHoldT >= this.holdG() || this.phase !== 'outcome' || s.ball.carrier !== 'hero')) h.holdTurn = false; // (his turn starts on the next step)
-    if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 3.5 || s.time - (this.skT0 ?? s.time) >= .12 || !this.offerAllowed()) return;
+    if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 3.5 || !this.offerAllowed()) return;
     // (round 13) No skill turn on offer where it would end by a second man of theirs (sim.js exitRoom: he turns and is
     // away about a metre in some 0.4 to 0.7 s).
     const k = s.turnAhead('hero'); if (!k || s.exitRoom(h, 1, .7, .35) < EXIT_FREE) return;
     const b = s.ball, ch = Math.cos(b.h), sh = Math.sin(b.h); let foe = null, fd = 3.5;
     for (const o of s.team('them')) { const d = Math.hypot(o.x - h.x, o.y - h.y); if (d < fd && (o.x - h.x) * ch + (o.y - h.y) * sh > -.3) { fd = d; foe = o; } }
     if (!foe) return;
-    const side = turnSide(s, h, b.h, Math.atan2(h.ty - h.y, h.tx - h.x)), pair = this.movePair(TURN_MOVES, k), first = pick(h.x, h.y);
+    const side = turnSide(s, h, b.h, Math.atan2(h.ty - h.y, h.tx - h.x)), pair = this.movePair(TURN_MOVES), first = pick(h.x, h.y);
     const alts = pair.map((m, i) => ({ k: m, good: i === first, exit: i === first ? side : -side }));
     this.skillOffer({ kind: 'turn', alts, tgt: foe.id, yaw: b.h });
     h.holdTurn = true; this.skHoldT = s.time;
