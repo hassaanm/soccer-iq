@@ -7,7 +7,7 @@ import { boot, dist, clamp, onLane } from '../common/lab.js';
 import { Match } from '../common/match.js';
 import { ballWindow } from '../common/onball.js';
 
-const lab = await boot({ letter: 'B', name: 'Get open', version: 'v1', size: '3v3', us: 'barca', them: 'madrid', onStart: () => setTimeout(() => ballWindow(lab, m, 'hero'), 400) });
+const lab = await boot({ letter: 'B', name: 'Get open first', version: 'v1', size: '3v3', us: 'barca', them: 'madrid', onStart: () => setTimeout(() => ballWindow(lab, m, 'hero'), 400) });
 const m = new Match(lab, { n: 3, isAI: id => id !== 'hero' });
 m.canPass = (id, to) => to !== 'hero'; // a friend passes to him only after a run he chose (or by the rules of the run)
 const { sim, L, W } = lab;

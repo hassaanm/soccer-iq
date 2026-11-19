@@ -7,7 +7,7 @@
 // It runs on the 4 v 4 pitch with two of theirs (4 v 2): a box of 12 m.
 import { boot, dist, clamp, onLane } from '../common/lab.js';
 
-const lab = await boot({ letter: 'C', name: 'Keep it', version: 'v1', size: '4v4', us: 'barca', them: 'madrid', env: 'park', onStart: () => setTimeout(() => offer(), 300) });
+const lab = await boot({ letter: 'C', name: 'Keep the ball', version: 'v1', size: '4v4', us: 'barca', them: 'madrid', env: 'park', onStart: () => setTimeout(() => offer(), 300) });
 const { sim, L, W } = lab;
 const CX = L / 2, CY = W / 2, H = 6; // the box: 12 m a side
 const ATT = ['hero', 'm1', 'm2', 'm3'], DEF = ['o1', 'o2'];

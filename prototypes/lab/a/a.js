@@ -6,7 +6,7 @@ import { boot, dist, clamp } from '../common/lab.js';
 import { Match } from '../common/match.js';
 import { ballWindow as onBall } from '../common/onball.js';
 
-const lab = await boot({ letter: 'A', name: 'Your ball', version: 'v1', size: '4v4', us: 'barca', them: 'madrid', onStart: () => setTimeout(() => ballWindow('hero'), 400) });
+const lab = await boot({ letter: 'A', name: 'Your ball, always', version: 'v1', size: '4v4', us: 'barca', them: 'madrid', onStart: () => setTimeout(() => ballWindow('hero'), 400) });
 const m = new Match(lab, { n: 4 });
 const { sim, L, W } = lab;
 m.setup('us'); lab.ctrl = 'hero';

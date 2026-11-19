@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#ffc89a">
+<title>Lab: new ways to play</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="lab.css">
+</head>
+<body class="chooser">
+<!-- The lab's chooser: three prototypes of how a match could play, each its own page. Nothing here reads or writes the
+     game's save. -->
+<main>
+  <h1>Lab: new ways to play</h1>
+  <p class="sub">Three tries at a new match. Each one plays for 3 minutes, then shows its counts. The letter and the small stamp in the corner (for example "Lab A · v1") name what you saw, for feedback.</p>
+  <div class="tiles">
+    <a class="tile" href="a/index.html" aria-label="A: Your ball, always">
+      <span class="let">A</span>
+      <svg viewBox="0 0 200 96" aria-hidden="true"><rect x="2" y="2" width="196" height="92" rx="10" fill="#3d9a3d"/><path d="M100 2v92" stroke="#fff" stroke-width="2" opacity=".7"/><rect x="186" y="34" width="10" height="28" fill="none" stroke="#fff" stroke-width="2"/>
+        <path d="M62 60 L112 30 L158 52" fill="none" stroke="#ffd23f" stroke-width="4" stroke-dasharray="7 6" stroke-linecap="round"/>
+        <g fill="#c8102e" stroke="#fff" stroke-width="2"><circle cx="62" cy="60" r="8"/><circle cx="112" cy="30" r="8"/><circle cx="158" cy="52" r="8"/><circle cx="34" cy="36" r="8"/></g>
+        <g fill="none" stroke="#ffd23f" stroke-width="3"><circle cx="62" cy="60" r="13"/><circle cx="112" cy="30" r="13"/><circle cx="158" cy="52" r="13"/></g>
+        <g fill="#fff" stroke="#24193a" stroke-width="1.5"><circle cx="90" cy="58" r="7"/><circle cx="136" cy="36" r="7"/><circle cx="128" cy="70" r="7"/></g></svg>
+      <b>Your ball, always</b>
+      <p>He plays whoever on his team has the ball, so every touch is his choice and play never stops. <i>Watch for:</i> does he stay with it with no breaks, and pick the open friend?</p>
+    </a>
+    <a class="tile" href="b/index.html" aria-label="B: Get open first">
+      <span class="let">B</span>
+      <svg viewBox="0 0 200 96" aria-hidden="true"><rect x="2" y="2" width="196" height="92" rx="10" fill="#3d9a3d"/><path d="M100 2v92" stroke="#fff" stroke-width="2" opacity=".7"/>
+        <g fill="none" stroke="#ffd23f" stroke-width="4"><circle cx="150" cy="24" r="11"/><circle cx="120" cy="76" r="11" opacity=".6"/><circle cx="78" cy="66" r="11" opacity=".6"/></g>
+        <path d="M92 40 Q120 30 140 28" fill="none" stroke="#ffd23f" stroke-width="4" stroke-linecap="round"/><path d="M134 22l9 6-10 4" fill="none" stroke="#ffd23f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <g fill="#c8102e" stroke="#fff" stroke-width="2"><circle cx="56" cy="56" r="8"/><circle cx="92" cy="40" r="9" stroke="#ff8a1c" stroke-width="3.5"/></g>
+        <g fill="#fff" stroke="#24193a" stroke-width="1.5"><circle cx="108" cy="72" r="7"/><circle cx="72" cy="40" r="7"/></g></svg>
+      <b>Get open first</b>
+      <p>He is one player and makes most choices without the ball: where to run so a friend can pass, and where to stand when they have it. <i>Watch for:</i> does he find the open spot on his own?</p>
+    </a>
+    <a class="tile" href="c/index.html" aria-label="C: Keep the ball">
+      <span class="let">C</span>
+      <svg viewBox="0 0 200 96" aria-hidden="true"><rect x="2" y="2" width="196" height="92" rx="10" fill="#4aa847"/><rect x="58" y="10" width="84" height="76" fill="none" stroke="#ffb066" stroke-width="3"/>
+        <g fill="#ff7a1a"><path d="M58 4l4 8h-8z"/><path d="M142 4l4 8h-8z"/><path d="M58 82l4 8h-8z"/><path d="M142 82l4 8h-8z"/></g>
+        <path d="M100 86 L142 48" fill="none" stroke="#ffd23f" stroke-width="4" stroke-dasharray="7 6" stroke-linecap="round"/>
+        <g fill="#c8102e" stroke="#fff" stroke-width="2"><circle cx="100" cy="86" r="8"/><circle cx="142" cy="48" r="8"/><circle cx="100" cy="10" r="8"/><circle cx="58" cy="44" r="8"/></g>
+        <g fill="#fff" stroke="#24193a" stroke-width="1.5"><circle cx="90" cy="64" r="7"/><circle cx="104" cy="36" r="7"/></g>
+        <path d="M80 60l-8-6M112 30l8-5" stroke="#fff" stroke-width="2" opacity=".8"/></svg>
+      <b>Keep the ball</b>
+      <p>Four keep it from two in a box. The picture never stops, so who is open keeps changing. <i>Watch for:</i> does he look again before he taps, or tap the first friend he sees?</p>
+    </a>
+  </div>
+  <a class="lb glass back" href="../../index.html">← Back to the game</a>
+  <div class="foot">Prototypes only: nothing here changes his progress or stickers.</div>
+</main>
+</body>
+</html>
