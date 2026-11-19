@@ -26,7 +26,7 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
-export const SCAN_T = 9, CUE_EVERY = 14;
+export const SCAN_T = 10, CUE_EVERY = 25;
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
@@ -220,7 +220,7 @@ class Fast {
   // ---------- the scan reminder ----------
   // He has not looked round (a hold, a drag, LOOK UP) for SCAN_T s, and someone who matters is out of his view: a friend
   // within 14 m of him or one of theirs within 4 m (behind him, say). A small picture (eyes, a turn) and a spoken word;
-  // at most every CUE_EVERY s. It goes as soon as he looks.
+  // at most every CUE_EVERY s (first runs: about 30 a match at 14 s, too many). It goes as soon as he looks.
   scanCue(h) {
     const s = this.sim, m = this.m, c = this.dom.cue; if (!h || m.dead || this.real - this.cueT > 4) { if (c.classList.contains('show')) c.classList.remove('show'); if (!h || m.dead) return; }
     if (this.real - this.lastScan < 1) { if (c.classList.contains('show')) c.classList.remove('show'); return; }
