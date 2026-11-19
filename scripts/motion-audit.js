@@ -44,7 +44,8 @@
 //            opening to the kick no more than 0.5 m farther from their goal; from the choice to the kick no more than 0.5 m
 //            farther from where it goes, his body no more than 30° farther off it; in matches too (scripts/live-audit.js WALK)
 // An exemption names a pattern and a reason (EXEMPT, below), and every use of one is counted in the output.
-// Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--scene id] [--json out.json] [--notaps]
+//   stand    (alive-shape) at the end: scripts/stand-audit.js, the share of seconds the players round his own stand about, by phase
+// Usage: node scripts/motion-audit.js [size] [--gen N] [--base results.json] [--only skill] [--scene id] [--json out.json] [--notaps] [--nostand] [--smatch N]
 import { PATH, allScenarios } from '../js/skills.js';
 import { SIZES, setSize } from '../js/geom.js';
 import { generate } from '../js/generate.js';
@@ -417,5 +418,12 @@ if (!only && !scene && !args.includes('--nolive') && !args.includes('--noframes'
   console.log("\nFrame time at a choice's edges (limit 12.5 ms here: 50 ms on a phone four times slower):");
   frameBad = await frameAudit({ sizes });
 }
-console.log(`\n${mis.length} flag(s), ${fails} share(s) missed, ${liveBad} live-play flag(s), ${frameBad} long frame(s)`);
-process.exitCode = mis.length || fails || liveBad || frameBad ? 1 : 0;
+// (alive-shape) Standing: how often the players round his own look like they stand about (scripts/stand-audit.js).
+let standBad = 0;
+if (!only && !scene && !args.includes('--nolive') && !args.includes('--nostand')) {
+  const { standAudit, STAND, LIMIT: SL } = await import('./stand-audit.js');
+  console.log(`\nStanding (a second of real time in which a player round his own, not him nor the one who comes, moves less than ${STAND.k * 100}% of his height on the screen, hips and feet, and turns less than ${STAND.yaw}°; at most ${Object.entries(SL).map(([k, v]) => `${k} ${v * 100}%`).join(', ')} of such seconds):`);
+  standBad = (await standAudit({ sizes, nMatch: +(flag('--smatch') || 10) })).fails;
+}
+console.log(`\n${mis.length} flag(s), ${fails} share(s) missed, ${liveBad} live-play flag(s), ${frameBad} long frame(s), ${standBad} phase(s) standing over the limit`);
+process.exitCode = mis.length || fails || liveBad || frameBad || standBad ? 1 : 0;
