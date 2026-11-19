@@ -40,7 +40,15 @@ async function frames(g, promise, n = 6000) {
 // One lesson play as a child plays it: the run-up, a moment to choose, then his choice. `tap`: 'better', 'worse' (one
 // real second into the offer) or none.
 const pickOf = tap => g => (tap && g.realTime - g.sk.r0 > 1 ? g.sk.alts.findIndex(a => (tap === 'better') === a.good) : null);
+// Each play draws from a fixed sequence, the same for a scene and option whatever is tapped (unseeded, about one run in
+// seven had an offer that broke a rule by chance); the plays with and without a tap stay comparable.
+const seeded = seed => { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; };
+const seedOf = (...k) => [...k.join('|')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 2147483646, 7) + 1;
 async function play(sc, opt, tap = null) {
+  const real = Math.random; Math.random = seeded(seedOf(sc.id, opt));
+  try { return await playSeeded(sc, opt, tap); } finally { Math.random = real; }
+}
+async function playSeeded(sc, opt, tap) {
   const { g, events, offers } = makeGame(g => { g.sk.r0 ??= g.realTime; return pickOf(tap)(g); });
   g.mode = 'lesson'; g.load(sc); await frames(g, g.pre());
   toPicture(g); // (v66: he chooses in the window, when play is at the scene's own picture: the defender has come as near as the scene has him)

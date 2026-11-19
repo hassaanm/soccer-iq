@@ -930,14 +930,11 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #miniBar .best.none{display:none}
 #miniBar .best i{font-style:normal}
 #miniBar .best.beat{color:var(--gold);opacity:1;animation:miniBump .5s var(--bounce)}
-/* Penalties: the ball on the target he picked (as the keeper game's glove). */
-#pMark{position:absolute;left:0;top:0;z-index:2;pointer-events:none;display:none;font-size:40px;line-height:1;text-shadow:0 3px 0 rgba(36,25,58,.6)}
-#pMark.show{display:block;animation:popIn .25s var(--bounce)}
 /* The Mini games screen: one big tile per game (a picture, its name, his best). */
 #minis{display:flex;flex-wrap:wrap;justify-content:center;gap:clamp(12px,3vw,24px);padding:8px 4px 4px;max-height:calc(92dvh - 64px);overflow-y:auto}
 #minis .tile.mini{display:flex;flex-direction:column;align-items:center;gap:4px;width:min(250px,38vw);padding:10px 10px 10px;border:0;border-radius:20px;background:#fff;color:var(--ink);font:inherit;cursor:pointer;box-shadow:inset 0 -4px 0 rgba(36,25,58,.14),0 3px 0 rgba(36,25,58,.12)}
 #minis .tile.mini:active{transform:translateY(2px)}
-#minis .tile .pic{display:block;width:100%}
+#minis .tile .pic{display:block;width:100%;border-radius:14px;overflow:hidden;box-shadow:0 0 0 2px rgba(36,25,58,.12)}
 #minis .tile .pic svg{display:block;width:100%;height:auto}
 #minis .tile .k{font-size:clamp(17px,2.6vw,22px);font-weight:700}
 #minis .tile .st{display:flex;align-items:center;gap:4px;font-size:clamp(20px,3vw,26px);font-weight:700;color:var(--gold-e)}

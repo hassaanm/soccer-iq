@@ -6,7 +6,14 @@ import { makeGame, drive } from './harness.js';
 import { PATH, BUILDS } from '../js/skills.js';
 import { defaultProgress, finishSession, focus, trainingPlan, trained } from '../js/progress.js';
 
-async function playMatch(pick, busy = false) {
+// Matches shuffle with Math.random; a fixed sequence makes each match repeatable (unseeded, about one run in seven
+// had too few misses to test).
+const seeded = seed => { let x = seed; return () => (x = (x * 16807) % 2147483647) / 2147483647; };
+async function playMatch(pick, busy = false, seed = 8) {
+  const real = Math.random; Math.random = seeded(seed);
+  try { return await playMatchSeeded(pick, busy); } finally { Math.random = real; }
+}
+async function playMatchSeeded(pick, busy) {
   const { g, events } = makeGame(), said = [], decisions = [];
   const hud = g.hud; g.hud = new Proxy({}, { get: (_, k) => (k === 'busy' ? () => busy : hud[k]) });
   g.say = t => { said.push([events.length, t]); return null; };
