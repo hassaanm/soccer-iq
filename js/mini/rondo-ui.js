@@ -75,7 +75,7 @@ function makeBox() {
 }
 
 // ---------- his touches (as Fast mode: fast/fast.js down, move, up) ----------
-let finger = null, yaw = 0, holdYaw = null, holdT = 0, lastAct = 0, real = 0, warnAt = null, warnT = 0, hintSaid = 0, idleSay = 0;
+let lastHint = null, finger = null, yaw = 0, holdYaw = null, holdT = 0, lastAct = 0, real = 0, warnAt = null, warnT = 0, hintSaid = 0, idleSay = 0;
 function down(e) {
   if (finger && performance.now() - finger.t0 > 5000) dropFinger(); // (an old touch whose lift never came)
   if (!stage.on || !g || held.on || e.isPrimary === false || finger) return;
@@ -133,6 +133,7 @@ function frame(dt) {
   const keep = [{ x: h.x, y: h.y, z: 0 }, { x: h.x, y: h.y, z: 1.8 }, { x: b.x, y: b.y, z: b.z || 0 }];
   if (g.mode === 'keep') for (const id of ['m1', 'm2', 'm3']) { const a = s.a(id); if (a) keep.push({ x: a.x, y: a.y, z: .9 }); }
   else { const c = g.owner() || g.flight?.to; const a = c && c !== 'hero' && s.a(c); if (a) keep.push({ x: a.x, y: a.y, z: .9 }); }
+  if (lastHint) keep.push({ x: lastHint.x, y: lastHint.y, z: 0 }); // (the pulsing place, when there is one, in the picture too)
   const want = K.rondoCam(h, yaw, g.mode === 'keep' ? bx.h + .5 : Math.min(5, Math.max(2.5, R.dist(h, b))), finger?.moved ? [] : keep, world.width || 932, world.height || 430, TOP);
   const c = stage.cam, k = 1 - Math.exp(-dt * 5);
   for (let i = 0; i < 3; i++) { c.eye[i] += (want.eye[i] - c.eye[i]) * k; c.tgt[i] += (want.tgt[i] - c.tgt[i]) * k; } c.Ff += (want.Ff - c.Ff) * k; c.Fw += (want.Fw - c.Fw) * k;
@@ -153,6 +154,7 @@ function frame(dt) {
     if (p && R.dist(p, h) > 1) hinted = [p];
     if (hinted && real - lastAct > SAY_HINT && hintSaid < SAY_HINTS && real - idleSay > 12) { hintSaid++; idleSay = real; say(K.RONDO_SAID.move); plog({ is: 'hint' }); }
   }
+  lastHint = hinted?.[0] || null;
   marks.draw(spots, [], null, has, ui.clock, warnAt && s.a(warnAt), play, g.goAt, hinted);
   stage.ui = ui;
   const st = g.mode === 'win' && play; if (st !== dom.stealOn) { dom.stealOn = st; dom.steal.classList.toggle('show', st); }
@@ -187,7 +189,7 @@ async function runRondo(mode) {
     g.sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx('kick'); } else if (ev === 'touch') world.fx('touch'); };
     hooks(g);
     dress(us, them, mode); onStage(stage);
-    g.setup(0); g.phase = 'idle'; real = 0; lastAct = 0; hintSaid = 0; idleSay = -99; yaw = natural(); holdYaw = null; holdT = 0; warnAt = null;
+    g.setup(0); g.phase = 'idle'; real = 0; lastAct = 0; hintSaid = 0; idleSay = -99; yaw = natural(); holdYaw = null; holdT = 0; warnAt = null; lastHint = null;
     stage.ui = g.ui; frame(0); const w = K.rondoCam(g.sim.a('hero'), yaw, g.mode === 'keep' ? g.box.h + .5 : 4, [], world.width || 932, world.height || 430, TOP); stage.cam = { eye: [...w.eye], tgt: [...w.tgt], Ff: w.Ff, Fw: w.Fw };
     const run = startRun(id);
     stage.on = true; dom.el.classList.add('on'); show(null);
