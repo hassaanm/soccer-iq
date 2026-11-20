@@ -1084,3 +1084,7 @@ body.logon #logTab{display:grid}
 #miniSheet.starting .tile{pointer-events:none}
 #miniSheet.starting .tile:not(.picked){opacity:.45}
 #miniSheet .tile.picked{box-shadow:0 0 0 4px var(--gold),0 5px 0 var(--gold-e)}
+#miniSheet.starting #miniClose{opacity:.4}
+#miniSheet .tile.picked{animation:chosenPulse .7s ease-in-out infinite alternate}
+@keyframes chosenPulse{to{transform:scale(1.04)}}
+@media (prefers-reduced-motion:reduce){#miniSheet .tile.picked{animation:none}}

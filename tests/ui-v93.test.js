@@ -170,38 +170,76 @@ test('every move on offer has a name and a picture that is defined before it is 
   for (const c of skill.matchAll(/hud\.caption\(([^)]*)\)/g)) assert.ok(!/\p{Extended_Pictographic}/u.test(c[1]), 'no emoji in ' + c[0]);
 });
 
-// ---------- 5. one tap on a mini game tile starts one thing ----------
+// ---------- 5. one tap on a mini game tile starts one thing, and the home screen never shows on the way ----------
+// A fake screen: the chooser sheet over the home screen. A game takes over by hiding the home screen (its show(null)).
+function screen() {
+  const st = { sheet: true, home: true, frames: [], watchers: [] };
+  st.change = () => { for (const w of [...st.watchers]) w(); st.frames.push({ sheet: st.sheet, home: st.home }); }; // (a frame is painted after all of a turn's changes)
+  st.isTaken = () => !st.home;
+  st.watch = cb => { st.watchers.push(cb); return () => { st.watchers = st.watchers.filter(w => w !== cb); }; };
+  st.close = () => { st.sheet = false; };
+  st.bad = () => st.frames.filter(f => !f.sheet && f.home);
+  return st;
+}
+const tick = ms => new Promise(r => setTimeout(r, ms));
+
 test('a tile tap starts exactly one thing: the chooser stays up until the game takes over, and a second tap does nothing', async () => {
-  const log = [];
+  const log = [], sc = screen();
   let release; const said = new Promise(r => { release = r; });
-  const start = makeStarter({ say: id => { log.push('say ' + id); return said; }, pick: id => log.push('pick ' + id), closeSheet: id => log.push('close ' + id), run: async id => { log.push('run ' + id); },
-    wait: ms => new Promise(r => setTimeout(r, ms)) });
+  const start = makeStarter({ say: id => { log.push('say ' + id); return said; }, pick: id => log.push('pick ' + id), isTaken: sc.isTaken, watch: sc.watch, close: sc.close,
+    run: async id => { log.push('run ' + id); await tick(20); sc.home = false; sc.change(); await tick(20); } }); // (a game that takes the screen a moment after it starts)
   const first = start('rondoKeep');
   assert.equal(start.busy(), true);
   assert.equal(await start('rondoKeep'), false, 'a second tap on the same tile');
   assert.equal(await start('pens'), false, 'a tap on another tile');
-  assert.deepEqual(log, ['pick rondoKeep', 'say rondoKeep'], 'the sheet is still up while the name is said');
+  assert.deepEqual(log, ['pick rondoKeep', 'say rondoKeep'], 'nothing runs until the name has been said');
+  assert.equal(sc.sheet, true, 'the sheet is still up while the name is said');
   release(); await first;
-  assert.deepEqual(log, ['pick rondoKeep', 'say rondoKeep', 'close rondoKeep', 'run rondoKeep', 'pick null'], 'close and run come after the name, once');
+  assert.deepEqual(log, ['pick rondoKeep', 'say rondoKeep', 'run rondoKeep', 'pick null'], 'one game, started once');
   assert.equal(start.busy(), false);
   assert.equal(await start('pens'), true, 'and a tap after the game ended starts the next');
 });
 
-test('the name is waited for at most its limit; an error in the game frees the chooser', async () => {
-  const log = [];
-  const slow = new Promise(() => {}); // a name that never ends
-  const start = makeStarter({ say: () => slow, closeSheet: () => log.push('close'), run: async () => { log.push('run'); }, wait: () => Promise.resolve() });
-  await start('a'); assert.deepEqual(log, ['close', 'run'], 'a stuck name does not hold the game');
-  assert.equal(NAME_WAIT_MS, 1400);
-  const errs = [], boom = makeStarter({ say: () => 0, closeSheet() {}, run: async () => { throw new Error('x'); }, wait: () => Promise.resolve(), onError: e => errs.push(e.message) });
-  await boom('a'); assert.deepEqual(errs, ['x']); assert.equal(boom.busy(), false);
+test('the home screen is never visible between the tile tap and the game', async () => {
+  // a game that takes the screen at once (its show(null) runs before its first wait), after a delay, and one that never does
+  for (const [name, take] of [['at once', 0], ['after 30 ms', 30]]) {
+    const sc = screen(); sc.change();
+    const start = makeStarter({ say: () => tick(5), isTaken: sc.isTaken, watch: sc.watch, close: sc.close, wait: tick,
+      run: async () => { if (take) await tick(take); sc.home = false; sc.change(); await tick(10); } });
+    await start('x');
+    assert.deepEqual(sc.bad(), [], `${name}: no frame with the sheet gone and the home screen showing`);
+    assert.equal(sc.sheet, false, 'and the sheet is gone once the game is up');
+  }
+  // taken before run() returns (the sync part of a game hides the home screen itself)
+  const sc = screen(); sc.change();
+  await makeStarter({ say: () => 0, isTaken: sc.isTaken, watch: sc.watch, close: sc.close, run: () => { sc.home = false; sc.change(); return tick(5); } })('x');
+  assert.deepEqual(sc.bad(), [], 'taken at once');
+  // a game that fails to start: the sheet closes when it ends (the game itself shows the home screen again)
+  const f = screen(); f.change(); const errs = [];
+  await makeStarter({ say: () => 0, isTaken: f.isTaken, watch: f.watch, close: f.close, onError: e => errs.push(e.message), run: async () => { throw new Error('no'); } })('x');
+  assert.deepEqual(errs, ['no']); assert.equal(f.sheet, false);
 });
 
-test('the chooser is built on the starter and shields the sheet while a game starts', () => {
+test('the name is waited for at most its limit; a game that throws frees the chooser', async () => {
+  const sc = screen(), log = [];
+  const start = makeStarter({ say: () => new Promise(() => {}), isTaken: sc.isTaken, watch: sc.watch, close: sc.close, wait: () => Promise.resolve(), run: async () => { log.push('run'); sc.home = false; sc.change(); } });
+  await start('a'); assert.deepEqual(log, ['run'], 'a stuck name does not hold the game');
+  assert.equal(NAME_WAIT_MS, 1400);
+  const boom = makeStarter({ say: () => 0, isTaken: () => false, watch: () => () => {}, close() {}, run: () => { throw new Error('x'); }, onError() {} });
+  await boom('a'); assert.equal(boom.busy(), false);
+});
+
+test('the chooser is built on the starter, shields the sheet while a game starts, and closes it only when the home screen is hidden', () => {
   const ch = code('js/mini/chooser.js'), css = read('css/app.css');
   assert.match(ch, /const start = makeStarter\(\{/);
-  assert.ok(!/sheet\.classList\.add\('hidden'\);\s*\n?\s*\/\/ Its name/.test(ch) && !/let starting = false/.test(ch), 'the sheet no longer hides before its name is said');
-  assert.match(ch, /sheet\.addEventListener\('click', e => \{ if \(start\.busy\(\)\) e\.stopImmediatePropagation\(\); \}, true\)/, 'nothing on the sheet answers while starting');
-  assert.match(css, /#miniSheet\.starting \.tile\{pointer-events:none\}/);
+  assert.ok(!/let starting = false/.test(ch), 'the old flag is gone');
+  assert.match(ch, /isTaken: \(\) => \$\('#home'\)\.classList\.contains\('hidden'\)/, 'taken = the game hid the home screen');
+  assert.ok(!/classList\.add\('hidden'\);\s*\n\s*\/\/ Its name/.test(ch));
+  assert.match(ch, /sheet\.addEventListener\('click', e => \{ if \(start\.busy\(\)\) e\.stopImmediatePropagation\(\); \}, true\)/, 'nothing on the sheet, the Done button included, answers while starting');
+  assert.match(css, /#miniSheet\.starting \.tile\{pointer-events:none\}/); assert.match(css, /#miniSheet\.starting #miniClose\{opacity:\.4\}/);
+  assert.match(css, /@keyframes chosenPulse\{to\{transform:scale\(1\.04\)\}\}/, 'the chosen tile pulses by transform only');
   assert.match(read('index.html'), /'mini\/starter'/, 'index.html lists the module for the fresh re-fetch');
+  // every game takes the screen with show(null), so the watcher sees it; a result card's Mini games button shows home and the sheet in one turn
+  for (const f of ['js/ui/goalie.js', 'js/mini/pens-ui.js', 'js/mini/rondo-ui.js', 'js/mini/attack-ui.js', 'js/mini/puzzle-ui.js']) assert.match(code(f), /show\(null\)/, f);
+  assert.match(code('js/mini/run.js'), /go: \(\) => \{ show\('#home'\); hooks\.open\?\.\(\); \}/, '"Mini games" on a result card: home and the sheet in one turn');
 });

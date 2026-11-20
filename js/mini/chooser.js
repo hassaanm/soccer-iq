@@ -35,8 +35,11 @@ function render() {
 const start = makeStarter({
   say: id => { unlockSpeech(); return say(MINI.find(x => x.id === id).say); }, // (its name, said first)
   pick: id => { sheet.classList.toggle('starting', !!id); for (const t of $$('#minis .tile')) t.classList.toggle('picked', t.dataset.id === id); },
-  closeSheet: () => sheet.classList.add('hidden'),
   run: id => RUN[id]?.(),
+  // The sheet closes when the game has taken the screen (the home screen is hidden by its show(null)), in the same turn.
+  isTaken: () => $('#home').classList.contains('hidden'),
+  watch: cb => { const mo = new MutationObserver(cb); mo.observe($('#home'), { attributes: true, attributeFilter: ['class'] }); return () => mo.disconnect(); },
+  close: () => sheet.classList.add('hidden'),
 });
 // When a best has to go under a long name, the pictures are made a little smaller so both rows still fit (css .two).
 function fit() {
