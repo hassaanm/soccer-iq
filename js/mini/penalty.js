@@ -109,7 +109,7 @@ export class Penalty extends Goalie {
     // The last moment: he plants and swings; the ball flashes; the keeper sets in the middle of his goal.
     this.flash = true; this.ui.ballGlow = true; this.world.fx?.('skill'); this.feint = null; if (s.a('k2')?.gkm?.guess) s.a('k2').gkm = null;
     s.stop('hero'); this.aimFoot(); s.windup('hero', 'shot', null); s.go('k2', K_X, cy, 1.6);
-    this.win = { t0: s.time, T: FLASH_G, real: k.late };
+    this.win = { t0: s.time, T: FLASH_G, real: hint ? Math.max(1.4, k.late) : k.late }; // (his very first kick: a longer last moment while the hand shows when to tap)
     await this.wait(99, () => s.time - this.win.t0 >= FLASH_G);
     // The kick: the keeper decides now (mini/pens.js), and goes as it is struck.
     this.win = null; this.flash = false; this.phase = 'flight'; this.ui.aims = NONE; this.ui.ballGlow = false; this.ui.hand = null;
