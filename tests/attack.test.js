@@ -148,7 +148,7 @@ function playRun(b, seed) {
 test('the bots: the right decisions score clearly more than dribbling at goal; standing still scores nothing; nobody goes on for ever', () => {
   const N = 10, mean = b => { let a = 0; const runs = []; for (let i = 0; i < N; i++) { const x = playRun(b, (i + 1) / (N + 1)); runs.push(x); a += x.score; } return { m: a / N, runs }; };
   const right = mean(bot('right', .95)), straight = mean(bot('straight')), still = mean(bot('still'));
-  assert.ok(right.m >= 2 * straight.m + .4, `right ${right.m} vs straight ${straight.m}`);
+  assert.ok(right.m >= 1.8 * straight.m && right.m - straight.m >= 1.5, `right ${right.m} vs straight ${straight.m}`);
   assert.equal(still.m, 0); for (const r of still.runs) { assert.equal(r.n, 2); for (const e of r.ends) assert.ok(e === 'time' || e === 'lost', e); }
   assert.ok(still.runs.some(r => r.ends.includes('time')), 'the timer stops a player who stands still');
   for (const r of right.runs) assert.ok(r.n < 200, 'a run ends');
