@@ -287,7 +287,8 @@ export const demo = {
     if (this.push) this.push.end = (this.realTime || 0) + talkSec(tip, .8); // (the view arrives as the idea ends)
     await this.talk(tip, .8, capTip); // the lesson's one idea: let it sit (play crawls)
     this.crawlEnd();
-    this.demoLeft = this.ringAim(after()); this.showClock(after(), Math.min(.6, this.demoLeft + .02)); // (aimed a little higher until the taps start: a line that runs long still leaves the choice in the middle; v78: the ring drains on at the pace it had while the idea was said, ringAim)
+    this.demoLeft = this.ringAim(after()); this.showClock(after(), Math.min(.6, this.demoLeft + .02));
+    if (!this.skipping) this.push = { t0: this.realTime || 0, close: true, dur: Math.max(1, after() * 1.3) }; // (v76 SL: the view goes on coming in until the choice, view.js CLOSE; its pace set so that it is still coming in as the hand taps, if the taps take a little longer than planned) // (aimed a little higher until the taps start: a line that runs long still leaves the choice in the middle; v78: the ring drains on at the pace it had while the idea was said, ringAim)
     const h = this.sim.a('hero');
     // (v76) Then he looks at what the lesson is about (LOOK_AT), and only where it is not in sight already: no look
     // left and right for nothing. "Look up!" itself looks around (that is the lesson); a shot, one glance at the goal.
