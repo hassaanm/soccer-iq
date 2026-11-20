@@ -294,7 +294,7 @@ export class Match {
     const c = this.owner();
     if (c && !b.reach) {
       const ca = s.a(c), safe = s.time < (this.safeT || 0), meA = s.a(this.me);
-      if (this.team(c) === 'them' && !safe && meA && !this.stumbling() && dist(meA, b) < BODY_WIN && !ca.gk) { this.fx('won'); this.meMove = null; this.giveTo(this.me, 'tackle'); return; }
+      if (this.team(c) === 'them' && !safe && meA && !this.stumbling() && !this.idle() && dist(meA, b) < BODY_WIN && !ca.gk) { this.fx('won'); this.meMove = null; this.giveTo(this.me, 'tackle'); return; } // (not while he does nothing: standing still must lose)
       for (const o of this.foes(this.team(c))) {
         const d = dist(o, ca), k = o.id;
         if (d < .95 && !safe && (o.id !== this.me || this.meAuto)) {
@@ -318,7 +318,7 @@ export class Match {
   }
   arrive(f) {
     if (f.me) this.count.arrived++;
-    if (f.team === 'them' && this.rnd() < this.opp.loose) { // their first touch runs away from him: a loose ball for whoever gets there
+    if (f.team === 'them' && this.rnd() < this.oppNow().loose) { // (v93: while he does nothing, as at IDLE_LV: at the gentlest level every pass of theirs ran loose, so a child standing still never lost) // their first touch runs away from him: a loose ball for whoever gets there
       const s = this.sim, r = s.a(f.to), b = s.ball, dx = b.x - s.a(f.from).x, dy = b.y - s.a(f.from).y, l = Math.hypot(dx, dy) || 1;
       Object.assign(b, { state: 'loose', carrier: null, x: clamp(r.x + dx / l * 1.1, .5, this.L - .5), y: clamp(r.y + dy / l * 1.1, .5, this.W - .5), z: 0, move: null, reach: null });
       this.flight = null; this.lastTeam = 'them'; return;
@@ -459,7 +459,7 @@ export class Match {
       if (team === 'them' && this.on.theirShot(id, res)) return; // (the keeper turn: fast.js takes it from here)
       this.shoot(id, res); return;
     }
-    const press = this.foes(team).some(o => dist(o, a) < (team === 'them' && o.id === this.me ? this.oppNow().feel : 2.4)); // (his player: they feel him at `feel` m)
+    const press = !(team === 'them' && this.idle()) && this.foes(team).some(o => dist(o, a) < (team === 'them' && o.id === this.me ? this.oppNow().feel : 2.4)); // (his player: they feel him at `feel` m; while he does nothing they just go at goal: standing still must lose)
     const opts = this.ids(team).filter(m => m !== id && dist(s.a(m), a) > 3.5).map(m => ({ m, ...this.passCheck(id, m) })).filter(o => o.open).sort((p, q) => q.fwd - p.fwd); // (v86: never a pass to one right beside him: he is no option, only a crowd)
     // his player: they count him open a little sooner than anyone else (a gap of 0.55 m on the line and 1.1 m of room),
     // but never with a defender on his line

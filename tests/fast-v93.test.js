@@ -109,3 +109,17 @@ test('STEAL reach is about 1.5 m, and a ball in the air is never stolen', () => 
   const { sim, m } = match(); m.me = 'hero'; m.dead = false; sim.give('o1'); const o = sim.a('o1'); Object.assign(sim.a('hero'), { x: o.x - 1, y: o.y }); Object.assign(sim.ball, { x: o.x - .4, y: o.y, z: 1.2 });
   assert.equal(m.canSteal(), false);
 });
+
+// Standing still must lose (the owner's rule): a whole match with him never doing anything, at the size's own start
+// level and at the gentlest, is theirs.
+test('standing still loses a Fast match (start level and the gentlest)', async () => {
+  const { LEVELS, LEVEL_MIN } = await import('../js/fast/match.js');
+  const size = Object.keys(LEVELS).find(k => sizeOf(k) === sizeOf()) || '3v3';
+  for (const level of [LEVELS[size], LEVEL_MIN]) for (const seed of [11, 12]) {
+    const sim = new Sim(), sz = sizeOf(), m = new Match({ sim, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: sz.out, keepers: !!sz.keeper, level, rnd: seeded(seed) });
+    m.me = m.favor = 'hero'; m.meAuto = false; m.setup('us'); m.kickoff('us');
+    m.on.goal = team => { if (Math.max(m.score.us, m.score.them) < 3) m.after(1.8, () => m.kickoff(team === 'us' ? 'them' : 'us')); };
+    run(m, sim, 1800, () => Math.max(m.score.us, m.score.them) >= 3);
+    assert.ok(m.score.them > m.score.us, `level ${level} seed ${seed}: ${m.score.us}-${m.score.them}`);
+  }
+});

@@ -1,10 +1,11 @@
 // Score attack on the page (v88): a mini game (mini/chooser.js). Each attempt is played by the Fast controller itself
-// (js/fast/fast.js: his taps, the hold to slow and the drag to look, the action button with SHOOT and SKILL, the chips,
+// (js/fast/fast.js: his taps on the fixed spots (v93), the hold to slow and the drag to look, the action button with
+// SHOOT and the SKILL names, the chips,
 // the camera from behind his player, the pause), on an attempt's own match (mini/attack.js AttackMatch) in place of the
 // Fast match. This file sets each attempt up, draws the timer (the world's own draining ring round his feet), shows the
 // picture cue after a miss (a gold ring under the friend who was free and a gold line to him, or a line toward the goal
 // when the way was clear), and runs the attempts with two lives (mini/run.js).
-// Nothing in js/fast is changed: the controller is started as for a match (fast.play), then given this match.
+// The controller is started as for a match (fast.play), then given this match.
 import * as THREE from 'three';
 import { P } from '../ui/store.js';
 import { hud, hudEl } from '../ui/hud.js';
