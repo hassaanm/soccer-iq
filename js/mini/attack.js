@@ -52,7 +52,7 @@ export function attackLevel(L) {
   return {
     level: L, centre, mix: KINDS.map((k, i) => ({ id: k.id, w: w[i] / sum })),
     early: e, slow: 1 - AEK.slow * e, opp: .45 + .55 * (1 - Math.exp(-L / 1.6)), react: ease(.45, .15, 2)(L) + AEK.react * e, stand: ease(3, 1.5, 2.2)(L) + AEK.stand * e, boost: ramp(0, .12, 1)(L), into: (.6 + ramp(0, .2, 1)(L)) * (1 - AEK.into * e * e),
-    commit: ease(9.5, 12, 3)(L), farSave: ease(.45, .92, 2)(L), keeper: ease(.3, .8, 2)(L), slip: ease(.2, 0, 2)(L), friendSave: ease(.2, .5, 3)(L) * (1 - .5 * e),
+    commit: ease(9.5, 12, 3)(L), farSave: ease(.3, .92, 1.8)(L), keeper: ease(.2, .8, 1.8)(L), slip: ease(.3, 0, 1.8)(L), friendSave: ease(.2, .5, 3)(L) * (1 - .5 * e),
     time: ease(26, 17, 6)(L), startD: ease(15.5, 17.5, 4)(L),
   };
 }
