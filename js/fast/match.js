@@ -178,7 +178,11 @@ export class Match {
     let tx = gx + dx * .7, ty = res.to.y, z1 = res.to.z ?? .35;
     if (res.res === 'goal') { const a = s.a(id), run = gx - a.x; if (Math.abs(run) > .3) ty += (ty - a.y) * (dx * .7) / run; } // (v89 integration: aimed through its spot on the goal line, so an angled shot that is in crosses the line inside the posts)
     if (res.res === 'save' || res.res === 'cleared') { tx = res.at.x; ty = res.at.y; z1 = res.at.z ?? .3; }
-    else if (res.res === 'over' || res.res === 'wide') { tx = gx + dx * 2.2; z1 = res.to.z; }
+    else if (res.res === 'over' || res.res === 'wide') { // (v93 integration, the owner's log: "over" scored) it must be over or wide AT the line, not only at its end
+      tx = gx + dx * 2.2; z1 = res.to.z; const b = s.ball, eL = Math.min(.97, Math.abs(gx - b.x) / Math.abs(tx - b.x)), uL = 1 - Math.pow(1 - eL, 1 / 1.5), arc = res.arc ?? .25; // (sim.js flight: e = 1 - (1 - u)^1.5)
+      if (res.res === 'over') z1 = Math.max(z1 ?? 0, (this.gh + .35 - arc * 4 * uL * (1 - uL)) / uL); // (clear of the bar as it crosses the line)
+      else { const mid = (this.gy0 + this.gy1) / 2, yL = res.to.y < mid ? Math.min(res.to.y, this.gy0 - .4) : Math.max(res.to.y, this.gy1 + .4); ty = b.y + (yL - b.y) / eL; } // (past the post as it crosses the line)
+    }
     this.flight = { kind, from: id, team, res, t0: s.time, eta: s.time + .15 + (res.t || 0) };
     const a = s.a(id), k = this.keeper(team === 'us' ? 'them' : 'us');
     if (k && res.res !== 'cleared') { k.gkm = null; KEEP.keeperReact.call(this.kc, k, res, { x: a.x, y: a.y }, .15); this.cmd.set(k.id, s.time + 9); } // (he sets off as it is struck: a save gets there with the ball)
@@ -292,6 +296,7 @@ export class Match {
     }
     // tackles (and a ball of theirs that runs into his body is his)
     const c = this.owner();
+    if (this.meAim && !this.aimWas) this.contact.clear(); this.aimWas = this.meAim; // (v93 integration, the owner's log: tackled the instant he pressed SHOOT: a contact already counting down when the aim began took it at once; the aim's own AIM_TACKLE s start now)
     if (c && !b.reach) {
       const ca = s.a(c), safe = s.time < (this.safeT || 0), meA = s.a(this.me);
       if (this.team(c) === 'them' && !safe && meA && !this.stumbling() && !this.idle() && dist(meA, b) < BODY_WIN && !ca.gk) { this.fx('won'); this.meMove = null; this.giveTo(this.me, 'tackle'); return; } // (not while he does nothing: standing still must lose)
