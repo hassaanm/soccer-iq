@@ -50,7 +50,7 @@ export const sideDots = (b, side, n = 9) => { const lim = reachOf(b); return Arr
 // near enough to put a foot on the ball at his feet (PRESS_IN m inside his line, toward the middle), and a place in each
 // passing lane (the middle of the line between two neighbours, and the middle of the box for the lines across it).
 // Places closer than MERGE m are one; the one he stands on is left out. They stay where they are until the next set.
-export const KEEP_SPOTS = 5, PRESS_IN = 1.05, MERGE = 1.6, ON_SPOT = .9, TAP_R = 2.2;
+export const KEEP_SPOTS = 5, MAX_SPOTS = 8, PRESS_IN = 1.05, MERGE = 1.6, ON_SPOT = .9, TAP_R = 2.2;
 export const keepSpots = b => sideDots(b, 'near', KEEP_SPOTS);
 const ORDER = ['far', 'left', 'near', 'right'];
 // passers: [{ id, x, y, side }] (side: the box side he is on); me: where he is. Returns [{ x, y, kind, of }].
@@ -62,6 +62,7 @@ export function winSpots(b, passers, me = null) {
   out.push({ ...c, kind: 'lane', of: 'mid' });
   const kept = [];
   for (const s of out) if (!kept.some(k => dist(k, s) < MERGE) && !(me && dist(me, s) < ON_SPOT)) kept.push(s);
+  while (kept.length > MAX_SPOTS) { const lanes = kept.filter(k => k.kind === 'lane' && k.of !== 'mid'), far = (lanes.length ? lanes : kept).reduce((f, k) => (me ? dist(k, me) > dist(f, me) : false) ? k : f); kept.splice(kept.indexOf(far), 1); } // (at most 8: a lane far from him goes)
   return kept;
 }
 // The spot a tap at p means: the nearest within TAP_R m, else null (a tap far from every spot does nothing).
