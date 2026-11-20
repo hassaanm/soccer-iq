@@ -27,6 +27,7 @@ export const TURN_MOVES = ['double', 'chop', 'croqueta', 'roll', 'cruyff']; // t
 export const EXPLAIN = 'Pick a trick! Go where the space is!'; // said the first time the moment comes (and in the take-him-on demo)
 export const SKILL_TIP = 'Fake at him, then go to the space!'; // a lesson's card after the move to the wrong side (under the words SAW)
 export const SAW = 'He saw it!'; // the result's words after the move to the wrong side (outcomes.js emit 'read'), said in a match
+export const SKILL_LESSON = 'take-him-on'; // (v76 SL) the one lesson whose rounds and demo offer the skill moment (offerAllowed); matches offer it once it is open
 export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
 
 const ANY_NEAR = 1.6;         // (v76 SL) a plain turn (sim.js turnAhead 'any') is offered only with the defender this far off or more (m)
@@ -103,11 +104,13 @@ export const skill = {
   // Whether a new offer may come now: his ball in a play (not while he chooses, not in a replay of the better play),
   // one per play, and in matches GAP seconds apart.
   // (v76 SL) `ahead`: as a run starts, a turn still under way counts as done (outcomes.js stepUp).
+  // (v76 SL, review) In a lesson's rounds or its demo, only in the one about it (SKILL_LESSON, "Take him on!"); a trick in
+  // another lesson's demo held its own idea's closing line back 4 to 8 s.
   offerAllowed(ahead = false) {
     const m = this.mode, b = this.sim.ball;
     // (round 6: only in a play that is going his way: no fake on a dribble into their players, which is about to be lost)
     return this.phase === 'outcome' && this.playGood !== false && !this.skDone && !this.sk && b.carrier === 'hero' && b.state === 'carried' && (ahead || !b.move)
-      && (m === 'demo' || ((m === 'lesson' || m === 'match' || m === 'free') && !this.showing)) && (m === 'lesson' || m === 'demo' || this.clock - (this.skLast ?? -99) > GAP)
+      && (m === 'demo' || ((m === 'lesson' || m === 'match' || m === 'free') && !this.showing)) && (m === 'match' || m === 'free' || this.sc?.skill === SKILL_LESSON) && (m === 'lesson' || m === 'demo' || this.clock - (this.skLast ?? -99) > GAP)
       && this.skillsOpen(); // (not in the first lessons: from the one that is about taking a defender on)
   },
   // (v78) Two moves of `pool` for the next offer (with `k` first, when given): the ones he has been offered least this
