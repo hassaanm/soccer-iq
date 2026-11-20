@@ -82,10 +82,10 @@ test('voice clips load a few at a time, and a line that needs one now puts it fi
   const q = new Function(src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')();
   const done = {}, go = f => () => new Promise(r => { done[f] = r; });
   for (const f of ['a', 'b', 'c', 'd', 'e', 'f']) q.queued(f, go(f), false);
-  assert.deepEqual(q.state(), { loading: 4, waiting: ['e', 'f'] });
-  q.queued('f', null, true); assert.deepEqual(q.state().waiting, ['f', 'e'], 'a clip needed now goes first');
+  assert.deepEqual(q.state(), { loading: 1, waiting: ['b', 'c', 'd', 'e', 'f'] }, '(v93) clips loaded ahead: one at a time (tests/pop.test.js)');
+  q.queued('f', null, true); assert.deepEqual(q.state(), { loading: 2, waiting: ['b', 'c', 'd', 'e'] }, 'a clip needed now goes first, at once');
   assert.equal(q.queued('a', null, true), null, 'a clip in flight is left alone');
-  assert.equal(q.state().loading, 4);
+  assert.equal(q.state().loading, 2);
 });
 
 test('Smooth with the tuned blur uses the blurred edge; without it, the plain one', () => {

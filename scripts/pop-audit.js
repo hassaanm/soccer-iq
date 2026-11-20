@@ -151,18 +151,36 @@ export async function playOne(b, base, id, secs) {
   await tapEl(b, `#minis .tile[data-id=${id}]`);
   for (let i = 0; i < 25 && await visibleNow(b, '#home'); i++) await sleep(200); // (its name is said first: the home screen is behind)
   let rnd = 7 + id.length, n = 0; const R = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
-  const start = Date.now(), end = start + secs * 1000, syn = [], at = [.35, .7].map(x => start + Math.max(5000, secs * 1000 * x));
+  const start = Date.now(), end = start + secs * 1000, syn = [], at = [.35, .7].map(x => start + Math.max(5000, secs * 1000 * x)); let kick = start + Math.max(6000, secs * 500);
   while (Date.now() < end) {
     await sleep(400 + R() * 800);
     if (await visibleNow(b, '#results')) break;
     if (await visibleNow(b, '#card')) { await tapEl(b, '#cardMain'); continue; }
     if (RESULTS[id] && at.length && Date.now() > at[0]) { at.shift(); syn.push(await replay(b, id, syn.length)); continue; }
+    if (kick && Date.now() > kick) { kick = 0; // a tap that passes the ball (as a rondo pass: its star and the kick, js/mini/rondo-ui.js)
+      await b.ev(`const { sfx } = await import('/js/sound.js'); addEventListener('pointerdown', () => { sfx('star', 1); sfx('kick'); }, { once: true, capture: true }); return 1;`); }
     if (id === 'rondoWin' && R() < .35 && await tapEl(b, '#rSteal')) continue;
     await tap(b, 150 + R() * 630, 110 + R() * 230); n++; // (the field, clear of the home and sound buttons in the corners)
   }
   await b.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   const out = await b.ev(`const T = window.__tl; return { f: T.f, m: T.m, hudNodes: T.hudNodes, errs: window.__errs.slice(0, 8), plays: window.__plays }`);
   return { id, t0, taps: n, syn, ...out };
+}
+
+// The sound logic, silently (the players are stubs): five effects asked in one go start four players (the same one twice
+// starts once), one a frame; a line said starts the voice player.
+export async function soundCheck(b, base) {
+  const loaded = b.once('Page.loadEventFired'); await b.send('Page.navigate', { url: base + '?audit=sound' }); await loaded; await sleep(2000);
+  await tapEl(b, '#keeperBtn'); // (the first tap unlocks the sound)
+  return b.ev(`const S = await import('/js/sound.js'), { say } = await import('/js/ui/speech.js'), P = window.__plays;
+    for (let i = 0; i < 100 && !(S.audioPlayers()?.fx?.['star:1']?.src || '').startsWith('blob:'); i++) await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 1500));
+    const fr = []; let on = true; const loop = () => { fr.push(performance.now()); if (on) requestAnimationFrame(loop); }; requestAnimationFrame(loop);
+    const n0 = P.length; S.sfx('kick'); S.sfx('tap'); S.sfx('kick'); S.sfx('star', 0); S.sfx('star', 1);
+    await new Promise(r => setTimeout(r, 700)); on = false;
+    const ts = P.slice(n0); let most = 0; for (let i = 1; i < fr.length; i++) most = Math.max(most, ts.filter(x => x > fr[i - 1] && x <= fr[i]).length);
+    const n1 = P.length; await Promise.race([say('Great pass!'), new Promise(r => setTimeout(r, 4000))]);
+    return { effects: ts.length, perFrame: most, voice: P.length - n1, errs: window.__errs.slice(0, 4) };`);
 }
 
 // ---------- reading the record ----------
@@ -223,6 +241,9 @@ export async function popAudit({ games = GAMES, secs = SECS, log = console.log }
     await b.send('Emulation.setDeviceMetricsOverride', { width: 932, height: 430, deviceScaleFactor: 3, mobile: false });
     await b.send('Page.addScriptToEvaluateOnNewDocument', { source: PRE });
     log(`pop audit: ${games.length} mini games, ${secs} s each, CPU ${RATE}x slower`);
+    { const sc = await soundCheck(b, base), bad = [];
+      if (sc.effects !== 4) bad.push(`${sc.effects} effects started (4 asked)`); if (sc.perFrame > 1) bad.push(`${sc.perFrame} effects in one frame`); if (sc.voice < 1) bad.push('a line said started no player'); if (sc.errs.length) bad.push(sc.errs.join(' | '));
+      log(`  sound      effects asked 5 (one twice): started ${sc.effects}, at most ${sc.perFrame} a frame; a line said: ${sc.voice} player started`); for (const x of bad) log(`     FAIL sound: ${x}`); fails += bad.length; }
     for (const id of games) {
       const raw = await playOne(b, base, id, secs), r = judge(raw); rows.push(r); fails += r.fails.length;
       if (arg('dump')) writeFileSync(path.join(arg('dump'), id + '.json'), JSON.stringify(raw));

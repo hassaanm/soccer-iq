@@ -238,11 +238,13 @@ export const hud = {
       // With no `at` (a lesson's light result) they sit just under the result's big words.
       const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), b = !at && ui.banner.getBoundingClientRect();
       const side = t ? [t.right + 48, t.bottom - 4] : b ? [b.left + b.width / 2, b.top + b.height * .5 + 82] : null;
-      let was = '';
+      let was = null;
       const t0 = performance.now(), follow = () => {
         if (tok !== popTok) return;
-        const q = side || at?.(), s = q ? `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)` : was;
-        if (s !== was) { el.style.transform = s; was = s; } // (written only when it moves)
+        // (written only when he has moved 4 px or more: a shaking or easing camera wrote it every frame, about 19 page
+        // changes a second for 1.3 s after each result in penalties)
+        const q = side || at?.();
+        if (q && (!was || Math.abs(q[0] - was[0]) >= 4 || Math.abs(q[1] - was[1]) >= 4)) { el.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)`; was = q; }
         if (el.classList.contains('show') && performance.now() - t0 < 1300) requestAnimationFrame(follow);
       };
       el.classList.add('show'); follow();

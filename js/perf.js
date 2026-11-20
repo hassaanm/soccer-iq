@@ -63,7 +63,7 @@ export function frame(t, g, r) {
   for (const k in st) if (seen[k] !== undefined && seen[k] !== st[k]) mark(`${k} ${seen[k] || '-'}>${st[k] || '-'}`);
   // (a screen held at 30 a second, a phone in Low Power Mode: a frame is slow when it is well over the usual one there)
   const gm = (gaps[st.mode] ||= []); gm.push(ms); if (gm.length > 1200) gm.splice(0, 600);
-  if (gm.length === 90 || gm.length % 600 === 0) limits[st.mode] = Math.max(SLOW, median(gm) * 1.4);
+  if (gm.length === 10 || gm.length === 90 || gm.length % 600 === 0) limits[st.mode] = Math.max(SLOW, median(gm) * 1.4);
   limit = limits[st.mode] || SLOW;
   const made0 = seen.made; seen = st;
   const ri = (r || renderer)?.info, made = { programs: ri?.programs?.length ?? 0, geometries: ri?.memory?.geometries ?? 0, textures: ri?.memory?.textures ?? 0 };
