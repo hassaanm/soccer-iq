@@ -24,15 +24,17 @@ export function time(name) { if (!rec.on) return NOP; const a = now(); return ()
 
 // (v93) The page's own work after a frame: a message posted at the end of the frame loop arrives once the page has done
 // what it does right after (its HTML layer drawn, the tasks queued before it).
-const ping = typeof MessageChannel === 'function' ? new MessageChannel() : null;
-if (ping) ping.port1.onmessage = () => { pageEnd = now(); };
+// (Made only when recording starts, in the page: an open channel made as the module loads kept Node's tests from ever
+// exiting, as window.js imports this module.)
+let ping = null;
+const makePing = () => { if (ping || typeof MessageChannel !== 'function' || typeof document === 'undefined') return; ping = new MessageChannel(); ping.port1.onmessage = () => { pageEnd = now(); }; };
 // What a tap hit: its own id, or the nearest one round it ("tap keeperBtn", not "tap I"); a mini game's tile by its game.
 const what = el => { const tile = el?.closest?.('#minis [data-id]'); if (tile) return 'tile:' + tile.dataset.id; return el?.id || el?.closest?.('[id]')?.id || el?.tagName || ''; };
 const named = el => el.id || (typeof el.className === 'string' && el.className.split(' ')[0]) || el.tagName?.toLowerCase() || '?';
 
 export function start(r) {
   if (rec.on) return; rec.on = true; limit = SLOW; frames = 0; over = [0, 0, 0]; total = 0; t0 = last = now(); marks = []; slow = []; sect = {}; gaps = {}; limits = {}; prev = null; longs = 0; seen = {}; counts = {}; canvasMax = '';
-  renderer = r || null; if (renderer?.info) renderer.info.autoReset = false; // (all the passes of a frame are counted: v92 showed only the last, "draw 1 tri 1")
+  makePing(); renderer = r || null; if (renderer?.info) renderer.info.autoReset = false; // (all the passes of a frame are counted: v92 showed only the last, "draw 1 tri 1")
   info = { ua: navigator.userAgent, dpr: devicePixelRatio, screen: `${screen.width}x${screen.height}` };
   if (!obs) {
     addEventListener('pointerdown', e => { const w = what(e.target); if (w.startsWith('tile:')) mini = w.slice(5); else if (/^(playBtn|freeBtn|cupBtn)$/.test(w)) mini = null; mark('tap ' + w); }, true);

@@ -67,7 +67,9 @@ setTimeout(hudPictures, 800);
 // (v93) A result comes in over three frames, not one: the big words and their sound now; the sunburst and the flash in
 // the next frame; the stars (hud.pop) in the one after, their notes after that, one at a time. Each step is small, so no
 // frame carries them all. A newer result, or bannerOff, cancels the steps still to come.
-const inFrames = (n, f) => requestAnimationFrame(() => (n > 1 ? inFrames(n - 1, f) : f()));
+// (a frame, or 100 ms when none comes: a hidden page; each step once)
+const oneFrame = f => { let done = false; const go = () => { if (!done) { done = true; f(); } }; requestAnimationFrame(go); setTimeout(go, 100); };
+const inFrames = (n, f) => oneFrame(() => (n > 1 ? inFrames(n - 1, f) : f()));
 let resultTok = 0, popTok = 0, flashAlt = false, bigAlt = false;
 // The flash again from the start, with no layout: its animation's name changes (go, go2), which restarts it.
 function flashGo() { const f = ui.flash; flashAlt = !flashAlt; f.classList.remove(flashAlt ? 'go' : 'go2'); f.classList.add(flashAlt ? 'go2' : 'go'); }

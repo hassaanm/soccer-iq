@@ -210,7 +210,9 @@ function fxStart(key, pool) {
 // keeper's "tap" and "yay", a pass's "star" and "kick"). The others wait a frame each (17 ms, too short to hear); the
 // same effect asked twice in one wait starts once.
 const fxWaiting = []; let flushing = false;
-const fxLater = () => { if (!flushing) { flushing = true; requestAnimationFrame(() => setTimeout(flush, 0)); } };
+// (the next frame, or 100 ms when no frame comes: a hidden page, no frame loop; whichever is first, once)
+const afterFrame = f => { let done = false; const go = () => { if (!done) { done = true; setTimeout(f, 0); } }; if (typeof requestAnimationFrame === 'function') requestAnimationFrame(go); setTimeout(go, 100); };
+const fxLater = () => { if (!flushing) { flushing = true; afterFrame(flush); } };
 function flush() {
   flushing = false; const key = fxWaiting.shift(); if (key === undefined) return;
   for (let i = fxWaiting.length - 1; i >= 0; i--) if (fxWaiting[i] === key) fxWaiting.splice(i, 1);
@@ -298,7 +300,6 @@ const LOADS = 4, waiting = [], STUCK = 10000; let loading = 0, moved = 0, ahead 
 // (round 14) Clips still to load, for the slow-device governor (world.js pace: it does not judge while they load). When no
 // clip has started or finished for 10 s (a fetch that never ends), it counts as nothing loading, so the governor goes on.
 export const clipsLoading = () => (performance.now() - moved < STUCK ? loading + waiting.length : 0);
-const afterFrame = f => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => setTimeout(f, 0)) : setTimeout(f, 16));
 function nextLoad() {
   while (loading < LOADS && waiting.length) {
     const i = waiting.findIndex(j => j.now); if (i < 0 && (loading || ahead)) return; // (one ahead at a time, and none beside a line's)

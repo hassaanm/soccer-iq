@@ -16,19 +16,23 @@ test('effects: at most one starts a frame; the same one asked twice in a wait st
   const s = code('js/sound.js');
   const src = s.slice(s.indexOf('const fxWaiting = []'), s.indexOf('export function sfx('));
   const frames = [], started = [];
-  const run = new Function('requestAnimationFrame', 'setTimeout', 'fxStart', 'SFX_START', src + '; return { fxWaiting, fxLater };')(f => frames.push(f), f => f(), k => started.push(k), { mode: 'pool+later' });
+  const late = [], run = new Function('requestAnimationFrame', 'setTimeout', 'fxStart', 'SFX_START', src + '; return { fxWaiting, fxLater };')(f => frames.push(f), (f, ms) => (ms >= 100 ? late.push(f) : f()), k => started.push(k), { mode: 'pool+later' });
   for (const k of ['tap', 'yay', 'tap', 'star:0', 'star:1']) { run.fxWaiting.push(k); run.fxLater(); }
   assert.equal(frames.length, 1, 'one wait asked for, however many effects');
   const perFrame = []; while (frames.length) { const n = started.length; frames.shift()(); perFrame.push(started.length - n); }
   assert.deepEqual(started, ['tap', 'yay', 'star:0', 'star:1']);
+  // with no frame at all (a hidden page, no frame loop) each wait ends by its timer
+  started.length = 0; late.length = 0; for (const k of ['kick', 'tap']) { run.fxWaiting.push(k); run.fxLater(); }
+  frames.length = 0; while (late.length) late.shift()(); assert.deepEqual(started, ['kick', 'tap'], 'no frame: the timer starts them, one per wait');
   assert.ok(perFrame.every(n => n <= 1), 'one a frame: ' + perFrame);
 });
 
 test('clips loaded ahead load one at a time, a frame apart; a clip a line needs now goes first, up to four at once', async () => {
   const s = code('js/sound.js');
-  const src = s.slice(s.indexOf('const LOADS'), s.indexOf('function clip(')).replace(/^export /gm, '');
+  const af = s.slice(s.indexOf('const afterFrame'), s.indexOf('\n', s.indexOf('const afterFrame')));
+  const src = af + '\n' + s.slice(s.indexOf('const LOADS'), s.indexOf('function clip(')).replace(/^export /gm, '');
   const frames = [];
-  const q = new Function('requestAnimationFrame', 'setTimeout', 'performance', src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')(f => frames.push(f), f => f(), { now: () => 0 });
+  const q = new Function('requestAnimationFrame', 'setTimeout', 'performance', src + '; return { queued, state: () => ({ loading, waiting: waiting.map(j => j.file) }) };')(f => frames.push(f), (f, ms) => (ms >= 100 ? null : f()), { now: () => 0 });
   const done = {}, go = f => () => new Promise(r => { done[f] = r; });
   for (const f of ['a', 'b', 'c']) q.queued(f, go(f), false);
   assert.deepEqual(q.state(), { loading: 1, waiting: ['b', 'c'] }, 'one ahead at a time');
