@@ -23,7 +23,7 @@ const READY = .5;                   // real s before the run-up: the keeper sets
 // and the goal with its targets fills the top half. eye: [m behind the spot, m to the side, height]; tgt: where it looks
 // ([x, m across, height]); Ff: the lens, as a share of the picture's height.
 export const VIEW = { eye: [5.2, .4, 2.3], tgt: [0, .1, -.7], Ff: 2.3 };
-export const AFTER = { goal: 2.2, save: 2.0, post: 2.0 }; // real s the result stays before the next kick
+export const AFTER = { goal: 2.2, save: 2.7, post: 2.7 }; // real s the result stays before the next kick (a miss: its kind line shows after the big word: ui/hud.js)
 
 export class Penalty extends Goalie {
   constructor(o) { super(o); this.kind = 'pens'; this.flash = false; }
@@ -49,9 +49,9 @@ export class Penalty extends Goalie {
     const a = this.alive ||= { next: s.time + .15, n: 0, u: 0 }, r = (x => x - Math.floor(x))((k.u.alive + 1) * (a.n + 1) * 7.31);
     if (this.phase === 'aim' && k.fake && !k.feintDone && (s.time - this.win.t0) / RUN_G >= k.fakeAt) { // the feint
       k.feintDone = true; const sg = sideU(k.fake);
-      s.go('k2', K_X, cy + sg * .42, 2.6);
-      K.gkm = { k: 'dive', guess: true, pre: .2, t0: s.time + .2, dur: .45, side: sg, low: true, high: false, save: false, keep: false }; // (pro/keeper.js: a lean that way before a dive; called off before it starts)
-      this.feint = { back0: s.time + .17, end: s.time + .4, back: false };
+      s.go('k2', K_X, cy + sg * .65, 3.2);
+      K.gkm = { k: 'dive', guess: true, pre: .22, t0: s.time + .3, dur: .45, side: sg, low: true, high: false, save: false, keep: false }; // (pro/keeper.js: a lean that way before a dive; called off before it starts)
+      this.feint = { back0: s.time + .26, end: s.time + .5, back: false };
       return;
     }
     if (s.time < a.next) return;

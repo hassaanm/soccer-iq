@@ -155,14 +155,10 @@ export function endlessShot(level, r, n = 0, hist = []) {
   if (last && last.k === kind) kind = kind === 'close' ? 'side' : 'close';
   const cols = hist.slice(-2).map(h => zoneAt(h.zone).col);
   let side = r() < .5 ? 1 : -1;
-  const zoneOf = s => {
-    if (kind === 'pen') return pick(['L', 'R', 'M'].filter(z => z !== last?.zone)); // (from the spot: the inside of the foot, low)
-    if (kind === '1v1' || kind === 'side') return pick([lowFar(s), low(s)]);
-    if (kind === 'far') return r() < D.top ? pick([top(s), top(-s)]) : pick([low(s), lowFar(s), 'M']);
-    return pick([low(s), low(-s), 'M']);
-  };
-  let zone = zoneOf(side);
-  for (let i = 0; i < 6 && (zone === last?.zone || (cols.length === 2 && cols.every(c => c === zoneAt(zone).col))); i++) { side = -side; zone = zoneOf(side); } // (never the same corner twice, nor one side three times)
+  const high = kind === 'far' && r() < D.top, ok = z => z !== last?.zone && !(cols.length === 2 && cols.every(c => c === zoneAt(z).col)); // (never the same corner twice, nor one side three times)
+  const zonesOf = s => (kind === 'pen' ? ['L', 'R', 'M'] : kind === '1v1' || kind === 'side' ? [lowFar(s), low(s)] : high ? [top(s), top(-s)] : kind === 'far' ? [low(s), lowFar(s), 'M'] : [low(s), low(-s), 'M']).filter(ok); // (from the spot or close in: the inside of the foot, low)
+  if (!zonesOf(side).length) side = -side;
+  const zone = pick(zonesOf(side).length ? zonesOf(side) : ['L', 'R'].filter(z => z !== last?.zone));
   let sh;
   if (kind === 'pen') sh = makeShot(n, 'pen', { x: 7, u: 0 }, zone);
   else if (kind === '1v1') sh = makeShot(n, '1v1', { x: 5.5, u: side * (.5 + r() * .5) }, zone, { x: 15, u: 3 * side });
