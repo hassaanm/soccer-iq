@@ -424,7 +424,7 @@ export function viewStep(st, o, dt, ms = 1, now = () => performance.now()) {
   if (!free || o.still) st.yaw = clampYaw(me, st.yaw, L, W, Math.min(LOOK_MIN, reachOut(me, st.yaw, L, W))); // (his own look: never off the pitch)
   else if (Math.abs(wrap(aim - st.yaw)) < .05) st.yaw = clampYaw(me, st.yaw, L, W, Math.min(LOOK_MIN, reachOut(me, aim, L, W))); // (there: never off the pitch; the ball or the goal near a line still in view)
   for (const k of ['side', 'pull', 'close']) { const v = st[k] ?? (k === 'pull' ? 1 : 0), g = goal[k] ?? (k === 'pull' ? 1 : 0), r = VIEW_RATE[k] * dt; st[k] = v + clamp(g - v, -r, r); }
-  return viewCam(me, ball, has, st, look, w, h, L, W, free ? [ball] : []);
+  return viewCam(me, ball, has, st, look, w, h, L, W, free ? (o.keep ? [ball, ...o.keep] : [ball]) : []); // (o.keep: more to keep in the picture: v93 variants, his big choices and the friends he can pass to)
 }
 
 // ---------- the shot view (SHOOT) ----------

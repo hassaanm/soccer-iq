@@ -35,6 +35,7 @@ const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
 // command from him (a tap, a pass, a shot, STEAL), their attack plays as at IDLE_LV at least (how fast they run, how
 // often and from how far they shoot), his friends shoot only from a move he was in and win the ball back slowly
 // (IDLE_TACKLE s). A tap ends it at once.
+export const AUTO_EVERY = .6, AUTO_STILL = 1.4; // (v93 variants: how often his own player picks a place when he moves by himself; game s standing before a fresh one)
 export const IDLE_T = 10, IDLE_LV = .8, IDLE_TACKLE = 2.4;
 export const QUIET = .8, SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
@@ -444,8 +445,8 @@ export class Match {
       for (const x of left) map[x] = 3;
       this.roles = { team, map, key };
     }
-    const an = anchors[this.roles.map[id] ?? 0], anchor = [clamp(an[0], 2, L - 2), clamp(an[1], 1.5, W - 1.5)];
-    const foes = this.allFoes(team), near = meA ? [...mates, meA] : mates; let best = null, bs = -1e9;
+    const an = anchors[id === this.me && mine >= 0 ? mine : this.roles.map[id] ?? 0], anchor = [clamp(an[0], 2, L - 2), clamp(an[1], 1.5, W - 1.5)]; // (v93 variants: his own place, when he moves by himself: the role kept for him)
+    const foes = this.allFoes(team), near = meA && id !== this.me ? [...mates, meA] : mates; let best = null, bs = -1e9;
     for (let k = 0; k < 9; k++) {
       const r = k ? 2.6 : 0, a = k * Math.PI / 4, x = clamp(anchor[0] + Math.cos(a) * r, 1.3, L - 1.3), y = clamp(anchor[1] + Math.sin(a) * r, 1.3, W - 1.3), p = { x, y };
       let lane = 99, room = 99; for (const o of foes) { lane = Math.min(lane, onLane(o, b, p).d); room = Math.min(room, dist(o, p)); }
@@ -454,6 +455,35 @@ export class Match {
       if (sc > bs) { bs = sc; best = p; }
     }
     return best;
+  }
+  // ---------- his player, by himself (v93 variants A, C, D: fast.js calls it each frame) ----------
+  // Off the ball he plays as a sensible friend would, so he never taps only to keep up: a loose ball he is (about) the
+  // nearest to, he goes for; their ball, he presses when it is his to go (the nearest of his team, or he just lost it:
+  // moveTeams leaves it to him then) and otherwise gets goal-side of the attacker nobody has; his team's ball, he takes
+  // his own support place (supportSpot). A tap of his (a marked spot, a press) comes first until it ends. Standing
+  // still AUTO_STILL s while play goes on, he steps to a fresh place (open, away from the nearest of theirs).
+  autoStep() {
+    const s = this.sim, me = s.a(this.me), b = s.ball, t = s.time, c = this.owner(), mv = this.meMove;
+    if (!me || this.dead || c === this.me || this.flight?.to === this.me || this.stumbling() || this.cmd.has(this.me) || this.meAim || (mv && t < mv.until)) { this.autoAt = null; return; }
+    const moved = this.autoAt ? Math.hypot(me.x - this.autoAt.x, me.y - this.autoAt.y) : 1; if (!this.autoAt || moved > .3) this.autoAt = { x: me.x, y: me.y, t };
+    const still = t - this.autoAt.t > AUTO_STILL;
+    if (!still && (this.autoNext || 0) > t) return; this.autoNext = t + AUTO_EVERY;
+    const team = c ? this.team(c) : this.flight?.team || this.lastTeam, mates = this.ids('us').filter(id => id !== this.me).map(id => s.a(id));
+    const run = (x, y) => { x = clamp(x, 1, this.L - 1); y = clamp(y, 1, this.W - 1); this.meRun(x, y, Math.hypot(x - me.x, y - me.y) > RUN_FAR ? RUN_FAST : RUN_SP); };
+    if (!c && b.state === 'loose' && !(this.flight && this.flight.team === 'us' && this.flight.kind !== 'shot')) {
+      const nf = mates.reduce((m, a) => Math.min(m, dist(a, b)), 99); if (dist(me, b) < nf + 1.5) { this.meMove = { kind: 'chase', until: t + 30, auto: true }; this.follow(); return; }
+    } else if (c && team === 'them' && !s.a(c).gk) {
+      const nf = mates.reduce((m, a) => Math.min(m, dist(a, b)), 99); if (dist(me, b) <= nf || dist(me, b) < 2.2 || t < this.meGo) { this.meMove = { kind: 'press', until: t + 30, auto: true }; this.follow(); return; } // (as moveTeams leaves it to him)
+    }
+    if (team === 'them' || (b.state === 'loose' && this.lastTeam === 'them')) { // goal-side of the one of theirs nobody has (else between the ball and our goal)
+      const ownX = 0, att = this.foes('us').filter(o => o.id !== c && !mates.some(a => dist(a, o) < 2.2)).sort((p, q) => dist(p, me) - dist(q, me))[0];
+      if (att) { const gx = ownX - att.x, gy = this.W / 2 - att.y, gl = Math.hypot(gx, gy) || 1; run(att.x + gx / gl * 1.5 + (b.x - att.x) * .18 + (still ? .8 : 0), att.y + gy / gl * 1.5 + (b.y - att.y) * .18 + (still ? (this.rnd() - .5) * 1.6 : 0)); }
+      else run(b.x * .55 + (still ? .8 : 0), this.W / 2 + (b.y - this.W / 2) * .5 + (still ? (this.rnd() - .5) * 2 : 0));
+      return;
+    }
+    let p = this.supportSpot(this.me, 'us');
+    if (still && Math.hypot(p.x - me.x, p.y - me.y) < 1) { const o = this.foes('us').sort((q, r) => dist(q, me) - dist(r, me))[0], ux = o ? me.x - o.x : 1, uy = o ? me.y - o.y : 0, l = Math.hypot(ux, uy) || 1; p = { x: me.x + ux / l * 2 + 1, y: me.y + uy / l * 2 }; } // (get open: away from the nearest of theirs)
+    run(p.x, p.y);
   }
   nearGoal(id) { const a = this.sim.a(id); return !!a && Math.hypot(this.L - a.x, this.W / 2 - a.y) < FIND; }
   // The computer's carrier: shoot when close and clear, pass when pressed (or to a friend well ahead in the clear; to his

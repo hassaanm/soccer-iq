@@ -71,7 +71,7 @@
       <div class="tname"></div>
       <div class="roster"></div>
     </div>
-    <div class="mid"><div class="vs">VS</div><button id="sizeBtn" class="btn btn-glass sizechip" aria-label="Players on each team"></button><button id="modePick" class="modetoggle" type="button" role="switch" aria-checked="false" aria-label="Mode: Classic">Mode: <b>Classic</b></button></div>
+    <div class="mid"><div class="vs">VS</div><button id="sizeBtn" class="btn btn-glass sizechip" aria-label="Players on each team"></button><button id="modePick" class="modetoggle" type="button" role="switch" aria-checked="false" aria-label="Mode: Classic">Mode: <b>Classic</b></button><div id="liveVar" class="livevar" role="radiogroup" aria-label="Live variant"><button type="button" data-v="A">A</button><button type="button" data-v="B">B</button><button type="button" data-v="C">C</button><button type="button" data-v="D">D</button></div></div>
     <div class="team" data-side="them">
       <div class="tag">OTHER TEAM</div>
       <div class="kind"><button data-type="club">Clubs</button><button data-type="country">Countries</button></div>
@@ -180,7 +180,7 @@ addEventListener('error', e => {
     'ui/dom', 'ui/store', 'ui/mode', 'ui/graphics', 'ui/speech', 'ui/stage', 'ui/hud', 'ui/screens', 'ui/results', 'ui/home', 'ui/shirt', 'ui/soundmenu', 'ui/menu', 'ui/input', 'ui/strip', 'ui/report', 'ui/pics',
     'game/shared', 'game/rounds', 'game/outcomes', 'game/team', 'game/live', 'game/demo', 'game/input', 'game/view', 'game/skill', 'game/keeper', 'game/window', 'window', 'shot',
     'saves', 'game/goalie', 'ui/goalie', 'game/handover', 'perf', 'ui/speed', 'ui/voicewarm', 'voicelines', 'log', 'ui/playlog', 'pause', 'ui/pause',
-    'fast/state', 'fast/rules', 'fast/match', 'fast/level', 'fast/marks', 'fast/fast', 'mini/rules', 'mini/pics', 'mini/games', 'mini/pens', 'mini/penalty', 'mini/run', 'mini/pens-ui', 'mini/chooser', 'mini/starter',
+    'fast/state', 'fast/rules', 'fast/match', 'fast/level', 'fast/marks', 'fast/variant', 'fast/fast', 'mini/rules', 'mini/pics', 'mini/games', 'mini/pens', 'mini/penalty', 'mini/run', 'mini/pens-ui', 'mini/chooser', 'mini/starter',
     'mini/rondo', 'mini/rondo-play', 'mini/rondo-ui', 'mini/attack', 'mini/attack-ui', 'mini/puzzle', 'mini/puzzle-ui']
     .map(f => 'js/' + f + '.js').concat('css/app.css');
   Promise.all(files.map(f => fetch(f, { cache: 'reload' }).catch(() => null))).finally(() => location.reload());

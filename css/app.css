@@ -1131,3 +1131,9 @@ body.logon #logTab{display:grid}
 /* ---- SKILL worker (v93): the Live skill moment is ONE big gold button where SHOOT and STEAL sit; its move picture fills it ---- */
 #fAct.fActB.skill span{font-size:13px;white-space:nowrap;max-width:none;position:relative}
 #fAct2{display:none!important}
+
+/* ---- VAR worker (v93 round 3): Live's variant chips A B C D under the mode toggle (Live only) ---- */
+.livevar{display:none;gap:3px;justify-content:center}
+#home.live .livevar{display:flex}
+.livevar button{width:19px;height:24px;padding:0;border:0;border-radius:7px;font:700 12px/24px var(--font);background:var(--blue-d);color:#fff;box-shadow:0 2px 0 var(--blue-e);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.livevar button.on{background:var(--gold-d);color:#3a2700;box-shadow:0 2px 0 var(--gold-e)}
