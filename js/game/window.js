@@ -17,6 +17,8 @@ import { SHOT, shotLook } from '../generate.js';
 import { clamp } from '../geom.js';
 
 const RUNUP = 1.3;
+const FIRST = { look: 8, frames: 24 }; // (v76 SL) vetFirst: how many scenes it looks at for a quick first one, and quick is this many frames of planning or fewer
+const VET_PLAY = 16; // (v76 SL) steps of a scene's vetting a frame while play goes on (vetRest): a fifth of PLAN_CHUNK
 const PLAN_LIMIT = 170, PLAN_CHUNK = 80; // (v83) the most frames prePlan may take for a scene (60 per second: 1.2 s of the celebration it is made over, and 1.5 s of still picture at the most); how many steps vetRounds makes in a frame
 const planCost = new WeakMap(); // (a scene: its prePlan frames, found by prePlanFrames)
 export { PLAN_LIMIT };
@@ -194,6 +196,23 @@ export const moving = {
     for (const sc of rounds) { let f = planCost.get(sc); if (f === undefined) { try { f = await this.prePlanFrames(sc, spend); } catch (e) { console.error(e); f = null; } planCost.set(sc, f); } if (f == null || f <= PLAN_LIMIT) kept.push(sc); }
     return kept.length ? kept : rounds;
   },
+  // (v76 SL, review) A match vets its first scene before it starts (vetFirst) and the rest during play (vetRest), a few
+  // steps of work a frame (VET_PLAY), so play starts at once after Kick off (a real match's 24 fresh scenes took up to 7.5
+  // s of still players). A scene not yet vetted is not picked yet (live.js nextPlanned, bridgePick). vetState: 'ok', 'slow'
+  // (left out), or null (not vetted yet).
+  vetState(sc) { const f = planCost.get(sc); return f === undefined ? null : f == null || f <= PLAN_LIMIT ? 'ok' : 'slow'; },
+  async vetOne(sc, spend) { if (planCost.get(sc) === undefined) { let f; try { f = await this.prePlanFrames(sc, spend); } catch (e) { console.error(e); f = null; } planCost.set(sc, f); } return this.vetState(sc); },
+  vetSpend(chunk) { const frame = () => { this.realJobs = true; const j = this.job(0); this.realJobs = false; return j.done; }; let left = 0; return async n => { if (left < n) { await frame(); left = chunk; } left -= n; }; },
+  // The first scene of `rounds` that is not left out is moved to the front (rounds is changed in place).
+  // (Of the first FIRST.look, the first one quick to plan, FIRST.frames frames or fewer; else the quickest: play starts
+  // moving within a few frames of Kick off even after the quickest tap.)
+  async vetFirst(rounds) { if (this.skipping) return; const spend = this.vetSpend(PLAN_CHUNK); let best = -1, bf = 1e9;
+    for (let i = 0; i < rounds.length && (i < FIRST.look || best < 0); i++) { if ((await this.vetOne(rounds[i], spend)) !== 'ok') continue; const f = planCost.get(rounds[i]) ?? FIRST.frames;
+      if (f < bf) { bf = f; best = i; } if (f <= FIRST.frames) break; }
+    if (best > 0) rounds.unshift(...rounds.splice(best, 1)); },
+  // The rest, in the frames of play; a scene left out is taken out of `rounds` (never the last one). `alive()`: false once the match is over.
+  async vetRest(rounds, alive = () => true) { if (this.skipping) return; const spend = this.vetSpend(VET_PLAY);
+    for (const sc of [...rounds]) { if (!alive()) return; if ((await this.vetOne(sc, spend)) === 'slow' && rounds.length > 1) { const i = rounds.indexOf(sc); if (i >= 0) rounds.splice(i, 1); } } },
   // ---------- the run-up ----------
   // A lesson's scene: the window's plan first, then a run-up in which everyone already moves as he will in the window
   // (RUNUP s before it opens, less if someone would start well off the pitch): the play drifting on, the threat coming

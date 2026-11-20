@@ -198,7 +198,7 @@ export const live = {
     this.prep?.stop?.();
     const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
     const me = Object.create(this, { mode: { value: mode }, firstRound: { value: false }, timeouts: { value: 0, writable: true } }), prep = this.prep = { skillIds: [...skillIds], extra, keep, rounds, first: null };
-    prep.done = (async () => { const kept = await me.vetRounds(rounds); prep.rounds = kept; if (this.prep !== prep) return; const p = me.planAhead(kept[0]); prep.first = { nx: kept[0], p }; prep.stop = () => p.stop(); await p; })().catch(e => console.error(e));
+    prep.done = (async () => { await me.vetFirst(rounds); const kept = rounds; prep.rounds = kept; if (this.prep !== prep) return; const p = me.planAhead(kept[0]); prep.first = { nx: kept[0], p }; prep.stop = () => p.stop(); await p; })().catch(e => console.error(e));
   },
   async match(skillIds, extra = [], toWin = 2, mode = 'match', keep = null) { // keep: which situations may come up (v64: the mini match, at his level)
     this.mode = mode;
@@ -208,8 +208,9 @@ export const live = {
     if (prep) { await prep.done; rounds = prep.rounds; early = prep.first; this.matchRounds = rounds; }
     else {
       rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
-      { const kept = await this.vetRounds(rounds); rounds.splice(0, rounds.length, ...kept); this.matchRounds = rounds; } // (v83: a scene whose plan takes too many frames is left out, game/window.js vetRounds)
+      await this.vetFirst(rounds); this.matchRounds = rounds; // (v83: a scene whose plan takes too many frames is left out; v76 SL: the first now, the rest during play, game/window.js vetFirst, vetRest)
     }
+    let over = false; this.vetRest(rounds, () => !over && this.matchRounds === rounds).catch(e => console.error(e));
     this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
     // Play flows on from wherever the last play ended: after "Kept the ball!" or "Stole it!" the next choice starts from
     // right there; after a lost ball he defends from there; after "Stopped him!" he defends again. A goal (and the start)
@@ -228,7 +229,7 @@ export const live = {
       const now = { us: score.us + (this.result === 'goal' ? 1 : 0), them: score.them + (this.result === 'goalAgainst' ? 1 : 0) };
       this.hud.score(now, this.us, this.them);
       if (now.us >= toWin || now.them >= toWin) this.fullTime(now); // (the goal that ends it: the final whistle with its celebration)
-      else { const nx = rounds[next % rounds.length]; early = { nx, p: this.planAhead(nx) }; }
+      else { this.vetSwap(rounds, next); const nx = rounds[next % rounds.length]; early = { nx, p: this.planAhead(nx) }; }
       return true; });
     for (let i = 0; score.us < toWin && score.them < toWin; i++) {
       let bridged = false;
@@ -259,7 +260,7 @@ export const live = {
       live = goOn();
       if (i >= toWin * 25) break; // safety: don't let a match run forever
     }
-    return score;
+    over = true; return score;
   },
   // (v82) The end of a match: as the goal that ends it goes in, the final whistle and the words with the score bumped in
   // the corner, over that goal's own celebration (nothing is added to the match: the results follow as before).
@@ -276,7 +277,7 @@ export const live = {
     let best = null; const n = rounds.length, seen = new Set();
     // (the next BRIDGE.ahead scenes of the match's own order first, so the mix of situations stays the match's; then any)
     for (let j = 0; j < n; j++) { if (j === BRIDGE.ahead && best) break; const i = (next + j) % n, sc = rounds[i];
-      if (seen.has(sc) || !bridgeable(sc) || this.slowScenes?.has(sc)) continue; seen.add(sc);
+      if (seen.has(sc) || !bridgeable(sc) || this.slowScenes?.has(sc) || (this.vetState && this.vetState(sc) !== 'ok')) continue; seen.add(sc); // (v76 SL: nor one not vetted yet)
       const P = this.sceneState(sc).at, T = sceneTeam(sc), cid = sc.carrier || 'hero', ball = P[cid]; if (!P.hero || !ball || usIds.some(id => !P[id]) || themIds.some(id => !P[id])) continue;
       const db = Math.hypot(b.x - ball.x, b.y - ball.y);
       let ev = null;
@@ -311,9 +312,11 @@ export const live = {
   // early). (Not swapped for a quicker one when its plan is slow: which plans are already made depends on what was
   // played before, so the match would not play the same twice, and the frame audit compares two runs. One scene,
   // gen-shot-open-110, needs about 60 s of frames to plan: a game/window.js matter, reported.)
-  async nextPlanned(rounds, i, early) { const nx = rounds[i % rounds.length]; await (early?.nx === nx ? early.p : this.planAhead(nx)); return nx; },
+  async nextPlanned(rounds, i, early) { this.vetSwap(rounds, i); const nx = rounds[i % rounds.length]; await (early?.nx === nx ? early.p : this.planAhead(nx)); return nx; },
   // (v82) game/window.js prePlan, which can be stopped: a plan given up on stops stepping (nothing goes on planning in
   // the frames of play). It plans as the game it is called on, with its own `skipping`.
+  // (v76 SL) A scene not vetted yet (game/window.js vetRest) waits its turn: the next vetted one takes its place.
+  vetSwap(rounds, i) { const k = i % rounds.length; if (!this.vetState || this.vetState(rounds[k]) === 'ok') return; for (let n = 1; n < rounds.length; n++) { const j = (k + n) % rounds.length; if (this.vetState(rounds[j]) === 'ok') { [rounds[k], rounds[j]] = [rounds[j], rounds[k]]; return; } } },
   planAhead(sc) {
     const game = this, ctl = { off: false }, me = Object.create(this, { skipping: { get: () => game.skipping || ctl.off } });
     const p = this.prePlan.call(me, sc); p.stop = () => { ctl.off = true; }; return p;
