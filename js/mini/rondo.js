@@ -114,11 +114,11 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 //   fMove    s between his friends' moves to open their lines
 //   fRoom    m a friend wants between a defender and where a pass to him would get to him (time to take it)
 export const TWO_AT = 1; // (after 3 rounds kept)
-// (v93 follow-up) The first two rounds (score 0 and 1) are forgiving for a slow young player, and the real difficulty
-// starts at score 2: `soft` is 1 at level 0, about 0.85 at score 1 and 0 from score 2 (SOFT_TO levels), eased so the
-// step from score 1 to 2 is not a cliff. Every number it touches still moves only the hard way (tests/rondo.test.js).
-export const SOFT_TO = 2 / 3;
-export const soft = L => { const u = Math.min(1, Math.max(0, L / SOFT_TO)); return (1 + Math.cos(Math.PI * u * u)) / 2; };
+// (v93 follow-up) The first rounds are forgiving for a slow young player and the real difficulty comes in over a few
+// rounds, smooth, no wall: `soft` is 1 at score 0, 0.85 at score 1, 0.45 at score 2, 0.15 at score 3 and 0 from score 4
+// (SOFT_TO levels), straight between. Every number it touches still moves only the hard way (tests/rondo.test.js).
+export const SOFT = [1, .85, .45, .15, 0], SOFT_TO = (SOFT.length - 1) / 3;
+export const soft = L => { const x = Math.min(SOFT.length - 1, Math.max(0, L * 3)), i = Math.min(SOFT.length - 2, Math.floor(x)); return SOFT[i] + (SOFT[i + 1] - SOFT[i]) * (x - i); };
 export function keepLevel(L) {
   L = Math.max(0, L); const sf = soft(L), two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
   return { // (soft: the defender closes a little slower, tackles later, cuts lines later, and his passes slip past a foot more often: rondo-play.js ballCheck)
