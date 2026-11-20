@@ -27,6 +27,7 @@ import { keeper as KEEP } from '../game/keeper.js';
 //    A ball of theirs that runs into his body (BODY_WIN m) is his with no press.
 //  - A shot: the keeper sets off for it as it is struck (game/keeper.js keeperReact: a step, a dive) and a save is in his
 //    hands only as the ball gets there (HOLD_T s in them before he plays on); on.shotEnd tells the page then, never sooner.
+export const KO_MIN = 1.2, KO_MAX = 4.5; // (a kick-off: the least and the most time for everyone to walk back to his place)
 export const DRIB_SP = 3.3, RUN_SP = 3.8, RUN_FAST = 5.4, RUN_FAR = 4.5, PRESS_OFF = 1.25, STEAL_REACH = 1.5, STUMBLE_T = .6, STUMBLE_SP = .9, BODY_WIN = .55, HOLD_T = 1.1, AIM_TACKLE = .9;
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
@@ -101,7 +102,11 @@ export class Match {
     for (const t of ['us', 'them']) { const k = this.keeper(t); if (k) { const p = this.keeperAt(t); this.sim.go(k.id, p[0], p[1], 4); } }
     const b = this.sim.ball; Object.assign(b, { state: 'loose', carrier: null, x: this.L / 2, y: this.W / 2, z: 0, move: null, hidden: false, reach: null });
     this.flight = null; this.dead = true; this.restart = null; this.meMove = null; this.stumbleT = 0; for (const k of [this.keeper('us'), this.keeper('them')]) if (k) { k.gkm = null; k.upUntil = 0; this.cmd.delete(k.id); }
-    this.after(1.9, () => { this.cmd.clear(); this.dead = false; this.giveTo(tk, 'kickoff'); done?.(); });
+    // (v93 integration, the owner's log: they kicked off while his team still celebrated, far from their places) the ball
+    // is played only once everyone is back in place (or after KO_MAX s at most), never sooner than KO_MIN s
+    const t0 = this.sim.time, back = () => all.every(([id, p]) => { const a = this.sim.a(id); return !a || Math.hypot(a.x - p[0], a.y - p[1]) < .5; });
+    const go = () => { if (this.sim.time - t0 < KO_MAX && !back()) { this.after(.1, go); return; } this.cmd.clear(); this.dead = false; this.giveTo(tk, 'kickoff'); done?.(); };
+    this.after(KO_MIN, go);
   }
   // ---------- small queries ----------
   team(id) { return id && (id[0] === 'o' || id === 'k2' ? 'them' : 'us'); }

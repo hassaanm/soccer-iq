@@ -1,9 +1,9 @@
 // The pause on the page (v79; the clock side is js/pause.js). A button right of home (two bars) shows whenever play is on
-// screen; a tap pauses. Paused, the picture stays as it is, sharp, a big play triangle pulses in the middle, the pause
-// button turns into the same triangle, and the choice buttons stay up, dimmed and dead (css/app.css, the pause block).
-// A tap on either triangle resumes. The game also pauses by itself when the app goes to the background (or the phone
+// screen; a tap pauses. Paused, the picture stays as it is, sharp, the pause button turns into a play triangle (v93,
+// the owner: the one way to resume; no second triangle in the middle), and the choice buttons stay up, dimmed and dead (css/app.css, the pause block).
+// A tap on the triangle resumes. The game also pauses by itself when the app goes to the background (or the phone
 // locks), and when the sound menu is opened in play (the grown-ups menu is only on the home screen); it stays paused
-// until a triangle is tapped. With his head already up, a drag still looks around while paused: the camera only.
+// until the triangle is tapped. With his head already up, a drag still looks around while paused: the camera only.
 import { $, onPress } from './dom.js';
 import { hudEl } from './hud.js';
 import { game, world } from './stage.js';
@@ -19,9 +19,7 @@ const TRI = '<svg class="tri" viewBox="0 0 24 24" width="24" height="24" aria-hi
 // The nodes, made once.
 const btn = document.createElement('button');
 btn.id = 'pauseBtn'; btn.className = 'btn btn-glass btn-icon top-left'; btn.type = 'button'; btn.setAttribute('aria-label', 'Pause'); btn.innerHTML = BARS + TRI;
-const big = document.createElement('button');
-big.id = 'pausePlay'; big.className = 'btn'; big.type = 'button'; big.setAttribute('aria-label', 'Play'); big.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L9.5 3.94A1 1 0 0 0 8 4.8Z" fill="currentColor"/></svg>';
-const home = $('#homeBtn'); home.after(btn); hudEl.appendChild(big);
+const home = $('#homeBtn'); home.after(btn);
 const card = $('#card'), rate = $('#rate'), pop = $('#soundPop');
 
 // Play is on screen: the field with its HUD, no card over it, in a mode that plays.
@@ -32,29 +30,11 @@ export function pauseFrame() {
   const c = inPlay() && !rate.classList.contains('show');
   if (c !== can) { can = c; hudEl.classList.toggle('canpause', c); }
 }
-// Where the big triangle goes as it pauses: low in the middle, or in the very middle (css: #hud.playmid), whichever is
-// farther from his player and the ball on the screen (his head down, he is in the middle; head up, low); when both are
-// on him (the view from behind him puts him low in the middle), halfway up on the left or the right (#hud.playL,
-// .playR), the one farther from him (not in the Slow game: there it stays as it was). The same in Fast mode (its own
-// sim and his player there: Score attack too) and in the mini games on the stage (penalties, the rondos: v89). In the
-// keeper game, always the middle: his goal, its gold spots and the hand are low.
-const R = 58, CLEAR = R + 16, SIDE = .2;
-function place() {
-  const g = fast.on ? fast : goalie.on ? goalie : game, s = g.sim, h = s?.a?.(g === fast ? fast.me || 'hero' : 'hero'), b = s?.ball, w = innerWidth, ht = innerHeight;
-  const pts = []; try { if (h) pts.push(world.project(h.x, h.y, 0), world.project(h.x, h.y, 1.8), ...(g !== game ? [world.project(h.x, h.y, .9)] : [])); if (b) pts.push(world.project(b.x, b.y, b.z || 0)); } catch { /* no picture yet */ }
-  const near = (cx, cy) => Math.min(...pts.filter(Boolean).map(p => Math.hypot(p[0] - cx, p[1] - cy)), 1e9);
-  const keeper = goalie.on && goalie === keeperGame && !fast.on;
-  const opts = [['', near(w / 2, ht - 14 - R)], ['playmid', near(w / 2, ht / 2)]].sort((p, q) => q[1] - p[1]);
-  let pick = keeper ? 'playmid' : opts[0][0];
-  if (!keeper && g !== game && opts[0][1] < CLEAR) { const l = near(w * SIDE, ht / 2), r = near(w * (1 - SIDE), ht / 2); pick = l >= r ? 'playL' : 'playR'; }
-  for (const c of ['playmid', 'playL', 'playR']) hudEl.classList.toggle(c, c === pick || (c === 'playmid' && pick !== ''));
-}
 onPress(btn, () => { if (held.on) setPause(false); else if (inPlay()) setPause(true, 'button'); });
-onPress(big, () => setPause(false));
 onPause((on, why, sec) => {
   hudEl.classList.toggle('paused', on);
   btn.setAttribute('aria-label', on ? 'Play' : 'Pause');
-  if (on) place(); holdMusic(on); mark(on ? `pause ${why}` : `resume ${sec.toFixed(1)}s`); look.t = 0;
+  holdMusic(on); mark(on ? `pause ${why}` : `resume ${sec.toFixed(1)}s`); look.t = 0;
 });
 // The app goes to the background, or the phone locks: paused, and still paused on return (the triangle shows).
 const away = () => { if (inPlay()) setPause(true, 'hidden'); };

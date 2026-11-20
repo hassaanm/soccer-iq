@@ -42,3 +42,20 @@ test('a tackle already counting down when he starts to aim waits the aim\'s own 
     assert.ok(tackT - aimT >= AIM_TACKLE - .05, `late ${late}: tackled ${(tackT - aimT).toFixed(2)} s after the aim began`);
   }
 });
+
+// (the owner's log: after his goal they kicked off while his team still celebrated, away from their places)
+test('a kick-off after a goal: the ball is played only once everyone is back in place', async () => {
+  const { KO_MAX } = await import('../js/fast/match.js');
+  for (const team of ['us', 'them']) {
+    const sim = new Sim(), sz = sizeOf(), m = new Match({ sim, L, W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: sz.out, keepers: !!sz.keeper, rnd: seeded(3) });
+    m.setup('us'); m.me = 'hero';
+    let i = 0; for (const a of sim.agents.values()) if (!a.gk) Object.assign(a, { x: team === 'us' ? L - 3 - (i++ % 3) : 3 + (i++ % 3), y: 2 + i, tx: 0, ty: 0 }); // (all in one corner, as after a goal)
+    const t0 = sim.time; let at = null; m.kickoff(team, () => { at = sim.time; });
+    const us = m.formation('us', team), th = m.formation('them', team);
+    run(m, sim, KO_MAX + 2, () => at != null);
+    assert.ok(at != null, `${team}: kicked off`);
+    const far = [...m.usIds, ...m.themIds].map(id => sim.a(id)).filter(Boolean).filter(a => Math.min(...[...us, ...th].map(p => Math.hypot(a.x - p[0], a.y - p[1]))) > .6);
+    assert.ok(far.length === 0 || at - t0 >= KO_MAX - .05, `${team}: kicked off at ${(at - t0).toFixed(2)} s with ${far.length} away from their places`);
+    assert.ok(m.owner(), `${team}: someone has the ball`);
+  }
+});

@@ -164,7 +164,7 @@ class Fast {
     game.plog?.('fast', { is: 'goal', team, us: m.score.us, them: m.score.them, by: m.lastOwner });
     this.lookUp(true); this.calm = true;
     if (won) { this.over = true; m.after(2.2, () => this.finish()); return; }
-    m.after(1.8, () => m.kickoff(team === 'us' ? 'them' : 'us', () => { this.calm = false; }));
+    m.after(1.8, () => { if (world.mood) world.mood.t = Math.max(world.mood.t, 5.5); m.kickoff(team === 'us' ? 'them' : 'us', () => { this.calm = false; }); }); // (v93 integration: the celebration ends (a 0.5 s fade) as they walk back, not 6 s after the goal)
   }
   finish() {
     const c = this.last = this.counts(); game.plog?.('fast', { is: 'end', ...c, score: `${c.score.us}-${c.score.them}` });

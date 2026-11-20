@@ -829,16 +829,8 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #hud:is(.canpause,.paused) #pauseBtn{display:inline-flex}
 #pauseBtn .tri,#hud.paused #pauseBtn .bars{display:none}
 #hud.paused #pauseBtn .tri{display:block}
-#pausePlay{display:none;position:absolute;z-index:5;left:50%;bottom:calc(14px + var(--safe-b));width:116px;height:116px;margin-left:-58px;padding:0;border-radius:50%;
-  --top:#fff;--bot:#f1ebe3;--edge:#d6cbbd;color:var(--ink);text-shadow:none;align-items:center;justify-content:center;will-change:transform}
-#hud.playmid #pausePlay{bottom:auto;top:50%;margin-top:-58px}
-#hud.playL #pausePlay{left:20%}#hud.playR #pausePlay{left:80%} /* (v89: halfway up at a side when the middle and the bottom are both on him: ui/pause.js place) */
-#pausePlay svg{width:58px;height:58px;margin-left:7px;display:block}
-@keyframes pausePulse{50%{transform:scale(1.07)}}
 #hud.paused *,#hud.paused *::before,#hud.paused *::after{animation-play-state:paused!important}
-#hud.paused #pausePlay{display:flex;animation:pausePulse 1.6s ease-in-out infinite;animation-play-state:running!important}
 #hud.paused :is(.btn-round,.skillPick,.howpick .btn,#skipBtn,#rate .btn){opacity:.45!important;pointer-events:none!important}
-@media (prefers-reduced-motion:reduce){#hud.paused #pausePlay{animation:none}}
 
 /* ---------- Fast mode (v84, js/fast/) ----------
    The home screen's mode toggle under the team-size chip (Classic or Live; v93 UI block at the end) picks it.
@@ -869,7 +861,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fSheet .fRow{display:flex;gap:12px}
 #fSheet .fPick{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px 6px;border-radius:18px;font-size:14px;color:var(--ink);border:3px solid transparent}
 #fSheet .fPick.me{border-color:var(--gold)}
-#hud.fpicking #pausePlay{display:none!important}
 /* The results card (v86, js/fast/level.js endCard): the score big with the two shirts and a star for a win, a ball for
    each of his goals, his level stars (the new ones pop in), then the counts for a grown-up, small and faded. */
 .fEnd{display:flex;flex-direction:column;align-items:center;gap:2px}
