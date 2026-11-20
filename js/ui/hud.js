@@ -2,6 +2,7 @@
 // The game calls these; none of them knows the rules.
 import { $, replay } from './dom.js';
 import { sfx } from '../sound.js';
+import { MOVE_SYM } from '../flair.js';
 import { later as setTimeout, unlater as clearTimeout } from '../pause.js'; // (v79: the HUD's waits are held while the game is paused)
 
 export const hudEl = $('#hud');
@@ -98,7 +99,7 @@ const marks = (box, n, on, glyph = '★') => { // n spans showing `glyph`, `on` 
 };
 letters(ui.banner.querySelector('b'), ' '.repeat(18)); letters(ui.banner.querySelector('b'), ''); // (made once, now, while nothing shows)
 letters(ui.skillName.querySelector('b'), ' '.repeat(18), true); letters(ui.skillName.querySelector('b'), '', true);
-const SK = [ui.skillA, ui.skillB].map(el => ({ el, mv: el.querySelector('.mv'), k: el.querySelector('.mvK'), def: el.querySelector('.def'), crowd: el.querySelector('.crowd') })); // (v78: the skill moment's two buttons)
+const SK = [ui.skillA, ui.skillB].map(el => ({ el, sym: el.querySelector('.sym') })); // (v78: the skill moment's two buttons)
 marks(ui.rate.querySelector('.stars'), 3, 0); marks(ui.pop.firstChild, 3, 0);
 // state() runs every frame, so it remembers what is on screen and touches the page only when a value changes.
 const shown = {};
@@ -199,16 +200,12 @@ export const hud = {
   },
   // (v78) The skill moment's two buttons (game/skill.js), where PASS and DRIBBLE sit: `pair` is the two moves on offer,
   // left button first ([{ k, dir: 'l' | 'r' }], null hides them), `left` how much of the time to pick is left (0 to 1),
-  // shown by the ring around each. Each shows its move's picture (index.html #skillPics), turned to the way it goes. The
-  // nodes are made once: an offer changes two links and a transform.
-  // `scene` (review): what both pictures show the same, as on the field: the defender's place across the picture (dx: -1
-  // his far left to 1), where more of them crowd (crowd: -1, 1, 0 none) and their shirt colour.
+  // shown by the ring around each. Each shows its move's symbol (flair.js MOVE_SYM, v93: one emoji, no picture of the
+  // move) above its name. The nodes are made once: an offer changes two text nodes. (`scene` is kept for the play log.)
   skill(pair, left = 1, scene = null) {
     if (changed('skillPair', pair ? pair.map(p => p.k + p.dir).join() + (scene ? scene.dx + ',' + scene.crowd + ',' + scene.color : '') : null)) {
-      if (pair) { const dx = Math.round((scene?.dx || 0) * 22), cx = (scene?.crowd || 0) * 38;
-        if (scene?.color) hudEl.style.setProperty('--def', scene.color);
-        pair.forEach((p, i) => { const b = SK[i]; b.mv.setAttribute('transform', p.dir === 'l' ? 'matrix(-1 0 0 1 100 0)' : ''); b.k.setAttribute('href', '#mv-' + p.k); b.el.classList.remove('on', 'off');
-          b.def.setAttribute('transform', `translate(${dx} 0)`); b.crowd.setAttribute('transform', `translate(${cx} 0)`); b.crowd.style.display = cx ? '' : 'none'; });
+      if (pair) {
+        pair.forEach((p, i) => { const b = SK[i]; b.sym.textContent = MOVE_SYM[p.k] || '⭐'; b.el.classList.remove('on', 'off'); });
         ui.toast.classList.remove('show'); } // (a praise pill from his choice gives way)
       hudEl.classList.toggle('skilling', !!pair); hudEl.classList.remove('armed'); shown.skillLeft = null;
     }

@@ -27,7 +27,7 @@ import { Match } from './match.js';
 import { makeMarks, shirt } from './marks.js';
 import * as R from './rules.js';
 import { shotResult, spaces, zoneGrade, rightFoot, EDGE as SHOT_EDGE } from '../shot.js';
-import { MOVE_NAME } from '../flair.js';
+import { MOVE_NAME, MOVE_SYM } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 import { warmMini } from '../ui/voicewarm.js';
 
@@ -53,16 +53,15 @@ class Fast {
     const box = el('div', { id: 'fastHud' }, `
       <button id="fAvatar" class="btn btn-glass btn-icon" type="button" aria-label="Change your player"></button>
       <button id="fLook" class="btn btn-gold btn-round" type="button" aria-label="Look up"><i>👀</i><span>LOOK UP</span></button>
-      <button id="fAct" class="btn btn-gold btn-round fActB" type="button"><svg class="pic" viewBox="0 0 100 100" aria-hidden="true"></svg><i></i><span></span></button>
-      <button id="fAct2" class="btn btn-gold btn-round fActB" type="button"><svg class="pic" viewBox="0 0 100 100" aria-hidden="true"></svg><i></i><span></span></button>
-      <div id="fHold" aria-hidden="true"><i>✋</i><b>⏳</b></div>
+      <button id="fAct" class="btn btn-gold btn-round fActB" type="button"><i></i><span></span></button>
+      <button id="fAct2" class="btn btn-gold btn-round fActB" type="button"><i></i><span></span></button>
       <div id="fSlow" aria-hidden="true"></div><div id="fChevL" class="fChev" aria-hidden="true">‹‹</div><div id="fChevR" class="fChev" aria-hidden="true">››</div>
       <div id="fNext" aria-hidden="true"><i>⚽</i><b>➜</b><i>🏆</i></div>
       <div id="fCue" aria-hidden="true"><i>👀</i><b>↔</b></div>
       <div id="fPic" aria-hidden="true"></div>
       <div id="fChips">${'<button class="fChip" type="button" aria-label="A friend you saw"><span class="ptr"></span><span class="pic"></span></button>'.repeat(4)}</div>`);
     hudEl.appendChild(box); hudEl.appendChild(el('div', { id: 'fSheet', class: 'hidden' }, '<div class="fCard"><div class="fRow"></div></div>')); // (the sheet: also before play, while the rest is hidden)
-    this.dom = { box, cue: $('#fCue'), avatar: $('#fAvatar'), look: $('#fLook'), act: $('#fAct'), act2: $('#fAct2'), hold: $('#fHold'), sheet: $('#fSheet'), row: $('#fSheet .fRow'), tunnel: $('#tunnel') };
+    this.dom = { box, cue: $('#fCue'), avatar: $('#fAvatar'), look: $('#fLook'), act: $('#fAct'), act2: $('#fAct2'), sheet: $('#fSheet'), row: $('#fSheet .fRow'), tunnel: $('#tunnel') };
     // LOOK UP and the action button act as the finger goes down, at once (a press that starts on them never slows the
     // world); a chip acts as a tap and, held, slows the world like a press anywhere (rules.js pressKind).
     press(this.dom.look, () => { if (!this.on || held.on) return; this.lookUp(true); this.acted('look'); });
@@ -104,7 +103,6 @@ class Fast {
   // warm: whose lines to load now (ui/voicewarm.js gameLines; Score attack passes its own). Each clip loads once.
   play({ us, them, level, warm = 'fast' }) {
     if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
-    { const c = them?.kit?.colors?.[0]; if (c) hudEl.style.setProperty('--def', c); else hudEl.style.removeProperty('--def'); } // (the defender in the skill button's picture wears their shirt, as in Classic: game/skill.js)
     this.build(); this.us = us; this.them = them;
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
@@ -120,7 +118,7 @@ class Fast {
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, deadTaps: 0, spotTaps: 0, presses: 0, sets: 0, shotEnds: [], chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.vw = null; this.camNow(1);
     hud.state({ phase: 'idle', mode: 'fast' }); hud.caption(''); hud.score(m.score, us, them);
-    game.mode = 'fast'; this.drawAvatar(); this.dom.box.classList.add('on'); this.dom.hold.classList.add('show');
+    game.mode = 'fast'; this.drawAvatar(); this.dom.box.classList.add('on'); // (v93: no hold-to-slow hint; the owner shows him the gesture)
     FAST.on = this.on = true; this.calm = true;
     m.on.gain = (id, how) => this.gained(id, how);
     m.on.goal = team => this.goal(team);
@@ -226,7 +224,7 @@ class Fast {
   }
   // A small picture over the play for a moment (a skill move's picture, a pass cut out): no words to read.
   showPic(html) { const p = this.dom.pic; p.innerHTML = html; p.classList.remove('show'); void p.offsetWidth; p.classList.add('show'); clearTimeout(this.picT); this.picT = later(() => p.classList.remove('show'), 1500); }
-  hold(f) { if (f.held) return; f.held = true; this.lastScan = this.real; this.holding = true; this.slowTo = HOLD; this.stats.holds++; sfx('down'); this.dom.hold.classList.remove('show'); this.dom.box.classList.add('slowing'); }
+  hold(f) { if (f.held) return; f.held = true; this.lastScan = this.real; this.holding = true; this.slowTo = HOLD; this.stats.holds++; sfx('down'); this.dom.box.classList.add('slowing'); }
   move(e) {
     const f = this.finger; if (!f || e.pointerId !== f.id || held.on) return;
     const r = canvas.getBoundingClientRect(), dx = e.clientX - r.left - f.x0, dy = e.clientY - r.top - f.y0;
@@ -304,7 +302,7 @@ class Fast {
   }
   // The point on the grass under a place on the screen (or null: the sky).
   ground(x, y) { const r = this.ray ||= { c: new THREE.Raycaster(), n: new THREE.Vector2(), p: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), h: new THREE.Vector3() }; r.n.set(x / world.width * 2 - 1, -(y / world.height) * 2 + 1); r.c.setFromCamera(r.n, world.camera); return r.c.ray.intersectPlane(r.p, r.h) ? { x: r.h.x, y: r.h.y } : null; }
-  acted(kind) { this.stats.actions++; this.lastAct = this.real; this.dom.hold.classList.remove('show'); void kind; }
+  acted(kind) { this.stats.actions++; this.lastAct = this.real; void kind; }
   // ---------- the scan reminder ----------
   // He has not looked round (a hold, a drag, LOOK UP) for SCAN_T s, and someone who matters is out of his view: a friend
   // within 14 m of him or one of theirs within 4 m (behind him, say). A small picture (eyes, a turn) and a spoken word;
@@ -400,9 +398,8 @@ class Fast {
     const set = (b, kind, mv) => {
       b.classList.toggle('show', !!kind); if (!kind) return;
       b.dataset.kind = kind; b.classList.toggle('skill', !!mv);
-      const [i, t] = mv ? ['', MOVE_NAME[mv] || 'Skill'] : kind === 'shoot' ? ['🥅', 'SHOOT'] : ['🦶', 'STEAL'];
+      const [i, t] = mv ? [MOVE_SYM[mv] || '⭐', MOVE_NAME[mv] || 'Skill'] : kind === 'shoot' ? ['🥅', 'SHOOT'] : ['🦶', 'STEAL'];
       b.querySelector('i').textContent = i; b.querySelector('span').textContent = t; b.setAttribute('aria-label', t);
-      b.querySelector('.pic').innerHTML = mv ? `<use href="#mvDef"/><g class="mv"${this.skillSide() > 0 ? ' transform="translate(100 0) scale(-1 1)"' : ''}><use href="#mv-${mv}"/></g><circle cx="50" cy="78" r="9" fill="#fff" stroke="#24193a" stroke-width="3"/>` : '';
     };
     set(this.dom.act, k, opts?.[0]); set(this.dom.act2, null); // (v93: one button; the second stays hidden)
   }
@@ -515,7 +512,7 @@ class Fast {
     const nudge = !this.up1 && !m.dead && (this.set?.spots.length || 0) < 2 && this.real - (this.downAt || 0) > 1.2;
     if (nudge !== !!this.nudged) { this.nudged = nudge; this.dom.look.classList.toggle('nudge', nudge); }
     this.scanCue(h);
-    if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); if (this.dom.hold.classList.contains('show')) this.placeHint(this.dom.hold); }
+    if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); }
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
     if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js; the next goal ends it, the score as it stands then)
       if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }

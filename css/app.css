@@ -802,15 +802,14 @@ body.logon #hud:not(.hidden) ~ #logFlag{display:block}
 #logSheet .row{display:flex;gap:8px;justify-content:flex-end}
 
 /* (v78) The skill moment (game/skill.js): two moves to pick from, as two big round buttons where PASS and DRIBBLE sit
-   (neither shows while a play runs), each with its move's picture (index.html #skillPics). A ring on each drains with
+   (neither shows while a play runs), each with its move's symbol (flair.js MOVE_SYM) above its name. A ring on each drains with
    the time left to pick. Once he picks, his move stays lit with its ring full and the other fades. Painted cheaply:
    the pulse is a scale, the fades are opacity and transform, the ring's glow is a wider soft ring under it (no filter,
    no blurred shadow redrawn each frame). The pointing hand's .pointed pulse also uses scale only. */
-#skillPics{position:absolute;width:0;height:0;overflow:hidden}
 .skillPick{position:absolute;bottom:calc(18px + var(--safe-b));width:112px;height:112px;border-radius:50%;padding:0;display:none;align-items:center;justify-content:center;--left:1}
 #skillA{right:calc(150px + var(--safe-r))}
 #skillB{right:calc(22px + var(--safe-r))}
-.skillPick .pic{width:88px;height:88px;pointer-events:none}
+.skillPick .sym{font-style:normal;font-size:58px;line-height:1;text-shadow:none;pointer-events:none}
 .skillPick .ring{position:absolute;left:-12px;top:-12px;width:136px;height:136px;transform:rotate(-90deg);pointer-events:none;overflow:visible}
 .skillPick .ring circle{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round;stroke-dasharray:295.3;stroke-dashoffset:calc(295.3 * (1 - var(--left)))}
 .skillPick .ring circle.glow{stroke:rgba(255,190,0,.45);stroke-width:10}
@@ -844,7 +843,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 /* ---------- Fast mode (v84, js/fast/) ----------
    The home screen's mode toggle under the team-size chip (Classic or Live; v93 UI block at the end) picks it.
    In play: the avatar (his player's shirt, top right: pause and change player), LOOK UP when his head is down, the one
-   action button bottom right, a small hand-and-timer hint (hold to slow) at the start, and the sheet of shirts. While a
+   action button bottom right, and the sheet of shirts (v93: no hold-to-slow hint). While a
    finger is held the world is slow: a faint cool tint and two sliding chevrons at the top (drag to look). Friends he saw
    who are off screen: chips at the edge (gold when he has the ball: a tap passes). All on
    the HUD's layer; nothing over the picture changes but transform and opacity. */
@@ -864,9 +863,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fAct.spent i,#fAct.spent span{opacity:.55}
 #fAct.nope{animation:fNope .35s ease-out}
 @keyframes fNope{25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
-#fHold{position:absolute;left:0;top:0;transform:translate(var(--hx,50vw),var(--hy,calc(100vh - 44px))) translate(-50%,-50%);display:flex;align-items:center;gap:2px;padding:6px 12px;border-radius:999px;background:rgba(36,25,58,.6);color:#fff;font-size:24px;opacity:0;transition:opacity .4s;pointer-events:none}
-#fHold i,#fHold b{font-style:normal;font-weight:400}
-#fHold.show{opacity:1}
 #fSheet{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(36,25,58,.5);pointer-events:auto}
 #fSheet.hidden{display:none}
 #fSheet .fCard{background:rgba(255,250,242,.96);border-radius:24px;padding:16px 18px;box-shadow:0 10px 30px rgba(36,25,58,.35)}
@@ -910,7 +906,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #fastHud.slowing #fChevR{animation:fChevR 1s ease-in-out infinite}
 @keyframes fChevL{50%{transform:translateX(-10px)}}
 @keyframes fChevR{50%{transform:translateX(10px)}}
-#fastHud.slowing #fHold{opacity:0}
 .fChip{position:absolute;left:0;top:0;width:48px;height:48px;padding:0;border:3px solid rgba(255,255,255,.85);border-radius:50%;background:rgba(36,25,58,.62);opacity:0;pointer-events:none;will-change:transform,opacity;display:grid;place-items:center}
 .fChip.gold{border-color:var(--gold);background:rgba(36,25,58,.78)}
 .fChip .pic svg{display:block}
@@ -988,7 +983,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 @media (prefers-reduced-motion:reduce){#miniBar .heart.lost .fg{animation:none;opacity:0}#miniBar.last .heart .fg,.miniEnd .newbest span,.miniEnd .newbest .cup{animation:none}}
 
 
-#hud.faiming #score,#hud.faiming #fChips,#hud.faiming #fHold,#hud.faiming #fCue{opacity:0!important}
+#hud.faiming #score,#hud.faiming #fChips,#hud.faiming #fCue{opacity:0!important}
 #fPic{position:absolute;left:50%;top:22%;display:flex;align-items:center;gap:4px;padding:6px 12px;border-radius:22px;background:rgba(255,250,242,.94);opacity:0;transform:translateX(-50%) scale(.85);transition:opacity .2s,transform .2s;pointer-events:none}
 #fPic.show{opacity:1;transform:translateX(-50%) scale(1)}
 #fPic svg{width:64px;height:64px;display:block}
@@ -1060,9 +1055,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
    to its left when two moves fit. */
 #fAct2{right:calc(146px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
 #fAct2.show{display:flex}
-.fActB .pic{display:none;width:62px;height:62px;margin-top:-6px;pointer-events:none}
-.fActB.skill .pic{display:block}
-.fActB.skill i{display:none}
+.fActB.skill i{font-size:50px;margin-top:-4px}
 .fActB.skill span{font-size:15px;line-height:1.05;letter-spacing:0;text-align:center;max-width:98px;text-transform:none}
 /* ---------- PERF (v93): a result paints nothing big (js/ui/hud.js hudPictures, banner, pop) ---------- */
 /* The sunburst and the goal's flash as pictures made once (<img>, each on a layer of its own that is only moved, turned
@@ -1142,6 +1135,5 @@ body.logon #logTab{display:grid}
 @media (prefers-reduced-motion:reduce){#pz .pzp.hit svg,#pz .balls.flash i,#pz .open.show{animation:none}}
 
 /* ---- SKILL worker (v93): the Live skill moment is ONE big gold button where SHOOT and STEAL sit; its move picture fills it ---- */
-#fAct.fActB.skill .pic{width:68px;height:68px;margin:-6px 0 0}
 #fAct.fActB.skill span{font-size:13px;white-space:nowrap;max-width:none;position:relative}
 #fAct2{display:none!important}

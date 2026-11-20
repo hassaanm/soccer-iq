@@ -11,6 +11,9 @@ const SIMPLE = ['stepover', 'scissors', 'feint', 'double', 'chop', 'cruyff'], MO
 // clear, easy-to-see ones most; the chop, which every cut could be, less.
 // The names a child sees and hears for each move (from beginner coaching programmes), kept here so they are easy to change.
 export const MOVE_NAME = { stepover: 'Stepover', scissors: 'Scissors', double: 'Double touch', feint: 'Fake', cruyff: 'Cruyff turn', croqueta: 'Croqueta', roll: 'Sole roll', chop: 'Cut', fakeshot: 'Fake shot' };
+// (v93, the owner) Each move's ONE symbol, shown large above its name on the skill buttons in both modes (hud.js skill,
+// fast/fast.js drawAction). Plain emoji text (no picture of the move: he learns its look from the real thing).
+export const MOVE_SYM = { stepover: '👟', scissors: '✂️', feint: '🎭', fakeshot: '💥', double: '✌️', croqueta: '↔️', chop: '🗡️', roll: '🛼', cruyff: '🌀' };
 export const MOVE_W = { stepover: 2.2, scissors: 2, feint: 1, double: 1.2, chop: .3, cruyff: 1, croqueta: 1, roll: .5, fakeshot: 1 };
 const STARS = { 'VINI JR': 'scissors stepover', YAMAL: 'feint croqueta chop', 'MBAPPÉ': 'stepover scissors', MESSI: 'feint croqueta chop', RONALDO: 'scissors stepover',
   MUSIALA: 'roll croqueta', 'LEÃO': 'stepover chop', 'NICO WILLIAMS': 'stepover feint', DOKU: 'feint stepover', 'DEMBÉLÉ': 'stepover chop' };

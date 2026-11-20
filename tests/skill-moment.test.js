@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../js/game.js';
 import { Sim, EXIT_FREE, RUN_MOVES, MOVE_AT, touchAt } from '../js/sim.js';
 import { TEAMS } from '../js/teams.js';
-import { MOVE_NAME, MOVE_W } from '../js/flair.js';
+import { MOVE_NAME, MOVE_W, MOVE_SYM } from '../js/flair.js';
 import { TURN_MOVES, SAW } from '../js/game/skill.js';
 import { generate } from '../js/generate.js';
 import { setSize } from '../js/geom.js';
@@ -62,10 +62,9 @@ const SCENES = () => [...allScenarios('take-him-on'), ...allScenarios('dribble-t
 let cache = null; // the plays with an offer, with no tap (the same for the tests below)
 async function offered() { if (cache) return cache; cache = []; for (const [sc, opt] of SCENES()) { const none = await play(sc, opt); if (none.offers.length) cache.push({ sc, opt, none }); } return cache; }
 
-test('every move has a name a child sees, and a picture', async () => {
+test('every move has a name a child sees, and a symbol', async () => {
   for (const k of [...Object.keys(MOVE_W), ...RUN_MOVES, ...TURN_MOVES]) assert.ok(MOVE_NAME[k], k);
-  const html = (await import('node:fs')).readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  for (const k of [...RUN_MOVES, ...TURN_MOVES]) assert.match(html, new RegExp(`<symbol id="mv-${k}"`), `a picture for ${k}`);
+  for (const k of [...RUN_MOVES, ...TURN_MOVES]) assert.ok(MOVE_SYM[k], `a symbol for ${k}`);
   assert.equal(new Set(RUN_MOVES.map(k => MOVE_AT[k])).size, RUN_MOVES.length, 'each run-at move has its own distance');
 });
 

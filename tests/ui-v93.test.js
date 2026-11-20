@@ -11,7 +11,7 @@ import { modeOf, modeName, nextMode } from '../js/ui/mode.js';
 import { tunedFrom, graphicsState, differences, resultSentence, shortDate, STANDARD } from '../js/ui/graphics.js';
 import { makeStarter, NAME_WAIT_MS } from '../js/mini/starter.js';
 import { nameButtons, SKILL_IDS } from '../js/game/skill.js';
-import { MOVE_NAME } from '../js/flair.js';
+import { MOVE_NAME, MOVE_SYM } from '../js/flair.js';
 import { RUN_MOVES } from '../js/sim.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -159,10 +159,10 @@ test('each skill button shows its move in words, written only when the name chan
   assert.match(read('css/app.css'), /\.skillPick \.nm\{[^}]*font:700 18px/, 'large');
 });
 
-test('every move on offer has a name and a picture that is defined before it is used; the demo caption has no emoji', () => {
+test('every move on offer has a name and a symbol; any picture is defined before it is used; the demo caption has no emoji', () => {
   const html = read('index.html'), moves = [...RUN_MOVES, 'double', 'chop', 'croqueta', 'roll', 'cruyff'];
   const symbols = [...html.matchAll(/<symbol id="([^"]+)"/g)].map(m => m.index), ids = new Set([...html.matchAll(/<symbol id="([^"]+)"/g)].map(m => m[1]));
-  for (const m of moves) { assert.ok(MOVE_NAME[m], m + ' has a name'); assert.ok(ids.has('mv-' + m), m + ' has a picture'); }
+  for (const m of moves) { assert.ok(MOVE_NAME[m], m + ' has a name'); assert.ok(MOVE_SYM[m], m + ' has a symbol'); }
   for (const u of html.matchAll(/<use[^>]*href="#([^"]+)"/g)) assert.ok(ids.has(u[1]), `<use href="#${u[1]}"> points at a symbol that exists`);
   const firstUse = html.indexOf('<use '), lastSymbol = Math.max(...symbols);
   assert.ok(lastSymbol < firstUse, 'every symbol is defined above the first <use>');
