@@ -213,9 +213,10 @@ export class Rondo {
     const s = this.sim, b = s.ball, f = this.flight;
     if (f && b.state === 'flying') {
       const low = (b.z || 0) < 1.2, away = Math.hypot(b.x - b.fx, b.y - b.fy) > .9;
-      if (low && away) for (const o of this.takers()) if (dist(o, b) < (this.mode === 'keep' ? FOOT : BODY_R)) { this.take(o.id, f.kind === 'heavy' ? 'loose' : 'cut'); return; }
+      const fg = this.mode === 'keep' && f.from === 'hero' ? this.D.early || 0 : 0; // (v89 integration: the first rounds forgive his pass a little: it slips past a defender's foot)
+      if (low && away) for (const o of this.takers()) if (dist(o, b) < (this.mode === 'keep' ? FOOT * (1 - .7 * fg) : BODY_R)) { this.take(o.id, f.kind === 'heavy' ? 'loose' : 'cut'); return; }
       const mate = f.kind === 'pass' ? bodyHit(b, this.keeperIds().filter(id => id !== f.from && id !== f.to).map(id => s.a(id))) : null; if (mate) { this.give(mate.id, 'pass'); return; }
-      const r = s.a(f.to); if (f.kind === 'pass' && r && b.t > .5 && dist(r, b) < .55) { this.arrive(f); return; }
+      const r = s.a(f.to); if (f.kind === 'pass' && r && b.t > .5 && dist(r, b) < .55 + (f.to === 'hero' && this.mode === 'keep' ? 1.3 * (this.D.early || 0) : 0)) { this.arrive(f); return; } // (the first rounds: a pass to him he stepped off still reaches him)
     }
     if (b.state !== 'loose') return;
     const near = [...s.agents.values()].sort((p, q) => dist(p, b) - dist(q, b)), first = near[0];

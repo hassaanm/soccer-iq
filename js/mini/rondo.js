@@ -87,11 +87,16 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 //   fHold    s a friend keeps the ball before passing; fPass: m/s of their passes
 //   fMove    s between his friends' moves to open their lines (slower: he must make more of the angles himself)
 export const TWO_AT = 5 / 3; // (after 5 rounds kept)
+// (v89 integration) The first successes are very easy for a child who sometimes freezes: `early` (1 for the first
+// three rounds, EARLY levels, then easing smoothly to 0 over EARLY_FADE levels) gives a long tackle (a long, visible
+// warning), a defender who closes slowly, and forgiving passes (defenders slow to a line); then the normal curve.
+export const EARLY = .7, EARLY_FADE = 3.3, EK = { stand: 4, press: .45, cutRun: .6, cutReact: .6 };
+export const early = L => { const u = Math.min(1, Math.max(0, (L - EARLY) / EARLY_FADE)); return (1 + Math.cos(Math.PI * u)) / 2; };
 export function keepLevel(L) {
-  L = Math.max(0, L); const two = L >= TWO_AT - 1e-9 ? .3 + ramp(TWO_AT, .2, .7)(L) : 0; // (1e-9: five thirds of a level, counted a third at a time)
+  L = Math.max(0, L); const e = early(L), two = L >= TWO_AT - 1e-9 ? .3 + ramp(TWO_AT, .2, .7)(L) : 0; // (1e-9: five thirds of a level, counted a third at a time)
   return {
-    size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L), cover: ease(2.2, 4.3, 6)(L) * two, cutRun: ease(2.8, 5.2, 6)(L), cutReact: ease(.6, .15, 6)(L),
-    stand: ease(3.2, 1, 6)(L), think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.4, .3, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.8, 1.1, 6)(L),
+    size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L) * (1 - EK.press * e), cover: ease(2.2, 4.3, 6)(L) * two, cutRun: ease(2.8, 5.2, 6)(L) * (1 - EK.cutRun * e), cutReact: ease(.6, .15, 6)(L) + EK.cutReact * e,
+    early: e, stand: ease(3.2, 1, 6)(L) + EK.stand * e, think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.4, .3, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.8, 1.1, 6)(L),
   };
 }
 // Win the ball (he is the defender in the middle):

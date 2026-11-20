@@ -16,6 +16,8 @@ const flush = async () => { for (let i = 0; i < 4; i++) await Promise.resolve();
 async function play(g, secs, f = () => false) { for (let t = 0; t < secs; t += 1 / 30) { g.tick(1 / 30); await flush(); if (f()) return true; } return false; }
 const place = (g, id, x, y) => { const a = g.sim.a(id); Object.assign(a, { x, y, tx: x, ty: y, sp: 0, speed: 0 }); };
 // A round at level L, past its start (the ball at his feet: 'keep'; at o1's: 'win').
+// The level's numbers without the first rounds' generosity (K.early), for the rules that do not depend on it.
+function noEarly(g) { const D = g.D, e = D.early || 0; Object.assign(D, { stand: D.stand - K.EK.stand * e, press: D.press / (1 - K.EK.press * e), cutRun: D.cutRun / (1 - K.EK.cutRun * e), cutReact: D.cutReact - K.EK.cutReact * e, early: 0 }); }
 async function begun(mode, L = 0, seed = .3) { const g = new Rondo({ mode, rnd: stream(seed) }); const p = g.round(L); await play(g, 5, () => g.phase === 'play'); return { g, p }; }
 
 test('keep: a pass through a defender\'s reach is his, and the round is lost', async () => {
@@ -80,7 +82,7 @@ test('keep: his friends pass to him only when his line is open', async () => {
 test('keep: a friend on the ball protects it; he loses it only after his line has stayed shut a while, and that loss is his', async () => {
   for (const meOpen of [true, false]) {
     const { g, p } = await begun('keep', 0, .2);
-    const s = g.sim, b = g.box;
+    const s = g.sim, b = g.box; noEarly(g); // (this rule as it is after the first rounds' generosity, K.early)
     g.openLine = (from, to) => meOpen && to === 'hero' && from !== 'hero'; // (every line shut; or only his open, but not free to pass to)
     g.passPoint = () => ({ x: s.a('o1').x, y: s.a('o1').y }); // (so his friend never passes it: the defender stands on the spot)
     place(g, 'm2', b.x1, b.cy); place(g, 'o1', b.x1 - .6, b.cy);
@@ -136,15 +138,17 @@ test('a round ends by itself: kept when the time runs out with the ball, and tim
 
 // Each number, level by level: it never goes the easy way, and a round moves it only a little.
 const LEVELS = Array.from({ length: 121 }, (_, i) => i * STEP);
+// (v89 integration) While the first rounds' generosity fades (K.early, up to EARLY + EARLY_FADE levels), the numbers it
+// eases may move a little more a round (`fade`): still only the hard way, and smoothly.
 function smooth(of, keys) {
-  for (const [k, dir, max] of keys) for (let i = 1; i < LEVELS.length; i++) {
-    const a = of(LEVELS[i - 1])[k], b = of(LEVELS[i])[k];
+  for (const [k, dir, max, fade = 0] of keys) for (let i = 1; i < LEVELS.length; i++) {
+    const a = of(LEVELS[i - 1])[k], b = of(LEVELS[i])[k], lim = max == null ? null : max + (LEVELS[i] <= K.EARLY + K.EARLY_FADE + 1e-9 ? fade : 0);
     assert.ok(dir < 0 ? b <= a + 1e-12 : b >= a - 1e-12, `${k} goes the hard way only (level ${LEVELS[i].toFixed(2)})`);
-    if (max != null) assert.ok(Math.abs(b - a) <= max + 1e-9, `${k} moves a little a round (level ${LEVELS[i].toFixed(2)}: ${a} → ${b})`);
+    if (lim != null) assert.ok(Math.abs(b - a) <= lim + 1e-9, `${k} moves a little a round (level ${LEVELS[i].toFixed(2)}: ${a} → ${b})`);
   }
 }
 test('the difficulty only rises, a little each round; the second defender and the fourth passer come in gently', () => {
-  smooth(K.keepLevel, [['size', -1, .3], ['press', 1, .2], ['cover', 1, 1.2], ['cutRun', 1, .2], ['cutReact', -1, .04], ['stand', -1, .15], ['think', -1, .05], ['smart', 1, .05], ['fMargin', -1, .03], ['fHold', -1, .04], ['fPass', 1, .2], ['fMove', 1, .05], ['two', 1, .3]]);
+  smooth(K.keepLevel, [['size', -1, .3], ['press', 1, .2, .1], ['cover', 1, 1.2], ['cutRun', 1, .2, .25], ['cutReact', -1, .04, .08], ['stand', -1, .15, .6], ['think', -1, .05], ['smart', 1, .05], ['fMargin', -1, .03], ['fHold', -1, .04], ['fPass', 1, .2], ['fMove', 1, .05], ['two', 1, .3]]);
   smooth(K.winLevel, [['size', 1, .15], ['n', 1, 1], ['pass', 1, .9], ['heavy', -1, .07], ['careless', -1, .06], ['loose', -1, .12], ['hold', -1, .2], ['move', 1, .12], ['glow', -1, .05], ['gap', 1, .25], ['margin', 1, .08]]);
   const k = K.keepLevel(K.TWO_AT), k0 = K.keepLevel(K.TWO_AT - STEP);
   assert.equal(k0.two, 0); assert.ok(k.two > 0 && k.two <= .35, 'the second defender comes in at about a third of his strength');
@@ -153,6 +157,7 @@ test('the difficulty only rises, a little each round; the second defender and th
   assert.equal(K.winLevel(0).n, 3, 'three passers at first'); assert.equal(K.keepLevel(0).two, 0, 'four against one at first');
   assert.ok(K.winLevel(0).pass < 5.5 && K.winLevel(0).heavy >= .2, 'slow passes and heavy touches at first');
   assert.ok(K.keepLevel(0).size >= 12, 'a roomy box at first');
+  assert.ok(K.keepLevel(0).stand >= 6 && K.keepLevel(.67).stand >= 6 && K.keepLevel(K.EARLY + K.EARLY_FADE).early === 0, 'the first three rounds: a long time on the ball; then the normal curve');
 });
 
 test('the view: from behind and above his player, never from the top', () => {
