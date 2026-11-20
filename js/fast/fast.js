@@ -104,6 +104,7 @@ class Fast {
   // warm: whose lines to load now (ui/voicewarm.js gameLines; Score attack passes its own). Each clip loads once.
   play({ us, them, level, warm = 'fast' }) {
     if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
+    { const c = them?.kit?.colors?.[0]; if (c) hudEl.style.setProperty('--def', c); else hudEl.style.removeProperty('--def'); } // (the defender in the skill button's picture wears their shirt, as in Classic: game/skill.js)
     this.build(); this.us = us; this.them = them;
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
