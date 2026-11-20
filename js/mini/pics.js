@@ -169,3 +169,10 @@ function puzzlesPic() {
 }
 
 export const PIC = { keeper: keeperPic(), pens: pensPic(), rondoKeep: rondoKeepPic(), rondoWin: rondoWinPic(), attack: attackPic(), puzzles: puzzlesPic() };
+
+// (v90) The mark for his best score, wherever it shows (the tiles, the bar in a run, the results card): a little gold
+// cup in the pictures' style, dark outline, a shine. One small SVG, sized by its container (css: .cup).
+export const CUP = `<svg class="cup" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 6.2H4.4a2.7 2.7 0 0 0 3.4 4.6M16.8 6.2h2.8a2.7 2.7 0 0 1-3.4 4.6" fill="none" stroke="${INK}" stroke-width="2.2" stroke-linecap="round"/>`
+  + `<path d="M12 14.6v3" stroke="${INK}" stroke-width="2.6"/><path d="M6.6 3.6h10.8v4.6a5.4 5.4 0 0 1-10.8 0Z" fill="${GOLD}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`
+  + `<path d="M7.6 21.2h8.8v-1a2.2 2.2 0 0 0-2.2-2.2H9.8a2.2 2.2 0 0 0-2.2 2.2Z" fill="${GOLD}" stroke="${INK}" stroke-width="2" stroke-linejoin="round"/>`
+  + `<path d="M9.4 6.2v2.4" stroke="#fff" stroke-width="1.7" stroke-linecap="round" opacity=".85"/></svg>`;

@@ -6,6 +6,7 @@ import { P } from '../ui/store.js';
 import { say, unlockSpeech } from '../ui/speech.js';
 import { miniBest } from '../progress.js';
 import { MINI, MINI_SAID } from './games.js';
+import { CUP } from './pics.js';
 import { hooks } from './run.js';
 import { runKeeper } from '../ui/goalie.js';
 import { runPenalties } from './pens-ui.js';
@@ -24,7 +25,7 @@ wireSheet('#miniSheet', '#miniClose');
 
 function render() {
   $('#minis').innerHTML = MINI.filter(g => RUN[g.id]).map(g => { const b = miniBest(P, g.id);
-    return `<button class="tile mini" data-id="${g.id}" aria-label="${g.name}${b ? ', best ' + b : ''}"><span class="pic">${g.pic}</span><span class="k">${g.name}</span><span class="st${b ? '' : ' none'}"><i>⭐</i><b>${b}</b></span></button>`; }).join('');
+    return `<button class="tile mini" data-id="${g.id}" aria-label="${g.name}${b ? ', best ' + b : ''}"><span class="pic">${g.pic}</span><span class="nm"><span class="k">${g.name}</span>${b ? `<span class="st">${CUP}<b>${b}</b></span>` : ''}</span></button>`; }).join(''); // (v90: his best, a small cup and the number, beside the name or under it)
   for (const t of $$('#minis .tile')) t.onclick = () => start(t.dataset.id);
 }
 let starting = false;
@@ -38,8 +39,13 @@ async function start(id) {
     await RUN[id]?.();
   } catch (e) { console.error(e); } finally { starting = false; }
 }
+// When a best has to go under a long name, the pictures are made a little smaller so both rows still fit (css .two).
+function fit() {
+  const m = $('#minis'); m.classList.remove('two');
+  if ([...m.querySelectorAll('.nm')].some(n => n.querySelector('.st') && n.querySelector('.st').offsetTop > n.querySelector('.k').offsetTop + 4)) m.classList.add('two');
+}
 export function openMini() {
-  render(); sheet.classList.remove('hidden'); unlockSpeech(); say(MINI_SAID.open);
+  render(); sheet.classList.remove('hidden'); fit(); unlockSpeech(); say(MINI_SAID.open);
 }
 hooks.open = openMini;
 const btn = $('#keeperBtn'); if (btn) btn.onclick = () => openMini();

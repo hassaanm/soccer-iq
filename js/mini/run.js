@@ -13,6 +13,7 @@ import { ASK } from '../flows.js';
 import { miniDone, miniBest, oldKeeperBest } from '../progress.js';
 import { newRun, attempt, LIVES } from './rules.js';
 import { miniById, MINI_SAID } from './games.js';
+import { CUP } from './pics.js';
 
 // Set by mini/chooser.js: opens the Mini games screen (the results card's second tile).
 export const hooks = { open: null };
@@ -25,7 +26,7 @@ function makeBar() {
   if (bar) return;
   bar = document.createElement('div'); bar.id = 'miniBar'; bar.className = 'hidden';
   bar.innerHTML = `<span class="lives" aria-label="Lives">${Array.from({ length: LIVES }, () => `<i class="heart"><span class="bg">${HEART}</span><span class="fg">${HEART}</span></i>`).join('')}</span>`
-    + '<span class="sc" aria-label="Score"><i class="u"></i><b>0</b></span><span class="best" aria-label="Best"><i>⭐</i><b>0</b></span>';
+    + '<span class="sc" aria-label="Score"><i class="u"></i><b>0</b></span><span class="best" aria-label="Best">' + CUP + '<b>0</b></span>';
   ($('#hud') || document.body).appendChild(bar); // (v88: at the top left, by the pause button: the middle of the top stays clear for the goal and the keeper's eyes)
   hearts = [...bar.querySelectorAll('.heart')]; scoreEl = bar.querySelector('.sc b'); unitEl = bar.querySelector('.sc .u'); bestBox = bar.querySelector('.best'); bestEl = bestBox.querySelector('b');
 }
@@ -68,10 +69,10 @@ export function endRun(run, { again, sticker = null, title = null } = {}) {
   save();
   plog('end', { game: run.id, score: run.score, best: miniBest(P, run.id), newBest: d.best ? 1 : 0, tries: run.n, sec: Math.round((Date.now() - run.t0) / 1000) });
   const head = d.best ? MINI_SAID.best : title || MINI_SAID.again;
-  // (v88) His score big, with his best beside it as a gold star badge (on a new best the badge under it says so instead);
+  // (v88) His score big, with his best beside it as a badge with the cup (v90) (on a new best the badge under it says so instead);
   // the old 8-shot game's best once, in words for a grown-up.
   const extra = `<div class="miniEnd${d.best ? ' nb' : ''}"><div class="score"><i>${g.unit}</i><b>${run.score}</b></div>`
-    + (d.best ? '<div class="newbest"><span><i>⭐</i>New best!</span></div>' : `<div class="best" aria-label="Best"><i>⭐</i><b>${miniBest(P, run.id)}</b></div>`)
+    + (d.best ? `<div class="newbest"><span>${CUP}New best!</span></div>` : `<div class="best" aria-label="Best">${CUP}<b>${miniBest(P, run.id)}</b></div>`)
     + (old ? `<div class="old">Best in the old 8-shot game: ${old} ${old === 1 ? 'save' : 'saves'}</div>` : '') + '</div>';
   fillResults({
     emoji: g.unit, sticker: d.sticker ? sticker.emoji : null, title: g.name, line: '', rounds: [], note: '', news: '', extra, // (the title: the game's name; "New best!" has its own badge under the score)
