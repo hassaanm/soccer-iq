@@ -16,6 +16,11 @@ import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, stealShown, ST
 import { shotResult } from '../shot.js';
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
+// (v89 integration) A child who does nothing must lose, even at the gentlest level: after IDLE_T game s with no
+// command from him (a tap, a pass, a shot, STEAL), their attack plays as at IDLE_LV at least (how fast they run, how
+// often and from how far they shoot), his friends shoot only from a move he was in and win the ball back slowly
+// (IDLE_TACKLE s). A tap ends it at once.
+export const IDLE_T = 10, IDLE_LV = .8, IDLE_TACKLE = 2.4;
 export const QUIET = .8, SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
 // LEVEL, 0 (gentle) to 1 (as quick as his own friends), scales everything about them: how fast they dribble, close him
@@ -52,13 +57,17 @@ export class Match {
     this.count = { touches: {}, passes: 0, arrived: 0, cut: 0, goals: 0, assists: 0, steals: 0, lost: 0, theirCut: 0 };
     this.on = { gain: () => {}, goal: () => {}, out: () => {}, lost: () => {}, warn: () => {}, shot: () => {}, theirShot: () => false };
   }
-  setLevel(level) { this.level = level; const o = this.opp = oppOf(level); this.tackleT = { ...(this.tackleT || {}), them: o.tackle }; this.aiSpeed = { ...(this.aiSpeed || {}), them: o.run }; this.standT = o.stand; }
+  setLevel(level) { this.level = level; this.oppIdle = oppOf(Math.max(level, IDLE_LV)); const o = this.opp = oppOf(level); this.tackleT = { ...(this.tackleT || {}), them: o.tackle }; this.aiSpeed = { ...(this.aiSpeed || {}), them: o.run }; this.standT = o.stand; }
   // ---------- set-up ----------
   formation(team, kick) {
     const L = this.L, W = this.W, c = L / 2, s = team === 'us' ? -1 : 1, n = this.n, k = L / 32;
     const rows = n === 3 ? [[1.2, .5], [5, .22], [5, .78]] : [[1.2, .5], [5.5, .2], [5.5, .8], [10, .5]];
     return rows.map(([d, f], i) => [c + s * (i === 0 && kick === team ? .7 : (d + (kick !== team && i === 0 ? 3 : 0)) * k), W * f]);
   }
+  // His last command (meTo, his pass, his shot, his dribble, STEAL) and whether he has been idle IDLE_T s since.
+  acted() { this.meCmdT = this.sim.time; }
+  idle() { return this.sim.time - (this.meCmdT ?? (this.meCmdT = this.sim.time)) > IDLE_T; }
+  oppNow() { return this.idle() ? this.oppIdle : this.opp; }
   keeperAt(team) { return [team === 'us' ? .7 : this.L - .7, this.W / 2]; }
   setup(kick = 'us') {
     const us = this.formation('us', kick), th = this.formation('them', kick);
@@ -107,7 +116,7 @@ export class Match {
   // How fast the side defending a pass of `team` gets to its line (their players: by the level).
   cutPace(team) { return team === 'us' ? { run: this.opp.cutRun, react: this.opp.cutReact } : { run: 4, react: .3 }; } // (his friends, a little slower than their best: he can cut out more himself)
   shotCheck(id) {
-    const a = this.sim.a(id), team = this.team(id), gx = this.goalX(team), d = Math.hypot(gx - a.x, this.W / 2 - a.y), range = team === 'them' ? this.opp.range + (this.sudden ? 2 : 0) : 11.5;
+    const a = this.sim.a(id), team = this.team(id), gx = this.goalX(team), d = Math.hypot(gx - a.x, this.W / 2 - a.y), range = team === 'them' ? this.oppNow().range + (this.sudden ? 2 : 0) : 11.5;
     const ys = [this.gy0 + .6, (this.gy0 + this.gy1) / 2, this.gy1 - .6], lanes = ys.map(y => ({ y, ...this.lane(a, { x: gx, y }, team) })).filter(l => !this.keeper(team === 'us' ? 'them' : 'us') || l.o?.id[0] !== 'k').sort((p, q) => q.d - p.d);
     const best = lanes[0] || { d: 99, y: this.W / 2 };
     if (d > range) return { good: false, why: 'far', d };
@@ -136,7 +145,7 @@ export class Match {
     return { x: clamp(b.x + lx / ll * lead, .8, this.L - .8), y: clamp(b.y + ly / ll * lead, .8, this.W - .8), sp, d };
   }
   pass(fromId, toId) {
-    const s = this.sim, a = s.a(fromId), b = s.a(toId); if (!a || !b) return;
+    const s = this.sim, a = s.a(fromId), b = s.a(toId); if (!a || !b) return; if (fromId === this.me) this.acted();
     const pt = this.passTarget(a, b), d = pt.d, sp = pt.sp, tx = pt.x, ty = pt.y;
     s.stop(fromId); s.windup(fromId, 'pass'); this.cmd.set(fromId, s.time + .7);
     s.go(toId, tx, ty, Math.max(2.5, b.sp)); this.cmd.set(toId, s.time + 9); s.open(toId, this.goalX(this.team(toId)), this.W / 2);
@@ -149,7 +158,7 @@ export class Match {
   }
   // A shot. res: what js/shot.js says it does ({ res, to, at, speed, arc, t, held }); the ball goes there.
   shoot(id, res, kind = 'shot') {
-    const s = this.sim, team = this.team(id), gx = this.goalX(team), dx = this.dir(team);
+    const s = this.sim, team = this.team(id), gx = this.goalX(team), dx = this.dir(team); if (id === this.me) this.acted();
     s.stop(id); s.windup(id, 'shot'); this.cmd.set(id, s.time + .8);
     let tx = gx + dx * .7, ty = res.to.y, z1 = res.to.z ?? .35;
     if (res.res === 'save' || res.res === 'cleared') { tx = res.at.x; ty = res.at.y; z1 = res.at.z ?? .3; }
@@ -163,14 +172,14 @@ export class Match {
     const a = this.sim.a(id), team = this.team(id), k = this.keeper(team === 'us' ? 'them' : 'us'), c = this.shotCheck(id);
     return shotResult({ from: { x: a.x, y: a.y }, y: c.y, foot: 'placed', k: k && { x: k.x, y: k.y }, gx: this.goalX(team), rand: this.rnd });
   }
-  dribble(id, x, y, sp = 3.6, secs = 1.2) { this.sim.go(id, clamp(x, 1, this.L - 1), clamp(y, 1, this.W - 1), sp); this.cmd.set(id, this.sim.time + secs); }
+  dribble(id, x, y, sp = 3.6, secs = 1.2) { if (id === this.me) this.acted(); this.sim.go(id, clamp(x, 1, this.L - 1), clamp(y, 1, this.W - 1), sp); this.cmd.set(id, this.sim.time + secs); }
 
   // ---------- his player ----------
   // Without the ball: jog (near spot) or sprint (far spot) there. With it: a close dribble (near) or a big push and run
   // (far: the ball goes ahead and he runs onto it; anyone who gets there first has it). 'stay': stop (with the ball: he
   // stands on it).
   meTo(x, y, ring) {
-    const s = this.sim, a = s.a(this.me); if (!a || this.dead) return;
+    const s = this.sim, a = s.a(this.me); this.acted(); if (!a || this.dead) return;
     x = clamp(x, .8, this.L - .8); y = clamp(y, .8, this.W - .8);
     const has = this.owner() === this.me, t = s.time;
     if (ring === 0) { s.stop(this.me); this.meMove = { kind: 'stay', until: t }; this.cmd.delete(this.me); return; }
@@ -198,7 +207,7 @@ export class Match {
   // carrier; waiting for the glow wins. (v89 integration) A window opens only after QUIET s with no press at all (a press
   // while spent counts: stealPress), so mashing never meets a glow; after a miss and its recovery, windows come again at
   // their usual rhythm for that carrier (his loose touch may come again too: `slip`), not after a long drought.
-  stealPress() { this.pressT = this.sim.time; }
+  stealPress() { this.pressT = this.sim.time; this.acted(); }
   stealOpen() { const w = this.stealWin; return !!w && w.c === this.owner() && this.sim.time < w.until; }
   stealSpent() { return this.sim.time < (this.stealT || 0); }
   stealLeft() { return this.stealSpent() ? clamp((this.stealT - this.sim.time) / this.opp.recover, 0, 1) : 0; }
@@ -274,7 +283,7 @@ export class Match {
       for (const o of this.foes(this.team(c))) {
         const d = dist(o, ca), k = o.id;
         if (d < .95 && !safe && (o.id !== this.me || this.meAuto)) {
-          let need = this.tackleT[o.team] ?? TACKLE_T;
+          let need = o.team === 'us' && this.idle() ? IDLE_TACKLE : this.tackleT[o.team] ?? TACKLE_T; // (his friends win it back slowly while he does nothing)
           if (c === this.me) {
             const mv = this.meMove, moving = mv && mv.kind === 'near' && t < mv.until, ahead = (o.x - ca.x) * (ca.tx - ca.x) + (o.y - ca.y) * (ca.ty - ca.y) > 0;
             if (moving && !ahead) { this.contact.delete(k); continue; } // dribbling away from him: he cannot get it
@@ -426,7 +435,7 @@ export class Match {
     // his friends look for him near goal: when his line is open and he is within FIND m of their goal, they pass to him
     // FIND_P of the time before they would shoot themselves
     if (team === 'us' && this.favor !== id && this.nearGoal(this.favor) && this.passCheck(id, this.favor).open && this.rnd() < FIND_P) { this.pass(id, this.favor); return; }
-    const shot = this.shotCheck(id), sp = team === 'them' ? this.opp.shootP * (this.sudden ? 1.6 : 1) : this.involved ? .7 * (this.invQ ?? 1) : ALONE_SHOT; if ((shot.good && this.rnd() < sp) || (shot.why === 'blocked' && shot.d < 7 && this.rnd() < sp * .35)) { // (close in, now and then he tries it anyway: a body may block it) // (his friends finish when he was in the move; without him they keep it and build)
+    const shot = this.shotCheck(id), sp = team === 'them' ? this.oppNow().shootP * (this.sudden ? 1.6 : 1) : this.idle() ? 0 : this.involved ? .7 * (this.invQ ?? 1) : ALONE_SHOT; if ((shot.good && this.rnd() < sp) || (shot.why === 'blocked' && shot.d < 7 && this.rnd() < sp * .35)) { // (close in, now and then he tries it anyway: a body may block it) // (his friends finish when he was in the move; without him they keep it and build)
       const res = this.aiShot(id);
       if (team === 'them' && this.on.theirShot(id, res)) return; // (the keeper turn: fast.js takes it from here)
       this.shoot(id, res); return;
