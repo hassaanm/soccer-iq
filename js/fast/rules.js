@@ -325,7 +325,7 @@ export const FILL = .7, SHARE = .62, TILT_MAX = .26, EYE_MAX = 3.2; // (SHARE: o
 const tilt = c => Math.atan2(c.eye[2] - c.tgt[2], Math.hypot(c.tgt[0] - c.eye[0], c.tgt[1] - c.eye[1]));
 export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
   const e = cam.eye, t = cam.tgt, m = .3, inside = () => e[0] >= m && e[0] <= L - m && e[1] >= m && e[1] <= W - m;
-  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 4) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)) && tilt(cam) <= TILT_MAX; // (the ball on screen, not at its very edge)
+  const ok = () => onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 8) && keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)) && tilt(cam) <= TILT_MAX; // (the ball on screen, not at its very edge)
   if (pull > 0) {
     const o = [...e];
     if (!inside()) { const s0 = [...e]; e[0] = clamp(e[0], m, L - m); e[1] = clamp(e[1], m, W - m); if (!ok()) e.splice(0, 3, ...s0); } // (moved in over the line, if he stays in view)
@@ -333,7 +333,7 @@ export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
     if (pull < 1) { e[0] = o[0] + (e[0] - o[0]) * pull; e[1] = o[1] + (e[1] - o[1]) * pull; }
   }
   // (the ball not on screen, as while the view is still turning to it: back and up a little at a time until it is)
-  for (let i = 0; i < 16 && !keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); i++) { const fx = t[0] - e[0], fy = t[1] - e[1], fl = Math.hypot(fx, fy) || 1; e[0] -= fx / fl * .4; e[1] -= fy / fl * .4; e[2] = Math.min(EYE_MAX + .6, e[2] + .1); }
+  for (let i = 0; i < 16 && !keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); i++) { const s0 = [...e], fx = t[0] - e[0], fy = t[1] - e[1], fl = Math.hypot(fx, fy) || 1; e[0] -= fx / fl * .4; e[1] -= fy / fl * .4; e[2] = Math.min(EYE_MAX + 1.5, e[2] + .1); if (!onScreen(project(cam, { x: me.x, y: me.y, z: .5 }, w, h), w, h, 8)) { e.splice(0, 3, ...s0); break; } } // (never losing him for it)
   const score = () => rowsOnPitch(cam, w, h, L, W, 20) + pitchShare(cam, w, h, L, W, 10, 7);
   cam.best = score();
   for (let i = 0; i < 40 && (rowsOnPitch(cam, w, h, L, W, 20) < FILL || pitchShare(cam, w, h, L, W, 10, 7) < SHARE); i++) {

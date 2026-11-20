@@ -68,55 +68,52 @@ test('his head goes down only as a ball comes to him, never on his own dribble, 
   assert.equal(R.headDownOn('m1', 'hero', 'pass'), false, 'a friend getting it: his head stays up');
 });
 
-test('a steal: the glow comes only once he has been on the carrier a moment; a press in it wins, one outside it is a lunge and spends STEAL', () => {
-  for (const when of ['in', 'early', 'none', 'after']) {
+// (v93, D3) STEAL: a press wins only a ball within his reach; anything else is a stumble that slows him a moment.
+test('STEAL never wins a ball out of his reach; in reach it wins; a miss slows him (a stumble), then he is himself again', async () => {
+  const M = await import('../js/fast/match.js');
+  for (const [d, win] of [[.9, true], [1.4, true], [1.7, false], [3, false], [8, false]]) {
     const { sim, m } = match(); m.me = 'hero'; m.meAuto = false; m.dead = false;
-    assert.ok(m.opp.glow / .75 >= .6, `the window lasts ${(m.opp.glow / .75).toFixed(2)} s of real time`);
-    park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); sim.give('o1');
-    Object.assign(sim.ball, { x: when === 'none' ? 15.3 : 14.3, y: W / 2 }); // (off his foot toward him, or at his foot)
-    m.stealWindow(); assert.equal(m.stealOpen(), false, 'never the moment STEAL shows');
-    if (when !== 'early') { sim.time += m.opp.glowFirst * 1.26; m.stealWindow(); }
-    assert.equal(m.stealOpen(), when === 'in' || when === 'after', when);
-    if (when === 'after') sim.time += m.opp.glow + .01;
-    const t0 = sim.time, r = m.steal();
-    assert.equal(r, when === 'in' ? 'won' : 'missed', when); assert.equal(m.owner(), when === 'in' ? 'hero' : 'o1');
-    if (r === 'missed') {
-      assert.ok(m.meMove.kind === 'lunge' && m.meMove.until - sim.time >= 1, 'a lunge costs him about 1.5 s');
-      assert.ok(m.stealSpent() && m.stealLeft() > .99, 'STEAL is spent'); assert.equal(m.steal(), null, 'a press while it is spent does nothing');
-      sim.time = t0 + m.opp.recover * .5; assert.ok(Math.abs(m.stealLeft() - .5) < .02, 'it comes back over opp.recover s');
-      sim.time = t0 + m.opp.recover + .01; assert.ok(!m.stealSpent(), 'and is back');
-      Object.assign(sim.ball, { x: 14.3, y: W / 2 }); place(sim, { o1: [15, W / 2], hero: [13.6, W / 2] }); m.stealWindow(); assert.equal(m.stealOpen(), false, 'no glow straight after it is back');
+    park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [14.4 - d, W / 2] }); sim.give('o1'); Object.assign(sim.ball, { x: 14.4, y: W / 2 }); m.safeT = 0;
+    assert.equal(m.canSteal(), win, `ball ${d} m from him: the glow ${win ? 'on' : 'off'}`);
+    const r = m.steal(); assert.equal(r, win ? 'won' : 'missed', `${d} m`); assert.equal(m.owner(), win ? 'hero' : 'o1');
+    if (!win) {
+      assert.ok(m.stumbling(), 'a miss: he stumbles'); m.meTo(2, 2); const h = sim.a('hero'); assert.ok(h.speed <= M.STUMBLE_SP + 1e-9, 'slowed');
+      assert.equal(m.steal(), 'stumbling', 'a press while he stumbles does nothing'); assert.ok(!m.canSteal(), 'and no glow');
+      run(m, sim, M.STUMBLE_T + .05); assert.ok(!m.stumbling() && h.speed > M.STUMBLE_SP + .5, 'then back to his speed');
     }
   }
 });
-
-// The steal tool's two players (fast2/tools/r-steal.mjs, shorter): both chase their carrier; one presses STEAL 0.4 s
-// after the glow starts, the other every 0.7 s whenever it can be pressed.
-function stealBot(policy, secs = 200, seed = 3) {
+test('a ball of theirs that runs into his body is his with no press; their carrier at the first level is slow to feel him coming', () => {
+  const { sim, m } = match(); m.me = 'hero'; m.dead = false;
+  park(sim, ['hero', 'o1']); place(sim, { o1: [15, W / 2], hero: [13.3, W / 2] }); sim.give('o1'); Object.assign(sim.ball, { x: 14.5, y: W / 2 }); m.safeT = 0; m.cmd.set('o1', 1e9);
+  sim.go('o1', 10, W / 2, 2); let got = null; m.on.gain = (id, how) => { got ??= [id, how]; }; run(m, sim, 3, () => got);
+  assert.deepEqual(got, ['hero', 'tackle']);
+  assert.ok(oppOf(LEVELS['3v3']).feel < oppOf(1).feel && oppOf(LEVELS['3v3']).think > oppOf(1).think, 'later they let it go sooner');
+});
+// A child who chases their carrier and presses STEAL only when the ball glows wins it every time he presses; one who
+// mashes it from anywhere wins less often (and stumbles).
+function stealBot(policy, secs = 120, seed = 3) {
   const { sim, m } = match(seed); m.me = m.favor = 'hero'; m.meAuto = false; m.setup('them'); m.kickoff('them');
   m.on.goal = () => m.after(1.8, () => m.kickoff('them'));
-  let real = 0, next = 0, glowOn = false, last = -9, presses = 0, won = 0; const pend = [], dt = 1 / 60;
+  let real = 0, last = -9, presses = 0, won = 0, missed = 0; const dt = 1 / 60;
   while (real < secs) {
-    real += dt; for (let i = pend.length - 1; i >= 0; i--) if (pend[i].at <= real) pend.splice(i, 1)[0].f();
-    m.step(dt * .75); sim.step(dt * .75); if (m.dead) { glowOn = false; continue; }
-    const me = sim.a('hero'), c = m.owner(), shown = c && m.team(c) === 'them' && R.stealShown(sim.a(c), me), glow = shown && m.stealOpen();
-    const press = d => { last = real; pend.push({ at: real + d, f: () => { const r = m.steal(); if (r) presses++; if (r === 'won') won++; } }); };
-    if (policy === 'wait' && glow && !glowOn) press(.4);
-    if (policy === 'mash' && shown && !m.stealSpent() && real - last > .7) press(.1);
-    glowOn = glow;
-    if (real > next) { next = real + .8; const t = c && m.team(c) === 'them' ? sim.a(c) : c ? null : sim.ball; if (t) { const p = R.moveTarget(me, t, L, W); m.meTo(p.x, p.y, p.ring || 1); } }
+    real += dt; m.step(dt * .75); sim.step(dt * .75); if (m.dead) continue;
+    const c = m.owner();
+    if (c && m.team(c) === 'them' && m.meMove?.kind !== 'press' && !m.stumbling()) m.meTo(sim.a(c).x, sim.a(c).y, 'press');
+    if (!c && sim.ball.state === 'loose' && m.meMove?.kind !== 'chase') m.meTo(sim.ball.x, sim.ball.y, 'ball');
+    const can = m.canSteal(), go = policy === 'glow' ? can && real - last > .3 : real - last > .7 && c && m.team(c) === 'them';
+    if (go) { last = real; const r = m.steal(); if (r === 'won') { won++; presses++; } else if (r === 'missed') { missed++; presses++; } }
   }
-  return { presses, won, rate: won / (presses || 1), perMin: won / (secs / 60) };
+  return { presses, won, missed };
 }
-test('waiting for the glow wins STEAL; mashing it does not pay (under 20%, and fewer steals a minute)', () => {
-  const sum = policy => { const r = [3, 5, 6].map(seed => stealBot(policy, 200, seed)), presses = r.reduce((a, x) => a + x.presses, 0), won = r.reduce((a, x) => a + x.won, 0); return { presses, won, rate: won / (presses || 1), perMin: won / (600 / 60) }; }; // (three matches: one alone can be all their goals)
-  const wait = sum('wait'), mash = sum('mash');
-  assert.ok(wait.presses >= 3 && wait.rate >= .85, `waiting: ${JSON.stringify(wait)}`);
-  assert.ok(mash.rate < .2, `mashing: ${JSON.stringify(mash)}`);
-  assert.ok(mash.perMin < wait.perMin, `steals a minute: mashing ${mash.perMin.toFixed(2)}, waiting ${wait.perMin.toFixed(2)}`);
+test('pressing STEAL on the glow always wins; mashing it stumbles now and then', () => {
+  const sum = p => [3, 5].map(seed => stealBot(p, 120, seed)).reduce((a, x) => ({ presses: a.presses + x.presses, won: a.won + x.won, missed: a.missed + x.missed }), { presses: 0, won: 0, missed: 0 });
+  const glow = sum('glow'), mash = sum('mash');
+  assert.ok(glow.presses >= 4 && glow.missed === 0, `on the glow: ${JSON.stringify(glow)}`);
+  assert.ok(mash.missed > 0, `mashing: ${JSON.stringify(mash)} (a press out of reach stumbles)`);
 });
 
-test('the shot view: from every place SHOOT shows, all six targets on screen, under the HUD, at least 56 px apart', async () => {
+test('the shot view: the same view from behind him, refocused on the goal; every target on screen, under the HUD, apart; his head in the picture', async () => {
   const { spaces, EDGE } = await import('../js/shot.js');
   for (const [w, h] of [[844, 390], [932, 430]]) {
     let n = 0;
@@ -125,7 +122,9 @@ test('the shot view: from every place SHOOT shows, all six targets on screen, un
       const t = spaces(), cam = R.aimCam({ x, y }, L, PITCH.gy0, PITCH.gy1, PITCH.gh, w, h, t), q = t.map(z => R.project(cam, { x: L + .02, y: z.y, z: z.z }, w, h));
       for (const p of q) { assert.ok(R.onScreen(p, w, h, 30), `on screen from ${x},${y}`); assert.ok(p[1] >= R.HUD_PX + 4, `under the HUD from ${x},${y}: ${p[1].toFixed(0)}`); }
       let g = 1e9; for (let i = 0; i < 6; i++) for (let j = i + 1; j < 6; j++) g = Math.min(g, Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]));
-      assert.ok(g >= 56, `${g.toFixed(0)} px apart from ${x},${y} at ${w}x${h}`);
+      assert.ok(g >= R.AIM_GAP - 1, `${g.toFixed(0)} px apart from ${x},${y} at ${w}x${h}`);
+      assert.ok(cam.eye[2] <= 3 && Math.hypot(L - cam.eye[0], W / 2 - cam.eye[1]) > Math.hypot(L - x, W / 2 - y), 'behind him, not high: the same view');
+      const hd = R.project(cam, { x, y, z: 1.55 }, w, h); assert.ok(hd && hd[1] < h, `his head in the picture from ${x},${y}`);
     }
     assert.ok(n > 20);
   }
@@ -202,38 +201,39 @@ test('a whole match with nobody steering him ends, first to three, and nothing s
   assert.ok(done, `ended: ${m.score.us}-${m.score.them}`);
 });
 
-test('the pitch fills the picture: at least 75% of it at the median over every place and heading (rows 80% in 9 of 10), and he stays on screen', () => {
+// (v93) The owner found the Fast view "too high or too different" from the Slow game's: it is now that view's own height
+// and angle (js/game/view.js head up: 2.8 m, 9° down), raised at most to EYE_MAX and tipped at most to TILT_MAX to show
+// more pitch, never the old view from above (up to 9 m and 63°); the pitch still takes most of the picture.
+test('the view is the Slow game\'s family: never high, never steep; he stays on screen; the pitch is most of the picture', () => {
   for (const [w, h] of [[932, 430], [844, 390]]) {
-    let n = 0, full = 0; const shares = [];
+    const shares = []; let maxEye = 0, maxTilt = 0;
     for (let x = 1; x < L; x += 1.5) for (let y = .6; y < W; y += 1.5) for (let hd = 0; hd < 8; hd++) for (const has of [true, false]) for (const look of has ? [0, 1] : [1]) {
       const me = { x, y }, a = hd * Math.PI / 4, ball = has ? { x: x + .4, y, z: 0 } : { x: R.clamp(x + Math.cos(a) * 8, .5, L - .5), y: R.clamp(y + Math.sin(a) * 8, .5, W - .5), z: 0 };
-      const cam = R.fitPitch(R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), look), me, w, h, L, W, [ball]); n++;
-      if (R.rowsOnPitch(cam, w, h, L, W) >= R.FILL) full++;
+      const cam = R.fitPitch(R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), look), me, w, h, L, W, [ball]);
       assert.ok(R.onScreen(R.project(cam, { x, y, z: .5 }, w, h), w, h), `him at ${x},${y}`);
-      shares.push(R.pitchShare(cam, w, h, L, W));
+      if (look === 1) { maxEye = Math.max(maxEye, cam.eye[2]); maxTilt = Math.max(maxTilt, Math.atan2(cam.eye[2] - cam.tgt[2], Math.hypot(cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1]))); shares.push(R.pitchShare(cam, w, h, L, W)); }
     }
-    assert.ok(full / n >= .9, `rows full in ${(100 * full / n).toFixed(1)}%`);
-    shares.sort((a, b) => a - b); assert.ok(shares[shares.length >> 1] >= .75, `the whole picture: pitch ${shares[shares.length >> 1].toFixed(2)} at the median`); assert.ok(shares[Math.floor(shares.length * .05)] >= .5, 'and seldom much less');
+    assert.ok(maxEye <= R.EYE_MAX + 1.51, `eye at most ${maxEye.toFixed(2)} m`); assert.ok(maxTilt <= .45, `looking down at most ${(maxTilt * 57.3).toFixed(0)}°`);
+    shares.sort((a, b) => a - b); assert.ok(shares[shares.length >> 1] >= .45, `the pitch: ${shares[shares.length >> 1].toFixed(2)} of the picture at the median`);
   }
 });
 
-// The view he does not steer near the lines (v86): over a grid of places (the ball at his feet, or 3 and 8 m away in 8
-// ways), the real share of the picture that is pitch (24 x 24 rays): at least 0.8 at the median, near a side line or a
-// goal line too, and much more often over 0.65 than the old view (naturalYaw + fitPitch alone); him and the ball always
-// on screen; never looking down more steeply than TILT_MAX.
-test('near the lines the view turns along the pitch and the pitch fills the picture: median 0.8 or more, him and the ball on screen', () => {
+// The view he does not steer near the lines (v86; v93 at the lower height): over a grid of places (the ball at his feet,
+// or 3 and 8 m away in 8 ways), the real share of the picture that is pitch (24 x 24 rays) near a side line or a goal
+// line is more than the plain view (naturalYaw + fitPitch) shows; him and the ball always on screen; never from above.
+test('near the lines the view turns along the pitch: more pitch than the plain view, him and the ball on screen, never from above', () => {
   const w = 932, h = 430, all = [], edge = [], old = []; let off = 0;
   for (let x = .8; x < L; x += 2.5) for (let y = .6; y < W; y += 1.7) for (const r of [0, 3, 8]) for (let hd = 0; hd < (r ? 8 : 1); hd++) {
     const me = { x, y }, has = r === 0, a = hd * Math.PI / 4, ball = has ? { x: x + .4, y, z: 0 } : { x: R.clamp(x + Math.cos(a) * r, .5, L - .5), y: R.clamp(y + Math.sin(a) * r, .5, W - .5), z: 0 };
     const cam = R.viewCam(me, ball, has, R.viewPick(me, ball, has, 1, w, h, L, W), 1, w, h, L, W), sh = R.pitchShare(cam, w, h, L, W, 24, 24);
     all.push(sh); if (Math.min(y, W - y) < 2.5 || Math.min(x, L - x) < 2.5) { edge.push(sh); const c0 = R.camSpec(me, ball, has, R.naturalYaw(me, ball, has, L, W), 1); old.push(R.pitchShare(R.fitPitch(c0, me, w, h, L, W, [ball], 1), w, h, L, W, 24, 24)); }
     if (!R.onScreen(R.project(cam, { x, y, z: .5 }, w, h), w, h) || !R.onScreen(R.project(cam, ball, w, h), w, h)) off++;
-    assert.ok(Math.atan2(cam.eye[2] - cam.tgt[2], Math.hypot(cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1])) <= R.TILT_MAX + 1e-6, 'never a view from the top');
+    assert.ok(cam.eye[2] <= R.EYE_MAX + 1.51 && Math.atan2(cam.eye[2] - cam.tgt[2], Math.hypot(cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1])) <= .45, 'never a view from above');
   }
-  const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1], under = a => a.filter(v => v < .65).length / a.length;
+  const med = a => a.slice().sort((p, q) => p - q)[a.length >> 1], under = a => a.filter(v => v < .45).length / a.length;
   assert.equal(off, 0, 'him and the ball on screen');
-  assert.ok(med(all) >= .8, `median ${med(all).toFixed(2)}`); assert.ok(med(edge) >= .8, `near a line: median ${med(edge).toFixed(2)}`);
-  assert.ok(under(edge) < under(old) / 2, `near a line under 0.65: ${under(edge).toFixed(2)} (the old view ${under(old).toFixed(2)})`);
+  assert.ok(med(all) >= .5, `median ${med(all).toFixed(2)}`); assert.ok(med(edge) >= med(old) + .03, `near a line: median ${med(edge).toFixed(2)} (the plain view ${med(old).toFixed(2)})`);
+  assert.ok(under(edge) < under(old), `near a line under 0.45: ${under(edge).toFixed(2)} (the plain view ${under(old).toFixed(2)})`);
 });
 test('the view turns no faster than TURN_MAX, and a long turn near a line is never held at the line', () => {
   const w = 932, h = 430, st = { yaw: 0 }, me = { x: 2, y: W - 1.5 }; let tick = 0, last = st.yaw, max = 0;
@@ -256,7 +256,7 @@ test('the level: up a little after a win, more after a clear one; down a little 
   assert.ok(Math.max(up, upC, -dn, -dn1) <= .12, 'small steps: no match is a wall');
   assert.equal(Lv.levelAfter(l0, { us: 1, them: 1 }), l0, 'a draw leaves it');
   assert.equal(Lv.levelAfter(M.LEVEL_MAX, { us: 3, them: 0 }), M.LEVEL_MAX); assert.equal(Lv.levelAfter(M.LEVEL_MIN, { us: 0, them: 3 }), M.LEVEL_MIN);
-  for (const k of ['run', 'press', 'tackle', 'stand', 'cutRun', 'glow', 'glowGap', 'recover']) assert.ok(Number.isFinite(M.oppOf(M.LEVEL_MIN)[k]) && M.oppOf(M.LEVEL_MIN)[k] > 0, k);
+  for (const k of ['run', 'press', 'tackle', 'stand', 'cutRun', 'feel', 'think']) assert.ok(Number.isFinite(M.oppOf(M.LEVEL_MIN)[k]) && M.oppOf(M.LEVEL_MIN)[k] > 0, k);
   assert.ok(M.oppOf(-.5).run < M.oppOf(0).run && M.oppOf(-.5).cutRun === M.oppOf(0).cutRun, 'below 0 they are slower, but a closed pass line is still closed');
   assert.equal(Lv.stars(l0, '4v4').n, 0); assert.equal(Lv.stars(l0 + Lv.STAR * 6, '4v4').row, 1); assert.equal(Lv.stars(l0 + Lv.STAR * 6, '4v4').medals, 1);
   const html = Lv.badge(l0 + Lv.STAR * 2, '4v4', 1); assert.equal((html.match(/class="on/g) || []).length, 2); assert.equal((html.match(/ new"/g) || []).length, 1); assert.ok(/Level 3/.test(html));
@@ -295,16 +295,12 @@ test('every Fast mode file parses (no test loads the page modules)', async () =>
   for (const f of readdirSync(dir).filter(f => f.endsWith('.js'))) { const r = spawnSync(process.execPath, ['--check', dir + f], { encoding: 'utf8' }); assert.equal(r.status, 0, `${f}: ${r.stderr}`); }
 });
 
-test('a tap anywhere moves him: between marks there, near a jog, far a sprint brought in to 9 m, off the pitch onto it, by his feet stay', () => {
-  const me = { x: L / 2, y: W / 2 };
-  const mid = { x: me.x + Math.cos(Math.PI / 8) * 3, y: me.y + Math.sin(Math.PI / 8) * 3 }, t1 = R.moveTarget(me, mid, L, W); // (between two near dots)
-  assert.equal(t1.ring, 1); assert.ok(Math.hypot(t1.x - mid.x, t1.y - mid.y) < 1e-9, 'exactly where he tapped');
-  const t2 = R.moveTarget(me, { x: me.x + 20, y: me.y + 1 }, L, W); assert.equal(t2.ring, 2); assert.ok(Math.hypot(t2.x - me.x, t2.y - me.y) <= R.FAR_MAX + 1e-9, 'a far tap is brought in');
-  const t3 = R.moveTarget({ x: 3, y: 2 }, { x: -4, y: -5 }, L, W); assert.ok(t3.x >= R.EDGE && t3.y >= R.EDGE, 'onto the pitch');
-  assert.equal(R.moveTarget(me, { x: me.x + .3, y: me.y }, L, W).ring, 0, 'by his feet: stay');
-  // and the match takes him there: a jog to the point between the marks
-  const { sim, m } = match(); m.me = 'hero'; m.dead = false; park(sim, ['hero']); place(sim, { hero: [me.x, me.y] }); Object.assign(sim.ball, { state: 'loose', carrier: null, x: 2, y: 2 }); m.restart = { team: 'us', id: 'x' };
-  m.meTo(t1.x, t1.y, t1.ring); const h = sim.a('hero'); assert.ok(Math.hypot(h.tx - t1.x, h.ty - t1.y) < 1e-9, 'he sets off for the point between the marks'); const d0 = Math.hypot(h.x - t1.x, h.y - t1.y); run(m, sim, .5); assert.ok(Math.hypot(h.x - t1.x, h.y - t1.y) < d0 - .8, 'and gets nearer');
+// (v93, D2) No free tapping: a tap near a spot counts as it (generous), far from every spot it does nothing.
+test('a tap near a spot counts as that spot; far from every spot it does nothing', () => {
+  const sp = [{ x: 10, y: 8, q: [300, 250] }, { x: 14, y: 8, q: [600, 240] }];
+  assert.equal(R.spotAt(sp, 330, 280, null, 430), sp[0], 'a finger 40 px off');
+  assert.equal(R.spotAt(sp, 300, 120, { x: 11.5, y: 9 }, 430), sp[0], 'or within reach of it on the grass');
+  assert.equal(R.spotAt(sp, 450, 60, { x: 12, y: 3 }, 430), null, 'far from both: nothing');
 });
 
 test('hints: only after he has done nothing for the delay (and is not on his way), never off the pitch, at most three', () => {
