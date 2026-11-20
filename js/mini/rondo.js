@@ -116,7 +116,7 @@ export const TWO_AT = 1; // (after 3 rounds kept)
 export function keepLevel(L) {
   L = Math.max(0, L); const two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
   return {
-    secs: 30 - 10 * Math.exp(-L / 2), size: ease(11, 8, 3)(L), two, press: ease(3.6, 5.8, 2.5)(L), cover: ease(3, 4.6, 4)(L) * two, cutRun: ease(3.8, 5.6, 3)(L), cutReact: ease(.45, .12, 3)(L),
+    secs: Math.round(30 - 10 * Math.exp(-L / 2)), size: ease(11, 8, 3)(L), two, press: ease(3.6, 5.8, 2.5)(L), cover: ease(3, 4.6, 4)(L) * two, cutRun: ease(3.8, 5.6, 3)(L), cutReact: ease(.45, .12, 3)(L),
     stand: ease(1.4, .5, 2.5)(L), think: ease(.6, .25, 3)(L), smart: ease(.65, .97, 2.5)(L), fMargin: ease(.35, .25, 4)(L), fHold: ease(.7, .45, 3)(L), fPass: ease(9.5, 11.5, 4)(L), fMove: ease(.8, 1.1, 4)(L), fRoom: ease(2.4, 2.1, 3)(L),
   };
 }
@@ -137,7 +137,7 @@ export const FOUR_AT = 0; // (v93: four passers from the first round, so no step
 export function winLevel(L) {
   L = Math.max(0, L); const X = .5 + .5 * L; // (the passers' curves start half a level in, no easy first round, and rise a little slower)
   return {
-    secs: 16 + 4 * Math.exp(-L / 6), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X),
+    secs: Math.round(16 + 4 * Math.exp(-L / 6)), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X),
     hold: ease(1.05, .45, 4)(X), feel: ease(3, 4.3, 4)(X), react: ease(.37, .12, 4)(X), move: ease(.5, .95, 5)(X), margin: ease(.1, .6, 5)(X), look: ease(.65, 1, 4)(X), lead: ease(.35, .9, 5)(X),
   };
 }

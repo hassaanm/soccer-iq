@@ -178,8 +178,8 @@ function smooth(of, keys) {
   }
 }
 test('the difficulty only rises, a little each round, from a real first round; the second defender comes in gently, four passers from the start', () => {
-  smooth(K.keepLevel, [['secs', 1, 1.6], ['size', -1, .35], ['press', 1, .3], ['cover', 1, 1.6], ['cutRun', 1, .2], ['cutReact', -1, .04], ['stand', -1, .13], ['think', -1, .05], ['smart', 1, .05], ['fMargin', -1, .03], ['fHold', -1, .04], ['fPass', 1, .2], ['fMove', 1, .05], ['fRoom', -1, .1], ['two', 1, .5]]);
-  smooth(K.winLevel, [['secs', -1, .3], ['size', 1, .15], ['n', 1, 0], ['pass', 1, .3], ['heavy', -1, .01], ['careless', -1, .01], ['hold', -1, .05], ['feel', 1, .1], ['react', -1, .02], ['move', 1, .03], ['margin', 1, .03], ['look', 1, .03], ['lead', 1, .03]]);
+  smooth(K.keepLevel, [['secs', 1, 2], ['size', -1, .35], ['press', 1, .3], ['cover', 1, 1.6], ['cutRun', 1, .2], ['cutReact', -1, .04], ['stand', -1, .13], ['think', -1, .05], ['smart', 1, .05], ['fMargin', -1, .03], ['fHold', -1, .04], ['fPass', 1, .2], ['fMove', 1, .05], ['fRoom', -1, .1], ['two', 1, .5]]);
+  smooth(K.winLevel, [['secs', -1, 1], ['size', 1, .15], ['n', 1, 0], ['pass', 1, .3], ['heavy', -1, .01], ['careless', -1, .01], ['hold', -1, .05], ['feel', 1, .1], ['react', -1, .02], ['move', 1, .03], ['margin', 1, .03], ['look', 1, .03], ['lead', 1, .03]]);
   const k = K.keepLevel(K.TWO_AT), k0 = K.keepLevel(K.TWO_AT - STEP);
   assert.equal(k0.two, 0); assert.ok(k.two > 0 && k.two <= .5, 'the second defender comes in at under half his strength');
   assert.ok(K.keepLevel(K.TWO_AT + 2 * STEP).two < 1 && K.keepLevel(40).two === 1, 'and grows over the next rounds');
