@@ -12,11 +12,11 @@
 //  - 5 v 5: two keepers (k1 ours, k2 theirs) who keep to their line, take loose balls near their goal and save shots as
 //    js/shot.js says.
 // Our team attacks +x (their goal at x = L). His player (`me`) moves only when he says so (the controller, fast.js).
-import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, stealShown, REACH as FOOT_REACH } from './rules.js';
+import { clamp, dist, onLane, cutBy, bodyHit, pickPass, stealNow, stealShown, STEAL_R, REACH as FOOT_REACH } from './rules.js';
 import { shotResult } from '../shot.js';
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
-export const SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
+export const QUIET = .8, SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_MARGIN = .45, WARN_AT = .15, GO_T = 3.5, FAVOR = 3, LUNGE_T = 1.15; // (LUNGE_T: game s, about 1.5 s at the calm speed)
 // ---------- how good the other team is: one number ----------
 // LEVEL, 0 (gentle) to 1 (as quick as his own friends), scales everything about them: how fast they dribble, close him
 // down and mark, how long they need on a player to take the ball (from him standing on it: STAND), how quickly they get
@@ -195,7 +195,10 @@ export class Match {
   // opp.glow s (the ball glows; the carrier slows a little, a looser touch); after it, none for opp.glowGap s.
   // A press out of time spends the button: STEAL shows as recovering and does nothing for opp.recover s (stealLeft: the
   // share of it still to go, 1 … 0), and no window opens until a while after it is back, so mashing it loses the
-  // carrier; waiting for the glow wins.
+  // carrier; waiting for the glow wins. (v89 integration) A window opens only after QUIET s with no press at all (a press
+  // while spent counts: stealPress), so mashing never meets a glow; after a miss and its recovery, windows come again at
+  // their usual rhythm for that carrier (his loose touch may come again too: `slip`), not after a long drought.
+  stealPress() { this.pressT = this.sim.time; }
   stealOpen() { const w = this.stealWin; return !!w && w.c === this.owner() && this.sim.time < w.until; }
   stealSpent() { return this.sim.time < (this.stealT || 0); }
   stealLeft() { return this.stealSpent() ? clamp((this.stealT - this.sim.time) / this.opp.recover, 0, 1) : 0; }
@@ -207,14 +210,17 @@ export class Match {
     const s = this.sim, c = this.owner(), me = s.a(this.me), t = s.time, ca = c && this.team(c) === 'them' ? s.a(c) : null;
     if (this.stealWin && (this.stealWin.c !== c || t >= this.stealWin.until)) { this.stealWin = null; this.stealNext = t + this.opp.glowGap; }
     const on = !!ca && !!me && !this.dead && stealShown(ca, me);
+    if (on && !this.wasOn) this.shownAt = t; this.wasOn = on; // (STEAL has shown since shownAt: no window in its first glowFirst s, so a press as it appears is always too soon)
     if (!on) { if (this.nearAt != null && t - (this.onAt ?? t) > .6) this.nearAt = null; } else if ((this.onAt = t), this.nearAt == null) { this.nearAt = t; const at = t + this.opp.glowFirst * (.85 + .4 * this.rnd()); this.stealNext = Math.max(this.stealNext || 0, at); this.slip = this.rnd() < this.opp.slip ? { c, at, until: at + 1.2 } : null; }
-    if (!this.stealWin && on && t >= (this.stealNext || 0) && !this.stealSpent() && this.meMove?.kind !== 'lunge' && stealNow(ca, s.ball, me)) this.stealWin = { c, until: t + this.opp.glow };
+    if (!this.stealWin && on && t >= (this.stealNext || 0) && t >= (this.pressT ?? -9) + QUIET && t >= (this.shownAt ?? -9) + this.opp.glowFirst && !this.stealSpent() && this.meMove?.kind !== 'lunge' && (stealNow(ca, s.ball, me) || (this.slip?.hold && this.slip.c === c && t >= this.slip.at && t < this.slip.until && dist(me, s.ball) <= STEAL_R))) this.stealWin = { c, until: t + this.opp.glow }; // (after a miss, the held carrier's loose touch once he is back: slip.hold)
   }
   steal() {
-    const s = this.sim, c = this.owner(), me = s.a(this.me); if (!c || this.team(c) !== 'them' || !me || this.dead || this.stealSpent()) return null;
+    const s = this.sim, c = this.owner(), me = s.a(this.me); if (!c || this.team(c) !== 'them' || !me || this.dead) return null;
+    this.stealPress(); if (this.stealSpent()) return null;
     const ca = s.a(c), b = s.ball;
     if (this.stealOpen()) { this.stealWin = null; this.fx('won'); this.giveTo(this.me, 'steal'); return 'won'; }
-    this.stealWin = null; this.stealT = s.time + this.opp.recover; this.stealNext = Math.max(this.stealNext || 0, this.stealT + .6 * this.opp.glowGap); // (and no glow straight after it is back: pressed again at once, it misses again)
+    this.stealWin = null; this.stealT = s.time + this.opp.recover; this.stealNext = Math.max(this.stealNext || 0, this.stealT + QUIET); // (back after the recovery: a moment, then the usual rhythm; pressed again the moment it is back, it misses again)
+    this.slip = this.rnd() < this.opp.slip ? { c, at: this.stealT, until: this.stealT + 1.2, hold: true } : null; // (that carrier keeps the ball on, and his loose touch may come again once he is back)
     // the lunge: at the ball, short of it; he stops there a moment, and the carrier goes on past at full speed (never
     // slowed by it), safe for a moment
     const dx = b.x - me.x, dy = b.y - me.y, l = Math.hypot(dx, dy) || 1, r = Math.min(l, 1.1);
@@ -415,7 +421,7 @@ export class Match {
   aiCarrier(id, dt) {
     const s = this.sim, a = s.a(id), team = this.team(id), dx = this.dir(team);
     if (this.stealOpen() && this.stealWin.c === id) { s.go(id, clamp(a.x + dx * .8, 1, this.L - 1), a.y, 1.3); return; } // (his steal window: a loose touch, the carrier slows and does nothing else)
-    const sl = this.slip; if (sl && sl.c === id && s.time < sl.until && !this.stealSpent() && (!this.stealWin || this.stealWin.c === id)) { if ((this.aiT -= dt) > 0) return; this.aiT = .45; s.go(id, clamp(a.x + dx * 3, 1, this.L - 1), clamp(a.y + (this.W / 2 - a.y) * .15, 1.2, this.W - 1.2), this.aiSpeed[team] ?? 3.1); return; } // (a loose touch coming: he carries it on)
+    const sl = this.slip; if (sl && sl.c === id && s.time < sl.until && (!this.stealSpent() || sl.hold) && (!this.stealWin || this.stealWin.c === id)) { if ((this.aiT -= dt) > 0) return; this.aiT = .45; s.go(id, clamp(a.x + dx * 3, 1, this.L - 1), clamp(a.y + (this.W / 2 - a.y) * .15, 1.2, this.W - 1.2), this.aiSpeed[team] ?? 3.1); return; } // (a loose touch coming: he carries it on)
     if ((this.aiT -= dt) > 0) return; this.aiT = .45;
     // his friends look for him near goal: when his line is open and he is within FIND m of their goal, they pass to him
     // FIND_P of the time before they would shoot themselves

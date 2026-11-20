@@ -1049,3 +1049,16 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 @keyframes pzBox{0%{opacity:0}15%,55%{opacity:.45}100%{opacity:0}}
 @keyframes pzIn{0%{opacity:0}100%{opacity:1}}
 @media (prefers-reduced-motion:reduce){#pz .ring.show,#pz.in .pitch,#pz.in .pcs,#pz.in .pzball{animation:none}}
+
+/* ---------- STEAL's looks (v89 integration: js/fast/fast.js drawStealLook, js/mini/rondo-ui.js) ---------- */
+/* wait: dim and still (the ball cannot be won now); now: gold and pulsing (the ball glows); spent: wait with a dark cover
+   draining away. Only transform and opacity animate. */
+#rSteal{overflow:hidden}
+#rSteal .fWait{position:absolute;inset:0;border-radius:50%;background:rgba(36,25,58,.62);transform:scaleY(0);transform-origin:50% 100%;pointer-events:none}
+#rSteal.spent i,#rSteal.spent span{opacity:.55}
+#rSteal.nope{animation:fNope .35s ease-out}
+:is(#fAct,#rSteal).wait{--top:#d8d2e6;--bot:#b3aac9;--edge:#8a80a3;color:#4a4160}
+:is(#fAct,#rSteal).wait i,:is(#fAct,#rSteal).wait span{opacity:.6}
+:is(#fAct,#rSteal).now{animation:stealNow .6s ease-in-out infinite}
+@keyframes stealNow{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){:is(#fAct,#rSteal).now{animation:none}}

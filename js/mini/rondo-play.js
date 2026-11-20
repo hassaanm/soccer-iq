@@ -9,6 +9,7 @@
 import { Sim } from '../sim.js';
 import { clamp, dist, cutBy, bodyHit, stealNow, REACH as FOOT, BODY_R, STEAL_R } from '../fast/rules.js';
 import * as K from './rondo.js';
+const QUIET = .8; // (game s with no STEAL press before a glow may open: mashing never meets one)
 
 const PASS_R = 1.1, FREE = 2.5, PROTECT = 2.4, LOOK = .4, OFF_MAX = 2, LOOSE_R = .62, TACKLE_R = .95, WARN_AT = .15, SAFE = .5, FAVOR = .9, TAKE = 1;
 const SIDE = { keep: { hero: 'near', m1: 'left', m2: 'far', m3: 'right' }, win: { o1: 'far', o2: 'left', o3: 'right', o4: 'near' } };
@@ -98,7 +99,7 @@ export class Rondo {
   // STEAL ('win'): in the glow it is his; at any other time he lunges, is slow a moment, and they play round him.
   steal() {
     if (this.mode !== 'win' || this.phase !== 'play') return null;
-    const s = this.sim, me = s.a('hero'), b = s.ball; if (s.time < this.lungeT) return null;
+    const s = this.sim, me = s.a('hero'), b = s.ball; this.pressT = s.time; if (s.time < this.lungeT) return null; // (any press: no glow opens for QUIET s after it, so mashing never meets one: v89 integration)
     if (this.glowing()) { this.stats.steals++; this.take('hero', 'steal'); return 'won'; }
     const u = unit(me, b), r = Math.min(u.l, 1); s.go('hero', me.x + u.x * r, me.y + u.y * r, 3);
     this.lungeT = s.time + K.ME.lunge; this.glowNext = this.lungeT; this.glowWin = null; this.stats.lunges++;
@@ -254,9 +255,10 @@ export class Rondo {
   glowStep(dt) {
     const s = this.sim, b = s.ball, me = s.a('hero'), t = s.time, c = this.owner();
     if (t < this.lungeT) { this.glowUntil = -9; return; }
+    const quiet = t >= (this.pressT ?? -9) + QUIET; // (v89 integration: a glow opens only after QUIET s with no press)
     const d = dist(me, b), low = (b.z || 0) < 1.2, near = d <= STEAL_R && low, f = this.flight;
     const reach = f?.kind === 'pass' && b.state === 'flying' ? PASS_R + Math.max(0, 7 - (f.speed || 7)) * .12 : STEAL_R; // (a pass: within his reach and a step, more for a slow one; a loose ball: within STEAL_R)
-    const moving = (b.state === 'flying' || b.state === 'loose') && d <= reach && low, foot = c && c !== 'hero' && t >= this.glowNext && stealNow(s.a(c), b, me);
+    const moving = quiet && (b.state === 'flying' || b.state === 'loose') && d <= reach && low, foot = quiet && c && c !== 'hero' && t >= this.glowNext && stealNow(s.a(c), b, me);
     if (moving) this.glowUntil = Math.max(this.glowUntil, t + this.D.glow); // (in his reach, and `glow` s after: time for a child's press)
     if (foot && !(this.glowWin && this.glowWin.c === c)) { this.glowWin = { c, until: t + this.D.glow + .25 }; this.glowUntil = Math.max(this.glowUntil, this.glowWin.until); }
     if (this.glowWin && (this.glowWin.c !== c || t >= this.glowWin.until)) { this.glowWin = null; this.glowNext = t + this.D.gap; }

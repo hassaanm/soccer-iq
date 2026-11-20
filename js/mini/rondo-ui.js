@@ -47,10 +47,10 @@ let dom = null, marks = null, box = null;
 function build() {
   if (dom) return;
   const el = document.createElement('div'); el.id = 'rondoHud';
-  el.innerHTML = '<button id="rSteal" class="btn btn-gold btn-round" type="button" aria-label="Steal"><i>🦶</i><span>STEAL</span></button><div id="rSlow" aria-hidden="true"></div>';
+  el.innerHTML = '<button id="rSteal" class="btn btn-gold btn-round" type="button" aria-label="Steal"><b class="fWait" aria-hidden="true"></b><i>🦶</i><span>STEAL</span></button><div id="rSlow" aria-hidden="true"></div>';
   hudEl.appendChild(el);
   dom = { el, steal: el.querySelector('#rSteal') };
-  dom.steal.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !stage.on || held.on || !g) return; const r = g.steal(); if (r) { plog({ is: 'steal', res: r }); if (r === 'missed') sfx('tap'); } });
+  dom.steal.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !stage.on || held.on || !g) return; const r = g.steal(); if (r) { plog({ is: 'steal', res: r }); if (r === 'missed') sfx('tap'); } else if (g.sim.time < g.lungeT) { const b = dom.steal; b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); sfx('tap'); } });
   marks = makeMarks(world); box = makeBox();
   canvas.addEventListener('pointerdown', down);
   addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', e => up(e, true));
@@ -159,6 +159,11 @@ function frame(dt) {
   marks.draw(spots, [], null, has, ui.clock, warnAt && s.a(warnAt), play, g.goAt, hinted);
   stage.ui = ui;
   const st = g.mode === 'win' && play; if (st !== dom.stealOn) { dom.stealOn = st; dom.steal.classList.toggle('show', st); }
+  // STEAL's three looks, as in Fast mode (v89 integration): wait (dim, still), now (gold, pulsing: the ball glows), spent
+  // after a miss (the wait look with a dark cover draining away while he is slow).
+  if (st) { const t = g.sim.time, left = t < g.lungeT ? Math.min(1, (g.lungeT - t) / K.ME.lunge) : 0, look = left > 0 ? 'spent' : g.glowing() ? 'now' : 'wait', v = Math.ceil(left * 20) / 20;
+    if (look !== dom.look) { dom.look = look; dom.steal.classList.toggle('wait', look !== 'now'); dom.steal.classList.toggle('now', look === 'now'); dom.steal.classList.toggle('spent', look === 'spent'); }
+    if (v !== dom.spentV) { dom.spentV = v; dom.steal.querySelector('.fWait').style.transform = `scaleY(${v})`; } }
 }
 
 // ---------- the players' bodies ----------
@@ -207,7 +212,7 @@ async function runRondo(mode) {
 }
 function end() {
   stage.on = false; resetTransient(); marks?.hide(); box?.set(null);
-  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show'); dom.stealOn = false; }
+  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show', 'wait', 'now', 'spent'); dom.stealOn = false; dom.look = null; }
   if (g) { g.phase = 'idle'; g.done = null; }
   onStage(null); undress(); game.home();
 }

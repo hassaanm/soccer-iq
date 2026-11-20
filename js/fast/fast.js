@@ -106,7 +106,7 @@ class Fast {
     this.ui.clock = 0; this.ui.glow = {}; this.ui.aims = null; this.ui.lines = null; this.warnAt = null; this.warnT = 0; this.over = false;
     this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
-    this.aiming = this.footing = false; this.ui.ballGlow = false; this.actKind = null; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
+    this.aiming = this.footing = false; this.ui.ballGlow = false; this.actKind = null; this.stealLook = null; this.dom.act.classList.remove('wait', 'now'); this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.vw = null; this.camNow(1);
     hud.state({ phase: 'idle', mode: 'fast' }); hud.caption(''); hud.score(m.score, us, them);
@@ -127,7 +127,7 @@ class Fast {
     for (const k of ['look', 'cue', 'pic']) this.dom?.[k]?.classList.remove('show'); this.dom?.box.querySelector('#fNext')?.classList.remove('show');
     FAST.on = this.on = false; this.marks?.hide(); this.dom?.box.classList.remove('on'); this.dom?.sheet.classList.add('hidden'); hudEl.classList.remove('fpicking');
     const t = this.dom?.tunnel; if (t) { t.style.opacity = 0; t.classList.remove('on'); t.style.transform = ''; }
-    this.ui.glow = {}; this.ui.aims = null; this.ui.ballGlow = false; this.aiming = this.footing = false; this.dom?.foot.classList.remove('show'); this.dom?.act.classList.remove('show'); this.actKind = null; this.finger = null; this.holding = false; this.dom?.box.classList.remove('slowing');
+    this.ui.glow = {}; this.ui.aims = null; this.ui.ballGlow = false; this.aiming = this.footing = false; this.dom?.foot.classList.remove('show'); this.dom?.act.classList.remove('show', 'wait', 'now'); this.actKind = null; this.stealLook = null; this.finger = null; this.holding = false; this.dom?.box.classList.remove('slowing');
     for (const d of this.dom?.chips || []) { d.o = 0; d.b.style.opacity = 0; d.b.style.pointerEvents = 'none'; }
   }
   counts() {
@@ -342,9 +342,15 @@ class Fast {
     const b = this.dom.act, v = Math.ceil(left * 20) / 20; if (v === this.spentV) return; this.spentV = v;
     b.classList.toggle('spent', v > 0); b.querySelector('.fWait').style.transform = `scaleY(${v})`;
   }
+  // STEAL's look (v89 integration): 'wait' (dim, still: the ball cannot be won now; a press is a miss) or 'now' (gold,
+  // pulsing: the ball glows). Spent (drawSpent) is the wait look with the dark cover draining away.
+  drawStealLook(k) {
+    if (k === this.stealLook) return; this.stealLook = k; const b = this.dom.act;
+    b.classList.toggle('wait', k === 'wait'); b.classList.toggle('now', k === 'now');
+  }
   action() {
     const k = this.actionNow(); if (!k || !this.on || held.on) return;
-    if (k === 'steal' && this.m.stealSpent()) { const b = this.dom.act; b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); sfx('tap'); this.stats.spentTaps++; return; }
+    if (k === 'steal' && this.m.stealSpent()) { this.m.stealPress(); const b = this.dom.act; b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); sfx('tap'); this.stats.spentTaps++; return; }
     this.acted(k);
     if (k === 'shoot') this.aim(); else if (k === 'steal') this.steal(); else this.skill();
   }
@@ -427,7 +433,7 @@ class Fast {
     this.spots = h && !m.dead && !this.aiming ? R.spots(h, [...s.agents.values()].filter(a => a.id !== this.me), PITCH.L, PITCH.W) : [];
     for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me && m.passCheck(this.me, id).open ? .55 : 0; // (gold: a pass that will get there)
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
-    this.drawAction(this.aiming ? null : this.actionNow()); this.drawSpent(this.actKind === 'steal' ? m.stealLeft() : 0);
+    this.drawAction(this.aiming ? null : this.actionNow()); this.drawSpent(this.actKind === 'steal' ? m.stealLeft() : 0); this.drawStealLook(this.actKind === 'steal' ? (m.stealOpen() ? 'now' : 'wait') : null);
     this.scanCue(h);
     if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); if (this.dom.hold.classList.contains('show')) this.placeHint(this.dom.hold); }
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
