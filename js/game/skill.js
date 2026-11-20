@@ -63,7 +63,7 @@ export const skill = {
     const k = s.turnAhead('hero', true); if (!k || s.exitRoom(h, 1, .7, .35) < EXIT_FREE) return; // (v76 SL: any turn past him, not only one that is a chance for a skill turn: sim.js startTurn)
     const b = s.ball, ch = Math.cos(b.h), sh = Math.sin(b.h); let foe = null, fd = 3.5;
     for (const o of s.team('them')) { const d = Math.hypot(o.x - h.x, o.y - h.y); if (d < fd && (o.x - h.x) * ch + (o.y - h.y) * sh > -.3) { fd = d; foe = o; } }
-    if (!foe || (k === 'any' && (!s.flair?.by?.hero || fd < ANY_NEAR))) return; // (v76 SL: a plain turn only in a play of his on the ball, and not with him already on him)
+    if (!foe || (k === 'any' && (!s.flair?.by?.hero || s.flair.ctx === 'finish' || fd < ANY_NEAR))) return; // (v76 SL: a plain turn only in a dribble of his (not his run at goal, which may end in a shot during the hold), and not with him already on him)
     const side = turnSide(s, h, b.h, Math.atan2(h.ty - h.y, h.tx - h.x)), pair = this.movePair(TURN_MOVES), first = pick(h.x, h.y);
     const alts = pair.map((m, i) => ({ k: m, good: i === first, exit: i === first ? side : -side }));
     this.skillOffer({ kind: 'turn', alts, tgt: foe.id, yaw: b.h });
