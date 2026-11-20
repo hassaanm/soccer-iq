@@ -181,7 +181,7 @@ class Fast {
   lookUp(up) {
     if (this.up1 === up) return; this.up1 = up;
     if (up) { this.stats.looks++; sfx('up'); this.lastScan = this.real; } else sfx('down');
-    const d = this.dom.look; d.classList.toggle('show', !up);
+    const d = this.dom.look; d.classList.toggle('show', !up); this.downAt = this.real; if (up && this.nudged) { this.nudged = false; d.classList.remove('nudge'); }
   }
   // The camera: the shot view while he aims, else the view he does not steer (rules.js viewStep: where he looks, near a
   // line turned along the pitch, the eye in from the line or out over it looking in, close in a corner; the pitch fills
@@ -500,6 +500,9 @@ class Fast {
     for (const id of m.usIds) this.ui.glow[id] = has && id !== this.me && m.passCheck(this.me, id).open ? .55 : 0; // (gold: a pass that will get there)
     // the action button, the ball's glow for a steal in time, and a shot he did not finish
     this.drawAction(this.aiming ? null : this.actionNow());
+    // (v93) Head down with no spot in sight for a moment: LOOK UP nudges (his way to see the places he can go)
+    const nudge = !this.up1 && !m.dead && (this.set?.spots.length || 0) < 2 && this.real - (this.downAt || 0) > 1.2;
+    if (nudge !== !!this.nudged) { this.nudged = nudge; this.dom.look.classList.toggle('nudge', nudge); }
     this.scanCue(h);
     if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); if (this.dom.hold.classList.contains('show')) this.placeHint(this.dom.hold); }
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
