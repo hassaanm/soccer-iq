@@ -57,7 +57,7 @@ test('keep: a friend in a corner with the defender on him never plays it back in
     place(g, 'o1', b.x0 + 2.2, b.y1 - 1.4); if (s.a('o2')) place(g, 'o2', b.cx + 2, b.cy - 1);
     Object.assign(s.ball, { x: b.x0 + 1.3, y: b.y1 - .4, state: 'carried', carrier: 'm1', reach: null, move: null }); g.give('m1', 'pass'); g.gotAt -= 2;
     g.hooks.pass = (from, to) => { if (from !== 'm1') return; n++; if (to !== 'hero') return; toMe++; const t = g.flight.tgt; if (dist(t, sp[4]) < .5 || g.takers().some(o => dist(o, t) < g.D.fRoom - .3)) intoCorner++; };
-    await play(g, 1.2, () => g.flight || g.phase !== 'play');
+    await play(g, 3, () => g.flight || g.phase !== 'play');
   }
   assert.ok(n >= 3, `passes: ${n}`);
   assert.equal(intoCorner, 0, `into the corner at him: ${intoCorner} (to him: ${toMe} of ${n})`);

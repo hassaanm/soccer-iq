@@ -70,7 +70,7 @@ export class Rondo {
     Object.assign(s.ball, { x: cr.x + u.x * .4, y: cr.y + u.y * .4, z: 0, state: 'carried', carrier: cr.id, h: Math.atan2(u.y, u.x), move: null, reach: null, got: -9 });
     this.flight = null; this.jobs.length = 0; this.off.clear(); this.busy.clear(); this.next.clear(); this.contact.clear(); this.warned = false; this.goAt = null;
     this.gotAt = s.time; this.safeT = s.time + 1; this.left = this.len = D.secs; this.phase = 'ready'; this.readyEnd = s.time + K.READY_S; this.result = null;
-    this.defT = 0; this.aiT = 0; this.shadow = null; this.coverOf = null; this.stumbleT = -9; this.wasGlow = false; this.felt = null; this.looks = this.mode === 'win' && this.rnd() < D.look; this.reactNow = (D.react || 0) * (.55 + .9 * this.rnd()); this.spotT = s.time;
+    this.defT = 0; this.aiT = 0; this.shadow = null; this.coverOf = null; this.stumbleT = -9; this.wasGlow = false; this.felt = null; this.trail = []; this.looks = this.mode === 'win' && this.rnd() < D.look; this.reactNow = (D.react || 0) * (.55 + .9 * this.rnd()); this.spotT = s.time;
     this.slowTo = K.SPEED; this.t0 = s.time; this.real0 = this.real;
     this.stats = { passes: 0, myPasses: 0, myTouches: 0, toMe: 0, toMeClosed: 0, toMeAway: 0, moves: 0, steals: 0, lunges: 0, presses: 0, glows: 0, glowS: 0, far: 0, firstGlow: null };
     this.ui.glow = {}; this.ui.ballGlow = false; this.ui.landing = null;
@@ -135,8 +135,9 @@ export class Rondo {
   canSteal() {
     if (this.mode !== 'win' || this.phase !== 'play') return false;
     const s = this.sim, b = s.ball, me = s.a('hero');
-    return s.time >= this.stumbleT && b.carrier !== 'hero' && (b.z || 0) < 1.2 && dist(me, b) <= STEAL_R;
+    return s.time >= this.stumbleT && b.carrier !== 'hero' && (b.z || 0) < 1.2 && dist(me, b) <= this.reach();
   }
+  reach() { return STEAL_R + (this.mode === 'win' ? this.D?.reachPlus || 0 : 0); } // (his reach for a press: a little longer in the first rounds)
   glowing() { return this.canSteal(); }
   stumbling() { return this.mode === 'win' && this.phase === 'play' && this.sim.time < this.stumbleT; }
 
@@ -240,6 +241,7 @@ export class Rondo {
     for (const [id, until] of this.busy) if (until <= s.time) this.busy.delete(id);
     if (this.phase === 'play') { if (this.mode === 'keep') this.aiKeep(dt); else this.aiWin(dt); }
     this.heroStep();
+    if (this.mode === 'win') { const me = s.a('hero'), h = this.trail ||= []; h.push({ t: s.time, x: me.x, y: me.y }); while (h.length > 2 && h[1].t < s.time - 1.5) h.shift(); }
     const n = Math.max(1, Math.ceil(dt / (1 / 60))); for (let i = 0; i < n; i++) s.step(dt / n);
     this.hold();
     this.ui.clock += dt;
@@ -282,7 +284,8 @@ export class Rondo {
     if (this.mode === 'win' && b.state === 'carried' && b.carrier !== 'hero' && dist(me, b) < TOUCH_R) { this.take('hero', 'block'); return; } // (a passer's ball runs into him)
     if (f && b.state === 'flying') {
       const low = (b.z || 0) < 1.2, away = Math.hypot(b.x - b.fx, b.y - b.fy) > .9;
-      if (low && away) for (const o of this.takers()) if (dist(o, b) < (this.mode === 'keep' ? FOOT : TOUCH_R)) { this.take(o.id, this.mode === 'win' ? 'block' : f.kind === 'heavy' ? 'loose' : 'cut'); return; }
+      const foot = this.mode === 'keep' ? FOOT * (f.from === 'hero' ? 1 - .5 * (this.D.soft || 0) : 1) : TOUCH_R; // (the first rounds: his pass slips past a defender's foot more often)
+      if (low && away) for (const o of this.takers()) if (dist(o, b) < foot) { this.take(o.id, this.mode === 'win' ? 'block' : f.kind === 'heavy' ? 'loose' : 'cut'); return; }
       const mate = f.kind === 'pass' ? bodyHit(b, this.keeperIds().filter(id => id !== f.from && id !== f.to).map(id => s.a(id))) : null; if (mate) { this.give(mate.id, 'pass'); return; }
       const r = s.a(f.to); if (f.kind === 'pass' && r && b.t > .4 && dist(r, b) < (f.to === 'hero' ? FREE_ME : .55)) { this.arrive(f); return; }
     }
@@ -395,6 +398,8 @@ export class Rondo {
       s.go(id, p.x, p.y, 2.6);
     }
   }
+  // Where he was `lag` s ago ('win': how a passer who reads him late sees him).
+  seenMe(lag) { const h = this.trail || [], t = this.sim.time - lag; let p = h[0] || this.sim.a('hero'); for (const q of h) { if (q.t > t) break; p = q; } return { id: 'hero', x: p.x, y: p.y }; }
   // A passer on the ball: he looks up and passes after `hold` s; but with him coming in at the ball (within `feel` m of
   // it, or running at it from a little farther) the passer feels him and plays it about `react` s later (each time a little more or less). Slow at first (get in
   // his face and press: it is yours), quick later (gone before you get there). He passes on the most open line; a
@@ -408,8 +413,8 @@ export class Rondo {
     if ((this.aiT -= dt) > 0) return; this.aiT = .2;
     // a line is on when he cannot cut it (K.lineOpen) and, for a passer who looks (`look` of the time), when he cannot get
     // to the friend's feet before that friend has had `lead` s with it (so the next pass is not the one he steals)
-    const w = this.watch(); // (him, and where he is running to: a line he is about to step into is shut)
-    const recvOK = p => { const tBall = dist(a, p) / D.pass + .13, tMe = Math.max(0, dist(me, p) - STEAL_R) / K.ME.press + K.ME.react; return !this.looks || tMe - tBall >= D.lead; };
+    const w = D.lag > .05 ? [this.seenMe(D.lag)] : this.watch(); // (him, and where he is running to: a line he is about to step into is shut; in the first rounds, where he was a moment ago)
+    const recvOK = p => { const tBall = dist(a, p) / D.pass + .13, tMe = Math.max(0, dist(w[0], p) - STEAL_R) / K.ME.press + K.ME.react; return !this.looks || tMe - tBall >= D.lead; };
     const opts = this.keeperIds().filter(m => m !== id).map(m => { const p = this.passPoint(id, m); return { m, open: K.lineOpen(a, p, D.pass, w, K.ME.press, K.ME.react, D.margin) && recvOK(p), gap: K.laneGap(a, p, w) }; });
     if (this.rnd() < D.careless * .3) { this.pass(id, opts[Math.floor(this.rnd() * opts.length)].m, D.pass); return; } // (he passes without looking at him)
     const open = opts.filter(o => o.open).sort((p, q) => q.gap - p.gap);

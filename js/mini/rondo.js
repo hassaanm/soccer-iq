@@ -114,11 +114,16 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 //   fMove    s between his friends' moves to open their lines
 //   fRoom    m a friend wants between a defender and where a pass to him would get to him (time to take it)
 export const TWO_AT = 1; // (after 3 rounds kept)
+// (v93 follow-up) The first two rounds (score 0 and 1) are forgiving for a slow young player, and the real difficulty
+// starts at score 2: `soft` is 1 at level 0, about 0.85 at score 1 and 0 from score 2 (SOFT_TO levels), eased so the
+// step from score 1 to 2 is not a cliff. Every number it touches still moves only the hard way (tests/rondo.test.js).
+export const SOFT_TO = 2 / 3;
+export const soft = L => { const u = Math.min(1, Math.max(0, L / SOFT_TO)); return (1 + Math.cos(Math.PI * u * u)) / 2; };
 export function keepLevel(L) {
-  L = Math.max(0, L); const two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
-  return {
-    secs: Math.round(30 - 10 * Math.exp(-L / 2)), size: ease(11, 8, 3)(L), two, press: ease(3.6, 5.8, 2.5)(L), cover: ease(3, 4.6, 4)(L) * two, cutRun: ease(3.8, 5.6, 3)(L), cutReact: ease(.45, .12, 3)(L),
-    stand: ease(1.4, .5, 2.5)(L), think: ease(.6, .25, 3)(L), smart: ease(.65, .97, 2.5)(L), fMargin: ease(.35, .25, 4)(L), fHold: ease(.7, .45, 3)(L), fPass: ease(9.5, 11.5, 4)(L), fMove: ease(.8, 1.1, 4)(L), fRoom: ease(2.4, 2.1, 3)(L),
+  L = Math.max(0, L); const sf = soft(L), two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
+  return { // (soft: the defender closes a little slower, tackles later, cuts lines later, and his passes slip past a foot more often: rondo-play.js ballCheck)
+    secs: Math.round(30 - 10 * Math.exp(-L / 2)), size: ease(11, 8, 3)(L), two, press: ease(3.6, 5.8, 2.5)(L) * (1 - .25 * sf), cover: ease(3, 4.6, 4)(L) * two, cutRun: ease(3.8, 5.6, 3)(L) * (1 - .3 * sf), cutReact: ease(.45, .12, 3)(L) + .4 * sf,
+    stand: ease(1.4, .5, 2.5)(L) + .9 * sf, think: ease(.6, .25, 3)(L) + .2 * sf, smart: ease(.65, .97, 2.5)(L) - .2 * sf, fMargin: ease(.35, .25, 4)(L), fHold: ease(.7, .45, 3)(L), fPass: ease(9.5, 11.5, 4)(L), fMove: ease(.8, 1.1, 4)(L), fRoom: ease(2.4, 2.1, 3)(L), soft: sf,
   };
 }
 // Win the ball (he is the defender in the middle; four passers, one on each side, from the first round):
@@ -136,10 +141,12 @@ export function keepLevel(L) {
 //   lead     ...with this many s to spare for that friend
 export const FOUR_AT = 0; // (v93: four passers from the first round, so no step when a fourth joins)
 export function winLevel(L) {
-  L = Math.max(0, L); const X = .5 + .5 * L; // (the passers' curves start half a level in, no easy first round, and rise a little slower)
-  return {
-    secs: Math.round(16 + 4 * Math.exp(-L / 6)), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X),
-    hold: ease(1.05, .45, 4)(X), feel: ease(3, 4.3, 4)(X), react: ease(.37, .12, 4)(X), move: ease(.5, .95, 5)(X), margin: ease(.1, .6, 5)(X), look: ease(.65, 1, 4)(X), lead: ease(.35, .9, 5)(X),
+  L = Math.max(0, L); const X = .5 + .5 * L, sf = soft(L); // (the passers' curves start half a level in, no easy first round, and rise a little slower)
+  return { // (soft: they read him late, `lag` s behind where he is, so a pass may go into a lane he has just stepped into;
+    //        they keep it longer with him in their face; and his reach for a press is a little longer, `reachPlus` m)
+    secs: Math.round(16 + 4 * Math.exp(-L / 6)), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X) * (1 - .1 * sf), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X) + .12 * sf,
+    hold: ease(1.05, .45, 4)(X) + .4 * sf, feel: ease(3, 4.3, 4)(X), react: ease(.37, .12, 4)(X) * (1 + 1.5 * sf), move: ease(.5, .95, 5)(X), margin: ease(.1, .6, 5)(X), look: ease(.65, 1, 4)(X) * (1 - .5 * sf), lead: ease(.35, .9, 5)(X),
+    lag: .6 * sf, reachPlus: .4 * sf, soft: sf,
   };
 }
 // (v89; Score attack's own first rounds use it: mini/attack.js) 1 for the first rounds, then easing smoothly to 0.
