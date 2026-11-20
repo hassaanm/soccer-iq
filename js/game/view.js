@@ -1,6 +1,6 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
 import { lerp, smooth, rot, clamp, closestOnLane } from '../geom.js';
-import { L, W, gy0, gy1, MATES, DIRS, NONE, facesBall, wrap, spotKind } from './shared.js';
+import { L, W, gy0, gy1, MATES, MATE, DIRS, NONE, facesBall, wrap, spotKind } from './shared.js';
 import { pathAt, spotsNow } from '../window.js';
 import { spaces } from '../shot.js';
 
@@ -22,7 +22,7 @@ const FIT_TRIES = 3000; // (v76) tries of a spot view's fit in one frame before 
 // it 40° to 100° off his run as the choice opened).
 const CAM_TURN = 4;
 // (v76) How much farther back the view sits (along its own line) as a demo's idea starts, gliding in as it is said.
-const PUSH = .7, CLOSE = .25; // (v76 SL: CLOSE, see the push after the idea)
+const PUSH = .7, CLOSE = .25, CLOSE_MIN = 1.5, PUSH_M = 2.5, RISE = 1; // (v76 SL: the close push after a demo's idea, camSpec; RISE: the share of it the view draws back by where it cannot come in) // (v76 SL: CLOSE, see the push after the idea)
 export const TURN_MAX = .6; // (v76) how far (rad) the camera's heading may be off the way he runs, to show the one who comes (threatFit)
 const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
@@ -56,6 +56,17 @@ export const view = {
   // window, everyone together, so the view goes with the drift: what was fitted stays fitted. What moves against the
   // drift (the one who comes, a runner and his rings) is fitted where it starts and where it ends. His own player is
   // never smaller than HERO_FLOOR: that comes before fitting every far-away thing (the tiers below give those up first).
+  // (v76 SL, review) A test for the demo's close push (camSpec): whether a view keeps on the screen (5% to 95% of it) every
+  // one of the things that matter (his player, the ball, the one who comes, the friend he passes to, the rings) that `now`
+  // has on it.
+  pushKeep(now) {
+    const { w, h } = this.viewSize(), s = this.sim, pts = [s.a('hero'), s.ball, this.win?.threat?.id && s.a(this.win.threat.id), s.a(MATE[this.sc?.best] || ''), ...(this.sc?.spots || [])].filter(Boolean);
+    const proj = (cam, p, e = .05) => { const f = [cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1], cam.tgt[2] - cam.eye[2]], fl = Math.hypot(...f); for (let i = 0; i < 3; i++) f[i] /= fl || 1;
+      const rl = Math.hypot(f[1], f[0]) || 1, r = [f[1] / rl, -f[0] / rl, 0], up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [p.x - cam.eye[0], p.y - cam.eye[1], .5 - cam.eye[2]];
+      const z = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (z < .3) return false; const F = Math.max(h * cam.Ff, w * (cam.Fw || 0)), x = w / 2 + F * (d[0] * r[0] + d[1] * r[1]) / z, y = h / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / z;
+      return x > w * e && x < w * (1 - e) && y > h * e && y < h * (1 - e); };
+    const was = pts.filter(p => proj(now, p, -.1)); return cam => was.every(p => proj(cam, p, .05)); // (one well inside stays on: a little slack, so one near the edge does not hold the view still)
+  },
   spotView() {
     const v = this.viewSize(), s = this.sim, sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, win = this.win;
     const plan = win?.plan || (this.wplan?.sc === sc ? this.wplan : null), hold = plan?.hold ? plan : null, D = hold ? hold.D : [0, 0], G = plan?.G || 0;
@@ -373,7 +384,21 @@ export const view = {
     // nearer than the play's own view: the moment of the choice, closer. (It used to stop with the idea: for 2 to 4 s the
     // picture hardly changed while play crawled toward the choice, and the owner read it as a freeze.)
     { const P = this.mode === 'demo' && this.push, rt = this.realTime || 0, t = P ? rt - P.t0 : -1, p = t < 0 ? 0 : P.close ? (this.phase === 'decide' ? -CLOSE * clamp(t / P.dur, 0, 1) : 0) : P.open == null ? Math.min(1, t / P.out) : P.peak * clamp((P.end - rt) / Math.max(.5, P.end - P.open), 0, 1); // (out over the run-up, then in at an even pace from the window's opening, arriving as the idea ends)
-      if (p !== 0) { const k = 1 + (p > 0 ? PUSH : 1) * p; want = { ...want, eye: [want.tgt[0] + (want.eye[0] - want.tgt[0]) * k, want.tgt[1] + (want.eye[1] - want.tgt[1]) * k, want.tgt[2] + (want.eye[2] - want.tgt[2]) * k] }; } }
+      if (p > 0) { const k = 1 + PUSH * p; want = { ...want, eye: [want.tgt[0] + (want.eye[0] - want.tgt[0]) * k, want.tgt[1] + (want.eye[1] - want.tgt[1]) * k, want.tgt[2] + (want.eye[2] - want.tgt[2]) * k] }; }
+      // (v76 SL, review) The close push comes in level, toward his own player, never down the line to the view's target: in a
+      // scan the target is far off, and the eye went down into the grass (0.07 m high, half a metre from him). The eye keeps
+      // its height, comes at most CLOSE of the way in, never nearer him than CLOSE_MIN m, and follows the view as his head turns.
+      // And it comes in only as far as keeps on the screen what the view shows now (his player, the ball, the one who comes,
+      // the friend he passes to, the rings): in a view from above that frames the rings it may not come in at all.
+      else if (p < 0) { const h = this.sim.a('hero'); if (h) { const dx = want.eye[0] - h.x, dy = want.eye[1] - h.y, d = Math.hypot(dx, dy) || 1, at = k => ({ ...want, eye: [h.x + dx * k, h.y + dy * k, want.eye[2]] });
+        // (CLOSE of the way in, and never less than PUSH_M metres over the whole push: a view already near him still moves)
+        const keep = this.pushKeep(want), m = Math.max(-p * d, -p / CLOSE * PUSH_M), kin = 1 - m / d;
+        // (where coming in would take it nearer him than CLOSE_MIN or lose one of them, the view draws back as much instead, as slowly, level: it never sits still)
+        // (and where neither keeps them all, a half or a quarter of that)
+        // (and else it draws back along its own line, up and away from what it looks at: the picture widens round its middle,
+        // so all of it stays on)
+        let done = false; for (const f of [1, .5, .25]) { const ki = 1 - m * f / d, kb = 1 + m * f / d * RISE; if (d * ki >= CLOSE_MIN && keep(at(ki))) { want = at(ki); done = true; break; } if (keep(at(kb))) { want = at(kb); done = true; break; } }
+        if (!done) { const t = want.tgt, e = want.eye, L0 = Math.hypot(e[0] - t[0], e[1] - t[1], e[2] - t[2]) || 1, k = 1 + m * RISE / L0; want = { ...want, eye: [t[0] + (e[0] - t[0]) * k, t[1] + (e[1] - t[1]) * k, t[2] + (e[2] - t[2]) * k] }; } } } }
     this.lastWant = want;
     // (round 10) A view that changes at once (the arrows' view as he taps DRIBBLE, the goal view in a celebration): the
     // camera sets off for it from rest, its speed building up over a third of a second, never with a step in the first frame.
