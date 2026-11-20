@@ -101,8 +101,8 @@ export function spotSet({ me, state, carrier = null, ball, mates = [], foes = []
     out = choose(cands, [{ kind: 'behind' }, { kind: 'open' }, { kind: 'wide' }, { kind: 'support' }], free);
   } else if ((state === 'theirs' || state === 'loose') && (carrier || ball)) {
     const c = state === 'theirs' && carrier ? carrier : ball, ux = own.x - c.x, uy = own.y - c.y, l = Math.hypot(ux, uy) || 1, cands = [];
-    if (state === 'theirs') cands.push({ x: c.x + ux / l * 1, y: c.y + uy / l * 1, kind: 'press', follow: 'carrier', s: 4 - Math.max(0, dist(me, c) - 4) * .4 });
-    else cands.push({ x: ball.x, y: ball.y, kind: 'ball', follow: 'ball', s: 5 - dist(me, ball) * .2 });
+    if (state === 'theirs') cands.push({ x: clamp(c.x + ux / l * 1, .5, L - .5), y: clamp(c.y + uy / l * 1, .5, W - .5), kind: 'press', follow: 'carrier', s: 4 - Math.max(0, dist(me, c) - 4) * .4 });
+    else cands.push({ x: clamp(ball.x, .5, L - .5), y: clamp(ball.y, .5, W - .5), kind: 'ball', follow: 'ball', s: 5 - dist(me, ball) * .2 });
     const gs = snapPt({ x: c.x + ux / l * Math.min(4, l * .5), y: c.y + uy / l * Math.min(4, l * .5) }, L, W); cands.push({ ...gs, kind: 'goalside', s: 3 });
     const them = state === 'theirs' ? foes.filter(o => Math.hypot(o.x - c.x, o.y - c.y) > 1.5) : [];
     const danger = r => 3 - dist(r, own) / 8 + Math.min(nearest(mates.concat(me), r), 4) * .4;
