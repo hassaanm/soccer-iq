@@ -45,7 +45,7 @@ export function makeMarks(world) {
         m.visible = true; m.position.set(p.x, p.y, .04);
         const k = .5 + .5 * Math.sin(t * 5);
         m.material.opacity = chosen ? (lit ? 1 : .32) : p === best ? .7 + .3 * k : .85;
-        m.scale.setScalar(lit ? 1.45 + .08 * k : p === best ? 1.3 + .4 * k : 1.3);
+        m.scale.setScalar(lit ? 1.9 + .1 * k : p === best ? 1.5 + .45 * k : 1.5); // (v93: big enough to see and hit from behind him, far ones too)
       }
       for (; i < fixM.length; i++) fixM[i].visible = false;
       dizzy.visible = !!dizzyAt; if (dizzyAt) { dizzy.position.set(dizzyAt.x, dizzyAt.y, .06); dizzy.rotation.z = t * 6; }
