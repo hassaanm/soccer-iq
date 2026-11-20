@@ -84,21 +84,24 @@ function ghost(g) {
   ghostK += ((g.ui.ghost ? .35 : 1) - ghostK) * .2; if (ghostK > .99) ghostK = 1;
   opacity(rig, ghostK);
 }
+// (v93) The page is written only when a value changes (the phone pays for every change over the 3D picture).
+const was = new Map(), put = (el, k, v, set) => { const key = el.id + k; if (was.get(key) !== v) { was.set(key, v); set(v); } };
+const cls = (el, c, on) => put(el, '.' + c, !!on, v => el.classList.toggle(c, v));
 keeperGame.onFrame = g => {
   const t = g.ui.tell, q = t && world.project(t.x, t.y, t.z);
-  eyes.classList.toggle('show', !!q);
+  cls(eyes, 'show', q);
   if (q) { // (over his head; when that would cover the dots or the score at the top, beside his head instead)
     const k = t.big ? 1.25 : 1, side = q[1] - 62 * k < TOP_BAR;
-    eyes.classList.toggle('side', side);
-    eyes.style.transform = side ? `translate(${Math.round(q[0] + 14)}px,${Math.round(Math.max(q[1] + 8, TOP_BAR + 30 * k))}px) translate(0,-50%) scale(${k})` : `translate(${Math.round(q[0])}px,${Math.round(q[1])}px) translate(-50%,-100%) scale(${k})`;
-    eyes.style.opacity = t.alpha; eyes.style.setProperty('--dx', t.dx); eyes.style.setProperty('--dy', t.dy);
+    cls(eyes, 'side', side);
+    put(eyes, 'tf', side ? `translate(${Math.round(q[0] + 14)}px,${Math.round(Math.max(q[1] + 8, TOP_BAR + 30 * k))}px) translate(0,-50%) scale(${k})` : `translate(${Math.round(q[0])}px,${Math.round(q[1])}px) translate(-50%,-100%) scale(${k})`, v => { eyes.style.transform = v; });
+    put(eyes, 'op', Math.round(t.alpha * 20) / 20, v => { eyes.style.opacity = v; }); put(eyes, 'dx', t.dx, v => eyes.style.setProperty('--dx', v)); put(eyes, 'dy', t.dy, v => eyes.style.setProperty('--dy', v));
   }
   ghost(g);
   const a = g.ui.pick && g.phase === 'dive' && g.ui.aims[['TL', 'TM', 'TR', 'L', 'M', 'R'].indexOf(g.ui.pick)], p = a && world.project(a.x, a.y, a.z);
-  glove.classList.toggle('show', !!p); if (p) glove.style.transform = `translate(${Math.round(p[0])}px,${Math.round(p[1])}px) translate(-50%,-50%)`;
-  badge.classList.toggle('show', !!(g.on && g.match));
+  cls(glove, 'show', p); if (p) put(glove, 'tf', `translate(${Math.round(p[0])}px,${Math.round(p[1])}px) translate(-50%,-50%)`, v => { glove.style.transform = v; });
+  cls(badge, 'show', g.on && g.match);
   const h = g.ui.hand, hp = h && world.project(h.x, h.y, h.z || 0);
-  if (hp) { if (!handOn) handTap++; handOn = true; hud.hand([hp[0], hp[1] + 6], handTap); } else if (handOn) { handOn = false; hud.hand(null); }
+  if (hp) { if (!handOn) handTap++; handOn = true; put(canvas, 'hand', Math.round(hp[0]) + ',' + Math.round(hp[1]) + ',' + handTap, () => hud.hand([hp[0], hp[1] + 6], handTap)); } else if (handOn) { handOn = false; was.delete(canvas.id + 'hand'); hud.hand(null); }
 };
 // A touch on the field picks a spot or a target as the finger goes down (no dragging to look around in goal).
 canvas.addEventListener('pointerdown', e => { if (!goalie.on || !e.isPrimary || held.on) return; const r = canvas.getBoundingClientRect(); goalie.tapAt(e.clientX - r.left, e.clientY - r.top); });
@@ -113,21 +116,21 @@ async function runKeeper0(opts) { // (opts.plan: shots of one's own, for the rev
   if (busy) return; busy = true; unlockSpeech();
   try {
     const us = teamById(P.us), them = teamById(P.them), first = !P.keeper?.plays && !P.mini?.keeper?.plays, plan = Array.isArray(opts?.plan) ? opts.plan : null;
-    const r = stream(Math.random());
+    const r = stream(Math.random()), hist = [];
     game.setTeams(us, them); game.mode = 'keeper'; world.setEnv('crowd');
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'keeper' }); hud.dots([], 0);
     dress(us, them); sizeGoal(true); onStage(null);
-    const run = startRun('keeper'), next = i => (run.over ? null : plan ? plan[i] || null : endlessShot(run.level, r, i));
+    const run = startRun('keeper'), next = i => { if (run.over) return null; const sh = plan ? plan[i] || null : endlessShot(run.level, r, i, hist); if (sh) hist.push({ k: sh.k, zone: sh.zone }); return sh; };
     const s0 = next(0); keeperGame.on = true; keeperGame.setup(s0); show(null);
     if (first) await card({ emoji: '🧤', title: INTRO, sub: 'Tap a gold spot to stand. Then tap where he shoots!', button: 'Play' });
-    const res = await keeperGame.endless(i => (i ? next(i) : s0), { first, onShot: (x, i) => runStep(run, x.res === 'save', { level: x.spec.level, kind: x.spec.kind, zone: x.spec.zone, spot: x.spot, tap: x.tap, res: x.res, why: x.why }) });
+    const res = await keeperGame.endless(i => (i ? next(i) : s0), { first, onShot: (x, i) => runStep(run, x.res === 'save', { level: x.spec.level, kind: x.spec.k || x.spec.kind, zone: x.spec.zone, fake: x.spec.fake || null, foot: x.spec.foot, spot: x.spot, tap: x.tap, res: x.res, why: x.why }) });
     const saves = res.filter(x => x.res === 'save').length;
     end();
     endRun(run, { saves, sticker: saves >= STICKER_AT ? { emoji: '🧤', skill: 'keeper' } : null, again: runKeeper });
   } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 // Back to the game's own world: his outfield body, the goal as it was, the home scene.
-function end() { keeperGame.on = false; hud.hand(null); for (const el of [eyes, glove, badge]) el.classList.remove('show'); undress(); sizeGoal(false); game.home(); }
+function end() { keeperGame.on = false; hud.hand(null); handOn = false; for (const el of [eyes, glove, badge]) el.classList.remove('show'); was.clear(); undress(); sizeGoal(false); game.home(); }
 export const keeperOn = () => goalie.on;
 
 // ---------- in a match (v67) ----------

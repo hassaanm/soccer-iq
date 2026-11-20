@@ -161,7 +161,7 @@ function poll(g, K, kOn) {
 }
 function onFrame(now) {
   if (!L.LOG.on) return;
-  const g = game, K = keeper(), kOn = !!K?.on;
+  const g = game, K = keeper(), kOn = !!K?.on; if (kOn) wrapKeeper(K);
   try { poll(g, K, kOn); } catch (e) { if (!onFrame.err) { onFrame.err = 1; L.ev('ERR', kv({ in: 'poll', e: String(e?.message || e) })); } }
   if (!(kOn || (g.mode && g.mode !== 'home')) || now - lastRow < 290) return; // (about 3 rows a second; log.js keeps fewer away from choices)
   lastRow = now;
@@ -196,6 +196,15 @@ function wrap(obj, name, before, after) {
   };
   w.plogged = true; obj[name] = w;
 }
+// The keeper game and the mini games on its machinery (v93: penalties too, ui/goalie.js onStage): each is wrapped once,
+// when it is first on the stage.
+function wrapKeeper(K) {
+  if (!K) return;
+  wrap(K, 'round', plan => L.ev('KROUND', kv({ is: 'start', shots: plan?.length, plan: (plan || []).map(p => `${p.kind}/${p.zone}/${p.foot}`).join(',') })), r => L.ev('KROUND', kv({ is: 'end', saves: (r || []).filter(x => x.res === 'save').length })));
+  wrap(K, 'play', spec => L.ev('KSHOT', kv({ kind: spec?.k || spec?.kind, zone: spec?.zone, foot: spec?.foot, from: spec?.from ? `${f1(spec.from.x)},${f1(spec.from.u)}` : null, stand: f2(spec?.stand), dive: f2(spec?.dive), fake: spec?.fake || null, match: K.match ? 1 : null })));
+  if (K.kind === 'pens') wrap(K, 'kickOne', k => L.ev('KSHOT', kv({ kind: 'pens', level: f2(k?.level), run: f2(k?.run), late: f2(k?.late), hold: k?.hold || null, feint: k?.fake || null })));
+  wrap(K, 'choose', opt => L.ev('KTAP', kv({ opt, phase: K.phase, sec: f2((K.real || 0) - (K.phase === 'dive' ? K.diveAt0 : K.phase === 'aim' ? K.aimAt0 : K.tapAt0)) })));
+}
 let installed = false;
 function install() {
   if (installed) return; installed = true;
@@ -226,12 +235,7 @@ function install() {
     else if (k === 'pop') L.ev('POP', kv({ stars: a[0] }));
     else L.ev(k.toUpperCase(), kv({ text: a[0] }));
   });
-  const K = keeper();
-  if (K) {
-    wrap(K, 'round', plan => L.ev('KROUND', kv({ is: 'start', shots: plan?.length, plan: (plan || []).map(p => `${p.kind}/${p.zone}/${p.foot}`).join(',') })), r => L.ev('KROUND', kv({ is: 'end', saves: (r || []).filter(x => x.res === 'save').length })));
-    wrap(K, 'play', spec => L.ev('KSHOT', kv({ kind: spec?.kind, zone: spec?.zone, foot: spec?.foot, from: spec?.from ? `${f1(spec.from.x)},${f1(spec.from.u)}` : null, stand: f2(spec?.stand), dive: f2(spec?.dive), match: K.match ? 1 : null })));
-    wrap(K, 'choose', opt => L.ev('KTAP', kv({ opt, phase: K.phase, sec: f2((K.real || 0) - (K.phase === 'dive' ? K.diveAt0 : K.tapAt0)) })));
-  }
+  wrapKeeper(keeper());
   // The cards and the results: what they say (titles, the score line), as they come up.
   try {
     const watch = (sel, key, type) => { const el = $(sel); if (!el) return; new MutationObserver(() => { const up = !el.classList.contains('hidden'); if (up !== prev[key]) { prev[key] = up; if (up && L.LOG.on) L.ev(type, kv({ text: (el.innerText || el.textContent).replace(/\s+/g, ' ').trim().slice(0, 160) })); } }).observe(el, { attributes: true, attributeFilter: ['class'] }); };

@@ -1,10 +1,11 @@
 // The mini games (v87): two lives end a run, the score and the best are kept, the difficulty only rises and in small
-// steps, the keeper game is endless, and penalties: the keeper's tell is honest, played out on the real game classes.
+// steps, the keeper game is endless and varied, and penalties (v93): the keeper never moves first, early taps are read,
+// played out on the real game classes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LIVES, STEP, newRun, attempt } from '../js/mini/rules.js';
 import { MINI, miniById } from '../js/mini/games.js';
-import { penLevel, penKick, tellSteps, showing, readTime, kickOf, rightTaps, target, TARGETS, other, sideU, PEN_X } from '../js/mini/pens.js';
+import { penLevel, penKick, readChance, keeperGoes, kickOf, target, TARGETS, sideU, PEN_X, PEN_WHY } from '../js/mini/pens.js';
 import { keeperLevel, endlessShot, tellOf, zoneAt, spotsFor, START } from '../js/saves.js';
 import { CLOSE, stream } from '../js/shot.js';
 import { miniDone, miniBest, oldKeeperBest, defaultProgress, load } from '../js/progress.js';
@@ -52,19 +53,22 @@ function smooth(of, keys) {
     assert.ok(Math.abs(b - a) <= max + 1e-12, `${k} moves at most ${max} a success (level ${LEVELS[i].toFixed(2)}: ${a} to ${b})`);
   }
 }
-test('the keeper game gets harder with every save, a little at a time; the first saves are easy', () => {
-  smooth(keeperLevel, [['stand', -1, .16], ['dive', -1, .15], ['flash', -1, .05], ['tell', -1, 1], ['side', 1, .04], ['far', 1, .03], ['v1', 1, .02], ['top', 1, .03], ['speed', 1, .01]]);
-  const e = keeperLevel(5 * STEP); assert.ok(e.stand > 3.1 && e.dive > 2.9 && e.tell >= 2 && e.far === 0 && e.v1 === 0, 'five saves in: long windows, his eyes the whole time, close shots');
-  const hard = keeperLevel(40); assert.ok(hard.stand < 1 && hard.dive < 1, 'it keeps getting harder');
+// (v93, D1) A real challenge from the first try, rising fast and without a wall.
+test('the keeper game gets harder with every save, a little at a time; quick and with feints from the first shot', () => {
+  smooth(keeperLevel, [['stand', -1, .16], ['dive', -1, .15], ['flash', -1, .05], ['tell', -1, 1], ['fake', 1, .04], ['fakeAt', 1, .02], ['far', 1, .02], ['top', 1, .03], ['speed', 1, .01]]);
+  const e = keeperLevel(0); assert.ok(e.stand <= 2 && e.dive <= 1.3 && e.fake >= .3, 'the first shot: short windows, and he may look one way first');
+  const five = keeperLevel(5 * STEP); assert.ok(five.tell === 1 && five.flash < .8 && five.fake > .5, 'five saves in: his eyes for a moment only, feints most of the time');
+  const hard = keeperLevel(40); assert.ok(hard.stand < 1 && hard.dive < .6, 'it keeps getting harder');
 });
-test('penalties get harder with every goal, a little at a time; the first goals are easy', () => {
-  smooth(penLevel, [['win', -1, .16], ['at', 1, .01], ['step', -1, .07], ['stepT', -1, .01], ['fakeP', 1, .01]]);
-  for (let i = 1; i < LEVELS.length; i++) { const a = penLevel(LEVELS[i - 1]), b = penLevel(LEVELS[i]); assert.ok(readTime({ ...b, side: 'L', fake: null }) <= readTime({ ...a, side: 'L', fake: null }) + 1e-12); assert.ok(b.eyes <= a.eyes); }
-  const e = penLevel(5 * STEP); assert.ok(readTime({ ...e, side: 'L', fake: null }) > 2.8 && e.step > .8 && e.fakeP === 0, 'five goals in: a big, early step and no fakes');
-  assert.ok(penLevel(40).win < 1.1, 'it keeps getting harder');
+test('penalties get harder with every goal, a little at a time; the first kick already needs the timing', () => {
+  smooth(penLevel, [['run', -1, .09], ['late', -1, .04], ['read', 1, .14], ['lateRead', 1, .1], ['stay', 1, .01], ['low', 1, .09], ['high', 1, .12], ['lowR', 1, .03], ['highR', 1, .05], ['feint', 1, .09]]);
+  const e = penLevel(0); assert.ok(e.late >= .6 && e.read > .3 && e.read < .4 && e.lateRead === 0 && e.feint === 0, 'the first kick: a clear last moment; an early tap is read now and then');
+  assert.ok(e.easy && penLevel(STEP).easy && e.hold === 3 && !penLevel(2 * STEP).easy && penLevel(2 * STEP).hold === 0, 'the first two kicks are forgiving; the timing starts at two goals');
+  const five = penLevel(5 * STEP); assert.ok(five.read > .7 && five.lateRead > .2 && five.low > .8 && five.feint > .2, 'five goals in: he reads early taps, sometimes even late ones, and feints');
+  assert.ok(penLevel(40).late < .32 && penLevel(40).read > .95, 'it keeps getting harder');
 });
 
-test('the endless keeper game: honest tells at every level, the foot by the distance, the level\'s windows', () => {
+test('the endless keeper game: honest tells at every level (a feint looks the other way first), the foot by the distance, the level\'s windows', () => {
   const r = stream(.42);
   for (const L of LEVELS) for (let j = 0; j < 4; j++) {
     const sh = endlessShot(L, r, j), t = tellOf(sh), Z = zoneAt(sh.zone), D = keeperLevel(L);
@@ -72,37 +76,49 @@ test('the endless keeper game: honest tells at every level, the foot by the dist
     assert.equal(sh.foot, Math.hypot(sh.from.x, sh.from.u) <= CLOSE ? 'in' : 'las');
     assert.deepEqual([sh.stand, sh.dive], [D.stand, D.dive]);
     if (sh.kind !== 'pen') assert.equal(spotsFor(sh).filter(p => p.right).length, 1);
+    if (sh.fake) { assert.notEqual(zoneAt(sh.fake).col, Z.col, 'a feint looks at the other side first'); assert.ok(sh.foot === 'las' || !zoneAt(sh.fake).top); assert.equal(sh.fakeAt, D.fakeAt); }
+  }
+});
+test('the keeper game varies from the first shot: kinds, sides, heights; never the same corner twice, nor one side three times', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    const r = stream(seed / 61), hist = [], shots = [];
+    for (let i = 0; i < 12; i++) { const sh = endlessShot(i * STEP, r, i, hist); hist.push({ k: sh.k, zone: sh.zone }); shots.push(sh); }
+    const six = shots.slice(0, 6);
+    assert.ok(new Set(six.map(s => s.k)).size >= 3, `seed ${seed}: three kinds of shot in the first six (${six.map(s => s.k)})`);
+    assert.ok(six.some(s => zoneAt(s.zone).col === 'L') && six.some(s => zoneAt(s.zone).col === 'R'), `seed ${seed}: both sides in the first six`);
+    for (let i = 1; i < shots.length; i++) { assert.notEqual(shots[i].zone, shots[i - 1].zone); assert.notEqual(shots[i].k, shots[i - 1].k); }
+    for (let i = 2; i < shots.length; i++) { const c = [0, 1, 2].map(d => zoneAt(shots[i - d].zone).col); assert.ok(!(c[0] === c[1] && c[1] === c[2]), `seed ${seed}: one side three times`); }
   }
 });
 
-test('penalties: the keeper always goes where he shows last; a fake only after level 8, and then he steps clearly back across', () => {
-  const r = stream(.17); let fakes = 0;
-  for (const L of LEVELS) for (let j = 0; j < 30; j++) {
-    const k = penKick(L, r, j), st = tellSteps(k);
-    assert.equal(st.at(-1).side, k.side, 'the last step is to the side he goes'); assert.equal(showing(k, 1), k.side);
-    assert.equal(showing(k, st[0].f - 1e-6), null, 'nothing before his first step');
-    assert.equal(Math.sign(st.at(-1).u), sideU(k.side));
-    if (k.fake) {
-      fakes++; assert.ok(L > 8, 'fakes only at high levels'); assert.equal(st.length, 2); assert.equal(k.fake, other(k.side));
-      assert.ok(Math.abs(st[1].u) >= Math.abs(st[0].u), 'the true step is at least as big as the fake one');
-      assert.ok(Math.abs(st[1].u - st[0].u) >= 1.5 * .25, 'he steps right across: easy to see');
-      assert.ok(Math.abs(readTime(k) - readTime({ ...k, fake: null })) < 1e-12, 'the true tell shows as long as without a fake');
-    } else assert.equal(st.length, 1);
-    assert.ok(readTime(k) >= .4, 'the true tell is there at least 0.4 s before the kick');
-  }
-  assert.ok(fakes > 50, `fakes do happen (${fakes})`);
+test('penalties: early taps are read more often the earlier they are and the higher the level; a last-moment tap is a guess', () => {
+  const rate = (L, when, shown) => { const r = stream(.37); let n = 0; for (let j = 0; j < 4000; j++) n += keeperGoes(penKick(L, r, j), 'TL', when, shown).read; return n / 4000; };
+  assert.ok(rate(0, 'early', 2) < .06 && rate(STEP, 'early', 2) < .06, 'the first two kicks: an early tap is hardly ever read');
+  assert.ok(Math.abs(rate(2 * STEP, 'early', 2) - .56) < .04, 'from two goals: more than half of early taps are read');
+  assert.ok(rate(2 * STEP, 'early', .8) < rate(2 * STEP, 'early', 2), 'a tap just before the last moment is read less often');
+  assert.equal(rate(0, 'late', .3), 0, 'the first kicks: a last-moment tap is never read'); assert.equal(rate(2 * STEP, 'late', .3), 0);
+  assert.ok(rate(1, 'early', 2) > .55 && rate(5 / 3, 'early', 2) > .7, 'from three goals on, most early taps are read');
+  assert.ok(rate(5 / 3, 'late', .3) > .15 && rate(5 / 3, 'late', .3) < .35, 'later he reads some last-moment taps too');
+  // his guess: half each way, a few in the middle; it does not depend on where the shot goes
+  const r = stream(.71), seen = { L: 0, R: 0, M: 0 }; for (let j = 0; j < 4000; j++) { const k = penKick(0, r, j); seen[keeperGoes(k, j % 2 ? 'L' : 'R', 'late', .3).dive]++; }
+  assert.ok(Math.abs(seen.L - seen.R) < 250 && seen.M > 250 && seen.M < 550, JSON.stringify(seen));
+  for (const L of LEVELS) assert.ok(readChance(penKick(L, stream(.1)), 'early', 5) >= readChance(penKick(L, stream(.1)), 'late', 0));
 });
 
-test('penalties: the side he leaves scores (high or low); his side and the middle are saved; no tap is saved', () => {
+test('penalties: the corners are the answer; the middle and no tap are saved; a top corner rushed hits the post', () => {
   const r = stream(.5);
-  for (let j = 0; j < 40; j++) {
-    const k = penKick(j / 3, r, j);
-    for (const id of TARGETS) { const x = kickOf(k, id); assert.equal(x.res, target(id).col === other(k.side) ? 'goal' : 'save', id); }
-    assert.deepEqual(rightTaps(k).map(id => target(id).col), [other(k.side), other(k.side)]);
-    assert.deepEqual(kickOf(k, null), { res: 'save', why: 'late', zone: 'M' });
+  for (let j = 0; j < 400; j++) {
+    const k = penKick(j / 30, r, j);
+    for (const id of TARGETS) for (const [when, shown] of [['early', 1.8], ['late', .4]]) {
+      const x = kickOf(k, id, when, shown), T = target(id);
+      if (T.col === 'M') { assert.equal(x.res, 'save'); assert.equal(x.why, 'middle'); continue; }
+      if (x.dive !== T.col) assert.equal(x.res, 'goal', `${id}: he went the other way (${x.dive})`);
+      else assert.ok(x.res === 'save' ? x.why === (x.read ? 'read' : 'guess') : x.close, `${id}: he went that way`);
+    }
+    assert.deepEqual([kickOf(k, null).res, kickOf(k, null).why], ['save', 'none']);
+    assert.equal(kickOf(k, 'TL', 'late', .05).res, 'post'); assert.notEqual(kickOf(k, 'L', 'late', .05).res, 'post', 'a low one is never rushed');
   }
-  const sides = [], r2 = stream(.9); for (let j = 0; j < 400; j++) sides.push(penKick(3, r2, j, sides).side);
-  for (let j = 3; j < sides.length; j++) assert.ok(!(sides[j] === sides[j - 1] && sides[j] === sides[j - 2] && sides[j] === sides[j - 3]), 'never four to one side');
+  for (const w of ['read', 'guess', 'middle', 'none', 'rush']) assert.ok(PEN_WHY[w], w);
 });
 
 // ---------- played out on the real classes (a stub world, a HUD that writes down what it is asked) ----------
@@ -128,25 +144,45 @@ test('the keeper game, played: shots keep coming until the second goal; the scor
   assert.equal(g.onResult, null, 'nothing left hooked on the keeper game (its turns in matches are as before)');
 });
 
-test('penalties, played: the ball goes in on the side he leaves and is stopped where the keeper went; two saves end it', async () => {
-  const { world, hud, events } = stub(), g = new Penalty({ world, hud }), run = newRun(), r = stream(.61), sides = [], seen = [];
-  let done = false, atKick = [];
-  g.endless(i => { if (run.over) return null; const k = penKick(run.level, r, i, sides); sides.push(k.side); return k; }, { onKick: x => {
-    const K = g.sim.a('k2'), b = g.sim.ball; seen.push({ ...x, ball: { x: b.x, y: b.y - g.cy, state: b.state, carrier: b.carrier }, kU: K.y - g.cy }); attempt(run, x.res === 'goal'); } }).then(() => { done = true; });
+test('penalties, the first two kicks: he holds at the plant, the ball glowing, until a tap (or 3 s); then he kicks', async () => {
+  const { world, hud } = stub(), g = new Penalty({ world, hud }), seen = []; let done = false, flashAt = null, strikeAt = null, struck = [];
+  g.endless(i => (i < 2 ? penKick(i * STEP, stream(.3 + i / 10), i) : null), { onKick: x => { seen.push(x); struck.push(strikeAt); } }).then(() => { done = true; });
   await drive(g, () => done, g => {
-    if (g.phase !== 'aim') return; const k = g.kick, f = (g.sim.time - g.win.t0) / g.win.T;
-    if (f > .9 && !atKick[k.n]) atKick[k.n] = g.sim.a('k2').y - g.cy; // where he stands before his dive: his tell
-    if (g.pick || f < tellSteps(k).at(-1).f + .2) return;
-    g.choose('aim:' + (k.n < 6 ? rightTaps(k)[k.n % 2] : k.n === 6 ? k.side : 'M'));
-  }, 3000);
-  assert.equal(seen.length, 8); assert.equal(run.score, 6); assert.ok(run.over);
+    if (g.flash && flashAt == null) flashAt = g.real;
+    if (g.phase === 'flight' && strikeAt == null) strikeAt = g.real;
+    if (g.phase === 'ready') { flashAt = null; strikeAt = null; }
+    if (g.kick?.n === 0 && g.flash && !g.pick && g.real - flashAt > 2) { assert.ok(g.ui.ballGlow && !g.sim.a('k2').gkm?.body, 'still waiting, the ball glowing'); g.choose('aim:TR'); }
+  }, 2000);
+  assert.equal(seen[0].when, 'late'); assert.equal(seen[0].tap, 'TR'); assert.notEqual(seen[0].res, 'post', 'a tap in the wait is never rushed');
+  assert.deepEqual([seen[1].tap, seen[1].why], [null, 'none'], 'no tap: after the wait, a soft one, saved');
+});
+
+test('penalties, played: the keeper never moves first; a tap in the last moment is late, before it early; the word comes with the ball', async () => {
+  const banners = [], hud = new Proxy({}, { get: (_, k) => (k === 'banner' ? w => banners.push({ word: w, x: g.sim.ball.x }) : () => {}) });
+  const { world } = stub(), g = new Penalty({ world, hud }), run = newRun(), r = stream(.61), seen = [];
+  let done = false, strikeAt = null, before = 0;
+  g.endless(i => (run.over ? null : penKick(run.level, r, i)), { onKick: x => {
+    const b = g.sim.ball; seen.push({ ...x, ball: { x: b.x, y: b.y - g.cy, state: b.state, carrier: b.carrier }, dive: g.sim.a('k2').gkm, strikeAt }); attempt(run, x.res === 'goal'); } }).then(() => { done = true; });
+  await drive(g, () => done, g => {
+    const K = g.sim.a('k2');
+    if (g.phase === 'aim') {
+      assert.ok(!K.gkm?.body, 'no dive before the kick'); assert.ok(Math.abs(K.y - g.cy) < .7, 'he stays near the middle of his line (a feint: one step)'); before++;
+      const n = g.kick.n, f = (g.sim.time - g.win.t0) / g.win.T;
+      if (n % 3 === 0 && !g.flash && f > .2) g.choose('aim:' + (n % 2 ? 'TL' : 'R')); // early
+      if (n % 3 === 1 && g.flash && f > .3) g.choose('aim:' + (n % 2 ? 'L' : 'TR')); // in the last moment
+      if (n % 3 === 2 && g.flash && f > .2) g.choose('aim:M'); // at him
+    } else if (g.phase === 'flight' && strikeAt == null) strikeAt = g.sim.time;
+    if (g.phase === 'ready') strikeAt = null;
+  }, 6000);
+  assert.ok(run.over && seen.length >= 2 && before > 100);
   seen.forEach((x, i) => {
-    assert.equal(Math.sign(atKick[i]), sideU(x.kick.side), `kick ${i}: he stood on the side he showed`);
-    assert.ok(Math.abs(atKick[i]) > .2, 'clearly off the middle');
-    if (x.res === 'goal') assert.ok(x.ball.x < 0 && Math.sign(x.ball.y) === -sideU(x.kick.side), `kick ${i}: in the net, on the side he left`);
-    else assert.ok(x.ball.x > 0, `kick ${i}: stopped in front of the line`);
+    assert.equal(x.when, i % 3 === 0 ? 'early' : 'late', `kick ${i}: ${x.when}`);
+    assert.ok(x.dive.t0 >= x.strikeAt - 1e-9, `kick ${i}: he went as it was struck, not before`);
+    if (x.res === 'goal') assert.ok(x.ball.x < 0 && Math.sign(x.ball.y) === sideU(target(x.tap).col), `kick ${i}: in the net where he aimed`);
+    else if (x.res === 'save') assert.ok(x.ball.x > 0, `kick ${i}: stopped in front of the line`);
+    if (i % 3 === 2) assert.equal(x.why, 'middle');
   });
-  assert.deepEqual(seen.slice(6).map(x => x.why), ['side', 'middle']);
-  assert.equal(events.filter(e => e[0] === 'banner' && e[1] === 'GOAL!').length, 6);
-  assert.ok(Math.abs(PEN_X - 7) < 1e-9);
+  assert.equal(banners.length, seen.length, 'one word a kick');
+  for (const b of banners) assert.ok(b.word === 'GOAL!' ? b.x < .05 : b.x < 1.2, `the word once the ball is there (${b.word} at x ${b.x.toFixed(2)})`);
+  assert.equal(banners.filter(b => b.word === 'GOAL!').length, run.score); assert.ok(Math.abs(PEN_X - 7) < 1e-9);
 });

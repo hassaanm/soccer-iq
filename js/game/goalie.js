@@ -28,7 +28,9 @@ const PLANT = .45, WIND = .2;      // game s: his last stride and plant, then th
 const REACT = .05;                 // game s: he chose before the kick, so he goes as it is struck
 const CAM_IN = 1.1, SET_TOUCH = 1.6; // (a match) real s the camera takes to his goal; the shooter's touch to set the ball (m/s)
 const LIE = 1.1;                   // game s after his hands reach the ball that he stays down (then gets up: pro/keeper.js)
-export const AFTER = { save: 2.3, goal: 2.6 }; // real s the result stays before the next shot
+export const AFTER = { save: 2.3, goal: 2.6 }; // real s the result stays before the next shot (a match's moment)
+// (v93) The mini game: a shorter moment to set before each shot and a shorter stay on the result (a try about 6 s).
+export const MINI_READY = .45, MINI_AFTER = { save: 1.8, goal: 2 };
 
 export class Goalie {
   constructor({ world, hud, say = () => null, sfx = () => {} }) {
@@ -147,11 +149,12 @@ export class Goalie {
   // One shot. Resolves { ...saves.js saveOf, spot (the one he tapped, or null), tap, spec }.
   async shot(spec, { hint = false } = {}) {
     this.setup(spec); this.hint = hint; this.match = false; this.shooter = 'o1';
-    return this.play(spec, { ready: .8, others: spec.kind === 'pen' ? [] : ['m1', 'o2'] });
+    return this.play(spec, { ready: MINI_READY, after: MINI_AFTER, others: spec.kind === 'pen' ? [] : ['m1', 'o2'] });
   }
   // The shot itself, on the sim as it is set up (the mini game's, or a match's: inMatch): `hero` is the keeper, the
-  // shooter (this.shooter) has the ball. ready: real seconds before the run-up; others: who comes in a little too.
-  async play(spec, { ready = .8, others = [], run = null } = {}) {
+  // shooter (this.shooter) has the ball. ready: real seconds before the run-up; others: who comes in a little too;
+  // after: real seconds the result stays, by result.
+  async play(spec, { ready = .8, others = [], run = null, after = AFTER } = {}) {
     const s = this.sim, id = this.shooter;
     this.spec = spec; this.pickSpot = null; this.pickZone = null; this.result = null;
     Object.assign(this.ui, { spots: NONE, aims: NONE, lines: NONE, timer: null, heroRing: true, tell: null, pick: null });
@@ -167,15 +170,18 @@ export class Goalie {
     for (const m of others) { const a = s.a(m); if (a) s.go(m, a.x - (a.x - plant.x) * .25, a.y - (a.y - plant.y) * .15, 2.4); } // (they come in too, slower)
     await this.wait(99, () => dist(o, plant) < .06 || s.time - this.win.t0 > T + .05); // (the window's own length: he is there, or near enough)
     // The plant and the wind-up: he picks where to dive. The shooter turns to where he will shoot (his body, his
-    // standing foot) and looks at it (tells).
+    // standing foot) and looks at it (tells). (v93) A feint (spec.fake): he turns and looks to another target first,
+    // then, at `fakeAt` of the window, to the true one: his last look is always where it goes.
     s.stop(id); for (const m of others) if (s.a(m)) s.stop(m);
-    const aim = this.w({ x: 0, u: zoneAt(spec.zone).u }); faceTo(o, aim.x, aim.y);
+    const aim = this.w({ x: 0, u: zoneAt(spec.zone).u }), fk = spec.fake ? this.w({ x: 0, u: zoneAt(spec.fake).u }) : null; faceTo(o, (fk || aim).x, (fk || aim).y);
     this.ui.spots = NONE; this.ui.aims = ZONES.map(id => this.w({ x: -.05, u: zoneAt(id).u }, zoneAt(id).z));
     this.phase = 'dive'; this.win = { t0: s.time, T: PLANT + WIND, real: spec.dive }; this.diveAt0 = this.real;
-    this.tell = tellOf(spec); this.diveT0 = this.ui.clock;
-    await this.wait(99, () => s.time - this.win.t0 >= PLANT);
+    this.tell = tellOf(spec); this.diveT0 = this.ui.clock; this.faking = !!fk;
+    const turn = () => { if (this.faking && s.time - this.win.t0 >= (PLANT + WIND) * (spec.fakeAt ?? .5)) { this.faking = false; faceTo(o, aim.x, aim.y); this.diveT0 = this.ui.clock; } };
+    await this.wait(99, () => { turn(); return s.time - this.win.t0 >= PLANT; });
     s.windup(id, spec.foot === 'in' ? 'pass' : 'shot', null);
-    await this.wait(99, () => s.time - this.win.t0 >= PLANT + WIND);
+    await this.wait(99, () => { turn(); return s.time - this.win.t0 >= PLANT + WIND; });
+    if (this.faking) { this.faking = false; faceTo(o, aim.x, aim.y); }
     // The kick: what happens follows from where he stood and what he chose (saves.js).
     this.win = null; this.phase = 'flight'; this.ui.aims = NONE; this.ui.timer = null; this.tell = null;
     const at = this.pickSpot != null ? spots[this.pickSpot] : home, r = saveOf(spec, at, this.pickZone); // (no spot chosen: where he stood)
@@ -184,7 +190,7 @@ export class Goalie {
     await this.wait(99, () => s.time >= arrive);
     if (r.res === 'save') this.saved(r); else this.conceded(r);
     this.onResult?.(this.result); // (v87: the mini game counts it now)
-    await this.wait(AFTER[r.res]);
+    await this.wait(after[r.res]);
     this.hud.caption?.('');
     return this.result;
   }
@@ -276,15 +282,17 @@ export class Goalie {
     const t = this.tell; ui.tell = null; ui.lines = NONE;
     if (t && o) {
       // His eyes (drawn over his head by ui/goalie.js): clear on the first shots, a moment only later, none at the end.
-      const age = this.ui.clock - this.diveT0, show = t.level >= 2 ? 1 : t.level === 1 ? clamp((t.flash ?? 1.6) - age, 0, 1) : 0;
-      if (show > 0) ui.tell = { x: o.x, y: o.y, z: 1.75, dx: t.col === 'L' ? -1 : t.col === 'R' ? 1 : 0, dy: t.top ? -1 : .7, big: t.level >= 3, alpha: show };
+      // (v93) In a feint they look at the first target, then at the true one; a short look counts from his last.
+      const age = this.ui.clock - this.diveT0, show = t.level >= 2 || this.faking ? 1 : t.level === 1 ? clamp((t.flash ?? 1.6) - age, 0, 1) : 0;
+      const Z = this.faking ? zoneAt(this.spec.fake) : t;
+      if (show > 0) ui.tell = { x: o.x, y: o.y, z: 1.75, dx: Z.col === 'L' ? -1 : Z.col === 'R' ? 1 : 0, dy: Z.top ? -1 : .7, big: t.level >= 3, alpha: show };
       // His standing foot points at it (level 3: an arrow on the grass from his foot, so the first shots teach what to watch).
       if (t.level >= 3) { const a = this.w({ x: 0, u: t.at.u }), dx = a.x - o.x, dy = a.y - o.y, l = Math.hypot(dx, dy); ui.lines = [{ a: { x: o.x + dx / l * .5, y: o.y + dy / l * .5 }, b: { x: o.x + dx / l * 2.6, y: o.y + dy / l * 2.6 }, color: '#ffd23f' }]; }
     }
     // The teaching hand (his very first shot): over the right spot, then over the target his eyes show.
     ui.hand = null;
     if (this.hint && this.phase === 'stand' && this.pickSpot == null) { const p = this.spots.find(q => q.right); if (p) ui.hand = this.w(p, 0); }
-    if (this.hint && this.phase === 'dive' && this.pickZone == null) { const Z = zoneAt(this.spec.zone); ui.hand = this.w({ x: 0, u: Z.u }, Z.z); }
+    if (this.hint && this.phase === 'dive' && this.pickZone == null && !this.faking) { const Z = zoneAt(this.spec.zone); ui.hand = this.w({ x: 0, u: Z.u }, Z.z); }
   }
 }
 
