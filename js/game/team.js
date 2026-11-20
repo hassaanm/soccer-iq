@@ -154,11 +154,6 @@ export const team = {
     if (this.roles?.key === key && this.roles.chase && s.time - this.roles.t > 1.6) this.roles = null;
     // (round 6: one who had no job when they were picked, off balance then, gets one now: the jobs are picked again)
     if (this.roles?.key === key && mine.some(d => free(d) && !d.gk && !(d.id in this.roles.jobs))) this.roles = null;
-    // (v76 SL) One of ours the play's script has sent to the ball (his own player going in, a friend making the tackle) is
-    // on it now: the one the team's shape had pressing leaves it to him and the jobs are picked again (he takes the player
-    // left free). Two of ours on the ball with one of theirs left free was the live audit's commonest fault (twoball).
-    if (this.roles?.key === key && car && car.team !== def) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid);
-      if (pr && free(pr) && mine.some(d => !free(d) && !d.gk && d !== pr && !(d.beat > s.time) && dist(d, ball) < 2.2 && dist(d, ball) < dist(pr, ball) + .3)) this.roles = null; }
     if (this.roles?.key === key) { const kept = this.roles.jobs, R = this.roles; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue;
       if (job === 'chase') { this.aiGo(d, ball.x, ball.y, 4.5, true); continue; }
       const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job);
