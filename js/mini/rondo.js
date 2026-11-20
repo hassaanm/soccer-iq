@@ -111,11 +111,14 @@ export function keepLevel(L) {
 //   glow     s the ball glows for at least (a chance stays a moment), and the gap after a carrier's window
 //   margin   m to spare they want on a line past him
 export const FOUR_AT = 5 / 3; // (after 5 rounds won)
+// (v89 integration) Longer eases (W_K, levels) so it gets harder gently (the 70% bot: about 75% at level 1, 60% at 2),
+// and the glow stays at its first length (0.5 game s, 0.6 real s) through GLOW_KEEP levels.
+export const W_K = { pass: 5, touch: 3, loose: 5.5, rest: 5.5 }, GLOW_KEEP = 3;
 export function winLevel(L) {
   L = Math.max(0, L);
   return {
-    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, 2)(L), heavy: ease(.22, .02, 1.2)(L), careless: ease(.16, 0, 1.2)(L), loose: ease(.8, .1, 2.5)(L), hold: ease(1.8, .5, 2.2)(L),
-    move: ease(.2, .95, 2.2)(L), glow: ease(.5, .2, 2.5)(L), gap: ease(1, 2.5, 2.2)(L), margin: ease(0, .5, 2.2)(L),
+    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, W_K.pass)(L), heavy: ease(.22, .02, W_K.touch)(L), careless: ease(.16, 0, W_K.touch)(L), loose: ease(.8, .1, W_K.loose)(L), hold: ease(1.8, .5, W_K.rest)(L),
+    move: ease(.2, .95, W_K.rest)(L), glow: ease(.5, .2, 2.5)(Math.max(0, L - GLOW_KEEP)), gap: ease(1, 2.5, W_K.rest)(L), margin: ease(0, .5, W_K.rest)(L),
   };
 }
 // ---------- the view ----------
