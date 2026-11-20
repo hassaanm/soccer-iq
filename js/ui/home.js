@@ -135,10 +135,16 @@ function renderAlbum() {
 $('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
 wireSheet('#albumSheet', '#albumClose');
 
-// ---------- how a match plays (v84) ----------
-// Under the team-size chip: Slow (a tortoise: play stops at each choice) or Fast (a hare: real time, js/fast/).
-// Kept in the settings (P.settings.mode); Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
-const modeBtns = $$('#modePick button');
-function renderMode() { const m = P.settings.mode === 'fast' ? 'fast' : 'slow'; for (const b of modeBtns) { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); } }
-for (const b of modeBtns) b.onclick = () => { P.settings.mode = b.dataset.mode; save(); renderMode(); };
+// ---------- how a match plays (v84, v93) ----------
+// ONE toggle under the team-size chip, in the look of the Clubs / Countries toggles: "Mode: Classic" (Slow: play stops at each
+// choice) or "Mode: Live" (Fast: real time, js/fast/). A tap switches. Kept in the settings (P.settings.mode: 'slow' or 'fast');
+// Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
+const modeBtn = $('#modePick');
+export const modeName = () => (P.settings.mode === 'fast' ? 'Live' : 'Classic');
+export function renderMode() {
+  const live = P.settings.mode === 'fast', name = modeName();
+  modeBtn.classList.toggle('on', live); modeBtn.setAttribute('aria-checked', live); modeBtn.setAttribute('aria-label', `Mode: ${name}`);
+  modeBtn.querySelector('b').textContent = name;
+}
+modeBtn.onclick = () => { P.settings.mode = P.settings.mode === 'fast' ? 'slow' : 'fast'; save(); renderMode(); };
 renderMode();

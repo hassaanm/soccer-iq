@@ -243,7 +243,7 @@ function forceRow() { lastRow = -1e9; try { onFrame(performance.now()); } catch 
 
 // ---------- on and off ----------
 export function setRecording(on) {
-  document.body.classList.toggle('logon', !!on && !throwaway);
+  document.body.classList.toggle('logon', !!on && !throwaway); if (!on || throwaway) logPanelOpen(false);
   if (throwaway) return;
   if (on && !L.LOG.on) {
     install(); L.begin(header); if (!perf.rec.on) perf.start(world.renderer);
@@ -294,8 +294,19 @@ function clearLog(btn, label) {
   const on = L.LOG.on; L.clear(); if (on) { L.begin(header); L.ev('CLEARED'); L.flush(true); }
   btn.textContent = 'Cleared'; setTimeout(() => { btn.textContent = label; }, 1800);
 }
-$('#logCopy')?.addEventListener('click', e => copyText(e.currentTarget, '📋 Copy log'));
-$('#logClear')?.addEventListener('click', e => clearLog(e.currentTarget, 'Clear'));
+// (v93) On the home screen the log's buttons live in a small panel, opened by a round button at the left edge (#logTab, shown
+// only while recording). A tap on the see-through sheet around the panel closes it and presses nothing else.
+const logPanel = $('#logPanel'), logTab = $('#logTab');
+const kbOf = () => Math.max(1, Math.round(L.size() / 1000));
+export function logPanelOpen(on) {
+  if (!logPanel || !logTab) return;
+  logPanel.classList.toggle('hidden', !on); logTab.setAttribute('aria-expanded', !!on);
+  if (on) $('#logSize').textContent = `The log is ${kbOf()} KB`;
+}
+logTab?.addEventListener('click', () => logPanelOpen(logPanel.classList.contains('hidden')));
+logPanel?.addEventListener('click', e => { if (e.target === logPanel) logPanelOpen(false); });
+$('#logCopy')?.addEventListener('click', async e => { await copyText(e.currentTarget, 'Copy log'); $('#logSize').textContent = `The log is ${kbOf()} KB`; });
+$('#logClear')?.addEventListener('click', e => { clearLog(e.currentTarget, 'Clear log'); $('#logSize').textContent = `The log is ${kbOf()} KB`; });
 $('#logDone')?.addEventListener('click', () => $('#logSheet').classList.add('hidden'));
 $('#logSelect')?.addEventListener('click', () => { const b = $('#logText'); try { b.focus(); b.setSelectionRange(0, b.value.length); } catch { b.select(); } });
 // The grown-ups menu: "Show the log" and Copy (the speed record's buttons, now for the whole log) and Clear log.

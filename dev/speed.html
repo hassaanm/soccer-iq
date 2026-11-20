@@ -51,6 +51,7 @@
     <h1>Speed test</h1>
     <p>The game plays one short scene with pop-ups, stars and buttons 12 times, each time with one thing changed, then shows a table. It takes about 100 seconds. Hold the phone sideways and don't touch the screen until the table shows.</p>
     <p><label style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" id="stSound" checked> Include the runs with sound: for about 28 seconds you will <b>hear</b> the game's sounds and music. Untick for a silent test.</label></p>
+    <p id="stState" style="font-weight:700"></p>
     <button class="go" id="stGo" type="button" disabled>Loading…</button>
     <p style="margin-top:12px"><button class="ghost" id="stBack" type="button">Back to the game</button></p>
     <p id="stErr" style="color:#ff9d8a"></p>
@@ -60,7 +61,9 @@
     <div class="tbl"><table id="stTable"></table></div>
     <div class="side">
       <div id="stMsg"></div>
-      <div class="row"><button id="stNormal" class="ghost" type="button">Back to standard settings</button></div>
+      <div class="row" id="stChoice" hidden><button id="stUse" type="button">Use these settings</button><button id="stKeep" class="ghost" type="button">Keep what I have</button></div>
+      <div id="stState2" style="font-weight:700"></div>
+      <div class="row"><button id="stNormal" class="ghost" type="button" hidden>Back to standard</button></div>
       <div class="row"><button id="stCopy" class="ghost" type="button">Copy</button><button id="stAgain" class="ghost" type="button">Run again</button><button id="stHome" class="ghost" type="button">Back to the game</button></div>
       <textarea id="stText" readonly></textarea>
     </div>

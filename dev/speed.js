@@ -60,7 +60,7 @@ $('#stBack').onclick = $('#stHome').onclick = () => { location.href = 'index.htm
 $('#stAgain').onclick = () => location.reload();
 // The game loads behind the start screen, so the Start tap can unlock its sound players (the phone allows that only in a tap).
 let withSound = false;
-const booted = boot().then(() => { $('#stGo').disabled = false; $('#stGo').textContent = 'Start'; }, e => fail(e));
+const booted = boot().then(() => { showState(); $('#stGo').disabled = false; $('#stGo').textContent = 'Start'; }, e => fail(e));
 $('#stGo').onclick = () => {
   if (!G) return;
   $('#stGo').disabled = true;
@@ -236,7 +236,7 @@ function showResults(res) {
     b ? `in use now: ${words(b)}` : '',
   ].join('\n');
   $('#stText').value = report;
-  $('#stMsg').textContent = `Green: as good as the standard runs. ${applyBest(b)}${b && b.measuredSfx && !b.sfx ? ' Sounds: no clear difference, kept standard.' : ''}`;
+  offer(b); // (v93: nothing is applied here; the grown-up chooses)
   $('#st').className = ''; $('#stOut').hidden = false;
 }
 $('#stCopy').onclick = async () => {
@@ -252,17 +252,33 @@ function writeTuned(tuned) {
   if (tuned) save.settings.tuned = tuned; else delete save.settings.tuned;
   REAL.setItem(SAVE_KEY, JSON.stringify(save));
 }
-// (round 14) When the test finishes it uses what it found, by itself; "Back to standard settings" forgets it again.
+// (v93) The test applies nothing by itself. It shows its result in one plain sentence; when the result differs from the
+// standard it offers two buttons: "Use these settings" (writes `settings.tuned`) and "Keep what I have" (writes nothing). A
+// result equal to the standard offers no choice at all. What is in force is said plainly ("Graphics: standard" or "Graphics:
+// tuned for this phone (Nov 20)"), and "Back to standard" shows only while tuned settings are in force.
+const inForce = () => G.tunedFrom(parse(realGet(SAVE_KEY), null)?.settings); // (from his REAL save; G.tuned reads the throwaway one)
+function showState() {
+  const t = inForce(), w = G.graphicsState(t);
+  for (const id of ['#stState', '#stState2']) if ($(id)) $(id).textContent = w.text;
+  $('#stNormal').hidden = !w.set;
+}
 $('#stNormal').onclick = () => {
-  try { writeTuned(null); $('#stMsg').textContent = 'Back to standard settings: sharpness 1.5, head-down blur on, glow on, soft shadow on.'; }
+  try { writeTuned(null); showState(); $('#stMsg').textContent = 'Back to standard settings.'; $('#stChoice').hidden = true; }
   catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
 };
+function offer(b) {
+  const t = inForce(), same = !b || !G.differences(b).length || (t.fromTest && G.sameSettings(b, t)), note = b && b.measuredSfx && !b.sfx ? ' Sounds: no clear difference, kept standard.' : '';
+  $('#stMsg').textContent = (b ? G.resultSentence(b, t) : 'No result, so nothing changed.') + note;
+  $('#stChoice').hidden = same; showState();
+}
+$('#stUse').onclick = () => { $('#stMsg').textContent = applyBest(best); $('#stChoice').hidden = true; showState(); };
+$('#stKeep').onclick = () => { $('#stChoice').hidden = true; $('#stMsg').textContent = 'Nothing changed.'; showState(); };
 function applyBest(b) {
   if (!b) return 'No result, so nothing changed.';
   try {
     const old = parse(realGet(SAVE_KEY), null)?.settings?.tuned, oldOk = old && old.tv === G.TUNED_VERSION;
     const sfx = b.measuredSfx ? b.sfx : oldOk && typeof old.sfx === 'string' ? old.sfx : null; // (no sound runs: the last way found stays)
     writeTuned({ tv: G.TUNED_VERSION, blur: b.blur, glow: b.glow, soft: b.soft, pr: b.pr || 0, ...(sfx ? { sfx } : {}), at: new Date().toISOString().slice(0, 10), v: G.VERSION || '' });
-    return `Now in use on this device: ${words({ ...b, sfx })}.`;
+    return `Saved. These settings are now in use on this phone: ${words({ ...b, sfx })}.`;
   } catch (e) { return 'Could not save the settings: ' + (e?.message || e); }
 }
