@@ -33,7 +33,7 @@ export class Decision {
   // how much of the ring is left, 1 … 0 (before the clock starts: full)
   left(now) { if (!this.on) return 0; if (this.clock == null) return 1; return clamp(1 - (now - this.clock) / this.len, 0, 1); }
   // the moment ran out: A and B ease back to speed, D: they take it. C has no clock.
-  expired(now) { return this.on && this.v.slow !== null && this.clock != null && now - this.clock >= this.len; }
+  expired(now) { return this.on && this.v.slow !== null && this.clock != null && now - this.clock >= this.len - 1e-9; }
 }
 
 // ---------- big choices ----------
@@ -50,17 +50,18 @@ export function bigChoices({ me, yaw, foes = [], L, W }) {
     const ar = Math.abs(r), kind = ar <= BIG_ANG.fwd ? 'fwd' : ar <= BIG_ANG.wide ? 'wide' : 'back', a = yaw + r;
     const x = clamp(me.x + Math.cos(a) * BIG_LEN[kind], 1.5, L - 1.5), y = clamp(me.y + Math.sin(a) * BIG_LEN[kind], 1.5, W - 1.5), d = Math.hypot(x - me.x, y - me.y);
     if (d < 3) continue;
+    const bent = Math.abs(wrap(Math.atan2(y - me.y, x - me.x) - a)) > .3; // (squeezed by a line: no longer the way it was meant)
     const tip = { x, y };
     let path = 99; for (const o of foes) { const q = onLane(o, me, tip, 0); if (q.t > .08) path = Math.min(path, q.d); }
     const room = foes.reduce((m, o) => Math.min(m, dist(o, tip)), 99);
     const side = Math.sign(r) || 0, s = (gd0 - dist(tip, goal)) * .35 + Math.min(room, 5) * .6 + Math.min(path, 3) * .4 + (pressed && side === awaySide ? 1.5 : 0) + (kind === 'back' && pressed ? 1 : 0);
-    cands.push({ x, y, a: Math.atan2(y - me.y, x - me.x), rel: r, d, kind, path, room, s });
+    cands.push({ x, y, a: Math.atan2(y - me.y, x - me.x), rel: r, d, kind, path, room, s, bent });
   }
   const pick = (ok, out) => { for (const kind of ['fwd', 'wide', 'back']) { if (out.length >= BIG_MAX) break; if (kind === 'back' && !pressed && out.length >= 2) continue; const c = cands.filter(c => c.kind === kind && ok(c) && out.every(o => Math.abs(wrap(o.a - c.a)) >= BIG_SEP)).sort((p, q) => q.s - p.s)[0]; if (c) out.push(c); }
     if (out.length < 2) for (const c of cands.filter(ok).sort((p, q) => q.s - p.s)) { if (out.length >= 2) break; if (out.every(o => Math.abs(wrap(o.a - c.a)) >= BIG_SEP * 1.5)) out.push(c); } // (a second way of the same kind, well apart, when only one kind is open)
     return out; };
-  let out = pick(c => c.path >= BIG_PATH && c.room >= BIG_ROOM, []);
-  if (!out.length) out = pick(c => c.path >= .8 && c.room >= 1.2, []);
+  let out = pick(c => !c.bent && c.path >= BIG_PATH && c.room >= BIG_ROOM, []);
+  if (!out.length) out = pick(c => !c.bent && c.path >= .8 && c.room >= 1.2, []);
   if (!out.length && cands.length) out = [cands.slice().sort((p, q) => q.room - p.room)[0]]; // (never none: the freest way)
   out.sort((p, q) => p.rel - q.rel);
   return out.map(({ x, y, a, d, kind }) => ({ x, y, a, d, kind }));
