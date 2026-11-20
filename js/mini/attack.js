@@ -114,7 +114,7 @@ export class AttackMatch extends Match {
   setLevel(level) {
     super.setLevel(level); if (!this.D) return; const D = this.D, o = this.opp; this.standT = D.stand; o.keeper = D.keeper;
     // the first goals (D.early): slower to close him down and to a pass line; a pass of his into a closed line forgiven
-    o.press *= D.slow; o.mark *= D.slow; o.run *= D.slow; o.cutRun *= D.slow; o.cutReact += .35 * (D.early || 0); this.aiSpeed.them = o.run; this.forgive = D.early || 0; this.moveTackleX = AEK.move * (D.early || 0) ** 2; this.forgivePush = (D.early || 0) ** 2;
+    o.press *= D.slow; o.mark *= D.slow; o.run *= D.slow; o.cutRun *= D.slow; o.cutReact += .35 * (D.early || 0); this.aiSpeed.them = o.run; this.forgive = D.early || 0; this.moveTackleX = AEK.move * (D.early || 0) ** 2;
   }
   setup() {
     const sc = this.sc, s = this.sim, cy = this.W / 2;
@@ -132,6 +132,8 @@ export class AttackMatch extends Match {
     this.res = { goal, why, by, sec: +this.sec.toFixed(1), kind: this.sc.kind, style: this.sc.style, left: +this.left.toFixed(1), advice: this.advice };
     this.sim.stopAll(); this.onEnd(this.res);
   }
+  // (v93) A save ends the attempt as the ball is in the keeper's hands (not as it is struck).
+  hold(k, f) { super.hold(k, f); if (!this.res) this.end(false, 'save', k.id); }
   goal(team) { if (this.res) return; super.goal(team); this.end(team === 'us', team === 'us' ? 'goal' : 'lost', this.lastOwner); }
   out() { if (this.res) return; const b = this.sim.ball; Object.assign(b, { state: 'loose', carrier: null, move: null }); this.sfx('click'); this.on.out?.('them'); this.end(false, 'out'); }
   giveTo(id, how) {
@@ -246,7 +248,7 @@ export class AttackMatch extends Match {
       else if (isP && (defs.length > 1 || st === 'press' || carrierGd < D.commit || dist(o, ca) < 2.6)) {
         // press the carrier (a lone defender who holds off comes to him near the goal, or when he runs into him)
         const ux = gx - ca.x, uy = gy - ca.y, l = Math.hypot(ux, uy) || 1, meC = c === this.me, drib = meC && this.meMove?.kind === 'near' && t < this.meMove.until;
-        const standing = meC && !(this.meMove && t < this.meMove.until), off = !meC ? .75 : drib ? .9 : .45;
+        const standing = meC && !(this.meMove && t < this.meMove.until) && !this.meAim, off = !meC ? .75 : drib ? .9 : .45;
         tgt = { x: ca.x + ux / l * off, y: ca.y + uy / l * off }; sp = standing ? Math.min(this.opp.press, 2) : this.opp.press;
       } else if (isP && st === 'mark' && others.length) {
         const f = others.sort((p2, q) => Math.hypot(gx - p2.x, gy - p2.y) - Math.hypot(gx - q.x, gy - q.y))[0]; tgt = goalSide(f, gx, gy, 1.3, ca, .15);

@@ -14,6 +14,11 @@ const warn = () => tex(256, 256, (g, w) => { const c = w / 2, rg = g.createRadia
 const goTo = () => tex(128, 128, (g, w) => { const c = w / 2; ring(g, c, 44, 12, 'rgba(255,255,255,.95)'); g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(c, c, 14, 0, 7); g.fill(); });
 const hintT = () => tex(128, 128, (g, w) => { glow(g, w, .55); });
 const mat = map => new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, toneMapped: false });
+// (v93) The fixed spots: a gold ring with a white dot (with the ball: a ball in it); pressing their carrier: an orange ring
+// with a red middle. A miss of STEAL: three small stars turning round his feet. A target the keeper covers: grey, crossed.
+const pressT = () => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .28); ring(g, c, 38, 11, 'rgba(255,255,255,.9)'); ring(g, c, 38, 7, '#ff7a3c'); g.fillStyle = '#e8443a'; g.beginPath(); g.arc(c, c, 12, 0, 7); g.fill(); });
+const dizzyT = () => tex(128, 128, (g, w) => { const c = w / 2; for (let i = 0; i < 3; i++) { const a = i * 2 * Math.PI / 3, x = c + Math.cos(a) * 42, y = c + Math.sin(a) * 42; g.fillStyle = '#ffe14d'; g.strokeStyle = '#24193a'; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 6 : 15, b = -Math.PI / 2 + k * Math.PI / 5; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); g.stroke(); } });
+const shutT = () => tex(128, 128, (g, w) => { const c = w / 2; g.fillStyle = 'rgba(36,25,58,.45)'; g.beginPath(); g.arc(c, c, 56, 0, 7); g.fill(); ring(g, c, 44, 12, 'rgba(200,196,210,.95)'); g.strokeStyle = 'rgba(200,196,210,.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.beginPath(); g.moveTo(c - 24, c - 24); g.lineTo(c + 24, c + 24); g.moveTo(c + 24, c - 24); g.lineTo(c - 24, c + 24); g.stroke(); });
 
 // The guide (v84 round 2): two soft circles round him. Near: eight small dots. Far: a faint broken ring with twelve
 // ticks ("you can tap out here"; orange with the ball: a big push). Also: where he chose to go (until he is there), the
@@ -27,7 +32,26 @@ export function makeMarks(world) {
   const me = add(mine(), 1.6, 3), danger = add(warn(), 2, 3), go = add(goTo(), .8, 3, .9), hintM = Array.from({ length: 3 }, () => add(hintT(), 1.9, 1));
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1), Z = new THREE.Vector3(0, 0, 1);
   let withBall = null, dashKey = '';
+  const F = { dot: [dot(false), dot(true)], press: pressT() }, fixM = Array.from({ length: 8 }, () => add(F.dot[0], 1.3, 2, .9)), dizzy = add(dizzyT(), 1.1, 4), shutM = Array.from({ length: 6 }, () => { const m = add(shutT(), .8, 5); m.material.side = THREE.DoubleSide; return m; });
   return {
+    // (v93) The fixed spots (rules.js spotSet), drawn where they are on the pitch: the chosen one lit and the rest faint
+    // while he runs to it; the best one pulsing (the hint). dizzyAt: his place while he stumbles after a missed STEAL.
+    // shut: the targets in the goal the keeper covers while he aims (grey, crossed: the gold ones are js/world.js's).
+    fixed(spots, chosen, best, hasBall, t, dizzyAt = null, shut = null) {
+      let i = 0;
+      for (const p of spots) {
+        const m = fixM[i++]; if (!m) break; const lit = p === chosen;
+        m.material.map = p.kind === 'press' ? F.press : F.dot[p.kind === 'ball' || hasBall ? 1 : 0];
+        m.visible = true; m.position.set(p.x, p.y, .04);
+        const k = .5 + .5 * Math.sin(t * 5);
+        m.material.opacity = chosen ? (lit ? 1 : .32) : p === best ? .7 + .3 * k : .85;
+        m.scale.setScalar(lit ? 1.45 + .08 * k : p === best ? 1.3 + .4 * k : 1.3);
+      }
+      for (; i < fixM.length; i++) fixM[i].visible = false;
+      dizzy.visible = !!dizzyAt; if (dizzyAt) { dizzy.position.set(dizzyAt.x, dizzyAt.y, .06); dizzy.rotation.z = t * 6; }
+      const cp = world.camera.position;
+      shutM.forEach((m, j) => { const a = shut?.[j]; m.visible = !!a; if (a) { m.position.set(a.x + .03, a.y, a.z); m.rotation.set(0, -Math.PI / 2, Math.atan2(cp.y - a.y, cp.x - a.x) - Math.PI, 'ZYX'); } });
+    },
     // spots: rules.js spots (ring 1 dots, ring 2 ticks); ring: rules.js dashes; t: the clock, for the pulse
     draw(spots, ringPts, at, hasBall, t, warnAt = null, show = true, goAt = null, hinted = null) {
       if (withBall !== hasBall) { withBall = hasBall; for (const m of dotM) m.material.map = T.dot[hasBall ? 1 : 0]; for (const m of tickM) m.material.map = T.tick[hasBall ? 1 : 0]; }
@@ -44,7 +68,7 @@ export function makeMarks(world) {
       go.visible = !!goAt && show; if (go.visible) go.position.set(goAt.x, goAt.y, .045);
       hintM.forEach((m, i) => { const h = show && hinted?.[i]; m.visible = !!h; if (h) { m.position.set(h.x, h.y, .025); const k = .5 + .5 * Math.sin(t * 4); m.material.opacity = .35 + .45 * k; m.scale.setScalar(1.7 + .35 * k); } });
     },
-    hide() { for (const m of [...dotM, ...tickM, me, danger, go, ...hintM]) m.visible = false; dash.count = 0; dashKey = ''; },
+    hide() { for (const m of [...dotM, ...tickM, me, danger, go, ...hintM, ...fixM, dizzy, ...shutM]) m.visible = false; dash.count = 0; dashKey = ''; },
   };
 }
 

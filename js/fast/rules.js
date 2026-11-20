@@ -42,6 +42,91 @@ export function spots(me, others, L, W) {
 }
 export function dashes(me, L, W) { const out = []; for (let i = 0; i < DASHES; i++) { const a = (i + .5) * 2 * Math.PI / DASHES, x = me.x + Math.cos(a) * FAR, y = me.y + Math.sin(a) * FAR; if (x >= 0 && x <= L && y >= 0 && y <= W) out.push({ x, y, a }); } return out; }
 
+// ---------- fixed spots (v93, the owner's D2: no free tapping on the grass) ----------
+// He moves only to spots: marks on the grass at fixed places of the pitch (points of a hidden GRID m grid), made when a
+// new set is due (he arrived, got the ball, stopped, or the ball changed hands) and never moved after. Each one is a
+// real choice, a place worth going, by who has the ball (youth coaching: width and depth in attack, support at an
+// angle, a run in behind; in defence pressure on the ball, cover goal-side, a passing lane shut):
+//  - his ball ('mine'): toward goal, into the space ahead on either side, wide on either side, back to safety. Never
+//    through one of theirs (a dribble into a defender is no choice to offer) and never next to one.
+//  - a friend's ball ('ours'): open for a pass (a clear line from the ball and room), wide, a run in behind their last
+//    defender, support behind the ball.
+//  - theirs ('theirs'): press the ball (a spot goal-side of the carrier: he runs at him and stays on him), get goal-side
+//    (between the ball and his own goal), shut a lane (on the line from the carrier to one of theirs), mark the most
+//    dangerous one goal-side, cover.
+//  - a loose ball ('loose'): the ball itself (he runs to it), and places as for a friend's ball and goal-side.
+// SPOT_MIN to SPOT_MAX at a time, SPOT_GAP m apart, SPOT_IN m inside the lines, none on a player. `seen(p)` (optional):
+// only spots he can see on screen (the page passes the camera's view). One spot is marked `best` (the hint pulses it).
+export const GRID = 2, SPOT_IN = 1.4, SPOT_GAP = 2.8, SPOT_MIN = 5, SPOT_MAX = 7, SPOT_BODY = 1.3;
+// A tap counts as the spot nearest to it on screen when it is within TAP_PX px of it (a share of the screen's height,
+// at least TAP_PX0) or within TAP_M m of it on the grass: generous, for a child's finger. Farther from every spot: nothing.
+export const TAP_PX0 = 64, TAP_PX = .17, TAP_M = 2.4;
+const lattice = (c, r0, r1, L, W) => { const out = []; for (let x = Math.ceil((c.x - r1) / GRID) * GRID; x <= c.x + r1; x += GRID) for (let y = Math.ceil((c.y - r1) / GRID) * GRID; y <= c.y + r1; y += GRID) { if (x < SPOT_IN || x > L - SPOT_IN || y < SPOT_IN || y > W - SPOT_IN) continue; const d = Math.hypot(x - c.x, y - c.y); if (d >= r0 && d <= r1) out.push({ x, y, d }); } return out; };
+const snapPt = (p, L, W) => ({ x: clamp(Math.round(p.x / GRID) * GRID, SPOT_IN, L - SPOT_IN), y: clamp(Math.round(p.y / GRID) * GRID, SPOT_IN, W - SPOT_IN) });
+const nearest = (ps, p) => ps.reduce((m, o) => Math.min(m, Math.hypot(o.x - p.x, o.y - p.y)), 99);
+function choose(cands, firsts, ok0 = () => true) {
+  const out = [], ok = p => ok0(p) && out.every(q => Math.hypot(q.x - p.x, q.y - p.y) >= SPOT_GAP);
+  for (const f of firsts) { const b = cands.filter(c => c.kind === f.kind && (f.side == null || c.side === f.side) && ok(c)).sort((p, q) => q.s - p.s)[0]; if (b) out.push(b); if (out.length >= SPOT_MAX) break; }
+  for (const c of cands.slice().sort((p, q) => q.s - p.s)) { if (out.length >= SPOT_MAX || (out.length >= SPOT_MIN && c.s < -1)) break; if (!out.includes(c) && ok(c)) out.push(c); }
+  return out;
+}
+// o: { me, state, carrier (the one on the ball, or where a pass to him goes), ball, mates (his friends, not him),
+// foes (their outfield players), keeper (theirs, or null), L, W, seen }.
+export function spotSet({ me, state, carrier = null, ball, mates = [], foes = [], keeper = null, L, W, seen = () => true }) {
+  const all = keeper ? [...foes, keeper] : foes, bodies = [...mates, ...all], free = p => nearest(bodies, p) >= SPOT_BODY && seen(p);
+  const goal = { x: L, y: W / 2 }, own = { x: 0, y: W / 2 }, room = p => nearest(all, p);
+  let out = [];
+  if (state === 'mine') {
+    const ga = Math.atan2(goal.y - me.y, goal.x - me.x), gd0 = dist(me, goal), cands = [];
+    for (const relax of [0, 1]) {
+      for (const c of lattice(me, 2.6, 7.4, L, W)) {
+        let path = 99; for (const o of all) path = Math.min(path, onLane(o, me, c, 0).d);
+        const r = room(c); if (path < (relax ? 1 : 1.4) || r < (relax ? 1.5 : 2)) continue;
+        const a = wrap(Math.atan2(c.y - me.y, c.x - me.x) - ga), aa = Math.abs(a), kind = aa < .45 ? 'goal' : aa < 1.15 ? 'space' : aa < 2.05 ? 'wide' : 'back';
+        const edge = Math.min(c.y, W - c.y) < 2.5 ? .6 : 0;
+        cands.push({ x: c.x, y: c.y, kind, side: Math.sign(a) || 1, s: (gd0 - dist(c, goal)) * .45 + Math.min(r, 5) * .5 - edge + (kind === 'back' ? 1.5 : 0) });
+      }
+      if (cands.filter(free).length >= 4) break;
+    }
+    out = choose(cands, [{ kind: 'goal' }, { kind: 'space', side: 1 }, { kind: 'space', side: -1 }, { kind: 'wide', side: 1 }, { kind: 'wide', side: -1 }, { kind: 'back' }], free);
+  } else if (state === 'ours' && carrier) {
+    const deep = foes.reduce((m, o) => Math.max(m, o.x), -1), cands = [];
+    for (const c of lattice(me, 1.8, 9.5, L, W)) {
+      const dc = dist(c, carrier); if (dc < 3.5 || dc > 12.5) continue;
+      let lane = 99; for (const o of all) lane = Math.min(lane, onLane(o, carrier, c, .12).d);
+      const r = room(c); if (r < 1.8) continue;
+      const kind = c.x > deep + .5 && c.x > carrier.x + 2 && lane >= .9 ? 'behind' : c.x < carrier.x - 1 ? 'support' : Math.abs(c.y - carrier.y) > 5 ? 'wide' : 'open';
+      cands.push({ x: c.x, y: c.y, kind, side: Math.sign(c.y - carrier.y) || 1, s: Math.min(lane, 3) * 1.2 + Math.min(r, 4) * .5 + (c.x - carrier.x) * .1 - Math.abs(dc - 7) * .15 - c.d * .05 - (lane < 1.2 ? 3 : 0) + (kind === 'behind' ? .6 : 0) });
+    }
+    out = choose(cands, [{ kind: 'behind' }, { kind: 'open' }, { kind: 'wide' }, { kind: 'support' }], free);
+  } else if ((state === 'theirs' || state === 'loose') && (carrier || ball)) {
+    const c = state === 'theirs' && carrier ? carrier : ball, ux = own.x - c.x, uy = own.y - c.y, l = Math.hypot(ux, uy) || 1, cands = [];
+    if (state === 'theirs') cands.push({ x: c.x + ux / l * 1, y: c.y + uy / l * 1, kind: 'press', follow: 'carrier', s: 4 - Math.max(0, dist(me, c) - 4) * .4 });
+    else cands.push({ x: ball.x, y: ball.y, kind: 'ball', follow: 'ball', s: 5 - dist(me, ball) * .2 });
+    const gs = snapPt({ x: c.x + ux / l * Math.min(4, l * .5), y: c.y + uy / l * Math.min(4, l * .5) }, L, W); cands.push({ ...gs, kind: 'goalside', s: 3 });
+    const them = state === 'theirs' ? foes.filter(o => Math.hypot(o.x - c.x, o.y - c.y) > 1.5) : [];
+    const danger = r => 3 - dist(r, own) / 8 + Math.min(nearest(mates.concat(me), r), 4) * .4;
+    for (const r of them.slice().sort((p, q) => danger(q) - danger(p))) {
+      cands.push({ ...snapPt({ x: c.x + (r.x - c.x) * .45, y: c.y + (r.y - c.y) * .45 }, L, W), kind: 'lane', s: danger(r) });
+      const vx = own.x - r.x, vy = own.y - r.y, vl = Math.hypot(vx, vy) || 1; cands.push({ ...snapPt({ x: r.x + vx / vl * 1.8, y: r.y + vy / vl * 1.8 }, L, W), kind: 'mark', s: danger(r) - .5 });
+    }
+    for (const p of lattice(me, 2, 10, L, W)) { const q = onLane(p, c, own, 0); if (q.d < 3.5 && dist(p, own) < dist(c, own) - 2) cands.push({ x: p.x, y: p.y, kind: 'cover', s: 1 - q.d * .3 - Math.abs(dist(p, c) - 5) * .15 }); }
+    if (state === 'loose') for (const p of lattice(me, 2, 9, L, W)) { const r = room(p); if (r > 2.5 && p.x > c.x) cands.push({ x: p.x, y: p.y, kind: 'open', s: .5 + Math.min(r, 4) * .3 - p.d * .05 }); }
+    out = choose(cands, [{ kind: state === 'theirs' ? 'press' : 'ball' }, { kind: 'goalside' }, { kind: 'lane' }, { kind: 'mark' }, { kind: 'lane' }], p => p.follow ? seen(p) : free(p));
+  }
+  if (out.length) { const b = out.reduce((p, q) => (q.s > p.s ? q : p)); b.best = true; }
+  return out;
+}
+// The spot a tap means (or null): the nearest on screen within the tap radius, or within TAP_M m on the grass.
+// spots: [{ ..., q: its point on the screen }]; g: the grass under the tap (or null).
+export function spotAt(spots, x, y, g, h) {
+  let best = null, bd = 1e9;
+  for (const s of spots) { if (!s.q) continue; const d = Math.hypot(s.q[0] - x, s.q[1] - y); if (d < bd) { bd = d; best = s; } }
+  if (best && bd <= Math.max(TAP_PX0, h * TAP_PX)) return best;
+  if (g) { let gb = null, gd = 1e9; for (const s of spots) { const d = Math.hypot(s.x - g.x, s.y - g.y); if (d < gd) { gd = d; gb = s; } } if (gb && gd <= TAP_M) return gb; }
+  return null;
+}
+
 // ---------- hints: the two or three really good places, after a while ----------
 // When he has done nothing for HINT_S s (and is not on his way anywhere), the best places now pulse: with the ball,
 // space ahead and away from the one who presses him; his team's ball, open space that gives the carrier a line to him;
@@ -95,7 +180,10 @@ export function naturalYaw(me, ball, hasBall, L, W) {
 // The camera behind and above him, by how far his head is up (look, 0 head down … 1 up), as the game's own player view
 // does it (js/game/view.js; ported in the Lab's eyes.js): back, to the side, height, ahead, toward the ball, target
 // height, focal lengths (height, width).
-export const DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], UP = [5.4, .3, 4.4, 7.5, 0, 0, .86, .5]; // (head up: higher and looking down onto the play, so the pitch fills the picture and the stands are a strip at the top)
+// (v93) Head up is the Slow game's own head-up view (js/game/view.js: 5.2 m back, 2.8 m up, looking 9 m ahead at 0.5 m,
+// focal .9 / .52): the owner found the Fast view "too high or too different" (before: 4.4 m up, looking down at the grass
+// 7.5 m ahead, then raised up to 9 m and tipped down to 63° by fitPitch).
+export const DOWN = [3.1, 1.3, 2.9, 3.5, .25, .8, 1.05, .64], UP = [5.2, .3, 2.8, 9, 0, .5, .9, .52];
 export function camSpec(me, ball, carried, yaw, look) {
   const k = sm(look), C = DOWN;
   const [bx, by] = rot(-lerp(C[0], UP[0], k), lerp(C[1], UP[1], k), yaw), [fx, fy] = rot(UP[3], 0, yaw);
@@ -230,7 +318,10 @@ export function pitchShare(cam, w, h, L, W, n = 24, cols = 9) {
 // and the points in `keep` (the ball) stay on screen and it never looks down more steeply than TILT_MAX (never a view
 // from the top). `pull` (0 … 1): how far the eye is brought in over the pitch first (1: all the way; 0: it may stay out
 // over a line, looking in). Changes and returns `cam`.
-export const FILL = .85, SHARE = .86, TILT_MAX = 1.1; // (SHARE: of the whole picture, as the owner sees it; TILT_MAX: rad below level, 63°: before v86 it went to 75°)
+// (v93) The pitch is still kept in the picture near the lines (viewSearch turns the view along the pitch), but never by a
+// high view: the eye goes up to EYE_MAX m at most (the Slow view: 2.8 m) and looks down no more than TILT_MAX (before:
+// 9 m and 63°, a view from above).
+export const FILL = .7, SHARE = .62, TILT_MAX = .26, EYE_MAX = 3.2; // (SHARE: of the whole picture, as the owner sees it; TILT_MAX: rad below level, 15°; the Slow view looks down 9°)
 const tilt = c => Math.atan2(c.eye[2] - c.tgt[2], Math.hypot(c.tgt[0] - c.eye[0], c.tgt[1] - c.eye[1]));
 export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
   const e = cam.eye, t = cam.tgt, m = .3, inside = () => e[0] >= m && e[0] <= L - m && e[1] >= m && e[1] <= W - m;
@@ -242,12 +333,12 @@ export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
     if (pull < 1) { e[0] = o[0] + (e[0] - o[0]) * pull; e[1] = o[1] + (e[1] - o[1]) * pull; }
   }
   // (the ball not on screen, as while the view is still turning to it: back and up a little at a time until it is)
-  for (let i = 0; i < 16 && !keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); i++) { const fx = t[0] - e[0], fy = t[1] - e[1], fl = Math.hypot(fx, fy) || 1; e[0] -= fx / fl * .4; e[1] -= fy / fl * .4; e[2] = Math.min(10, e[2] + .2); }
+  for (let i = 0; i < 16 && !keep.every(p => onScreen(project(cam, p, w, h), w, h, 12)); i++) { const fx = t[0] - e[0], fy = t[1] - e[1], fl = Math.hypot(fx, fy) || 1; e[0] -= fx / fl * .4; e[1] -= fy / fl * .4; e[2] = Math.min(EYE_MAX + .6, e[2] + .1); }
   const score = () => rowsOnPitch(cam, w, h, L, W, 20) + pitchShare(cam, w, h, L, W, 10, 7);
   cam.best = score();
   for (let i = 0; i < 40 && (rowsOnPitch(cam, w, h, L, W, 20) < FILL || pitchShare(cam, w, h, L, W, 10, 7) < SHARE); i++) {
     const s0 = [...e], t0 = [...t];
-    if (e[2] < 9) e[2] += .25; t[2] -= .3; t[0] = me.x + (t[0] - me.x) * .96; t[1] = me.y + (t[1] - me.y) * .96;
+    if (e[2] < EYE_MAX) e[2] = Math.min(EYE_MAX, e[2] + .15); t[2] -= .2; t[0] = me.x + (t[0] - me.x) * .97; t[1] = me.y + (t[1] - me.y) * .97;
     const sc = score();
     if (!ok() || sc < (cam.best ?? -1) - 1e-6) { e.splice(0, 3, ...s0); t.splice(0, 3, ...t0); break; } cam.best = sc; // (a step that loses him or the ball, looks down too steeply, or shows less pitch, is taken back)
   }
@@ -262,7 +353,7 @@ export function fitPitch(cam, me, w, h, L, W, keep = [], pull = 1) {
 // on screen, clear of the bar along the top; in a corner also close behind him and lower, looking into the pitch (`close`). fast.js eases to it (the
 // turn capped at TURN_MAX rad/s, the side, the pull and the closeness at their own rates).
 export const VIEW_SPAN = .9, VIEW_COST = .25, VIEW_SIDES = [0, 2, 4];
-export const CLOSE = [3, 4, 4, -1], CLOSE_B = [5, 4, 0, -2.5]; // (the close view in a corner: back, height, ahead, target height; `close` 0 … 1 to CLOSE, 1 … 2 on to CLOSE_B, looking down at him from over the line)
+export const CLOSE = [4.4, 2.9, 7, .3], CLOSE_B = [4.6, 3.2, 3, -.2]; // (v93: lower, as the head-up view; before 4 m up and looking down steeply) // (the close view in a corner: back, height, ahead, target height; `close` 0 … 1 to CLOSE, 1 … 2 on to CLOSE_B, looking down at him from over the line)
 export function viewCam(me, ball, has, v, look, w, h, L, W, keep = [ball]) {
   const c = camSpec(me, ball, has, v.yaw, look), sd = v.side || 0, k = v.close || 0;
   if (k) { const C = k <= 1 ? CLOSE : CLOSE.map((v, i) => lerp(v, CLOSE_B[i], Math.min(1, k - 1))), kk = Math.min(1, k), cx = Math.cos(v.yaw), cy = Math.sin(v.yaw), E = [me.x - cx * C[0], me.y - cy * C[0], C[1]], T = [me.x + cx * C[2], me.y + cy * C[2], C[3]]; for (let i = 0; i < 3; i++) { c.eye[i] = lerp(c.eye[i], E[i], kk); c.tgt[i] = lerp(c.tgt[i], T[i], kk); } }
@@ -314,21 +405,28 @@ export function viewStep(st, o, dt, ms = 1, now = () => performance.now()) {
 }
 
 // ---------- the shot view (SHOOT) ----------
-// From behind him toward the goal (the angle kept within AIM_DEV of straight on, so the goal is never seen edge-on), the
-// goal large in the clear band under the HUD: the posts AIM_SPAN of the screen's width apart, the highest target at least
-// HUD_PX + 12 px down. Returns a camera spec. targets: the six shot targets ({ y, z } on the line x = L).
-export const AIM_DEV = .6, AIM_SPAN = .6, HUD_PX = 60;
+// (v93) The same view from behind and above him, refocused, not another view (the owner: "it should still stay in that
+// same view ... maybe it comes a little closer so you can see the net ... more like a zoom in"): the eye comes in to
+// AIM_BACK m behind him on the line from the goal through him, over his shoulder (AIM_SIDE m) at AIM_H m, looks at the
+// goal, and the lens zooms in (AIM_FMAX down to AIM_FMIN) as far as the six targets stay in the band under the HUD
+// (HUD_PX), AIM_GAP px apart, and his head stays in the picture. Returns a camera spec. targets: the six shot targets
+// ({ y, z } on the line x = L).
+export const AIM_DEV = .7, AIM_BACK = 3.8, AIM_SIDE = .5, AIM_H = 2.6, AIM_FMAX = 2.1, AIM_FMIN = .9, AIM_GAP = 40, HUD_PX = 60;
 export function aimCam(me, L, gy0, gy1, gh, w, h, targets) {
-  const gc = (gy0 + gy1) / 2, d0 = Math.hypot(L - me.x, gc - me.y);
-  let a = Math.atan2(me.y - gc, me.x - L); const dev = wrap(a - Math.PI); a = Math.PI + clamp(dev, -AIM_DEV, AIM_DEV);
-  const de = Math.max(d0 + 2.4, 7.5), cam = { eye: [L + Math.cos(a) * de, gc + Math.sin(a) * de, 2.1], tgt: [L, gc, gh * .45], Ff: 1.2, Fw: 0 };
-  for (let i = 0; i < 4; i++) {
-    const p0 = project(cam, { x: L, y: gy0, z: gh / 2 }, w, h), p1 = project(cam, { x: L, y: gy1, z: gh / 2 }, w, h); if (!p0 || !p1) break;
-    cam.Ff *= (AIM_SPAN * w) / Math.max(1, Math.abs(p1[0] - p0[0]));
-    const top = Math.min(...targets.map(t => project(cam, { x: L, y: t.y, z: t.z }, w, h)?.[1] ?? 0)), want = HUD_PX + 16;
-    if (top < want) cam.tgt[2] += (want - top) / (h * cam.Ff) * de * 1.05; // (tip up: the goal moves down the screen)
+  const gc = (gy0 + gy1) / 2, d0 = Math.hypot(L - me.x, gc - me.y), a = clamp(Math.atan2(me.y - gc, L - me.x), -AIM_DEV, AIM_DEV), ux = Math.cos(a), uy = -Math.sin(a), sd = me.y > gc ? -1 : 1; // (from a sharp angle the eye swings toward straight on, AIM_DEV rad at most off it, so the goal is never seen edge-on; over the shoulder on the side of the middle)
+  const de = d0 + AIM_BACK, eye = [L - ux * de - uy * AIM_SIDE * sd, gc - uy * de + ux * AIM_SIDE * sd, AIM_H], goal = [L, gc, gh * .5], head = { x: me.x, y: me.y, z: 1.55 };
+  const good = cam => {
+    const q = targets.map(t => project(cam, { x: L, y: t.y, z: t.z }, w, h)); if (q.some(p => !onScreen(p, w, h, 34) || p[1] < HUD_PX + 14)) return false;
+    for (let i = 0; i < q.length; i++) for (let j = i + 1; j < q.length; j++) if (Math.hypot(q[i][0] - q[j][0], q[i][1] - q[j][1]) < AIM_GAP) return false;
+    return true;
+  };
+  const headIn = cam => { const p = project(cam, head, w, h); return !!p && p[1] < h - 8 && p[0] > 8 && p[0] < w - 8; };
+  let fall = null;
+  for (let F = AIM_FMAX; F >= AIM_FMIN - 1e-9; F -= .05) for (const k of [0, .1, .2, .3, .4]) { // (k: the aim lowered from the goal toward him, so he stays in)
+    const cam = { eye: [...eye], tgt: [lerp(goal[0], me.x, k), lerp(goal[1], me.y, k), lerp(goal[2], 1.2, k)], Ff: F, Fw: 0 };
+    if (!good(cam)) continue; if (headIn(cam)) return cam; fall ||= cam;
   }
-  return cam;
+  return fall || { eye, tgt: goal, Ff: AIM_FMIN, Fw: 0 };
 }
 // ---------- where a chip sits ----------
 // Only on the left or right edge (CHIP_X px in), between CHIP_Y0 px from the top (under the HUD) and the bottom buttons

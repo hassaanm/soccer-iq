@@ -1062,3 +1062,13 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 :is(#fAct,#rSteal).now{animation:stealNow .6s ease-in-out infinite}
 @keyframes stealNow{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 @media (prefers-reduced-motion:reduce){:is(#fAct,#rSteal).now{animation:none}}
+
+/* ---------- FAST worker (v93, js/fast/fast.js): the action button(s) ---------- */
+/* STEAL is always bright (no grey, no wait or spent look). SKILL says the move's name under its picture; a second button
+   to its left when two moves fit. */
+#fAct2{right:calc(146px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
+#fAct2.show{display:flex}
+.fActB .pic{display:none;width:62px;height:62px;margin-top:-6px;pointer-events:none}
+.fActB.skill .pic{display:block}
+.fActB.skill i{display:none}
+.fActB.skill span{font-size:15px;line-height:1.05;letter-spacing:0;text-align:center;max-width:98px;text-transform:none}
