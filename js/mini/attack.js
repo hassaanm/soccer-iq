@@ -44,7 +44,7 @@ export const kindById = id => KINDS.find(k => k.id === id);
 // (a careful adult scores about 3 in 4) and hard by a score of 5 (about 1 in 3), rising on without a wall: their players
 // as quick as the Fast match's middle level at once (opp), a keeper who saves (no early slips), a short timer; the
 // first goal's small help (early) is now only a little more time on the ball.
-export const AEK = { slow: .12, stand: .8, into: .2, react: .12, move: .2 }; // (the dribbling ones, into and move, fade as early squared)
+export const AEK = { slow: .2, stand: 1.5, into: .5, react: .15, move: .5 }; // (the dribbling ones, into and move, fade as early squared)
 export function attackLevel(L) {
   L = Math.max(0, L); const e = early(L);
   const centre = 6 * (1 - Math.exp(-L / 3.2));
