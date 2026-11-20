@@ -5,6 +5,7 @@ import { P, save } from './store.js';
 import { world } from './stage.js';
 import * as perf from '../perf.js';
 import { SFX_START, SFX_MODES } from '../sound.js';
+import { STANDARD, tunedFrom as tunedPure, graphicsState } from './graphics.js';
 
 // (round 14) There is no Smooth or Pretty choice any more: every device starts from the standard below (what the owner's
 // phone landed on in the speed test: the cheap way of painting, sharpness 1.5, the head-down blur, the glow and the big
@@ -13,20 +14,9 @@ import { SFX_START, SFX_MODES } from '../sound.js';
 export const graphics = () => 'smooth';
 export const smooth = () => mode === 'smooth';
 let mode = 'smooth';
-export const STANDARD = { blur: true, glow: true, soft: true, pr: 0 };
-export const TUNED_VERSION = 2; // (the speed test's version that wrote `settings.tuned`: an older result, as v76's, is ignored)
-// What the speed test (dev/speed.html) chose for this device, kept in the save when it finishes: { blur, glow, soft, pr, sfx,
-// at }. Each value wins over the standard only when it is a real one: true or false, a pixel ratio of 2 or 3, a known way of
-// starting sounds; anything else ("no", "1") leaves the standard.
-// A result from another version of the test, or one with no valid value at all, reads as the standard (fromTest false).
-export const tuned = () => { const t = P.settings.tuned, o = { ...STANDARD, fromTest: false }; if (!t || typeof t !== 'object' || t.tv !== TUNED_VERSION) return o;
-  let n = 0;
-  for (const k of ['blur', 'glow', 'soft']) if (typeof t[k] === 'boolean') { o[k] = t[k]; n++; }
-  if (t.pr === 2 || t.pr === 3 || t.pr === 0) { if (t.pr) o.pr = t.pr; n++; }
-  if (SFX_MODES.includes(t.sfx)) { o.sfx = t.sfx; n++; }
-  if (!n) return { ...STANDARD, fromTest: false };
-  if (typeof t.at === 'string') o.at = t.at;
-  o.fromTest = true; return o; };
+export { STANDARD, TUNED_VERSION, differences, sameSettings, resultSentence, graphicsState, shortDate } from './graphics.js'; // (the pure parts: graphics.js)
+export const tunedFrom = settings => tunedPure(settings, SFX_MODES);
+export const tuned = () => tunedFrom(P.settings);
 // Smooth: no glow pass, a smaller shadow map (world.js), no blur over the moving picture and none behind cards
 // (css: body.smooth), 60 pictures a second at most and fewer on the screens where nothing is played (main.js).
 export function applyGraphics() {
@@ -51,17 +41,14 @@ if ($('#recChk')) {
   $('#recCopy').onclick = async () => { box.focus(); box.select(); try { await navigator.clipboard.writeText(box.value); $('#recCopy').textContent = 'Copied'; } catch { try { document.execCommand('copy'); $('#recCopy').textContent = 'Copied'; } catch { $('#recCopy').textContent = 'Select the text and copy it'; } } };
 }
 if ($('#speedTestBtn')) $('#speedTestBtn').onclick = () => { location.href = 'dev/speed.html'; }; // (round 13: dev/speed.html)
-// (round 14) The Graphics area says in words what is in force; "Back to standard settings" shows only when a test result is.
-export function graphicsWords() {
-  const t = tuned(), set = t.fromTest;
-  const facts = `sharpness ${t.pr || 1.5}, head-down blur ${t.blur ? 'on' : 'off'}, glow ${t.glow ? 'on' : 'off'}, soft shadow ${t.soft ? 'on' : 'off'}`;
-  return { set, text: (set ? `Set by the speed test${t.at ? ' on ' + t.at : ''}` : 'Standard settings') + ': ' + facts };
-}
+// "Back to standard" shows only while tuned settings are in force.
+export function graphicsWords() { return graphicsState(tuned()); }
 if ($('#gfxReset')) $('#gfxReset').onclick = () => { delete P.settings.tuned; save(); applyGraphics(); showSpeed(); };
 // (called as the menu opens: the controls show what is set)
 export function showSpeed() {
   const w = graphicsWords();
   if ($('#gfxNow')) $('#gfxNow').textContent = w.text;
+  if ($('#gfxFacts')) $('#gfxFacts').textContent = w.facts;
   if ($('#gfxResetRow')) $('#gfxResetRow').style.display = w.set ? '' : 'none';
   if ($('#recChk')) $('#recChk').checked = !!P.settings.recordSpeed;
   if (box) { box.hidden = true; $('#recCopy').hidden = true; $('#recCopy').textContent = 'Copy'; }

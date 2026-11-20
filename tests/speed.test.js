@@ -126,11 +126,12 @@ test('the game reaches the save only through js/storage.js', () => {
 });
 
 test('one standard look everywhere; a test result wins only with real values; the menu says what is in force', () => {
-  const sp = code('js/ui/speed.js');
+  const sp = code('js/ui/speed.js'), gr = code('js/ui/graphics.js');
   assert.match(sp, /export const graphics = \(\) => 'smooth';/, 'no Smooth or Pretty choice: a saved settings.graphics is ignored');
-  assert.match(sp, /export const STANDARD = \{ blur: true, glow: true, soft: true, pr: 0 \};/);
-  const src = sp.match(/export const tuned = \(\) => \{[\s\S]*?return o; \};/)[0].replace('export ', '');
-  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', 'TUNED_VERSION', src + 'return tuned();')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 }, 2);
+  assert.match(gr, /export const STANDARD = \{ blur: true, glow: true, soft: true, pr: 0 \};/);
+  assert.match(sp, /export const tunedFrom = settings => tunedPure\(settings, SFX_MODES\);\s*export const tuned = \(\) => tunedFrom\(P\.settings\);/, 'the game reads its own save through the pure reader, with the real list of sound ways');
+  const src = gr.match(/export const tunedFrom = \(settings, sfxModes = SFX_MODES\) => \{[\s\S]*?return o; \};/)[0].replace('export ', '');
+  const fn = P => new Function('P', 'SFX_MODES', 'STANDARD', 'TUNED_VERSION', src + 'return tunedFrom(P.settings);')(P, ['one', 'pool', 'later', 'pool+later'], { blur: true, glow: true, soft: true, pr: 0 }, 2);
   const std = { blur: true, glow: true, soft: true, pr: 0, fromTest: false };
   assert.deepEqual(fn({ settings: {} }), std, 'the standard');
   assert.deepEqual(fn({ settings: { graphics: 'pretty' } }), std, 'an old Pretty is ignored');
@@ -138,15 +139,15 @@ test('one standard look everywhere; a test result wins only with real values; th
   assert.deepEqual(fn({ settings: { tuned: { tv: 1, blur: false, pr: 2 } } }), std, 'another version is ignored');
   assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: 'no', glow: 1, soft: 'yes', pr: '3', sfx: 'fast' } } }), std, 'every value invalid: the standard, and the menu says so');
   assert.deepEqual(fn({ settings: { tuned: { tv: 2, blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18' } } }), { blur: false, glow: false, soft: true, pr: 2, sfx: 'pool', at: '2026-11-18', fromTest: true });
-  assert.match(sp, /const t = tuned\(\), set = t\.fromTest;/, 'the menu calls it a test result only when one is in force');
+  assert.match(gr, /const set = !!t\.fromTest/, 'the menu calls it tuned only when a test result is in force');
   assert.match(code('dev/speed.js'), /writeTuned\(\{ tv: G\.TUNED_VERSION,/, 'the test stamps its results');
   const html = read('index.html');
   assert.ok(!html.includes('gfxSel') && !/>Pretty</.test(html), 'no Smooth / Pretty row');
-  assert.match(html, /<small id="gfxNow">/); assert.match(html, /id="gfxResetRow"/); assert.match(html, /Run the speed test<small>About 100 seconds, some of it with sound/);
+  assert.match(html, /<b id="gfxNow">/); assert.match(html, /id="gfxResetRow"/); assert.match(html, /Run the speed test<small>About 100 seconds, some of it with sound/);
   assert.match(sp, /if \(\$\('#gfxResetRow'\)\) \$\('#gfxResetRow'\)\.style\.display = w\.set \? '' : 'none';/, 'the reset row shows only with a test result');
   const page = code('dev/speed.js');
-  assert.match(page, /\$\('#stMsg'\)\.textContent = `Green: as good as the standard runs\. \$\{applyBest\(b\)\}/, 'the test uses what it found, by itself');
-  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to standard settings</, 'and a way back');
+  assert.match(page, /\$\('#stUse'\)\.onclick = \(\) => \{ \$\('#stMsg'\)\.textContent = applyBest\(best\);/, 'the test applies what it found only when asked (v93)');
+  assert.match(read('dev/speed.html'), /id="stNormal"[^>]*>Back to standard</, 'and a way back');
   assert.ok(!read('dev/speed.html').includes('stBest'), 'no separate best-settings button');
 });
 
@@ -167,7 +168,7 @@ test('effects start in the way the speed test found best; two players for the fr
 });
 
 test('the modules this work touches parse', () => {
-  for (const f of ['js/sound.js', 'js/ui/speed.js', 'js/ui/hud.js', 'js/ui/results.js', 'js/world.js', 'js/main.js', 'js/storage.js', 'dev/speed.js']) {
+  for (const f of ['js/sound.js', 'js/ui/speed.js', 'js/ui/graphics.js', 'js/ui/hud.js', 'js/ui/results.js', 'js/world.js', 'js/main.js', 'js/storage.js', 'dev/speed.js']) {
     const r = spawnSync(process.execPath, ['--check', join(root, f)], { encoding: 'utf8' });
     assert.equal(r.status, 0, f + ': ' + r.stderr);
   }

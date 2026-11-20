@@ -29,6 +29,13 @@ export const SKILL_TIP = 'Fake at him, then go to the space!'; // a lesson's car
 export const SAW = 'He saw it!'; // the result's words after the move to the wrong side (outcomes.js emit 'read'), said in a match
 export const SKILL_LESSON = 'take-him-on'; // (v76 SL) the one lesson whose rounds and demo offer the skill moment (offerAllowed); matches offer it once it is open
 export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
+// (v93) Each of the two buttons also says its move in words, large, under its picture ("Stepover", "Scissors"; flair.js
+// MOVE_NAME). Written only when the name changes (an offer sets both once). No page in the headless tests: nothing to write.
+const nameEls = [];
+export function nameButtons(alts) {
+  if (typeof document === 'undefined') return;
+  SKILL_IDS.forEach((id, i) => { const el = nameEls[i] ||= document.querySelector(`#${id} .nm`), t = MOVE_NAME[alts[i]?.k] || ''; if (el && el.textContent !== t) el.textContent = t; });
+}
 
 const ANY_NEAR = 1.6;         // (v76 SL) a plain turn (sim.js turnAhead 'any') is offered only with the defender this far off or more (m)
 const OFFER_MIN = 1.6, GONE = 2.7, RUN_END = 1.5; // (v76 SL) the least real seconds an offer shows (runLeft); m: a defender this near along his way withdraws a run-at offer (sim.js offerGone: LATE + a touch, 2.6 m, and a little to spare)
@@ -146,8 +153,9 @@ export const skill = {
     const n = this.skSeen ||= {};
     // (review) Each session starts the rotation at its own place (from Math.random, so a test's seeded random keeps it the same).
     if (!this.skStart) { this.skStart = 1 + Math.floor(Math.random() * 97); for (const [i, m] of [...RUN_MOVES, ...TURN_MOVES].entries()) n[m] ??= ((i * 37 + this.skStart * 11) % 97) / 1000; } for (const m of alts) n[m.k] = (n[m.k] || 0) + 1;
-    this.hud.skill(alts.map(m => ({ k: m.k, dir: m.dir })), 1, scene); this.sfx('offer');
-    if (demo) { this.handAt = SKILL_IDS[alts.findIndex(m => m.good)]; this.hud.caption(EXPLAIN.replace('!', '! ✨').replace(/!$/, '! 👆')); this.say(EXPLAIN); this.skTold = true; }
+    this.hud.skill(alts.map(m => ({ k: m.k, dir: m.dir })), 1, scene); nameButtons(alts); this.sfx('offer');
+    // (v93) The demo's caption has no emoji: its words carry a heavy dark outline (css #caption), which WebKit also draws round colour emoji (a likely "busted emoji" on the phone).
+    if (demo) { this.handAt = SKILL_IDS[alts.findIndex(m => m.good)]; this.hud.caption(EXPLAIN); this.say(EXPLAIN); this.skTold = true; }
     else if (!this.skTold) { this.skTold = true; this.say(EXPLAIN); } // (the first time in a session it is said once)
   },
   // One of the two buttons (0: left, 1: right; none: the better one). The move is armed: it starts by itself at the

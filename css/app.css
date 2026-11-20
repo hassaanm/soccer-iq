@@ -265,7 +265,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--peach);color:var
 .shirts{position:relative;display:flex;align-items:center;justify-content:center;width:clamp(150px,23vw,210px);height:clamp(96px,22vh,150px)}
 .shirts .main{height:100%;aspect-ratio:1;filter:drop-shadow(0 8px 10px rgba(36,25,58,.3));animation:float 3s ease-in-out infinite;z-index:1}
 .shirts .side{position:absolute;height:55%;aspect-ratio:1;opacity:.45;filter:saturate(.7)}
-.shirts .side.l{left:-4px}.shirts .side.r{right:-4px}
+.shirts .side.l{left:-1px}.shirts .side.r{right:-1px}
 .shirts.flip-next .main{animation:inR .25s ease-out}.shirts.flip-prev .main{animation:inL .25s ease-out}
 @keyframes float{50%{transform:translateY(-4px)}}
 @keyframes inR{from{transform:translateX(30px) scale(.85);opacity:.3}}
@@ -795,9 +795,6 @@ html.edgeimg body.smooth:not(.blur):not(.v75look) #tunnel > img.edge{display:blo
 body.logon #hud:not(.hidden) ~ #logFlag{display:block}
 #logFlag.hit{opacity:1;background:#e5484d;box-shadow:0 0 0 3px #fff}
 #logFlag.hit::after{content:"flag " attr(data-n);position:absolute;right:46px;top:8px;white-space:nowrap;font-size:13px;line-height:1;padding:5px 9px;border-radius:999px;background:rgba(36,25,58,.82);color:#fff}
-#logBar{display:none;position:absolute;left:50%;bottom:calc(80px + var(--safe-b));transform:translateX(-50%);z-index:5;gap:6px;align-items:center}
-body.logon #logBar{display:flex}
-@media (max-width:720px){#logBar{bottom:calc(76px + var(--safe-b))}#logBar .btn-sm{font-size:12px;padding:4px 9px}}
 #logSheet{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;gap:8px;padding:12px calc(12px + var(--safe-r)) 12px calc(12px + var(--safe-l));background:rgba(20,16,32,.95);color:#fff}
 #logSheet.hidden{display:none}
 #logSheet p{margin:0;font-size:14px}
@@ -851,11 +848,6 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
    finger is held the world is slow: a faint cool tint and two sliding chevrons at the top (drag to look). Friends he saw
    who are off screen: chips at the edge (gold when he has the ball: a tap passes). All on
    the HUD's layer; nothing over the picture changes but transform and opacity. */
-.modepick{display:flex;gap:6px}
-.modepick .btn{width:48px;height:44px;padding:0;border-radius:11px;display:grid;place-items:center;border:2.5px solid transparent;box-shadow:0 3px 0 rgba(36,25,58,.25)}
-.modepick .btn svg{width:30px;height:23px;display:block}
-.modepick .btn.on{border-color:var(--gold);background:#fff6d6;box-shadow:0 3px 0 var(--gold-e)}
-.modepick .btn:not(.on){opacity:.72}
 #fastHud{display:none}
 #fastHud.on{display:block}
 #hud[data-mode=fast] #dots{display:none}
@@ -1089,3 +1081,36 @@ html.hudimg body:not(.v75look) #banner.goal.lit > img.burst{opacity:1;animation-
 html.hudimg body:not(.v75look) #flash{background:none;will-change:opacity}
 html.hudimg body:not(.v75look) #flash > img.glow{display:block;position:absolute;inset:0;width:100%;height:100%}
 @media (prefers-reduced-motion:reduce){#banner > img.burst{animation:none!important}#flash.go2{animation:none}}
+/* ===== v93 UI worker ===== */
+/* The mode switch under the team-size chip: ONE toggle, in the look of the Clubs / Countries toggles (grey = Classic, dark =
+   Live), its words say which. A tap switches. */
+.modetoggle{position:relative;border:0;border-radius:999px;padding:7px 12px;white-space:nowrap;font:600 13px/1.1 var(--font);background:rgba(36,25,58,.14);color:var(--ink-soft);cursor:pointer;box-shadow:0 2px 0 rgba(36,25,58,.18);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.modetoggle b{font-weight:700;color:var(--ink)}
+.modetoggle::after{content:"";position:absolute;inset:-8px -6px}
+.modetoggle.on{background:var(--ink);color:#fff;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.modetoggle.on b{color:var(--gold)}
+/* The play log on the home screen (only while "Record play" is on): a small round button at the left edge, vertically
+   centred, clear of every other control. A tap opens a small panel beside it: Copy log, Clear log, the log's size. The
+   panel sits on a see-through sheet over the home screen, so a tap anywhere else closes it and presses nothing. */
+#logTab{display:none;position:absolute;z-index:5;left:calc(8px + var(--safe-l));top:50%;transform:translateY(-50%);width:44px;height:44px;padding:0;border:0;border-radius:50%;place-items:center;background:var(--cream);color:var(--ink);box-shadow:0 3px 0 rgba(36,25,58,.3),0 4px 10px rgba(0,0,0,.25);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+body.logon #logTab{display:grid}
+#logTab[aria-expanded=true]{background:var(--gold);color:var(--ink)}
+#logPanel{position:absolute;inset:0;z-index:7;background:rgba(20,16,32,.35)}
+#logPanel.hidden{display:none}
+#logPanel .lp{position:absolute;left:calc(60px + var(--safe-l));top:50%;transform:translateY(-50%);width:176px;display:grid;gap:8px;padding:10px;border-radius:16px;background:var(--cream,#fffaf0);box-shadow:0 6px 0 rgba(36,25,58,.25)}
+#logPanel .btn{width:100%;min-height:52px;padding:8px 10px;font-size:18px;line-height:1.1}
+#logPanel small{text-align:center;font-size:13px;font-weight:600;color:var(--ink-soft)}
+/* The Slow game's skill buttons (game/skill.js): each says its move in words under its picture. The buttons sit a little
+   higher so the words fit under them. The words are part of the button (a tap on them is a tap on it). */
+.skillPick{bottom:calc(66px + var(--safe-b))}
+.skillPick .nm{position:absolute;left:50%;top:100%;margin-top:16px;transform:translateX(-50%);width:max-content;max-width:126px;padding:3px 7px 4px;border-radius:14px;background:var(--cream);color:var(--ink);font:700 18px/1.08 var(--font);letter-spacing:0;text-align:center;text-shadow:none;box-shadow:0 0 0 2px #fff,0 3px 0 rgba(36,25,58,.28);pointer-events:none}
+.skillPick .nm:empty{display:none}
+/* The mini games chooser from the first tap until the game takes over (js/mini/starter.js): the tile he tapped is lit, the
+   others dim, and nothing on the sheet answers. */
+#miniSheet.starting .tile{pointer-events:none}
+#miniSheet.starting .tile:not(.picked){opacity:.45}
+#miniSheet .tile.picked{box-shadow:0 0 0 4px var(--gold),0 5px 0 var(--gold-e)}
+#miniSheet.starting #miniClose{opacity:.4}
+#miniSheet .tile.picked{animation:chosenPulse .7s ease-in-out infinite alternate}
+@keyframes chosenPulse{to{transform:scale(1.04)}}
+@media (prefers-reduced-motion:reduce){#miniSheet .tile.picked{animation:none}}

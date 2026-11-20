@@ -9,6 +9,7 @@ import { CUPS } from '../cups.js';
 import { nextSkill, level, isOpen, graduated, playOpen, matchOpen } from '../progress.js';
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 import { lessonPic } from './pics.js';
+import { modeOf, modeName as modeNameOf, nextMode } from './mode.js';
 
 // ---------- team size ----------
 // The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
@@ -73,7 +74,7 @@ export function renderPickers(flip) {
     if (flip?.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); replay(sh, flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));
-  renderSize(); renderLessons();
+  renderSize(); renderLessons(); renderMode(); // (the mode too: a reset or a changed save shows)
 }
 const pickTeam = (side, id, dir) => { P[side] = id; save(); renderPickers({ side, dir }); };
 const cycle = (side, dir) => pickTeam(side, neighbor(P[side], dir, otherSide(side)).id, dir);
@@ -135,10 +136,15 @@ function renderAlbum() {
 $('#albumBtn').onclick = () => { renderAlbum(); $('#albumSheet').classList.remove('hidden'); };
 wireSheet('#albumSheet', '#albumClose');
 
-// ---------- how a match plays (v84) ----------
-// Under the team-size chip: Slow (a tortoise: play stops at each choice) or Fast (a hare: real time, js/fast/).
-// Kept in the settings (P.settings.mode); Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
-const modeBtns = $$('#modePick button');
-function renderMode() { const m = P.settings.mode === 'fast' ? 'fast' : 'slow'; for (const b of modeBtns) { b.classList.toggle('on', b.dataset.mode === m); b.setAttribute('aria-pressed', b.dataset.mode === m); } }
-for (const b of modeBtns) b.onclick = () => { P.settings.mode = b.dataset.mode; save(); renderMode(); };
+// ---------- how a match plays (v84, v93) ----------
+// ONE toggle under the team-size chip, in the look of the Clubs / Countries toggles: "Mode: Classic" (Slow: play stops at each
+// choice) or "Mode: Live" (Fast: real time, js/fast/). A tap switches. Kept in the settings (P.settings.mode: 'slow' or 'fast');
+// Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
+const modeBtn = $('#modePick');
+export function renderMode() {
+  const live = modeOf(P.settings) === 'fast', name = modeNameOf(P.settings);
+  modeBtn.classList.toggle('on', live); modeBtn.setAttribute('aria-checked', live); modeBtn.setAttribute('aria-label', `Mode: ${name}`);
+  modeBtn.querySelector('b').textContent = name;
+}
+modeBtn.onclick = () => { P.settings.mode = nextMode(P.settings); save(); renderMode(); };
 renderMode();
