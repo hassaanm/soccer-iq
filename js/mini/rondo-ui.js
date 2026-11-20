@@ -92,7 +92,8 @@ function move(e) {
 }
 function up(e, cancel = false) {
   const f = finger; if (!f || e.pointerId !== f.id) return; finger = null;
-  if (f.held) { if (g) g.holding = false; dom.el.classList.remove('slowing'); holdT = real + VIEW_BACK; sfx('up'); return; } // (play comes back to speed; the view stays where he left it a moment, then eases back)
+  const acts = R.pressActs((performance.now() - f.t0) / 1000, f.moved); // (a slow tap, the finger still, up to R.SLOW_TAP s: it acts too, as in Fast mode: v89 integration)
+  if (f.held) { if (g) g.holding = false; dom.el.classList.remove('slowing'); holdT = real + (acts ? 0 : VIEW_BACK); sfx('up'); if (!acts) return; } // (play comes back to speed; after a look round the view stays where he left it a moment, then eases back)
   if (cancel || f.moved || held.on || !stage.on) return;
   const r = canvas.getBoundingClientRect(); tap(e.clientX - r.left, e.clientY - r.top);
 }
