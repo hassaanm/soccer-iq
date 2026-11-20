@@ -1074,3 +1074,8 @@ body.logon #logTab{display:grid}
 #logPanel .lp{position:absolute;left:calc(60px + var(--safe-l));top:50%;transform:translateY(-50%);width:176px;display:grid;gap:8px;padding:10px;border-radius:16px;background:var(--cream,#fffaf0);box-shadow:0 6px 0 rgba(36,25,58,.25)}
 #logPanel .btn{width:100%;min-height:52px;padding:8px 10px;font-size:18px;line-height:1.1}
 #logPanel small{text-align:center;font-size:13px;font-weight:600;color:var(--ink-soft)}
+/* The Slow game's skill buttons (game/skill.js): each says its move in words under its picture. The buttons sit a little
+   higher so the words fit under them. The words are part of the button (a tap on them is a tap on it). */
+.skillPick{bottom:calc(66px + var(--safe-b))}
+.skillPick .nm{position:absolute;left:50%;top:100%;margin-top:16px;transform:translateX(-50%);width:max-content;max-width:126px;padding:3px 7px 4px;border-radius:14px;background:var(--cream);color:var(--ink);font:700 18px/1.08 var(--font);letter-spacing:0;text-align:center;text-shadow:none;box-shadow:0 0 0 2px #fff,0 3px 0 rgba(36,25,58,.28);pointer-events:none}
+.skillPick .nm:empty{display:none}
