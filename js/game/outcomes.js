@@ -9,7 +9,7 @@ import { placedAim, rightFoot, shotResult, zone, zoneGrade, bestZone, stream, DU
 
 const GUESS_PLACED = .1; // (see guessWrong)
 import { seeded, OUR_SAVE } from './keeper.js';
-import { kindOf, ACC, SPEED, goAt, PACE } from '../window.js';
+import { kindOf, ACC, SPEED, goAt, hermAt, PACE } from '../window.js';
 
 const TIMEOUT_TITLE = 'He got there!'; // (v64: the defender got to the ball before he chose; rounds.js TIMEOUT)
 const FINISH_RUN = 4.65; // (round 5) his run at goal with the ball: a child's sprint with a ball at his feet, no faster than a defender chasing him
@@ -74,6 +74,7 @@ export const outcomes = {
   // nothing steers him). After that he turns and chases (team.js defend). a.tk: when he went in.
   *challenge(o, a) {
     const s = this.sim, b = s.ball, dx = b.x - o.x, dy = b.y - o.y, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    if (o.track) s.untrack(o.id); // (v76 SL: one on a planned way, the step-up's: off it)
     o.tk = s.time; o.beat = s.time + 1; o.mom = null; this.scripted.add(o.id);
     s.go(o.id, clamp(b.x + ux * 1.4, .5, L - .5), clamp(b.y + uy * 1.4, .5, W - .5), 5.2);
     // (on the way he is going, and a step to the side away from the one coming in: his body between him and the ball)
@@ -126,6 +127,15 @@ export const outcomes = {
     const k = Math.min(bf, STEP_UP.at[1], dl - STEP_UP.run), b = s.ball, duel = { id: o.id, held, ux, uy, side: sd, hx: b.x + ux * k - uy * sd * STEP_UP.side, hy: b.y + uy * k + ux * sd * STEP_UP.side, t0: s.time };
     s.go(a.id, a.tx, a.ty, STEP_UP.jog);
     for (const id of held) { const c = s.a(id); this.scripted.add(id); s.go(id, clamp(c.x - ux * 2, .5, L - .5), clamp(c.y - uy * 2, .5, W - .5), 2); } this.chaser = null;
+    // (v76 SL, review) He goes on a planned way (sim.js track, `watch`: he faces the ball all the way): from the velocity he
+    // has, round to his place, then giving ground at STEP_UP.back m/s, his eyes on the dribbler, as a defender does (before,
+    // steered a centimetre or two at a time, he walked toward his own goal with his back to him: pro/motion.js backpedals
+    // only a player sent farther than that).
+    // (He sets off from the velocity he has, less any of it toward the dribbler: he does not come on at him first. His place
+    // gives ground from the start, so he is there, already backing off, as the curve ends.)
+    { const lv = o.lv || [0, 0], va = Math.min(0, lv[0] * ux + lv[1] * uy), V0 = [lv[0] - ux * va, lv[1] - uy * va], V1 = [ux * STEP_UP.back, uy * STEP_UP.back], T = Math.max(.6, Math.hypot(duel.hx - o.x, duel.hy - o.y) / STEP_UP.v * 1.5);
+      const E = [clamp(duel.hx + V1[0] * T, .5, L - .5), clamp(duel.hy + V1[1] * T, .5, W - .5)], P = { S: [o.x, o.y], V0, E, V1, T };
+      o.mom = null; o.track = { at: t => hermAt(P, t), t0: s.time, watch: true }; duel.T = P.T; }
     this.scripted.add(o.id); this.duel = o.id; this.roles = null; this.wasBeaten = null; this.beatenId = null; // (the others' jobs are picked again: he is the one on the ball, and nobody chases, team.js defend)
     return duel;
   },
@@ -134,12 +144,13 @@ export const outcomes = {
   // (game/skill.js skillBlock), he is no longer steered from here.
   duelStep(duel, a) {
     const s = this.sim, o = s.a(duel.id), b = s.ball; if (!o || duel.off) return;
-    if (o.beat > s.time || this.sk?.blockOn) { duel.off = true; o.duelV = null; if (!this.sk?.blockOn) s.go(a.id, a.tx, a.ty, FINISH_RUN); if (this.sk?.blockOn) return;
+    if (o.beat > s.time || this.sk?.blockOn) { duel.off = true; o.duelV = null; s.untrack(o.id); this.duel = null; // (beaten, or reading the other move: the step-up is over)
+      if (!this.sk?.blockOn) s.go(a.id, a.tx, a.ty, FINISH_RUN); if (this.sk?.blockOn) return;
       const fk = this.sk?.pick?.fake || duel.side, nx = -duel.uy * fk, ny = duel.ux * fk; s.go(o.id, clamp(o.x + nx * 1.2 - duel.ux * .4, .5, L - .5), clamp(o.y + ny * 1.2 - duel.uy * .4, .5, W - .5), 3); return; } // (he buys it: a step the fake's way)
-    const k = STEP_UP.back * (s.time - duel.t0), px = duel.hx + duel.ux * k, py = duel.hy + duel.uy * k; o.duelV = Math.hypot(px - o.x, py - o.y) < .6 ? [duel.ux * STEP_UP.back, duel.uy * STEP_UP.back] : null; // (judged as he goes: sim.js moveEvents)
-    s.go(o.id, clamp(px, .5, L - .5), clamp(py, .5, W - .5), Math.hypot(px - o.x, py - o.y) > 1.5 ? STEP_UP.v : 3.2);
+    if (!o.track) { duel.off = true; this.duel = null; return; } // (taken off his way by something else: the play's rule has him now)
+    o.duelV = s.time - duel.t0 >= duel.T ? [duel.ux * STEP_UP.back, duel.uy * STEP_UP.back] : null; // (judged as he goes: sim.js moveEvents)
   },
-  duelEnd(duel) { const o = this.sim.a(duel.id); if (o) o.duelV = null; if (!duel.off || !this.sk?.blockOn) this.scripted.delete(duel.id); for (const id of duel.held) this.scripted.delete(id); this.duel = null; },
+  duelEnd(duel) { const o = this.sim.a(duel.id); if (o) { o.duelV = null; if (!duel.off) this.sim.untrack(o.id); } if (!duel.off || !this.sk?.blockOn) this.scripted.delete(duel.id); for (const id of duel.held) this.scripted.delete(id); this.duel = null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {

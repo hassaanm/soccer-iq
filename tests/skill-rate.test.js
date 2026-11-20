@@ -14,6 +14,7 @@ import { TEAM } from '../js/geom.js';
 
 const size = TEAM.size;
 const WANT = { '3v3': .55, '4v4': .6, '5v5': 1 }; // (offers a 3-goal match, at the least, over these seeds; before v76: 0.33, 0.42, 0.68)
+const away = []; let duelF = 0; // (frames of a step-up's offer with the defender turned more than 110° from him)
 async function matchOffers(seed) {
   let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
   let y = seed * 31337; const rnd = () => (y = (y * 48271) % 2147483647) / 2147483647;
@@ -21,6 +22,7 @@ async function matchOffers(seed) {
   g.match(PATH.map(k => k.id), [], 3, 'free').then(() => { done = true; });
   for (let k = 0; k < 30 * 900 && !done; k++) { T += 1 / 30; g.tick(1 / 30, T);
     if (g.sk && g.sk !== cur) { cur = g.sk; at.push(g.realTime); cur.r0 = g.realTime; }
+    if (g.duel && (g.sk?.phase === 'offer' || g.sk?.phase === 'armed')) { const o = g.sim.a(g.duel), h = g.sim.a('hero'), dx = h.x - o.x, dy = h.y - o.y, d = Math.hypot(dx, dy) || 1; duelF++; if ((o.face[0] * dx + o.face[1] * dy) / d < -.34) away.push(`seed ${seed} t ${g.sim.time.toFixed(2)}`); } // (review: he faces the dribbler as he gives ground)
     if (g.sk?.phase === 'offer' && g.realTime - g.sk.r0 > 1) g.skillTap(g.sk.alts.findIndex(a => a.good));
     if (g.canAct && g._choose) { const sc = g.sc; if (g._choose !== last) { last = g._choose; delay = 1 + rnd() * 4; openT = T; }
       let o = null; if (sc.kind === 'tackle') o = g.tackleState() === 'good' ? sc.best : null;
@@ -33,6 +35,7 @@ test('the skill moment comes about once a match, never more than once in 20 s, a
   const real = Math.random; let n = 0; const N = 12;
   try { for (let seed = 1; seed <= N; seed++) { const at = await matchOffers(seed); n += at.length; for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 20, `seed ${seed}: offers ${(at[i] - at[i - 1]).toFixed(1)} s apart`); } }
   finally { Math.random = real; }
+  assert.ok(duelF > 0, 'step-ups were offered'); assert.deepEqual(away.slice(0, 5), [], `the one who steps up keeps facing him (${away.length} of ${duelF} frames turned away)`);
   assert.ok(n / N >= WANT[size], `${(n / N).toFixed(2)} offers a match at ${size} (at least ${WANT[size]} wanted)`);
   let x = 777; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647; let plays = 0, offered = 0;
   try {
