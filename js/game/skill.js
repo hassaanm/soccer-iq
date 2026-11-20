@@ -31,7 +31,7 @@ export const SKILL_LESSON = 'take-him-on'; // (v76 SL) the one lesson whose roun
 export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
 
 const ANY_NEAR = 1.6;         // (v76 SL) a plain turn (sim.js turnAhead 'any') is offered only with the defender this far off or more (m)
-const OFFER_MIN = 1.6, GONE = 2.7; // (v76 SL) the least real seconds an offer shows (runLeft); m: a defender this near along his way withdraws a run-at offer (sim.js offerGone: LATE + a touch, 2.6 m, and a little to spare)
+const OFFER_MIN = 1.6, GONE = 2.7, RUN_END = 1.5; // (v76 SL) the least real seconds an offer shows (runLeft); m: a defender this near along his way withdraws a run-at offer (sim.js offerGone: LATE + a touch, 2.6 m, and a little to spare)
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const pick = (x, y) => (Math.floor(Math.abs(x * 7.31 + y * 13.7) * 10) & 1); // which of the two moves is the better one: from where he is (the same in a replay)
@@ -78,7 +78,8 @@ export const skill = {
   runLeft(o) {
     const s = this.sim, h = s.a('hero'), t = s.a(o.tgt), b = s.ball, last = Math.max(.05, (o.last - touchAt(h)) * 1.4 / Math.max(1.5, h.sp)); if (!t || !h) return last;
     const ch = Math.cos(b.h), sh = Math.sin(b.h), f = (t.x - h.x) * ch + (t.y - h.y) * sh, v = t.duelV || t.lv || [0, 0], close = Math.max(.5, Math.max(1.5, h.sp) - (v[0] * ch + v[1] * sh));
-    return Math.max(.05, Math.min(last, (f - GONE) / close));
+    const run = (Math.hypot(h.tx - h.x, h.ty - h.y) - RUN_END) / Math.max(1.5, h.sp); // (and before his run ends: a play may stop him a little short of where it sends him)
+    return Math.max(.05, Math.min(last, (f - GONE) / close, run));
   },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).
   skillPace(dt) {
@@ -140,7 +141,7 @@ export const skill = {
     // run's bend away from him, or the crowded side), well over when he stands to one side, a little when nearly ahead.
     const gm = alts.find(m => m.good), toward = gm.dir === 'l' ? 1 : -1, wide = o.kind === 'turn' || o.why === 'defender' || Math.abs(o.fl || 0) > .35;
     const scene = { dx: toward * (wide ? .85 : .35), crowd: o.why === 'crowd' ? toward : 0, color: this.them?.kit?.colors?.[0] || null };
-    this.sk = { kind: o.kind, scene, alts, phase: 'offer', t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
+    this.sk = { kind: o.kind, scene, alts, phase: 'offer', r0: this.realTime || 0, t0: this.clock, g0: s.time, n0: touchAt(h), last: o.last, tgt: o.tgt, pace, T };
     this.skDone = true; this.skLast = this.clock;
     const n = this.skSeen ||= {};
     // (review) Each session starts the rotation at its own place (from Math.random, so a test's seeded random keeps it the same).
@@ -152,7 +153,7 @@ export const skill = {
   // One of the two buttons (0: left, 1: right; none: the better one). The move is armed: it starts by itself at the
   // right moment. A tap after the offer has closed, or a second tap, does nothing.
   skillTap(i = null) {
-    const sk = this.sk; if (!sk || sk.phase !== 'offer') return;
+    const sk = this.sk; if (!sk || sk.phase !== 'offer' || sk.dead) return;
     const m = sk.alts[i ?? sk.alts.findIndex(x => x.good)], h = this.sim.a('hero'); if (!m || !h) return;
     if (sk.kind === 'run') { if (!this.sim.take('hero', m.i)) return; } else { h.turnTap = m.k; h.turnBad = !m.good; }
     Object.assign(sk, { phase: 'armed', pick: m, tm: this.clock });
@@ -200,8 +201,12 @@ export const skill = {
     const sk = this.sk;
     if (sk?.phase === 'offer') {
       const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / this.holdG()) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));
-      if (sk.kind === 'run' ? !h?.offer : !h?.holdTurn || left <= 0) this.skillEnd();
-      else { this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50, sk.scene); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .12)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
+      const gone = sk.kind === 'run' ? !h?.offer : !h?.holdTurn || left <= 0, shown = (this.realTime || 0) - sk.r0;
+      // (v76 SL, review) Withdrawn by the play before it has shown OFFER_MIN s (rare: runLeft keeps such offers off): its
+      // buttons stay up until then, the ring running out, and a tap does nothing (sk.dead).
+      if (gone && shown < OFFER_MIN && !this.result && this.phase === 'outcome') { sk.dead ??= { left: sk.lastLeft ?? left, t: shown }; this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(clamp01(sk.dead.left * (OFFER_MIN - shown) / Math.max(.01, OFFER_MIN - sk.dead.t)) * 50) / 50, sk.scene); }
+      else if (gone) this.skillEnd();
+      else { sk.lastLeft = left; this.hud.skill(sk.alts.map(m => ({ k: m.k, dir: m.dir })), Math.round(left * 50) / 50, sk.scene); if (demo && (this.clock - sk.t0 > DEMO_TAP || left < .12)) { this.hud.caption(''); this.handTap = (this.handTap || 0) + 1; this.sfx('click'); this.skillTap(); } }
     } else if (sk?.phase === 'armed') {
       if (sk.kind === 'run') {
         if (h?.skill && h.skill.k === sk.pick.k) this.skillGo(h.skill.good !== false); // (the move has started)

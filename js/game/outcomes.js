@@ -183,7 +183,7 @@ export const outcomes = {
       if (dist(a, aim) < 8 && shotClear(s.ball, aim, opps)) { if (opps.some(o => !o.gk && dist(o, a) < 1.7)) { const o = this.onHim(a, 1.9); if (o) yield* this.challenge(o, a); blocked = true; } break; } // close (5–10 yards) with a clear look: shoot; (round 5) unless one of theirs is a step away: he would be on him before his foot came through, so he keeps it
       const fx = tx - a.x, fy = ty - a.y, fl = Math.hypot(fx, fy) || 1;
       if (opps.some(o => dist(o, a) < 1.7 && ((o.x - a.x) * fx + (o.y - a.y) * fy) / fl > .2)) { const o = this.onHim(a, 1.9); if (o) yield* this.challenge(o, a); blocked = true; break; } // defender in front (round 6: he goes in for it)
-      if (Math.hypot(fx, fy) < .3 || s.time - t0 > 4) { blocked = !shotClear(s.ball, aim, opps); break; }
+      if (Math.hypot(fx, fy) < .3 || s.time - t0 > (duel ? 6 : 4)) { blocked = !shotClear(s.ball, aim, opps); break; } // (v76 SL: a step-up slows his run: more time for it)
     }
     s.stop(id); this.spice(null); this.inFinish = false; if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; }
     if (duel) this.duelEnd(duel);

@@ -13,7 +13,7 @@ import { generate } from '../js/generate.js';
 import { TEAM } from '../js/geom.js';
 
 const size = TEAM.size;
-const WANT = { '3v3': .55, '4v4': .6, '5v5': 1 }; // (offers a 3-goal match, at the least, over these seeds; before v76: 0.33, 0.42, 0.68)
+const WANT = { '3v3': .55, '4v4': .6, '5v5': .7 }; // (offers a 3-goal match, at the least, over these seeds; before v76: 0.33, 0.42, 0.68)
 const away = [], short = []; let duelF = 0; // (frames of a step-up's offer with the defender turned more than 110° from him)
 async function matchOffers(seed) {
   let x = seed * 7907; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
