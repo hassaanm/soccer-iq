@@ -2,14 +2,16 @@
 // box (white lines, an orange cone at each corner) and the players in the 3D world, puts the game on the stage
 // (ui/goalie.js onStage: main.js runs and draws it, the pause holds it), takes his touches as Fast mode does (a tap
 // acts; a finger held down slows the world; moving it turns his head), and runs it with two lives (mini/run.js).
-//  - Keep the ball: the view from behind and above him, on the near side, looking into the box. A row of small dots
-//    along his side (where a tap takes him: "dots all across his line"); a tap on a friend he can see passes; friends
-//    whose line is open glow gold while he has the ball (as in Fast mode); a red ring warns of a defender about to
-//    take it; after a while with his line shut, the best place on his side pulses.
-//  - Win the ball: the view from behind and above him in the middle, turned to the ball. A tap moves him; the STEAL
-//    button (Fast mode's: it acts as the finger goes down) wins the ball while it glows.
-// The ring at his feet drains with the round's time. No slow motion by itself (the owner, 2026-11-19: "maybe this one
-// does not have a slow-down effect at all"), only while a finger is held.
+//  - Keep the ball: the view from behind and above him, on the near side, looking into the box. Five fixed spots on his
+//    side (v93, D2): a tap goes to the nearest one, the ball at his feet if he has it; a tap on a friend he can see
+//    passes; friends whose line is open glow gold while he has the ball (as in Fast mode); a red ring warns of a
+//    defender about to take it; a pass to a spot he is not on pulses there; after a while with his line shut, the
+//    best of his spots pulses.
+//  - Win the ball: the view from behind and above him in the middle, turned to the ball. Spots in front of each passer
+//    and in each passing lane (a new set each time he arrives); a tap goes to the nearest. STEAL (always bright, D3)
+//    puts a foot out: it wins a ball within his reach (the ball glows exactly then); a miss and he stumbles a moment.
+// The round and its seconds: a plain label at the top edge (v93: no ring at his feet). No slow motion by itself (the
+// owner, 2026-11-19: "maybe this one does not have a slow-down effect at all"), only while a finger is held.
 import * as THREE from 'three';
 import { P } from '../ui/store.js';
 import { hud, hudEl } from '../ui/hud.js';
@@ -30,6 +32,7 @@ import * as K from './rondo.js';
 import { startRun, runStep, endRun, runOff } from './run.js';
 
 const ID = { keep: 'rondoKeep', win: 'rondoWin' };
+const run0Level = () => 0; // (the picture before the first round: level 0's box)
 const TURN_MAX = 2.5, VIEW_BACK = 1, HINT_S = 3, SAY_HINT = 6, SAY_HINTS = 2, WARN_S = 1.6, TOP = 62;
 const plog = o => { try { game.plog?.('rondo', o); } catch { /* the log is never in the way */ } };
 
@@ -47,11 +50,12 @@ let dom = null, marks = null, box = null;
 function build() {
   if (dom) return;
   const el = document.createElement('div'); el.id = 'rondoHud';
-  el.innerHTML = '<button id="rSteal" class="btn btn-gold btn-round" type="button" aria-label="Steal"><b class="fWait" aria-hidden="true"></b><i>🦶</i><span>STEAL</span></button><div id="rSlow" aria-hidden="true"></div>';
+  el.innerHTML = '<button id="rSteal" class="btn btn-gold btn-round" type="button" aria-label="Steal"><i>🦶</i><span>STEAL</span></button><div id="rSlow" aria-hidden="true"></div><div id="rClock" aria-live="off"><span>Round 1</span><b>20</b></div>';
   hudEl.appendChild(el);
-  dom = { el, steal: el.querySelector('#rSteal') };
-  dom.steal.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !stage.on || held.on || !g) return; const r = g.steal(); if (r) { plog({ is: 'steal', res: r }); if (r === 'missed') sfx('tap'); } else if (g.sim.time < g.lungeT) { const b = dom.steal; b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); sfx('tap'); } });
-  marks = makeMarks(world); box = makeBox();
+  dom = { el, steal: el.querySelector('#rSteal'), clock: el.querySelector('#rClock'), clockN: el.querySelector('#rClock span'), clockS: el.querySelector('#rClock b'), n: null, sec: null };
+  // STEAL (D3): always bright, always pressable; it acts as the finger goes down. A press while he stumbles does nothing more.
+  dom.steal.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !stage.on || held.on || !g) return; const me = g.sim.a('hero'), d = me ? R.dist(me, g.sim.ball) : 0, r = g.steal(); plog({ is: 'steal', res: r || 'stumbling', d: +d.toFixed(2) }); if (r === 'missed') sfx('tap'); });
+  marks = makeMarks(world); box = makeBox(); spotM = makeSpots();
   canvas.addEventListener('pointerdown', down);
   addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', e => up(e, true));
   const lost = () => dropFinger(); addEventListener('blur', lost); addEventListener('pagehide', lost); document.addEventListener('visibilitychange', lost);
@@ -71,6 +75,25 @@ function makeBox() {
       [[b.x0, b.cy, Math.PI / 2], [b.x1, b.cy, Math.PI / 2], [b.cx, b.y0, 0], [b.cx, b.y1, 0]].forEach(([x, y, r], i) => { const m = lines[i]; m.position.set(x, y, .022); m.rotation.z = r; m.scale.x = b.size; });
       [[b.x0, b.y0], [b.x0, b.y1], [b.x1, b.y0], [b.x1, b.y1]].forEach(([x, y], i) => cones[i].position.set(x, y, .17));
     },
+  };
+}
+
+// His spots on the grass (D2): fixed marks, faint; the one he is going to, bright (with marks.js's go mark on it).
+let spotM = null;
+function makeSpots() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.lineWidth = 12; x.strokeStyle = 'rgba(255,255,255,.95)'; x.beginPath(); x.arc(64, 64, 44, 0, 7); x.stroke(); x.lineWidth = 7; x.strokeStyle = '#ffcf2e'; x.stroke();
+  x.fillStyle = 'rgba(255,255,255,.95)'; x.beginPath(); x.arc(64, 64, 9, 0, 7); x.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const geo = new THREE.PlaneGeometry(1, 1), ms = Array.from({ length: 9 }, () => { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, toneMapped: false })); m.renderOrder = 2; m.visible = false; world.scene.add(m); return m; });
+  let key = '';
+  return {
+    // list: the spots; lit: the one he is going to (or null). Set only when something changed (no work most frames).
+    set(list, lit) {
+      const k = list.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ') + (lit ? ` @${lit.x.toFixed(2)},${lit.y.toFixed(2)}` : ''); if (k === key) return; key = k;
+      ms.forEach((m, i) => { const p = list[i]; m.visible = !!p; if (!p) return; const on = !!lit && R.dist(p, lit) < .05; m.position.set(p.x, p.y, .04); m.scale.setScalar(on ? 1.15 : .95); m.material.opacity = on ? 1 : lit ? .4 : .7; });
+    },
+    hide() { key = ''; for (const m of ms) m.visible = false; },
   };
 }
 
@@ -100,7 +123,8 @@ function up(e, cancel = false) {
 function dropFinger() { const f = finger; if (!f) return; finger = null; if (f.held) { if (g) g.holding = false; dom?.el.classList.remove('slowing'); } }
 function resetTransient() { dropFinger(); holdYaw = null; holdT = 0; warnAt = null; if (g) g.holding = false; dom?.el.classList.remove('slowing'); lastAct = real; }
 const seen = (p, z) => { const q = world.project(p.x, p.y, z); return !!q && R.onScreen(q, world.width, world.height, 10); };
-// A tap: with the ball ('keep'), on a friend he can see, a pass; anywhere else on the grass, there.
+// A tap: with the ball ('keep'), on a friend he can see, a pass; else to the spot nearest the tap on the screen (within
+// SPOT_PX px, or near it on the grass: generous); a tap far from every spot does nothing.
 function tap(x, y) {
   if (!g || (g.phase !== 'play' && g.phase !== 'ready')) return;
   const s = g.sim, reach = Math.max(60, Math.min(world.width, world.height) * .16);
@@ -109,9 +133,17 @@ function tap(x, y) {
     for (const id of ['m1', 'm2', 'm3']) { const a = s.a(id); if (!a) continue; for (const z of [.9, 0]) { const q = world.project(a.x, a.y, z); if (!q || !R.onScreen(q, world.width, world.height)) continue; const d = Math.hypot(q[0] - x, q[1] - y) * .8; if (d < bd) { bd = d; best = id; } } }
     if (best && bd <= reach) { const open = g.openLine('hero', best, K.ME.pass, .2); if (g.passTo(best)) { lastAct = real; sfx(open ? 'star' : 'tap', open ? 1 : undefined); plog({ is: 'pass', to: best, open: open ? 1 : 0 }); } return; }
   }
-  const p = ground(x, y); if (!p) { sfx('tap'); return; }
   const c = g.owner(); if (g.mode === 'keep' && c && c !== 'hero' && !g.openLine(c, 'hero', g.D.fPass, g.D.fMargin)) shutTaps++; // (his taps while his line stays shut: the hint comes sooner)
-  const q = g.moveTo(p); if (q) { lastAct = real; plog({ is: 'move', x: +q.x.toFixed(1), y: +q.y.toFixed(1), ball: g.owner() === 'hero' ? 1 : 0 }); }
+  const spot = spotFor(x, y);
+  if (!spot) { plog({ is: 'miss' }); return; }
+  const q = g.goSpot(spot); if (q) { lastAct = real; plog({ is: 'move', x: +q.x.toFixed(1), y: +q.y.toFixed(1), ball: g.owner() === 'hero' ? 1 : 0 }); }
+}
+const SPOT_PX = 70;
+function spotFor(x, y) {
+  let best = null, bd = Math.max(SPOT_PX, Math.min(world.width, world.height) * .15);
+  for (const p of g.spots()) { const q = world.project(p.x, p.y, 0); if (!q) continue; const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = p; } }
+  if (best) return best;
+  const p = ground(x, y); return p ? K.spotAt(g.spots(), p, 1.6) : null;
 }
 // The point on the grass under a place on the screen (or null: the sky).
 const ray = { c: new THREE.Raycaster(), n: new THREE.Vector2(), p: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), h: new THREE.Vector3() };
@@ -142,32 +174,43 @@ function frame(dt) {
   // what shows on the grass
   const play = g.phase === 'play' || g.phase === 'ready', has = g.owner() === 'hero';
   box.set(bx);
-  let spots = [];
-  if (play && g.mode === 'keep') spots = K.sideDots(bx, 'near', 9).map(p => ({ ...p, ring: 2 }));
-  else if (play) spots = R.spots(h, [], PITCH.L, PITCH.W).filter(p => p.ring === 1 && K.isIn(bx, p, -.2));
+  if (play) spotM.set(g.spots(), g.goAt); else spotM.hide();
   const ui = g.ui;
   for (const id of ['m1', 'm2', 'm3']) ui.glow[id] = g.mode === 'keep' && has && g.phase === 'play' && g.openLine('hero', id, K.ME.pass, .2) ? .55 : 0; // (gold: a pass that will get there, with room to spare)
   if (warnAt && (real > warnT || !has)) warnAt = null;
-  if (g.goAt && (R.dist(h, g.goAt) < .5 || !play)) g.goAt = null;
   // the hint ('keep'): his line shut, a friend on the ball, and he has done nothing for HINT_S s, or (v89 integration) has
   // tapped twice with his line still shut while a defender is on that friend: the best place on his side pulses
   let hinted = null; const c0 = g.owner(), shut = g.mode === 'keep' && c0 && c0 !== 'hero' && !g.openLine(c0, 'hero', g.D.fPass, g.D.fMargin);
   if (!shut || c0 !== shutFor) { shutTaps = 0; shutFor = shut ? c0 : null; }
   const pressed = shut && g.takers().some(o => R.dist(o, s.a(c0)) < 2.6);
   if (g.mode === 'keep' && g.phase === 'play' && shut && ((!g.goAt && real - lastAct > HINT_S) || (shutTaps >= 2 && pressed))) {
-    const p = K.bestSpot(bx, 'near', s.a(c0), g.watch(), { speed: g.D.fPass, run: g.D.cutRun, react: g.D.cutReact, margin: .3 });
+    const p = bestOfSpots(g, s.a(c0));
     if (p && R.dist(p, h) > 1) hinted = [p];
     if (hinted && real - lastAct > SAY_HINT && hintSaid < SAY_HINTS && real - idleSay > 12) { hintSaid++; idleSay = real; say(K.RONDO_SAID.move); plog({ is: 'hint' }); }
   }
+  if (!hinted && g.ui.landing && R.dist(g.ui.landing, h) > .8) hinted = [g.ui.landing]; // (a pass to a spot he is not on: there it goes, go and meet it)
   lastHint = hinted?.[0] || null;
-  marks.draw(spots, [], null, has, ui.clock, warnAt && s.a(warnAt), play, g.goAt, hinted);
+  const danger = warnAt ? s.a(warnAt) : g.stumbling() ? h : null; // (the red ring: a defender about to take it; or on him while he stumbles after a miss)
+  marks.draw([], [], null, has, ui.clock, danger, play, g.goAt, hinted);
   stage.ui = ui;
   const st = g.mode === 'win' && play; if (st !== dom.stealOn) { dom.stealOn = st; dom.steal.classList.toggle('show', st); }
-  // STEAL's three looks, as in Fast mode (v89 integration): wait (dim, still), now (gold, pulsing: the ball glows), spent
-  // after a miss (the wait look with a dark cover draining away while he is slow).
-  if (st) { const t = g.sim.time, left = t < g.lungeT ? Math.min(1, (g.lungeT - t) / K.ME.lunge) : 0, look = left > 0 ? 'spent' : g.glowing() ? 'now' : 'wait', v = Math.ceil(left * 20) / 20;
-    if (look !== dom.look) { dom.look = look; dom.steal.classList.toggle('wait', look !== 'now'); dom.steal.classList.toggle('now', look === 'now'); dom.steal.classList.toggle('spent', look === 'spent'); }
-    if (v !== dom.spentV) { dom.spentV = v; dom.steal.querySelector('.fWait').style.transform = `scaleY(${v})`; } }
+  clockLabel();
+}
+// The round and its seconds (D5: a plain label for the grown-up), written only when they change.
+let roundN = 1;
+function clockLabel() {
+  const sec = g ? g.secsLeft() : null, on = sec != null;
+  if (on !== dom.clockOn) { dom.clockOn = on; dom.clock.classList.toggle('show', on); }
+  if (!on) return;
+  if (roundN !== dom.n) { dom.n = roundN; dom.clockN.textContent = `Round ${roundN}`; }
+  if (sec !== dom.sec) { dom.sec = sec; dom.clockS.textContent = String(sec); dom.clock.classList.toggle('low', sec <= 5); }
+}
+
+// The best of his spots for a pass from `from`: an open line, then the widest gap from the defenders.
+function bestOfSpots(g, from) {
+  let best = null, bs = -1e9; const w = g.watch();
+  for (const p of K.keepSpots(g.box)) { const open = K.lineOpen(from, p, g.D.fPass, w, g.D.cutRun, g.D.cutReact, .3), sc = (open ? 10 : 0) + Math.min(3, K.laneGap(from, p, w)) + Math.min(4, w.reduce((m, o) => Math.min(m, R.dist(o, p)), 99)) * .4; if (sc > bs) { bs = sc; best = p; } }
+  return best;
 }
 
 // ---------- the players' bodies ----------
@@ -199,15 +242,15 @@ async function runRondo(mode) {
     g.sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx('kick'); } else if (ev === 'touch') world.fx('touch'); };
     hooks(g);
     dress(us, them, mode); onStage(stage);
-    g.setup(0); g.phase = 'idle'; real = 0; lastAct = 0; hintSaid = 0; idleSay = -99; yaw = natural(); holdYaw = null; holdT = 0; warnAt = null; lastHint = null;
+    roundN = 1; g.setup(run0Level(id)); g.phase = 'idle'; real = 0; lastAct = 0; hintSaid = 0; idleSay = -99; yaw = natural(); holdYaw = null; holdT = 0; warnAt = null; lastHint = null;
     stage.ui = g.ui; frame(0); const w = K.rondoCam(g.sim.a('hero'), yaw, g.mode === 'keep' ? g.box.h + .5 : 4, [], world.width || 932, world.height || 430, TOP); stage.cam = { eye: [...w.eye], tgt: [...w.tgt], Ff: w.Ff, Fw: w.Fw };
     const run = startRun(id);
     stage.on = true; dom.el.classList.add('on'); show(null);
     plog({ is: 'start', mode });
-    if (first) await card(mode === 'keep' ? { emoji: '⚽', title: K.RONDO_SAID.keepIntro, sub: 'Tap a friend to pass. Tap the grass to move.', button: 'Play' } : { emoji: '🦶', title: K.RONDO_SAID.winIntro, sub: 'Tap the grass to move. Press STEAL when the ball glows.', button: 'Play' });
-    for (;;) {
+    if (first) await card(mode === 'keep' ? { emoji: '⚽', title: K.RONDO_SAID.keepIntro, sub: 'Tap a friend to pass. Tap a spot to move.', button: 'Play' } : { emoji: '🦶', title: K.RONDO_SAID.winIntro, sub: 'Tap a spot to move. Press STEAL when the ball glows.', button: 'Play' });
+    for (roundN = 1; ; roundN++) {
       const r = await g.round(run.level), ok = r.res === 'kept' || r.res === 'won';
-      plog({ is: 'round', mode, res: r.res, why: r.why, level: +r.level.toFixed(2), sec: r.sec, passes: r.passes, mine: r.myPasses, touches: r.myTouches, steals: r.steals, lunges: r.lunges, glows: r.glows });
+      plog({ is: 'round', mode, n: roundN, res: r.res, why: r.why, level: +r.level.toFixed(2), sec: r.sec, len: +g.len.toFixed(1), passes: r.passes, mine: r.myPasses, touches: r.myTouches, steals: r.steals, misses: r.lunges, presses: r.presses, glows: r.glows });
       if (!runStep(run, ok, { res: r.res, why: r.why, sec: r.sec })) break;
     }
     end();
@@ -215,8 +258,8 @@ async function runRondo(mode) {
   } catch (e) { console.error(e); end(); runOff(); show('#home'); } finally { busy = false; }
 }
 function end() {
-  stage.on = false; resetTransient(); marks?.hide(); box?.set(null);
-  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show', 'wait', 'now', 'spent'); dom.stealOn = false; dom.look = null; }
+  stage.on = false; resetTransient(); marks?.hide(); spotM?.hide(); box?.set(null);
+  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show'); dom.clock.classList.remove('show', 'low'); dom.stealOn = false; dom.clockOn = false; dom.n = dom.sec = null; }
   if (g) { g.phase = 'idle'; g.done = null; }
   onStage(null); undress(); game.home();
 }
