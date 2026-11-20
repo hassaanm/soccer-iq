@@ -159,11 +159,13 @@ function drawBalls() { const n = pz.moves; showN('foot', n); for (let i = 0; i <
 // A tap on the board: a pass, a dribble, a shot, or nothing.
 function moveAt(px, py) {
   const fx = (px - L.ox) / L.c, fy = (py - L.oy) / L.c, M = mid(pz);
+  // (review) A friend in the last column on a goal row: a tap inside his place is a pass to him, not a shot.
+  if (fx >= 0 && fx < pz.W && fy >= 0 && fy < pz.H) { const i = ourAt(board.s, Math.floor(fx), Math.floor(fy)); if (i >= 0 && i !== board.s.b) return 'p' + i; }
   if (fx >= pz.W - .1 && fx < pz.W + 1.4 && fy >= M - 1.3 && fy < M + 2.3) return 's' + Math.max(M - 1, Math.min(M + 1, Math.floor(fy)));
   if (fx < -.4 || fy < -.4 || fx > pz.W + .1 || fy > pz.H + .4) return null;
   const x = Math.max(0, Math.min(pz.W - 1, Math.floor(fx))), y = Math.max(0, Math.min(pz.H - 1, Math.floor(fy))), s = board.s;
-  const i = ourAt(s, x, y); if (i >= 0) return i === s.b ? null : 'p' + i;
-  if (theirAt(s, x, y) >= 0) return null;
+  const i = ourAt(s, x, y); if (i >= 0) return i === s.b ? 'x' : 'p' + i; // (x: his own ball carrier, or one of theirs: not a move, tap() says so gently)
+  if (theirAt(s, x, y) >= 0) return 'x';
   return 'd' + x + ',' + y;
 }
 layer.addEventListener('pointerdown', e => {
@@ -172,6 +174,7 @@ layer.addEventListener('pointerdown', e => {
 });
 function tap(mv) {
   if (!mv || phase !== 'wait') return false;
+  if (mv === 'x') { refused(mv); return false; } // (review: a tap on his own carrier or a red counter used to do nothing at all)
   const r = board.tap(mv);
   if (r.res === 'refused') { refused(mv); return false; }
   hint = null; hud.hand(null);
