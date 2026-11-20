@@ -53,3 +53,9 @@ test('the review page loads three.js and the game as index.html does', () => {
   assert.match(page, /<base href="\.\.\/">/, 'paths resolve from the project folder');
   assert.ok(!/href="dev\/review/.test(index), 'the game does not link the page');
 });
+
+// (v76 SL) The keeper mini game is endless with two lives (v87, mini/run.js): its entry no longer says "eight shots".
+test('the keeper mini game entry describes the endless game with two lives', () => {
+  const e = ENTRIES.find(x => x.id === 'keeper-game');
+  assert.ok(e && !/eight shots/i.test(e.look) && /two lives/i.test(e.look), e?.look);
+});
