@@ -6,6 +6,8 @@ import { hush } from './ui/speech.js';
 import { renderPickers } from './ui/home.js';
 import { matchStrip } from './ui/strip.js';
 import { runSession, runFreePlay, openCups, gated } from './flows.js';
+import { P } from './ui/store.js';
+import { playGoes } from './ui/mode.js';
 import { goalie } from './ui/goalie.js'; // (v67: the keeper game; v87: whichever mini game is on the stage, ui/goalie.js onStage)
 import './mini/chooser.js'; // (v87: the Mini games screen, on the home screen's mini games button)
 import { VERSION } from './version.js';
@@ -19,7 +21,7 @@ import { pauseFrame, stillView, easeMark, easeDraw } from './ui/pause.js';
 import { fast } from './fast/fast.js'; // (v84: Fast mode; it gets the frames while it plays)
 fast.goalie = goalie; // (v84: in a Fast match at 5v5 he plays our keeper for their clear shots, with the keeper game's moment)
 
-$('#playBtn').onclick = () => runSession();
+$('#playBtn').onclick = () => (playGoes(P.settings) === 'match' ? gated(runFreePlay) : runSession()); // (v93: Live has no lessons yet: PLAY is a Live match)
 $('#freeBtn').onclick = () => gated(runFreePlay);
 $('#cupBtn').onclick = () => gated(openCups);
 $('#resultsHome').onclick = () => show('#home');

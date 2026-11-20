@@ -145,6 +145,7 @@ export function renderMode() {
   const live = modeOf(P.settings) === 'fast', name = modeNameOf(P.settings);
   modeBtn.classList.toggle('on', live); modeBtn.setAttribute('aria-checked', live); modeBtn.setAttribute('aria-label', `Mode: ${name}`);
   modeBtn.querySelector('b').textContent = name;
+  $('#home').classList.toggle('live', live); if (live) $('#lessonSheet').classList.add('hidden'); // (v93: no lesson chip in Live: PLAY starts a Live match, main.js)
 }
 modeBtn.onclick = () => { P.settings.mode = nextMode(P.settings); save(); renderMode(); };
 renderMode();

@@ -1101,6 +1101,8 @@ body.logon #logTab{display:grid}
 .skillPick .nm:empty{display:none}
 /* The mini games chooser from the first tap until the game takes over (js/mini/starter.js): the tile he tapped is lit, the
    others dim, and nothing on the sheet answers. */
+/* (v93 integration) Live has no lessons yet: the lesson chip goes; its slot stays, so PLAY stays centred and nothing moves. */
+#home.live #lessonBtn{display:none}
 #miniSheet.starting .tile{pointer-events:none}
 #miniSheet.starting .tile:not(.picked){opacity:.45}
 #miniSheet .tile.picked{box-shadow:0 0 0 4px var(--gold),0 5px 0 var(--gold-e)}
