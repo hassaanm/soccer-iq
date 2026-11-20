@@ -24,6 +24,15 @@ const pressT = () => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .3); 
 const dizzyT = () => tex(128, 128, (g, w) => { const c = w / 2; for (let i = 0; i < 3; i++) { const a = i * 2 * Math.PI / 3, x = c + Math.cos(a) * 42, y = c + Math.sin(a) * 42; g.fillStyle = '#ffe14d'; g.strokeStyle = '#24193a'; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 6 : 15, b = -Math.PI / 2 + k * Math.PI / 5; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); g.stroke(); } });
 const shutT = () => tex(128, 128, (g, w) => { const c = w / 2; g.fillStyle = 'rgba(36,25,58,.45)'; g.beginPath(); g.arc(c, c, 56, 0, 7); g.fill(); ring(g, c, 44, 12, 'rgba(200,196,210,.95)'); g.strokeStyle = 'rgba(200,196,210,.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.beginPath(); g.moveTo(c - 24, c - 24); g.lineTo(c + 24, c + 24); g.moveTo(c + 24, c - 24); g.lineTo(c - 24, c + 24); g.stroke(); });
 
+// (v93 variants) A big choice: a fat gold arrow on the grass from his feet, white-edged and ink-outlined (reads on day and
+// night grass), pointing +x in the texture. A friend he can pass to: a big gold ring at the friend's feet. A blocked
+// lane tapped: a red band for a moment. The ring that drains (variant D): ticks round his feet.
+const arrowT = () => tex(256, 64, (g, w, h) => { const c = h / 2, path = () => { g.beginPath(); g.moveTo(6, c - 11); g.lineTo(w - 74, c - 11); g.lineTo(w - 74, c - 27); g.lineTo(w - 8, c); g.lineTo(w - 74, c + 27); g.lineTo(w - 74, c + 11); g.lineTo(6, c + 11); g.closePath(); }; g.lineJoin = 'round'; path(); g.lineWidth = 10; g.strokeStyle = 'rgba(36,25,58,.6)'; g.stroke(); g.lineWidth = 6; g.strokeStyle = '#ffffff'; g.stroke(); const lg = g.createLinearGradient(0, 0, w, 0); lg.addColorStop(0, 'rgba(255,207,46,.6)'); lg.addColorStop(.5, 'rgba(255,207,46,.95)'); lg.addColorStop(1, '#ffcf2e'); g.fillStyle = lg; g.fill(); });
+const friendT = () => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .5); ring(g, c, 50, 16, 'rgba(36,25,58,.55)'); ring(g, c, 50, 11, '#ffffff'); ring(g, c, 50, 7, '#ffcf2e'); });
+const laneT = () => tex(64, 16, (g, w, h) => { g.fillStyle = 'rgba(232,68,58,.75)'; g.fillRect(0, 3, w, h - 6); g.fillStyle = 'rgba(255,255,255,.6)'; g.fillRect(0, 0, w, 2); g.fillRect(0, h - 2, w, 2); });
+const tickT = red => tex(32, 32, (g, w) => { g.fillStyle = red ? '#ff5a3c' : '#ffcf2e'; g.strokeStyle = 'rgba(36,25,58,.7)'; g.lineWidth = 3; g.beginPath(); g.arc(w / 2, w / 2, 11, 0, 7); g.fill(); g.stroke(); });
+export const RING_TICKS = 20, RING_R = 1.25;
+
 // The guide (v84 round 2): two soft circles round him. Near: eight small dots. Far: a faint broken ring with twelve
 // ticks ("you can tap out here"; orange with the ball: a big push). Also: where he chose to go (until he is there), the
 // two or three hinted places (a gentle pulse), his own ring and the warning on a defender about to tackle.
@@ -37,7 +46,21 @@ export function makeMarks(world) {
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1), Z = new THREE.Vector3(0, 0, 1);
   let withBall = null, dashKey = '';
   const F = { dot: [dot(false), dot(true)], press: pressT(), lit: [litT(false), litT(true)] }, fixM = Array.from({ length: 8 }, () => add(F.dot[0], 1.3, 2, .9)), dizzy = add(dizzyT(), 1.1, 4), shutM = Array.from({ length: 6 }, () => { const m = add(shutT(), .8, 5); m.material.side = THREE.DoubleSide; return m; });
+  const VT = { arrow: arrowT(), friend: friendT(), lane: laneT(), tick: [tickT(false), tickT(true)] };
+  const arrows = Array.from({ length: 3 }, () => add(VT.arrow, 1, 3)), friendM = Array.from({ length: 4 }, () => add(VT.friend, 2.2, 3)), laneM = add(VT.lane, 1, 4), tickM2 = Array.from({ length: RING_TICKS }, () => add(VT.tick[0], .32, 5));
   return {
+    // (v93 variants) choices: [{ x, y, a, d }] from `at` (his feet); chosen: the one he took (lit, the rest hidden);
+    // friends: [{ x, y }] he can pass to; lane: { a, b } a blocked lane flashing red, or null; ring: 0 … 1 left of the
+    // draining ring round his feet (variant D), or null.
+    big(at, choices, chosen, friends, lane, ring, t) {
+      arrows.forEach((m, i) => { const c = chosen ? (i === 0 ? chosen : null) : choices?.[i]; m.visible = !!(c && at); if (!m.visible) return;
+        const sx = at.x, sy = at.y, a = Math.atan2(c.y - sy, c.x - sx), l = Math.max(1, Math.hypot(c.x - sx, c.y - sy) - .5), k = .5 + .5 * Math.sin(t * 4 + i);
+        m.position.set(sx + Math.cos(a) * (.5 + l / 2), sy + Math.sin(a) * (.5 + l / 2), .05); m.rotation.set(0, 0, a); m.scale.set(l, 1.5, 1); m.material.opacity = chosen ? .6 : .85 + .15 * k; });
+      friendM.forEach((m, i) => { const f = friends?.[i]; m.visible = !!f; if (f) { m.position.set(f.x, f.y, .045); m.scale.setScalar(2.2 * (1 + .06 * Math.sin(t * 5))); } });
+      laneM.visible = !!lane; if (lane) { const dx = lane.b.x - lane.a.x, dy = lane.b.y - lane.a.y, l = Math.hypot(dx, dy) || 1; laneM.position.set((lane.a.x + lane.b.x) / 2, (lane.a.y + lane.b.y) / 2, .06); laneM.rotation.set(0, 0, Math.atan2(dy, dx)); laneM.scale.set(l, .8, 1); }
+      const n = ring == null || !at ? 0 : Math.ceil(ring * RING_TICKS), red = ring != null && ring < .3;
+      tickM2.forEach((m, i) => { m.visible = i < n; if (!m.visible) return; const a = Math.PI / 2 - i / RING_TICKS * 2 * Math.PI; m.position.set(at.x + Math.cos(a) * RING_R, at.y + Math.sin(a) * RING_R, .07); if (m.material.map !== VT.tick[red ? 1 : 0]) m.material.map = VT.tick[red ? 1 : 0]; });
+    },
     // (v93) The fixed spots (rules.js spotSet), drawn where they are on the pitch: the chosen one lit and the rest faint
     // while he runs to it; the best one pulsing (the hint). dizzyAt: his place while he stumbles after a missed STEAL.
     // shut: the targets in the goal the keeper covers while he aims (grey, crossed: the gold ones are js/world.js's).
@@ -73,7 +96,7 @@ export function makeMarks(world) {
       go.visible = !!goAt && show; if (go.visible) go.position.set(goAt.x, goAt.y, .045);
       hintM.forEach((m, i) => { const h = show && hinted?.[i]; m.visible = !!h; if (h) { m.position.set(h.x, h.y, .025); const k = .5 + .5 * Math.sin(t * 4); m.material.opacity = .35 + .45 * k; m.scale.setScalar(1.7 + .35 * k); } });
     },
-    hide() { for (const m of [...dotM, ...tickM, me, danger, go, ...hintM, ...fixM, dizzy, ...shutM]) m.visible = false; dash.count = 0; dashKey = ''; },
+    hide() { for (const m of [...dotM, ...tickM, me, danger, go, ...hintM, ...fixM, dizzy, ...shutM, ...arrows, ...friendM, laneM, ...tickM2]) m.visible = false; dash.count = 0; dashKey = ''; },
   };
 }
 

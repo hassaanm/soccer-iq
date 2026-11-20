@@ -30,6 +30,8 @@ import { shotResult, spaces, zoneGrade, rightFoot, EDGE as SHOT_EDGE } from '../
 import { MOVE_NAME, MOVE_SYM } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 import { warmMini } from '../ui/voicewarm.js';
+import { P } from '../ui/store.js';
+import { VARIANTS, variantOf, Decision, bigChoices, bigAt } from './variant.js';
 
 export const CAM_TURN = 2.6; // rad/s (v89 integration: fast.js camNow)
 const turnTgt = (c, a) => { const dx = c.tgt[0] - c.eye[0], dy = c.tgt[1] - c.eye[1], co = Math.cos(a), si = Math.sin(a); c.tgt[0] = c.eye[0] + dx * co - dy * si; c.tgt[1] = c.eye[1] + dx * si + dy * co; };
@@ -65,7 +67,7 @@ class Fast {
     // LOOK UP and the action button act as the finger goes down, at once (a press that starts on them never slows the
     // world); a chip acts as a tap and, held, slows the world like a press anywhere (rules.js pressKind).
     press(this.dom.look, () => { if (!this.on || held.on) return; this.lookUp(true); this.acted('look'); });
-    this.dom.chips = [...box.querySelectorAll('.fChip')].map(b => { const c = { b, id: null, key: '', tf: '', o: -1 }; press(b, e => this.down(e, () => { if (c.id && c.tap) { this.passTo(c.id); this.stats.chipPasses++; } })); return c; });
+    this.dom.chips = [...box.querySelectorAll('.fChip')].map(b => { const c = { b, id: null, key: '', tf: '', o: -1 }; press(b, e => this.down(e, () => { if (c.id && c.tap) { if (this.V.big && !this.m.passCheck(this.me, c.id).open) { this.blocked(c.id); return; } this.passTo(c.id); this.stats.chipPasses++; } })); return c; });
     press(this.dom.avatar, () => { if (!this.on || this.m?.over) return; if (!held.on) setPause(true, 'button'); this.openSheet(id => { this.setMe(id); setPause(false); }); });
     press(this.dom.act, () => { if (!this.on || held.on) return; this.action(0); });
     press(this.dom.act2, () => { if (!this.on || held.on) return; this.action(1); });
@@ -104,6 +106,7 @@ class Fast {
   play({ us, them, level, warm = 'fast' }) {
     if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
     this.build(); this.us = us; this.them = them;
+    this.vid = variantOf(P.settings); this.V = VARIANTS[this.vid]; this.dec = new Decision(this.vid); this.big = null; this.bigChosen = null; this.lane = null; this.take = null; this.bigAt = 0; // (v93 variants: the home screen's A B C D, variant.js)
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
     const m = this.m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, level, fx: ev => world.fx(ev), sfx: n => sfx(n) });
@@ -115,7 +118,7 @@ class Fast {
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
     this.aiming = false; this.ui.ballGlow = false; this.actKind = null; this.actKey = ''; this.skillOpts = null; this.skUsed = {}; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.set = null; this.chosen = null; this.shotAt = null; this.dom.act2.classList.remove('show');
-    this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, deadTaps: 0, spotTaps: 0, presses: 0, sets: 0, shotEnds: [], chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
+    this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, deadTaps: 0, spotTaps: 0, presses: 0, sets: 0, shotEnds: [], chipPasses: 0, played: 0, slowT: 0, decT: 0, stopT: 0, decs: 0, decOut: 0, ringTakes: 0, blocked: 0, bigTaps: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.vw = null; this.camNow(1);
     hud.state({ phase: 'idle', mode: 'fast' }); hud.caption(''); hud.score(m.score, us, them);
     game.mode = 'fast'; this.drawAvatar(); this.dom.box.classList.add('on'); // (v93: no hold-to-slow hint; the owner shows him the gesture)
@@ -128,7 +131,7 @@ class Fast {
     m.on.shotEnd = (f, how, by) => this.shotEnd(f, how, by);
     this.lastScan = 0; this.cueT = -99; this.kBusy = false; this.kClear = 0; this.sudden = false; this.dom.box.querySelector('#fNext').classList.remove('show');
     m.on.lost = was => { if (was === this.me) { this.lookUp(true); say('Where is the ball?'); } };
-    game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id, level: m.level });
+    game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id, level: m.level, variant: this.vid });
     return new Promise(res => { this.done = res; });
   }
   stop() {
@@ -194,7 +197,7 @@ class Fast {
     let w;
     if (this.aiming) { w = R.aimCam(h, PITCH.L, PITCH.gy0, PITCH.gy1, PITCH.gh, ww, hh, spaces()); vs.yaw = this.yaw; }
     else { const drag = this.finger?.moved && this.holdYaw != null ? this.holdYaw : null; if (snap) { vs.yaw = this.yaw; vs.at = null; vs.gen = null; }
-      w = R.viewStep(vs, { me: h, ball: { x: b.x, y: b.y, z: b.z || 0 }, has, look: this.look, w: ww, h: hh, L: PITCH.L, W: PITCH.W, nat: this.natural(), drag, still: drag == null && this.real <= this.holdT }, dt, snap ? 50 : 1); this.yaw = vs.yaw; }
+      w = R.viewStep(vs, { me: h, ball: { x: b.x, y: b.y, z: b.z || 0 }, has, look: this.look, w: ww, h: hh, L: PITCH.L, W: PITCH.W, nat: this.natural(), drag, still: drag == null && this.real <= this.holdT, keep: this.keepPts(h, has) }, dt, snap ? 50 : 1); this.yaw = vs.yaw; }
     const k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam, a0 = Math.atan2(c.tgt[1] - c.eye[1], c.tgt[0] - c.eye[0]);
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
     c.Ff += (w.Ff - c.Ff) * k; c.Fw += ((w.Fw || 0) - c.Fw) * k;
@@ -217,7 +220,7 @@ class Fast {
   // Everything that lasts only a moment, put back: a touch and its hold, the slow tint, the aim, a warning, where he was
   // going, the hints, the reminder. At a goal, a keeper turn, a pause, a swap and the end.
   resetTransient() {
-    this.set = null; this.chosen = null;
+    this.set = null; this.chosen = null; this.dec?.reset(); this.big = null; this.bigChosen = null; this.lane = null; this.dropTake();
     this.dropFinger(); this.holding = false; this.holdYaw = null; this.holdT = 0; this.dom.box.classList.remove('slowing');
     if (this.aiming) this.endAim(); this.slowTo = BASE; this.warnAt = null; this.goAt = null; this.hinted = null; this.hintCounted = false; this.lastAct = this.real || 0;
     this.dom.cue.classList.remove('show'); hudEl.classList.remove('faiming');
@@ -252,6 +255,7 @@ class Fast {
   tap(x, y) {
     if (this.aiming) return this.aimAt(x, y);
     if (!this.on || this.m.dead) return null;
+    if (this.V.big && this.m.owner() === this.me) return this.tapBig(x, y);
     const reach = Math.max(60, Math.min(world.width, world.height) * .16);
     let best = null, bd = 1e9;
     for (const o of this.options()) {
@@ -298,11 +302,13 @@ class Fast {
     const W0 = world.width, H0 = world.height, cam = this.cam, safe = p => { const q = R.project(cam, { x: p.x, y: p.y, z: 0 }, W0, H0); return !!q && q[0] > W0 * .05 && q[0] < W0 * .95 && q[1] > H0 * .2 && q[1] < H0 * .93 && !(q[1] > H0 - 150 && (q[0] < 140 || q[0] > W0 - 150)); }; // (clear of the bar at the top and the two round buttons at the bottom)
     const k = m.keeper('them');
     const spots = st.key === 'none' ? [] : R.spotSet({ me: h, state: st.state, carrier: st.carrier, ball: s.ball, mates: m.usIds.filter(id => id !== this.me).map(id => s.a(id)).filter(Boolean), foes: m.foes('us'), keeper: k, L: PITCH.L, W: PITCH.W, seen: safe });
+    if (this.V.big && st.state === 'mine') spots.length = 0; // (v93 variants: with the ball, the big choices instead: bigNow)
+    else if (this.V.auto) { const one = st.state === 'ours' ? spots.filter(p => p.kind === 'behind').sort((p, q) => q.s - p.s)[0] : null; spots.length = 0; if (one) spots.push(one); } // (off the ball he moves by himself: one marked spot only when it matters, a run in behind)
     this.set = { key, at: this.real, spots }; this.stats.sets++;
   }
   // The point on the grass under a place on the screen (or null: the sky).
   ground(x, y) { const r = this.ray ||= { c: new THREE.Raycaster(), n: new THREE.Vector2(), p: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), h: new THREE.Vector3() }; r.n.set(x / world.width * 2 - 1, -(y / world.height) * 2 + 1); r.c.setFromCamera(r.n, world.camera); return r.c.ray.intersectPlane(r.p, r.h) ? { x: r.h.x, y: r.h.y } : null; }
-  acted(kind) { this.stats.actions++; this.lastAct = this.real; void kind; }
+  acted(kind) { this.stats.actions++; this.lastAct = this.real; if (kind === 'pass' || kind === 'spot' || kind === 'shoot' || kind === 'skill' || kind === 'big') { this.dec.close(true); this.dropTake(); } }
   // ---------- the scan reminder ----------
   // He has not looked round (a hold, a drag, LOOK UP) for SCAN_T s, and someone who matters is out of his view: a friend
   // within 14 m of him or one of theirs within 4 m (behind him, say). A small picture (eyes, a turn) and a spoken word;
@@ -485,15 +491,73 @@ class Fast {
     game.plog?.('fast', { is: 'skill', move: mv, pick: k });
   }
 
+  // ---------- the variants (v93 round 3: variant.js) ----------
+  // The big choices with the ball, from where he stands now (bigChoices), looking where the view looks with the ball.
+  // A choice still there (within .35 rad) keeps its place, so nothing slides under his finger.
+  bigNow(h) {
+    const m = this.m, old = this.big || [];
+    const next = bigChoices({ me: h, yaw: R.naturalYaw(h, this.sim.ball, true, PITCH.L, PITCH.W), foes: m.allFoes('us'), L: PITCH.L, W: PITCH.W });
+    this.big = next.map(c => old.find(o => Math.abs(R.wrap(o.a - c.a)) < .35 && o.kind === c.kind) || c); this.bigAt = this.real;
+  }
+  // His friends he can pass to now (with the ball): a big ring at their feet.
+  litFriends() { const s = this.sim, m = this.m; if (m.owner() !== this.me) return []; return m.usIds.filter(id => id !== this.me && s.a(id) && this.ui.glow[id] > 0).map(id => s.a(id)); }
+  // What the view keeps in the picture with the ball (A, C, D, head up): the big choices, and the friends he can pass to
+  // that are in front of him.
+  keepPts(h, has) {
+    if (!this.V?.big || !has || !this.up1 || !h) return null;
+    const out = (this.bigChosen ? [] : this.big || []).map(c => ({ x: c.x, y: c.y, z: 0 }));
+    for (const f of this.litFriends()) if (Math.hypot(f.x - h.x, f.y - h.y) < 15 && Math.abs(R.wrap(Math.atan2(f.y - h.y, f.x - h.x) - this.yaw)) < 1.1) out.push({ x: f.x, y: f.y, z: .2 });
+    return out.length ? out : null;
+  }
+  // A tap with the ball (A, C, D): a friend he can pass to passes; a friend whose lane is shut flashes the lane red and
+  // does nothing else; a big choice (its arrow, its tip, or the grass along it) takes him there with the ball.
+  tapBig(x, y) {
+    const s = this.sim, m = this.m, me = s.a(this.me); this.stats.taps++; if (!me) return null;
+    const reach = Math.max(70, world.height * .2), g = this.ground(x, y);
+    let fb = null, fd = 1e9; for (const id of m.usIds) { if (id === this.me) continue; const a = s.a(id); if (!a) continue; for (const z of [.9, 0]) { const q = world.project(a.x, a.y, z); if (!q || !R.onScreen(q, world.width, world.height)) continue; const d = Math.hypot(q[0] - x, q[1] - y); if (d < fd) { fd = d; fb = id; } } }
+    const moving = !!(m.meMove && s.time < m.meMove.until), list = moving ? [] : this.big || [];
+    for (const c of list) { c.q = world.project(c.x, c.y, 0); c.qm = world.project((me.x + c.x) / 2, (me.y + c.y) / 2, 0); }
+    const ch = bigAt(list, me, x, y, g, world.height), cd = ch ? Math.min(...[ch.q, ch.qm].filter(Boolean).map(q => Math.hypot(q[0] - x, q[1] - y)), 1e9) : 1e9;
+    if (fb && fd <= reach && fd * .8 < cd) { if (m.passCheck(this.me, fb).open) { this.passTo(fb); return { kind: 'pass', id: fb }; } this.blocked(fb); return null; }
+    if (ch) { this.goBig(ch); return ch; }
+    this.stats.deadTaps++; sfx('tap'); game.plog?.('fast', { is: 'tap', did: 'none' }); return null;
+  }
+  blocked(id) { const s = this.sim, a = s.a(this.me), b = s.a(id); if (!a || !b) return; this.lane = { a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y }, until: this.real + .7 }; this.stats.blocked++; this.stats.deadTaps++; sfx('tap'); game.plog?.('fast', { is: 'tap', did: 'blocked', to: id }); }
+  goBig(c) { this.m.meTo(c.x, c.y); this.bigChosen = c; this.stats.bigTaps++; sfx('click'); this.acted('big'); game.plog?.('fast', { is: 'big', kind: c.kind, x: +c.x.toFixed(1), y: +c.y.toFixed(1) }); }
+  dropTake() { const k = this.take; if (!k) return; this.take = null; this.m?.cmd.delete(k.id); }
+  // The decision moment, each frame: it opens when he has the ball, stands with it and has not chosen; its clock starts
+  // as he looks up (or DEC_UP s on); it ends when he chooses, loses the ball, or runs out (A, B: back to speed; D: the
+  // nearest of theirs comes for the ball and takes it when he gets there, unless he chooses first).
+  decide(h, has) {
+    const s = this.sim, m = this.m, d = this.dec, moving = !!(m.meMove && s.time < m.meMove.until);
+    if (!has || m.dead) { if (d.on || d.spent) d.reset(); if (!has) { this.big = null; this.bigChosen = null; this.dropTake(); } return; }
+    if (moving || this.aiming || m.flight) { if (d.on) d.close(true); if (!moving) this.bigChosen = null; return; }
+    this.bigChosen = null;
+    if (this.V.big && (!this.big || this.real - this.bigAt > .6)) this.bigNow(h);
+    if (!d.on && !d.spent) { d.open(this.real, this.up1); this.stats.decs++; game.plog?.('fast', { is: 'decide', variant: this.vid, n: (this.big || []).length }); }
+    d.tick(this.real, this.up1);
+    if (d.expired(this.real)) {
+      d.close(false); this.stats.decOut++; game.plog?.('fast', { is: 'decideOut', variant: this.vid });
+      if (this.V.stop) { const o = m.foes('us').filter(a => !a.gk).sort((p, q) => Math.hypot(p.x - h.x, p.y - h.y) - Math.hypot(q.x - h.x, q.y - h.y))[0]; if (o) this.take = { id: o.id }; }
+    }
+    const k = this.take;
+    if (k) { const o = s.a(k.id); if (!o) this.take = null; else if (Math.hypot(o.x - h.x, o.y - h.y) < 1) { this.take = null; m.fx('stolen'); sfx('down'); this.stats.ringTakes++; m.giveTo(k.id, 'tackle'); m.on.lost(this.me, k.id); } else { s.go(k.id, h.x, h.y, 5.2); m.cmd.set(k.id, s.time + 2); } }
+  }
+
   // ---------- one frame ----------
   // dt: real seconds (none while paused: js/pause.js).
   tick(dt) {
     if (!this.on || !dt) return;
     const t0 = performance.now(), s = this.sim, m = this.m, st = this.stats;
     this.real += dt; st.played += dt;
-    this.slow += (this.slowTo - this.slow) * (1 - Math.exp(-dt * (this.slowTo > this.slow ? 3 / BACK_S : 8))); // (back up to speed over about BACK_S s)
+    { const hh = s.a(this.me); this.decide(hh, !!hh && m.owner() === this.me); } // (v93 variants: the decision moment)
+    const want = this.dec.on && !this.aiming ? this.dec.scale() : null, tgt = want != null ? Math.min(this.slowTo, want) : this.slowTo;
+    this.slow += (tgt - this.slow) * (1 - Math.exp(-dt * (tgt > this.slow ? 3 / BACK_S : want === 0 ? 14 : 8))); // (back up to speed over about BACK_S s)
+    if (want === 0 && this.slow < .015) this.slow = 0;
+    const fx = this.holding || (want != null && want < BASE * .9); if (fx !== this.dom.box.classList.contains('slowing')) this.dom.box.classList.toggle('slowing', fx); // (the hold's own slow look, here brought by the game)
+    if (this.dec.on) st.decT += dt; if (this.slow === 0) st.stopT += dt;
     const gdt = dt * this.slow; if (this.slow < BASE * .9) st.slowT += dt; if (this.holding) st.holdT += dt; if (!this.up1) st.headDownT += dt;
-    m.step(gdt);
+    m.step(gdt); if (this.V.auto) m.autoStep();
     const n = Math.max(1, Math.ceil(gdt / (1 / 60))); for (let i = 0; i < n; i++) s.step(gdt / n);
     for (const a of s.agents.values()) { a.x = R.clamp(a.x, .3, PITCH.L - .3); a.y = R.clamp(a.y, .3, PITCH.W - .3); } // (nobody drifts over a line)
     this.ui.clock += gdt;
@@ -529,6 +593,8 @@ class Fast {
     const show = !m.dead && !this.aiming;
     this.marks.draw([], [], h, has, this.ui.clock, this.warnAt && s.a(this.warnAt), show, null, null);
     this.marks.fixed(show && this.set ? this.set.spots : [], this.chosen, best, has, this.ui.clock, m.stumbling() ? h : null, this.aiming ? (this.aimAll || []).filter(a => a.shut) : null);
+    if (this.lane && this.real > this.lane.until) this.lane = null;
+    this.marks.big(show && has ? h : null, show && has && !this.bigChosen ? this.big : null, show && has ? this.bigChosen : null, show && this.V.big ? this.litFriends() : null, show ? this.lane : null, show && this.V.stop && this.dec.on ? this.dec.left(this.real) : null, this.ui.clock);
     this.edge(h); this.chips(h, has);
     // the counts: where the camera he did not move looks (the ball on screen, the goal he attacks on screen)
     if (!this.finger?.moved && this.real > this.holdT && h && !m.dead) {

@@ -10,6 +10,7 @@ import { nextSkill, level, isOpen, graduated, playOpen, matchOpen } from '../pro
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 import { lessonPic } from './pics.js';
 import { modeOf, modeName as modeNameOf, nextMode } from './mode.js';
+import { variantOf } from '../fast/variant.js';
 
 // ---------- team size ----------
 // The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
@@ -145,7 +146,12 @@ export function renderMode() {
   const live = modeOf(P.settings) === 'fast', name = modeNameOf(P.settings);
   modeBtn.classList.toggle('on', live); modeBtn.setAttribute('aria-checked', live); modeBtn.setAttribute('aria-label', `Mode: ${name}`);
   modeBtn.querySelector('b').textContent = name;
-  $('#home').classList.toggle('live', live); if (live) $('#lessonSheet').classList.add('hidden'); // (v93: no lesson chip in Live: PLAY starts a Live match, main.js)
+  $('#home').classList.toggle('live', live); renderVar(); if (live) $('#lessonSheet').classList.add('hidden'); // (v93: no lesson chip in Live: PLAY starts a Live match, main.js)
 }
 modeBtn.onclick = () => { P.settings.mode = nextMode(P.settings); save(); renderMode(); };
+// (v93 round 3) Live's four variants to compare by feel (js/fast/variant.js): chips A B C D beside the toggle, shown in Live
+// only (css: #home.live), one selected, kept as P.settings.liveVariant.
+const varBtns = [...document.querySelectorAll('#liveVar button')];
+function renderVar() { const v = variantOf(P.settings); for (const b of varBtns) { b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-checked', b.dataset.v === v); } }
+for (const b of varBtns) b.onclick = () => { P.settings.liveVariant = b.dataset.v; save(); renderVar(); };
 renderMode();
