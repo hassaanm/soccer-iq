@@ -11,6 +11,7 @@
     "audit:motion": "node scripts/motion-audit.js",
     "audit:live": "node scripts/live-audit.js",
     "audit:snap": "node scripts/snap-audit.js",
-    "audit:frames": "node scripts/frame-audit.js"
+    "audit:frames": "node scripts/frame-audit.js",
+    "audit:pop": "node scripts/pop-audit.js"
   }
 }

@@ -23,6 +23,58 @@ function edgePicture() {
   } catch { /* the gradient stays */ }
 }
 setTimeout(edgePicture, 700);
+// (v93) The sunburst behind the big words and the goal's flash as pictures made once, here, as the page loads: each an
+// <img> on a layer of its own that the graphics chip only moves, turns and fades, so a result paints nothing big. The
+// phone's play log (v92): every "SAVED!" and "GOAL!" in the mini games froze the picture 150 to 340 ms as the sunburst
+// (a 1860 px square at the phone's sharpness) and the flash (the whole screen) were drawn again, each time they came.
+// The sunburst is the same picture as the CSS one (the same numbers: tests/pop.test.js), the flash the same gradient.
+// Until both are ready, or if anything fails, the CSS ones stay (html.hudimg).
+function picture(c, cls) {
+  return new Promise(res => { try { c.toBlob(b => { if (!b) return res(null); const img = new Image(); img.className = cls; img.alt = ''; img.src = URL.createObjectURL(b);
+    (img.decode ? img.decode() : Promise.resolve()).then(() => res(img), () => res(img)); }, 'image/png'); } catch { res(null); } });
+}
+// A repeating conic gradient (`on` degrees of `color` every `period`) under a radial mask from `inner` to `outer` of the
+// distance to the corners (css #banner.goal::before).
+function burstPicture(size, color, on, period, inner, outer) {
+  const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'); if (!g) return null;
+  const m = size / 2, R = Math.SQRT1_2 * size, rad = d => (d - 90) * Math.PI / 180; // (CSS: 0deg is up, clockwise)
+  g.fillStyle = color;
+  for (let a = 0; a < 360; a += period) { g.beginPath(); g.moveTo(m, m); g.arc(m, m, R, rad(a), rad(Math.min(360, a + on))); g.closePath(); g.fill(); }
+  const r = g.createRadialGradient(m, m, 0, m, m, R); r.addColorStop(0, '#000'); r.addColorStop(inner, '#000'); r.addColorStop(outer, 'rgba(0,0,0,0)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.globalCompositeOperation = 'destination-in'; g.fillStyle = r; g.fillRect(0, 0, size, size);
+  return c;
+}
+// The flash: a circle at 50% 45% that reaches the farthest corner (css #flash), drawn at a quarter of the screen's size
+// with its shape (a soft gradient loses nothing stretched).
+function flashPicture(w, h) {
+  const c = document.createElement('canvas'); c.width = Math.max(32, Math.round(w / 4)); c.height = Math.max(16, Math.round(h / 4)); const g = c.getContext('2d'); if (!g) return null;
+  const x = c.width * .5, y = c.height * .45, R = Math.hypot(Math.max(x, c.width - x), Math.max(y, c.height - y)), r = g.createRadialGradient(x, y, 0, x, y, R);
+  r.addColorStop(0, '#fff'); r.addColorStop(.45, 'rgba(255,240,170,.7)'); r.addColorStop(.8, 'rgba(255,240,170,0)'); r.addColorStop(1, 'rgba(255,240,170,0)');
+  g.fillStyle = r; g.fillRect(0, 0, c.width, c.height); return c;
+}
+function hudPictures() {
+  try {
+    const dpr = Math.min(3, Math.max(1, devicePixelRatio || 1)), b = burstPicture(Math.round(Math.min(1024, 620 * dpr)), 'rgba(255,236,150,.6)', 8, 22, .18, .66);
+    const f = flashPicture(Math.max(innerWidth, innerHeight), Math.min(innerWidth, innerHeight)); // (landscape, as it is played)
+    if (!b || !f) return;
+    Promise.all([picture(b, 'burst'), picture(f, 'glow')]).then(([bi, fi]) => {
+      b.width = b.height = f.width = f.height = 0; if (!bi || !fi) return;
+      ui.banner.prepend(bi); ui.flash.appendChild(fi); document.documentElement.classList.add('hudimg');
+    }, () => {});
+  } catch { /* the CSS ones stay */ }
+}
+setTimeout(hudPictures, 800);
+// (v93) A result comes in over three frames, not one: the big words and their sound now; the sunburst and the flash in
+// the next frame; the stars (hud.pop) in the one after, their notes after that, one at a time. Each step is small, so no
+// frame carries them all. A newer result, or bannerOff, cancels the steps still to come.
+// (a frame, or 100 ms when none comes: a hidden page; each step once)
+const oneFrame = f => { let done = false; const go = () => { if (!done) { done = true; f(); } }; requestAnimationFrame(go); setTimeout(go, 100); };
+const inFrames = (n, f) => oneFrame(() => (n > 1 ? inFrames(n - 1, f) : f()));
+let resultTok = 0, popTok = 0, flashAlt = false, bigAlt = false;
+// The flash again from the start, with no layout: its animation's name changes (go, go2), which restarts it.
+function flashGo() { const f = ui.flash; flashAlt = !flashAlt; f.classList.remove(flashAlt ? 'go' : 'go2'); f.classList.add(flashAlt ? 'go2' : 'go'); }
+// The sunburst stops turning once the big words have faded (a moment after `show` goes).
+const unlit = () => { clearTimeout(timers.unlit); timers.unlit = setTimeout(() => { if (!ui.banner.classList.contains('show')) ui.banner.classList.remove('lit'); }, 400); };
 const flash = (el, cls, text, ms) => {
   el.textContent = text; el.className = cls; void el.offsetWidth; el.classList.add('show');
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
@@ -97,14 +149,16 @@ export const hud = {
   banner(text, kind, rated) {
     const soft = kind === 'soft', big = ui.banner, el = ui.rate, good = kind !== 'bad' && !soft, splash = !!text && (good || !rated); // soft (v64): the defender got there first: kind words, no sound
     if (!soft) sfx(!good ? 'aww' : text === 'GOAL!' ? 'goal' : 'yay');
-    clearTimeout(timers.rate); clearTimeout(timers.big);
-    hudEl.classList.add('rating'); ui.skillName.classList.remove('show'); // the result's big letters take over from a move's name
+    clearTimeout(timers.rate); clearTimeout(timers.big); clearTimeout(timers.unlit);
+    const tok = ++resultTok;
+    if (!hudEl.classList.contains('rating')) hudEl.classList.add('rating'); ui.skillName.classList.remove('show'); // the result's big letters take over from a move's name
     if (splash) {
-      letters(big.querySelector('b'), text);
-      big.className = kind; void big.offsetWidth; big.classList.add('show');
+      // (v93) Its letters drop in again with no layout forced: a new result swaps the animation's name (css: #banner.alt).
+      letters(big.querySelector('b'), text); bigAlt = !bigAlt;
+      big.className = kind + ' show' + (bigAlt ? ' alt' : '');
     }
-    if (text === 'GOAL!') replay(ui.flash, 'go');
-    const done = v => { big.classList.remove('show'); el.classList.remove('show'); hudEl.classList.remove('rating'); return v; };
+    inFrames(1, () => { if (tok !== resultTok) return; if (splash) big.classList.add('lit'); if (text === 'GOAL!') flashGo(); });
+    const done = v => { big.classList.remove('show'); el.classList.remove('show'); hudEl.classList.remove('rating'); unlit(); return v; };
     if (!rated) { timers.big = setTimeout(done, 1700); return Promise.resolve(); }
     const title = el.querySelector('.title'), lead = splash ? 850 : 0, tip = rated.text || '';
     title.textContent = text; title.className = 'title ' + kind;
@@ -123,7 +177,7 @@ export const hud = {
   },
   // A new play begins: the last result's big words (a match's, which have no card to wait for) and the last choice's stars
   // go now.
-  bannerOff() { ui.pop.classList.remove('show'); if (!hudEl.classList.contains('rating') || !ui.rate.classList.contains('show')) { clearTimeout(timers.big); ui.banner.classList.remove('show', 'up'); hudEl.classList.remove('rating'); } },
+  bannerOff() { popTok++; ui.pop.classList.remove('show'); if (!hudEl.classList.contains('rating') || !ui.rate.classList.contains('show')) { resultTok++; clearTimeout(timers.big); ui.banner.classList.remove('show', 'up'); hudEl.classList.remove('rating'); unlit(); } },
   // "You see …": a small note near the top, so it doesn't look like something he has to act on.
   seen(text) { flash(ui.seenNote, '', text, 1400); sfx('ping'); },
   // The teaching hand: `pos` is a button id or a screen point [x, y]; null hides it. A new `tap` number taps once.
@@ -174,21 +228,31 @@ export const hud = {
   skillTag(move, who) { if (!ui.skillName.classList.contains('show')) flash(ui.skillTag, '', `⚡ ${move} · ${who}`, 1500); },
   // Stars for a choice in a match (game/live.js react): 3 or 2 small stars pop one after another with a rising note each,
   // and fade within a second. `at()` gives his place on screen each frame: they ride along over his head.
+  // (v93) They come two frames after the call (a result's big words come first: hud.banner), from a frame with them
+  // hidden, so their animation starts again with no layout forced; their notes start one by one after that.
   pop(stars, at) {
-    const el = ui.pop, inner = el.firstChild;
+    const el = ui.pop, inner = el.firstChild, tok = ++popTok;
     marks(inner, 3, stars);
-    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    for (let i = 0; i < stars; i++) setTimeout(() => sfx('star', i), 40 + i * 110);
-    // With a praise word up, the stars sit at its end (so they never meet it, and never jump); otherwise over his head.
-    // With no `at` (a lesson's light result) they sit just under the result's big words.
-    const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), b = !at && ui.banner.getBoundingClientRect();
-    const side = t ? [t.right + 48, t.bottom - 4] : b ? [b.left + b.width / 2, b.top + b.height * .5 + 82] : null;
-    const t0 = performance.now(), follow = () => {
-      const q = side || at?.();
-      if (q) el.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)`;
-      if (el.classList.contains('show') && performance.now() - t0 < 1300) requestAnimationFrame(follow);
-    };
-    follow(); clearTimeout(timers.pop); timers.pop = setTimeout(() => el.classList.remove('show'), 1200);
+    el.classList.remove('show'); clearTimeout(timers.pop);
+    inFrames(2, () => {
+      if (tok !== popTok) return;
+      // With a praise word up, the stars sit at its end (so they never meet it, and never jump); otherwise over his head.
+      // With no `at` (a lesson's light result) they sit just under the result's big words.
+      const t = ui.toast.classList.contains('show') && ui.toast.getBoundingClientRect(), b = !at && ui.banner.getBoundingClientRect();
+      const side = t ? [t.right + 48, t.bottom - 4] : b ? [b.left + b.width / 2, b.top + b.height * .5 + 82] : null;
+      let was = null;
+      const t0 = performance.now(), follow = () => {
+        if (tok !== popTok) return;
+        // (written only when he has moved 4 px or more: a shaking or easing camera wrote it every frame, about 19 page
+        // changes a second for 1.3 s after each result in penalties)
+        const q = side || at?.();
+        if (q && (!was || Math.abs(q[0] - was[0]) >= 4 || Math.abs(q[1] - was[1]) >= 4)) { el.style.transform = `translate(${Math.round(q[0])}px,${Math.round(q[1])}px)`; was = q; }
+        if (el.classList.contains('show') && performance.now() - t0 < 1300) requestAnimationFrame(follow);
+      };
+      el.classList.add('show'); follow();
+      for (let i = 0; i < stars; i++) setTimeout(() => { if (tok === popTok) sfx('star', i); }, 40 + i * 110);
+      timers.pop = setTimeout(() => el.classList.remove('show'), 1200);
+    });
   },
   // Words are on screen or being said (a caption, a skill move's name): a spoken hint waits for another time.
   busy() { return hudEl.classList.contains('captioning') || ui.skillName.classList.contains('show'); },
