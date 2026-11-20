@@ -88,13 +88,14 @@ const BALL = `<svg viewBox="-12.5 -12.5 25 25" aria-hidden="true"><ellipse cx="1
 const layer = document.createElement('div');
 layer.id = 'pz'; layer.className = 'hidden';
 layer.innerHTML = '<svg class="pitch" aria-hidden="true"></svg><svg class="marks" aria-hidden="true"><g class="cover"></g><g class="tether"></g><g class="lanes"></g><g class="path"></g><g class="cut"></g></svg>'
-  + '<div class="pcs"></div><div class="ring"></div><div class="bad"></div><div class="pzball">' + BALL + '</div>'
+  + '<div class="pcs"></div><div class="ring"></div><div class="bad"></div><div class="open"></div><div class="pzball">' + BALL + '</div>'
   + '<div class="balls" aria-label="Moves"></div><div class="sand hidden" aria-label="Time"><i></i></div>';
 const hudEl = $('#hud'); hudEl.insertBefore(layer, hudEl.firstChild); // (under the bar, the home and pause buttons)
 const pitchEl = layer.querySelector('.pitch'), marks = layer.querySelector('.marks'), pcs = layer.querySelector('.pcs');
 const G = k => marks.querySelector('.' + k);
-const ringEl = layer.querySelector('.ring'), badEl = layer.querySelector('.bad'), ballEl = layer.querySelector('.pzball');
+const openEl = layer.querySelector('.open'), ringEl = layer.querySelector('.ring'), badEl = layer.querySelector('.bad'), ballEl = layer.querySelector('.pzball');
 const ballsEl = layer.querySelector('.balls'), sandEl = layer.querySelector('.sand'), sandFill = sandEl.querySelector('i');
+openEl.innerHTML = `<svg viewBox="-1 -1 2 2" aria-hidden="true"><circle r=".6" fill="${INK}" opacity=".45"/><circle r=".44" fill="none" stroke="${GOLD}" stroke-width=".16"/><circle r=".12" fill="#fff"/></svg>`;
 ringEl.innerHTML = `<svg viewBox="-1 -1 2 2" aria-hidden="true"><ellipse rx=".62" ry=".3" fill="${GOLD}" opacity=".25"/><ellipse rx=".62" ry=".3" fill="none" stroke="${GOLD}" stroke-width=".09"/></svg>`;
 badEl.innerHTML = `<svg viewBox="-1 -1 2 2" aria-hidden="true"><circle r=".5" fill="#e8213a" stroke="#fff" stroke-width=".12"/><path d="M-.22 -.22L.22 .22M.22 -.22L-.22 .22" stroke="#fff" stroke-width=".16" stroke-linecap="round"/></svg>`;
 const LOOKS = {
@@ -121,32 +122,34 @@ const face = (el, left) => { if (el._f !== left) { el._f = left; el.classList.to
 
 // ---------- where things are on the screen ----------
 // The board is as big as it fits under the top bar (the moves down the left edge, the sand timer down the right).
-const L = { ox: 0, oy: 0, c: 50, w: 0, h: 0 };
+const L = { ox: 0, oy: 0, c: 50, cx: 50, w: 0, h: 0 }; // (c: a place's height and the drawing's size; cx: its width)
 function layout(pz) {
   const w = innerWidth, h = innerHeight, r = el => el?.getBoundingClientRect();
   const home = r($('#homeBtn')), bar = r($('#miniBar'));
   const band = Math.max(home?.bottom || 58, bar?.bottom || 58) + 10;
   const x0 = 70, x1 = w - 56, y0 = band, y1 = h - 10, cols = pz.W + 1.3, rows = pz.H + .3;
-  const c = Math.floor(Math.min((x1 - x0) / cols, (y1 - y0) / rows));
-  L.c = c; L.w = w; L.h = h; L.ox = Math.round((x0 + x1) / 2 - (pz.W + 1) * c / 2); L.oy = Math.round((y0 + y1) / 2 - pz.H * c / 2);
+  // (v93 follow-up: places may be wider than tall, so the board uses the width; a kid is one place tall, so neighbours
+  // never overlap)
+  const c = Math.floor(Math.min((x1 - x0) / cols, (y1 - y0) / rows)), cx = Math.floor(Math.min((x1 - x0) / cols, c * 1.7));
+  L.c = c; L.cx = cx; L.w = w; L.h = h; L.ox = Math.round((x0 + x1) / 2 - (pz.W + 1) * cx / 2); L.oy = Math.round((y0 + y1) / 2 - pz.H * c / 2);
   layer.style.setProperty('--c', c + 'px');
   for (const s of [pitchEl, marks]) s.setAttribute('viewBox', `0 0 ${w} ${h}`);
   ballsEl.style.top = Math.max(band, 64) + 'px';
 }
 // The screen point of a place's middle (x, y: places; the goal is x = W).
-export const toScreen = (x, y) => [L.ox + (x + .5) * L.c, L.oy + (y + .5) * L.c];
+export const toScreen = (x, y) => [L.ox + (x + .5) * L.cx, L.oy + (y + .5) * L.c];
 const P2 = (x, y) => toScreen(x, y).map(v => n2(v)).join(' ');
 const put = (el, x, y, k = 1, rot = 0) => {
   const [sx, sy] = toScreen(x, y), z = 10 + Math.round(y * 4);
   if (el._z !== z && el._z !== undefined) { el._z = z; el.style.zIndex = z; }
-  el.style.transform = `translate3d(${(sx - L.c * .34).toFixed(1)}px,${(sy - L.c * .86).toFixed(1)}px,0)` + (k !== 1 ? ` scale(${k.toFixed(3)})` : '') + (rot ? ` rotate(${rot.toFixed(1)}deg)` : '');
+  el.style.transform = `translate3d(${(sx - L.c * .32).toFixed(1)}px,${(sy - L.c * .78).toFixed(1)}px,0)` + (k !== 1 ? ` scale(${k.toFixed(3)})` : '') + (rot ? ` rotate(${rot.toFixed(1)}deg)` : '');
 };
 const putFlat = (el, x, y) => { const [sx, sy] = toScreen(x, y); el.style.transform = `translate3d(${(sx - L.c / 2).toFixed(1)}px,${(sy - L.c / 2).toFixed(1)}px,0)`; };
 
 // ---------- the stadium and the pitch (one SVG, drawn once a puzzle) ----------
 const CROWD = ['#5b4d8a', '#7a5fa8', '#c2486a', '#4f6fb8', '#d8a84a', '#e6e0f0'];
 function drawPitch(pz) {
-  const { W, H } = pz, M = mid(pz), c = L.c, X = x => n2(L.ox + x * c), Y = y => n2(L.oy + y * c), pad = .32 * c;
+  const { W, H } = pz, M = mid(pz), c = L.c, cx = L.cx, X = x => n2(L.ox + x * cx), Y = y => n2(L.oy + y * c), pad = .32 * c;
   let s = `<defs><radialGradient id="pzLight" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="pzLamp"><stop offset="0" stop-color="#fff6c8" stop-opacity=".9"/><stop offset=".25" stop-color="#fff2b0" stop-opacity=".35"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/></radialGradient></defs>`;
   s += `<rect width="${L.w}" height="${L.h}" fill="#2a1f4d"/>`;
@@ -154,18 +157,18 @@ function drawPitch(pz) {
   for (let r = 0; r < 5; r++) for (let x = 3 + (r % 2) * 5; x < L.w; x += 11) { const y = Y(H) + pad + 8 + r * 9; if (y > L.h - 3) continue; s += `<circle cx="${x}" cy="${n2(y)}" r="2.6" fill="${CROWD[(x * 5 + r) % 6]}" opacity=".45"/>`; }
   for (const [x, y] of [[L.w * .06, 10], [L.w * .94, 10], [L.w * .06, L.h - 8], [L.w * .94, L.h - 8]]) s += `<circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(c * 1.4)}" fill="url(#pzLamp)"/>`;
   // the grass: mown stripes a place wide, then a soft floodlight pool
-  const gx = X(0) - pad, gy = Y(0) - pad, gw = (W + 1) * c + 2 * pad, gh = H * c + 2 * pad;
+  const gx = X(0) - pad, gy = Y(0) - pad, gw = (W + 1) * cx + 2 * pad, gh = H * c + 2 * pad;
   s += `<rect x="${n2(gx)}" y="${n2(gy)}" width="${n2(gw)}" height="${n2(gh)}" rx="${n2(c * .22)}" fill="#3c8f46" stroke="${INK}" stroke-width="3"/>`;
-  for (let x = 0; x <= W; x += 2) s += `<rect x="${X(x)}" y="${n2(gy + 1.5)}" width="${n2(Math.min(c, X(W) + pad - X(x)))}" height="${n2(gh - 3)}" fill="#47a352"/>`;
+  for (let x = 0; x <= W; x += 2) s += `<rect x="${X(x)}" y="${n2(gy + 1.5)}" width="${n2(Math.min(cx, X(W) + pad - X(x)))}" height="${n2(gh - 3)}" fill="#47a352"/>`;
   s += `<rect x="${n2(gx)}" y="${n2(gy)}" width="${n2(gw)}" height="${n2(gh)}" rx="${n2(c * .22)}" fill="url(#pzLight)"/>`;
   // the lines: the touchlines, a half circle at our end, the box he shoots from
   const b0 = Math.max(0, M - BOXR), b1 = Math.min(H, M + BOXR + 1);
-  s += `<g fill="none" stroke="#fff" stroke-width="${n2(c * .05)}" opacity=".85"><rect x="${X(0)}" y="${Y(0)}" width="${n2(W * c)}" height="${n2(H * c)}"/>`
-    + `<path class="box" d="M${X(W)} ${Y(b0)}H${X(W - 2)}V${Y(b1)}H${X(W)}"/><path d="M${X(0)} ${Y(H / 2 - 1.1)}A${n2(1.1 * c)} ${n2(1.1 * c)} 0 0 1 ${X(0)} ${Y(H / 2 + 1.1)}"/></g>`;
-  s += `<rect x="${X(W - 2)}" y="${Y(b0)}" width="${n2(2 * c)}" height="${n2((b1 - b0) * c)}" fill="#fff" opacity=".07"/><rect class="boxlit" x="${X(W - 2)}" y="${Y(b0)}" width="${n2(2 * c)}" height="${n2((b1 - b0) * c)}" fill="${GOLD}"/>`;
+  s += `<g fill="none" stroke="#fff" stroke-width="${n2(c * .05)}" opacity=".85"><rect x="${X(0)}" y="${Y(0)}" width="${n2(W * cx)}" height="${n2(H * c)}"/>`
+    + `<path class="box" d="M${X(W)} ${Y(b0)}H${X(W - 2)}V${Y(b1)}H${X(W)}"/><path d="M${X(0)} ${Y(H / 2 - 1.1)}A${n2(1.1 * cx)} ${n2(1.1 * c)} 0 0 1 ${X(0)} ${Y(H / 2 + 1.1)}"/></g>`;
+  s += `<rect x="${X(W - 2)}" y="${Y(b0)}" width="${n2(2 * cx)}" height="${n2((b1 - b0) * c)}" fill="#fff" opacity=".07"/><rect class="boxlit" x="${X(W - 2)}" y="${Y(b0)}" width="${n2(2 * cx)}" height="${n2((b1 - b0) * c)}" fill="${GOLD}"/>`;
   // the goal from above: the net behind the line (a frame, its mesh), white posts with a dark edge
   const gy0 = Y(M - 1), gy1 = Y(M + 2), nx = X(W + .95);
-  s += `<rect x="${X(W)}" y="${gy0}" width="${n2(.95 * c)}" height="${n2(3 * c)}" fill="#fff" opacity=".16"/>`;
+  s += `<rect x="${X(W)}" y="${gy0}" width="${n2(.95 * cx)}" height="${n2(3 * c)}" fill="#fff" opacity=".16"/>`;
   for (let i = 1; i < 6; i++) s += `<path d="M${X(W + i * .16)} ${gy0}V${gy1}" stroke="#fff" stroke-width="1" opacity=".45"/>`;
   for (let i = 1; i < 15; i++) s += `<path d="M${X(W)} ${Y(M - 1 + i * .2)}H${nx}" stroke="#fff" stroke-width="1" opacity=".45"/>`;
   const p = `M${X(W)} ${gy0}H${nx}V${gy1}H${X(W)}`;
@@ -177,36 +180,37 @@ const BOXR = 2; // (rows each side of the middle: puzzle.js BOX)
 const dashes = (d, w, c = GOLD, o = 1) => `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${n2(w + 3)}" stroke-dasharray="${n2(w * 1.6)} ${n2(w * 1.4)}" stroke-linecap="round" opacity="${o * .35}"/><path d="${d}" fill="none" stroke="${c}" stroke-width="${n2(w)}" stroke-dasharray="${n2(w * 1.6)} ${n2(w * 1.4)}" stroke-linecap="round" opacity="${o}"/>`;
 // The goal spots: an orange glow on each one the keeper covers; a gold target on one he cannot reach (written when he moves).
 function drawCover(s) {
-  const c = L.c; let t = '';
+  const c = L.c, cx = L.cx; let t = '', open = -1;
   for (const r of goalRows(pz)) {
     const [x, y] = toScreen(pz.W, r);
-    if (covers(s, r)) t += `<rect x="${n2(x - .45 * c)}" y="${n2(y - .46 * c)}" width="${n2(.86 * c)}" height="${n2(.92 * c)}" rx="${n2(.2 * c)}" fill="#ff8a3d" opacity=".55"/><rect x="${n2(x - .45 * c)}" y="${n2(y - .46 * c)}" width="${n2(.86 * c)}" height="${n2(.92 * c)}" rx="${n2(.2 * c)}" fill="none" stroke="#ffd0a8" stroke-width="2" stroke-dasharray="6 4"/>`;
-    else t += `<circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(.3 * c)}" fill="${INK}" opacity=".45"/><circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(.22 * c)}" fill="none" stroke="${GOLD}" stroke-width="${n2(.08 * c)}"/><circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(.06 * c)}" fill="#fff"/>`;
+    if (covers(s, r)) t += `<rect x="${n2(x - .45 * cx)}" y="${n2(y - .46 * c)}" width="${n2(.86 * cx)}" height="${n2(.92 * c)}" rx="${n2(.2 * c)}" fill="#ff8a3d" opacity=".55"/><rect x="${n2(x - .45 * cx)}" y="${n2(y - .46 * c)}" width="${n2(.86 * cx)}" height="${n2(.92 * c)}" rx="${n2(.2 * c)}" fill="none" stroke="#ffd0a8" stroke-width="2" stroke-dasharray="6 4"/>`;
+    else open = r;
   }
   G('cover').innerHTML = t;
+  if (open >= 0) putFlat(openEl, pz.W, open); openEl.classList.toggle('show', open >= 0); // (an HTML node: its pulse is opacity only)
 }
 // The markers' links to their men (thin red dashes).
 function drawTethers(s) {
   let t = ''; pz.roles.forEach((j, i) => { if (j >= 0) t += `<path d="M${P2(s.d[2 * i], s.d[2 * i + 1])}L${P2(s.o[2 * j], s.o[2 * j + 1])}" stroke="#ff5a5f" stroke-width="${n2(L.c * .05)}" stroke-dasharray="${n2(L.c * .1)} ${n2(L.c * .08)}" opacity=".8"/>`; });
   G('tether').innerHTML = t;
 }
-// Picked (a tap on the ball carrier): his passes (white dashes if open; red up to the red player who would cut it), his
+// Whenever it is his move (soft, no tap needed): his passes (white dashes if open; red up to the red player who would cut it), his
 // shots from the box, and each red player's reach (the places where a dribble is tackled), all soft.
 function drawLanes(on) {
   if (!on || !board) { G('lanes').innerHTML = ''; return; }
   const s = board.s, bx = s.o[2 * s.b], by = s.o[2 * s.b + 1], c = L.c; let t = '';
-  for (let k = 0; k < s.d.length; k += 2) { const [x, y] = toScreen(s.d[k] - 1, s.d[k + 1] - 1); t += `<rect x="${n2(x - c / 2)}" y="${n2(y - c / 2)}" width="${3 * c}" height="${3 * c}" rx="${n2(c * .5)}" fill="#ff5a5f" opacity=".13"/>`; }
+  for (let k = 0; k < s.d.length; k += 2) { const [x, y] = toScreen(s.d[k] - 1, s.d[k + 1] - 1); t += `<rect x="${n2(x - L.cx / 2)}" y="${n2(y - c / 2)}" width="${3 * L.cx}" height="${3 * c}" rx="${n2(c * .5)}" fill="#ff5a5f" opacity=".13"/>`; }
   for (let i = 0; i < s.o.length >> 1; i++) {
     if (i === s.b) continue;
     const tx = s.o[2 * i], ty = s.o[2 * i + 1], cut = cutBy(pz, s, bx, by, tx, ty);
-    t += cut ? dashes(`M${P2(bx, by)}L${P2(bx + (tx - bx) * cut.t, by + (ty - by) * cut.t)}`, c * .06, '#ff5a5f', .8) : dashes(`M${P2(bx, by)}L${P2(tx, ty)}`, c * .06, '#fff', .8);
+    t += cut ? dashes(`M${P2(bx, by)}L${P2(bx + (tx - bx) * cut.t, by + (ty - by) * cut.t)}`, c * .06, '#ff5a5f', .55) : dashes(`M${P2(bx, by)}L${P2(tx, ty)}`, c * .06, '#fff', .55);
   }
-  if (inBox(pz, bx, by)) for (const r of goalRows(pz)) if (!covers(s, r) && !cutBy(pz, s, bx, by, pz.W, r)) t += dashes(`M${P2(bx, by)}L${P2(pz.W, r)}`, c * .06, GOLD, .9);
+  if (inBox(pz, bx, by)) for (const r of goalRows(pz)) if (!covers(s, r) && !cutBy(pz, s, bx, by, pz.W, r)) t += dashes(`M${P2(bx, by)}L${P2(pz.W, r)}`, c * .06, GOLD, .75);
   G('lanes').innerHTML = t;
 }
 
 // ---------- the play ----------
-let pz = null, board = null, view = null, phase = 'off', tStart = 0, onEnd = null, hint = null, refuseAt = -9, picked = false, gkPose = null;
+let pz = null, board = null, view = null, phase = 'off', tStart = 0, onEnd = null, hint = null, refuseAt = -9, gkPose = null;
 // view: where everything is drawn (places, in between them during a movement): o, d, g, b, and the ball's place.
 function setView(s) { view = { o: s.o.slice(), d: s.d.slice(), g: s.g, b: s.b, ball: [s.o[2 * s.b] + .3, s.o[2 * s.b + 1] + .12], gx: 0, rot: 0 }; }
 function drawAll() {
@@ -231,13 +235,14 @@ function drawHints(on) {
     }
     putFlat(ringEl, bx, by + .25); ringEl.classList.add('show');
   } else ringEl.classList.remove('show');
+  drawLanes(on); // (v93 follow-up: his lanes, soft, whenever it is his move: no tap needed to see them)
   showN('hint', k);
 }
 function drawBalls() { const n = pz.moves; showN('foot', n); for (let i = 0; i < n; i++) node('foot', i).classList.toggle('gone', i >= board.left); }
 
 // A tap on the board: a pass, a dribble, a shot, picking the ball carrier, or nothing.
 function moveAt(px, py) {
-  const fx = (px - L.ox) / L.c, fy = (py - L.oy) / L.c + .2, M = mid(pz); // (+.2: a kid stands above his place; a tap on his body is a tap on him)
+  const fx = (px - L.ox) / L.cx, fy = (py - L.oy) / L.c + .2, M = mid(pz); // (+.2: a kid stands above his place; a tap on his body is a tap on him)
   if (fx >= 0 && fx < pz.W && fy >= 0 && fy < pz.H) { const i = ourAt(board.s, Math.floor(fx), Math.floor(fy)); if (i >= 0) return i === board.s.b ? 'pick' : 'p' + i; }
   if (fx >= pz.W - .1 && fx < pz.W + 1.4 && fy >= M - 1.3 && fy < M + 2.3) return 's' + Math.max(M - 1, Math.min(M + 1, Math.floor(fy)));
   if (fx < -.4 || fy < -.4 || fx > pz.W + .1 || fy > pz.H + .4) return null;
@@ -252,11 +257,11 @@ layer.addEventListener('pointerdown', e => {
 });
 function tap(mv) {
   if (!mv || phase !== 'wait') return false;
-  if (mv === 'pick') { picked = !picked; drawLanes(picked); return false; } // (costs nothing: a look at his options)
+  if (mv === 'pick') return false; // (his own ball carrier: not a move, costs nothing; his lanes are shown already)
   if (mv === 'x') { refused(mv); return false; }
   const r = board.tap(mv);
   if (r.res === 'refused') { refused(mv); return false; }
-  hint = null; hud.hand(null); picked = false; drawLanes(false);
+  hint = null; hud.hand(null); drawLanes(false);
   phase = 'busy'; drawBalls(); drawHints(false);
   act(mv, r).catch(e => console.error(e));
   return true;
@@ -356,7 +361,7 @@ function frame() {
 
 // ---------- one puzzle ----------
 function showPuzzle(p) {
-  pz = p; board = new Board(p); setView(board.s); hud.caption(''); gkPose = null; picked = false;
+  pz = p; board = new Board(p); setView(board.s); hud.caption(''); gkPose = null;
   layout(p); drawPitch(p); drawTethers(board.s); drawCover(board.s); drawLanes(false); G('path').innerHTML = ''; G('cut').innerHTML = '';
   badEl.classList.remove('show'); drawAll(); drawBalls();
   sandEl.classList.toggle('hidden', !p.sec); sandFill.style.transform = 'scaleY(1)';
@@ -435,10 +440,12 @@ function end() {
   stage.on = false; stage.covers = false; phase = 'off'; pz = null; board = null; gen.it = null; gen.jobs = []; onEnd = null; hint = null;
   stage.tw.length = 0; hud.hand(null); hud.caption(''); layer.classList.add('hidden'); onStage(null); game.home();
 }
-addEventListener('resize', () => { if (pz && stage.on && board) { layout(pz); drawPitch(pz); drawCover(board.s); drawTethers(board.s); drawLanes(picked); drawAll(); drawHints(phase === 'wait'); } });
+addEventListener('resize', () => { if (pz && stage.on && board) { layout(pz); drawPitch(pz); drawCover(board.s); drawTethers(board.s); drawLanes(phase === 'wait'); drawAll(); drawHints(phase === 'wait'); } });
 
 // For the review tools and the browser checks: what is on the board and where (read only), the move a screen point
 // means, and `force` ({ level, seed, sec }): the next puzzle shown is that one (for pictures of a high level).
-const dev = { force: null, stage, get phase() { return phase; }, get pz() { return pz; }, get board() { return board; }, get layout() { return { ...L }; }, get picked() { return picked; }, toScreen, moveAt };
+const dev = { force: null, stage, get phase() { return phase; }, get pz() { return pz; }, get board() { return board; }, get layout() { return { ...L }; }, toScreen, moveAt,
+  // (the overlap check) a puzzle shown on the board after k moves of its solution, nothing else changed
+  preview(level, seed, k = 0) { const p = makePuzzle(level, seed); showPuzzle(p); for (const mv of p.best.slice(0, k)) board.tap(mv); setView(board.s); drawAll(); drawCover(board.s); return p.best.length; } };
 function forced() { const f = dev.force; if (!f) return null; dev.force = null; const p = makePuzzle(f.level, f.seed ?? 1); if (f.sec != null) p.sec = f.sec; return p; }
 if (typeof window !== 'undefined') window.__pz = dev;

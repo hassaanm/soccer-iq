@@ -20,24 +20,28 @@ test('every puzzle shown is solved first, the obvious lines fail, few first move
     assert.equal(pz.best.length, pz.len); assert.equal(shortest(pz, s, pz.moves), pz.len, 'no shorter solution');
     assert.ok(pz.len >= D.lenLo && pz.len <= D.lenHi, `length ${pz.len} in ${D.lenLo}..${D.lenHi}`);
     assert.equal(pz.moves, pz.len + D.spare);
-    assert.equal(obviousWin(pz, s, pz.moves), null, 'shoot at once, dribble straight on, pass to the nearest: all fail');
+    if (!D.first) assert.equal(obviousWin(pz, s, pz.moves), null, 'shoot at once, dribble straight on, pass to the nearest: all fail');
     assert.ok(new Solver(pz).firsts(s, pz.moves).length <= D.firsts, 'few winning first moves');
     assert.ok(ideasOf(pz, pz.best).length >= D.ideas && IDEAS.includes(pz.idea) && ideaOf(pz, pz.best) === pz.idea);
     assert.ok(pz.tries > 0, 'made by the generator, not the last resort');
   }
 });
-test('decision D1: the first puzzle needs three moves and one idea; by a score of 5, two ideas', () => {
+test('the first puzzle is the plainest keeper case (pass across, finish); from a score of 1, three moves; by 6, two ideas', () => {
   for (let i = 0; i < 30; i++) {
-    const pz = makePuzzle(0, 100 + i), s = startOf(pz);
+    const p0 = makePuzzle(0, 100 + i), s0 = startOf(p0);
+    assert.deepEqual([p0.len, p0.moves, p0.start.d.length / 2, p0.start.o.length / 2, p0.best[0][0], p0.best[1][0]], [2, 3, 1, 2, 'p', 's']);
+    assert.equal(shortest(p0, s0, 1), 0, 'no shot at once');
+    const r = play(p0, s0, p0.best[0]); assert.ok(r.s.k >= 0 && !covers(r.s, +p0.best[1].slice(1)), 'the pass moves the keeper; the shot goes to the spot he cannot reach');
+    const pz = makePuzzle(STEP, 100 + i), s = startOf(pz);
     assert.equal(pz.len, 3); assert.equal(pz.moves, 4); assert.equal(shortest(pz, s, 2), 0, 'no two-move goal');
-    const p5 = makePuzzle(5 * STEP, 200 + i); assert.ok(p5.ideas.length >= 2 && p5.moves === p5.len, `score 5: ${p5.ideas}`);
+    const p6 = makePuzzle(6 * STEP, 200 + i); assert.ok(p6.ideas.length >= 2 && p6.moves === p6.len, `score 6: ${p6.ideas}`);
   }
 });
 
 test('the same seed gives the same puzzle; a play log line rebuilds it', () => {
   for (const L of [0, 4 / 3, 3, 6]) {
     const a = makePuzzle(L, 4242), b = makePuzzle(L, 4242), c = makePuzzle(L, 4243);
-    assert.deepEqual(a, b); assert.notDeepEqual(a.start, c.start);
+    assert.deepEqual(a, b); if (L) assert.notDeepEqual(a.start, c.start);
     assert.deepEqual(rebuild({ at: Math.round(L * 3), seed: 4242 }), makePuzzle(Math.round(L * 3) / 3, 4242));
   }
   const r1 = rng(9), r2 = rng(9); for (let i = 0; i < 20; i++) assert.equal(r1(), r2());
@@ -120,7 +124,7 @@ test('two lives end a run: puzzles solved score, a failed one costs a life', () 
 });
 
 test('the difficulty: every number goes the hard way only, one of them a success at most, by one step', () => {
-  const up = { W: 1, H: 1, ours: 1, def: 1, mark: 1, press: 1, lenLo: 1, lenHi: 1, spare: -1, firsts: -1, ideas: 1 };
+  const up = { W: 1, H: 1, ours: 1, def: 1, mark: 1, press: 1, lenLo: 1, lenHi: 1, spare: -1, firsts: -1, ideas: 1 }; // (the first puzzle to the second: several at once, all the hard way)
   const big = Array.from({ length: 151 }, (_, i) => i * STEP);
   for (let i = 1; i < big.length; i++) {
     const a = puzzleLevel(big[i - 1]), b = puzzleLevel(big[i]); let changed = 0;
@@ -128,12 +132,13 @@ test('the difficulty: every number goes the hard way only, one of them a success
       const d = (b[k] - a[k]) * up[k]; assert.ok(d >= 0, `${k} eased at level ${big[i].toFixed(2)}`);
       if (d) { changed++; assert.ok(d <= (k === 'H' ? 2 : 1), `${k} jumped`); }
     }
-    assert.ok(changed <= 1, `level ${big[i].toFixed(2)}: ${changed} numbers changed at one success`);
+    if (i > 1) assert.ok(changed <= 1, `level ${big[i].toFixed(2)}: ${changed} numbers changed at one success`);
     assert.ok(b.lenHi >= b.lenLo && b.lenHi <= 6);
     if (a.sec) assert.ok(b.sec <= a.sec && a.sec - b.sec <= 4, 'the sand timer shortens a little');
     if (!a.sec && b.sec) assert.ok(b.sec >= 110, 'it comes in long');
   }
-  const z = puzzleLevel(0); assert.deepEqual([z.def, z.lenLo, z.spare, z.firsts, z.sec], [2, 3, 1, 3, 0], 'the start: two defenders, three-move puzzles, one spare');
+  const z = puzzleLevel(0), o = puzzleLevel(STEP); assert.deepEqual([z.def, z.ours, z.lenLo, z.lenHi, z.spare, z.sec], [1, 2, 2, 2, 1, 0], 'the first: one defender, a friend, two moves');
+  assert.deepEqual([o.def, o.lenLo, o.spare, o.firsts, o.sec], [2, 3, 1, 3, 0], 'then: two defenders, three-move puzzles, one spare');
   const h = puzzleLevel(50); assert.ok(h.lenLo === 6 && h.def === 6 && h.sec > 30 && h.sec < 40, 'it keeps getting harder');
 });
 

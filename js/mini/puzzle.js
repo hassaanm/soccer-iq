@@ -41,24 +41,28 @@ export function rng(seed) {
 }
 
 // ---------- how hard, by level (a third of a level a puzzle solved: mini/rules.js) ----------
-// The one place to tune it (decision D1: a real puzzle from the first one, two ideas by a score of 5, rising fast).
-// Each stepped number moves by one at its own score (no two at the same puzzle), and only the hard way.
+// The one place to tune it (decision D1, and the orchestrator's follow-up: the very first puzzle of a run, at a score of
+// 0, is the plainest case of the keeper rule; from a score of 1 a real puzzle, two ideas by a score of 6, rising fast).
+// After the first, each stepped number moves by one at its own score (no two at the same puzzle), and only the hard way.
 //   W, H     the board (places to the goal, places across)       ours    our players, the ball carrier included
 //   def      their field players (the keeper besides)              mark    how many of them mark a man
 //   press    how many of the nearest step toward the ball          spare   moves beyond the shortest solution
 //   lenLo/Hi the shortest solution's length (moves)                firsts  winning first moves at most
 //   ideas    ideas the shortest solution carries at least (the keeper's is one)
+//   first    the first puzzle: pass across, then finish (the obvious lines are allowed to win)
 //   sec      the sand timer (s; 0: none)
 // Each threshold is a number of puzzles solved (a score), all different.
 const past = (L, at) => at.filter(n => L >= n / 3 - 1e-9).length;
+export const FIRST = { W: 6, H: 5, ours: 2, def: 1, mark: 0, press: 1, spare: 1, lenLo: 2, lenHi: 2, firsts: 3, ideas: 1, first: true, sec: 0 };
 export function puzzleLevel(L) {
   L = Math.max(0, L);
+  if (L < 1 / 3 - 1e-9) return { ...FIRST };
   return {
-    W: 6 + past(L, [9, 24]), H: 5 + 2 * past(L, [15]), ours: 3 + past(L, [6]),
-    def: 2 + past(L, [3, 12, 21, 33]), mark: 1 + past(L, [8, 27]), press: 1 + past(L, [18]),
-    spare: 1 - past(L, [4]), lenLo: 3 + past(L, [11, 16, 40]), lenHi: 3 + past(L, [2, 10, 30]),
-    firsts: 3 - past(L, [7, 14]), ideas: 1 + past(L, [5]),
-    sec: L < 36 / 3 - 1e-9 ? 0 : ease(120, 30, 10)(L - 36 / 3),
+    W: 6 + past(L, [10, 25]), H: 5 + 2 * past(L, [16]), ours: 3 + past(L, [7]),
+    def: 2 + past(L, [4, 13, 22, 34]), mark: 1 + past(L, [9, 28]), press: 1 + past(L, [19]),
+    spare: 1 - past(L, [5]), lenLo: 3 + past(L, [12, 17, 41]), lenHi: 3 + past(L, [3, 11, 31]),
+    firsts: 3 - past(L, [8, 15]), ideas: 1 + past(L, [6]), first: false,
+    sec: L < 37 / 3 - 1e-9 ? 0 : ease(120, 30, 10)(L - 37 / 3),
   };
 }
 // The numbers that move in steps, for the tests.
@@ -334,11 +338,12 @@ export function* puzzleSteps(level, seed) {
     const pz = place(D, r); if (!pz) continue;
     const len = shortest(pz, pz.start, D.lenHi); if (!len || len < D.lenLo) continue;
     const n = len + D.spare;
-    if (obviousWin(pz, pz.start, n)) continue;
+    if (!D.first && obviousWin(pz, pz.start, n)) continue;
     const sv = new Solver(pz), firsts = sv.firsts(pz.start, n);
     if (firsts.length > D.firsts) continue;
+    if (D.first && !sv.shortestAll(pz.start, len).some(x => x[0][0] === 'p')) continue; // (the first: pass across, then finish)
     const short = sv.shortestAll(pz.start, len), tagged = short.map(x => [ideasOf(pz, x), x]).sort((a, b) => b[0].length - a[0].length || RANK[b[0][0]] - RANK[a[0][0]]);
-    const top = tagged[0];
+    const top = D.first ? tagged.find(([, x]) => x[0][0] === 'p') : tagged[0];
     const out = { ...pz, seed, level, moves: n, len, ways: sv.count(pz.start, n), firsts: firsts.length, spare: D.spare, idea: top[0][0], ideas: top[0], best: top[1], sec: D.sec, tries: t + 1 };
     if (top[0].length >= D.ideas) return out;
     fallback ||= out;
