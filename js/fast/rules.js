@@ -80,7 +80,7 @@ export function spotSet({ me, state, carrier = null, ball, mates = [], foes = []
     const ga = Math.atan2(goal.y - me.y, goal.x - me.x), gd0 = dist(me, goal), cands = [];
     for (const relax of [0, 1]) {
       for (const c of lattice(me, 2.6, 7.4, L, W)) {
-        let path = 99; for (const o of all) path = Math.min(path, onLane(o, me, c, 0).d);
+        let path = 99; for (const o of all) { const q = onLane(o, me, c, 0); if (q.t > .08) path = Math.min(path, q.d); } // (a defender beside or behind him does not shut a way away from him)
         const r = room(c); if (path < (relax ? 1 : 1.4) || r < (relax ? 1.5 : 2)) continue;
         const a = wrap(Math.atan2(c.y - me.y, c.x - me.x) - ga), aa = Math.abs(a), kind = aa < .45 ? 'goal' : aa < 1.15 ? 'space' : aa < 2.05 ? 'wide' : 'back';
         const edge = Math.min(c.y, W - c.y) < 2.5 ? .6 : 0;
@@ -113,6 +113,11 @@ export function spotSet({ me, state, carrier = null, ball, mates = [], foes = []
     for (const p of lattice(me, 2, 10, L, W)) { const q = onLane(p, c, own, 0); if (q.d < 3.5 && dist(p, own) < dist(c, own) - 2) cands.push({ x: p.x, y: p.y, kind: 'cover', s: 1 - q.d * .3 - Math.abs(dist(p, c) - 5) * .15 }); }
     if (state === 'loose') for (const p of lattice(me, 2, 9, L, W)) { const r = room(p); if (r > 2.5 && p.x > c.x) cands.push({ x: p.x, y: p.y, kind: 'open', s: .5 + Math.min(r, 4) * .3 - p.d * .05 }); }
     out = choose(cands, [{ kind: state === 'theirs' ? 'press' : 'ball' }, { kind: 'goalside' }, { kind: 'lane' }, { kind: 'mark' }, { kind: 'lane' }], p => p.follow ? seen(p) : free(p));
+  }
+  if (out.length < 3 && state) { // (never stuck with one or none: any free place in sight round him that is not into one of theirs)
+    const extra = [];
+    for (const c of lattice(me, 2.2, 8.5, L, W)) { let path = 99; if (state === 'mine') for (const o of all) { const q = onLane(o, me, c, 0); if (q.t > .08) path = Math.min(path, q.d); } if (path < .8 || room(c) < 1.2) continue; extra.push({ x: c.x, y: c.y, kind: state === 'mine' ? 'space' : state === 'theirs' ? 'cover' : 'open', side: 1, s: -2 + Math.min(room(c), 4) * .3 + (state === 'mine' ? (dist(me, goal) - dist(c, goal)) * .2 : 0) }); }
+    for (const c of extra.sort((p, q) => q.s - p.s)) { if (out.length >= 4) break; if (free(c) && out.every(q => Math.hypot(q.x - c.x, q.y - c.y) >= SPOT_GAP)) out.push(c); }
   }
   if (out.length) { const b = out.reduce((p, q) => (q.s > p.s ? q : p)); b.best = true; }
   return out;
