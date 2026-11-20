@@ -95,12 +95,18 @@ export const team = {
     for (const d of s.agents.values()) {
       if (d.gk || d.team === c.team || (d.id === 'hero' && !(this.sc?.kind === 'defense' && this.phase === 'outcome')) || d.beat > s.time || d.tk > s.time - .5 || Math.min(dist(d, c), dist(d, s.ball)) >= 1.5) { d.hov = 0; continue; }
       if (this.leaving(d) && d.lv && Math.hypot(d.lv[0], d.lv[1]) > 1) { d.hov = 0; continue; } // (a friend whose job is one of their other players: he is on his way off the ball; v78: not one standing there, held still for a kick's line)
+      if (!this.scripted.has(d.id) && this.otherOnBall(d, c)) { d.hov = 0; this.stepOff(d); continue; } // (v76 SL: a friend of his is already on it: he steps off it at once)
       d.hov = (d.hov || 0) + dt; if (d.hov < .3) continue;
       const b = s.ball, dx = b.x - d.x, dy = b.y - d.y, l = Math.hypot(dx, dy) || 1, sd = Math.sign(dx * (c.ty - c.y) - dy * (c.tx - c.x)) || 1; // (past it on the side the player on it is not going to)
       d.hov = 0; d.tk = s.time; d.beat = s.time + 1; d.mom = null; d.aic = null; d.track = null;
       s.go(d.id, clamp(b.x + dx / l * 1.3 + dy / l * sd * .5, .5, L - .5), clamp(b.y + dy / l * 1.3 - dx / l * sd * .5, .5, W - .5), 5);
     }
   },
+  // (v76 SL) Whether another of d's team (ours: theirs go in as before), nearer the player on the ball than d, is on it already (within a step and a half
+  // of him, or going in at it). Then d does not go in too: he steps off it (stepOff). Two of ours going in at once, each
+  // carried past it off balance, left two at the ball with one of theirs free (the live audit's twoball, mostly at 5v5).
+  otherOnBall(d, c) { const s = this.sim; return d.team === 'us' && s.team(d.team).some(o => o !== d && !o.gk && dist(o, c) < dist(d, c) && (dist(o, c) < 1.5 || o.tk > s.time - .9)); },
+  stepOff(d) { const s = this.sim, b = s.ball, l = dist(d, b) || 1; d.aic = null; d.mom = null; s.go(d.id, clamp(b.x + (d.x - b.x) / l * 2.6, .5, L - .5), clamp(b.y + (d.y - b.y) / l * 2.6, .5, W - .5), 3.4); },
   // A team on defense does what the lessons teach: only one player (the nearest who is free) pressures the ball, and
   // everyone else guards an attacker, standing goal-side of him: nobody leaves his player to chase, and no attacker is
   // left to two while another stands free. One with nobody left to guard drops back and covers.
@@ -138,6 +144,7 @@ export const team = {
     const car = s.ball.carrier && s.a(s.ball.carrier), off = d => d.beat > s.time, free0 = free; free = d => free0(d) && !off(d);
     // (round 7: live play only; a lesson's scene plays as it was written)
     if (car && car.team !== def && !this.inFinish && !this.win && (this.mode === 'match' || this.mode === 'free')) for (const d of mine) if (free(d) && !d.gk && !this.leaving(d) && dist(d, car) < 1.5) {
+      if (this.otherOnBall(d, car)) { this.stepOff(d); continue; } // (v76 SL)
       const dx = s.ball.x - d.x, dy = s.ball.y - d.y, l = Math.hypot(dx, dy) || 1; d.tk = s.time; d.beat = s.time + .9; d.mom = null; d.aic = null;
       s.go(d.id, clamp(s.ball.x + dx / l * 1.3, .5, L - .5), clamp(s.ball.y + dy / l * 1.3, .5, W - .5), 5); this.beatenId = d.id; if (this.roles) { this.roles = null; } this.wasBeaten = d.id; this.wasBeatenT = s.time; }
     let beaten = false;
@@ -147,6 +154,11 @@ export const team = {
     if (this.roles?.key === key && this.roles.chase && s.time - this.roles.t > 1.6) this.roles = null;
     // (round 6: one who had no job when they were picked, off balance then, gets one now: the jobs are picked again)
     if (this.roles?.key === key && mine.some(d => free(d) && !d.gk && !(d.id in this.roles.jobs))) this.roles = null;
+    // (v76 SL) One of ours the play's script has sent to the ball (his own player going in, a friend making the tackle) is
+    // on it now: the one the team's shape had pressing leaves it to him and the jobs are picked again (he takes the player
+    // left free). Two of ours on the ball with one of theirs left free was the live audit's commonest fault (twoball).
+    if (this.roles?.key === key && car && car.team !== def) { const pid = Object.keys(this.roles.jobs).find(id => this.roles.jobs[id] === 'press'), pr = pid && s.a(pid);
+      if (pr && free(pr) && mine.some(d => !free(d) && !d.gk && d !== pr && !(d.beat > s.time) && dist(d, ball) < 2.2 && dist(d, ball) < dist(pr, ball) + .3)) this.roles = null; }
     if (this.roles?.key === key) { const kept = this.roles.jobs, R = this.roles; for (const id in kept) { const job = kept[id], d = s.a(id); if (!d || !free(d)) continue;
       if (job === 'chase') { this.aiGo(d, ball.x, ball.y, 4.5, true); continue; }
       const t = job === 'press' ? ball : job === 'cover' ? null : s.a(job);
