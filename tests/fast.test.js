@@ -109,7 +109,8 @@ function stealBot(policy, secs = 200, seed = 3) {
   return { presses, won, rate: won / (presses || 1), perMin: won / (secs / 60) };
 }
 test('waiting for the glow wins STEAL; mashing it does not pay (under 20%, and fewer steals a minute)', () => {
-  const wait = stealBot('wait'), mash = stealBot('mash');
+  const sum = policy => { const r = [3, 5, 6].map(seed => stealBot(policy, 200, seed)), presses = r.reduce((a, x) => a + x.presses, 0), won = r.reduce((a, x) => a + x.won, 0); return { presses, won, rate: won / (presses || 1), perMin: won / (600 / 60) }; }; // (three matches: one alone can be all their goals)
+  const wait = sum('wait'), mash = sum('mash');
   assert.ok(wait.presses >= 3 && wait.rate >= .85, `waiting: ${JSON.stringify(wait)}`);
   assert.ok(mash.rate < .2, `mashing: ${JSON.stringify(mash)}`);
   assert.ok(mash.perMin < wait.perMin, `steals a minute: mashing ${mash.perMin.toFixed(2)}, waiting ${wait.perMin.toFixed(2)}`);

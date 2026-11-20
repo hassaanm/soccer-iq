@@ -13,6 +13,7 @@ import { clamp, dist, onLane } from '../fast/rules.js';
 import { shotResult, relations, rightFoot, zone as shotZone, EDGE as SHOT_EDGE } from '../shot.js';
 import { PITCH } from '../geom.js';
 import { ease, ramp } from './rules.js';
+import { early } from './rondo.js';
 
 export const BASE = .75; // the Fast speed of play (fast.js BASE): game s per real s
 // ---------- the situations, easiest first ----------
@@ -35,14 +36,19 @@ export const kindById = id => KINDS.find(k => k.id === id);
 //   friendSave the share of a free friend's shots their keeper saves
 //   farSave the share of good shots from the edge (SHOT_EDGE m) he saves (less closer in, none from SURE_D m)
 //   time    real s of the timer; startD: m from goal where he starts
+// (v89 integration) The first successes are very easy for a child who sometimes freezes: `early` (mini/rondo.js early:
+// 1 for the first three goals, then easing smoothly to 0) makes their players slower to close and to a pass line
+// (`slow`), never tight on him early, gives him a long time on the ball (stand, into), and forgives a pass of his into a
+// closed line (match.js `forgive`); then the normal curve.
+export const AEK = { slow: .45, stand: 3, into: .6, react: .4, move: 1 }; // (the dribbling ones, into and move, fade as early squared: sooner, so running straight at them stops paying)
 export function attackLevel(L) {
-  L = Math.max(0, L);
+  L = Math.max(0, L); const e = early(L);
   const centre = 6 * (1 - Math.exp(-L / 6.5));
   const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.7) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .3) : 1)), sum = w.reduce((a, b) => a + b, 0);
   return {
     level: L, centre, mix: KINDS.map((k, i) => ({ id: k.id, w: w[i] / sum })),
-    opp: 1 - Math.exp(-L / 10), react: ease(.8, .25, 7)(L), stand: ease(4.2, 2.2, 8)(L), boost: ramp(0, .06, .8)(L), into: .4 + ramp(0, .15, 1)(L),
-    commit: ease(8.5, 11, 8)(L), farSave: ease(.55, .8, 8)(L), keeper: ease(.1, .55, 8)(L), slip: ease(.85, .1, 10)(L), friendSave: ease(.08, .35, 8)(L),
+    early: e, slow: 1 - AEK.slow * e, opp: 1 - Math.exp(-L / 10), react: ease(.8, .25, 7)(L) + AEK.react * e, stand: ease(4.2, 2.2, 8)(L) + AEK.stand * e, boost: ramp(0, .06, .8)(L), into: (.4 + ramp(0, .15, 1)(L)) * (1 - AEK.into * e * e),
+    commit: ease(8.5, 11, 8)(L), farSave: ease(.55, .8, 8)(L), keeper: ease(.1, .55, 8)(L), slip: ease(.85, .1, 10)(L), friendSave: ease(.08, .35, 8)(L) * (1 - e),
     time: ease(32, 20, 15)(L), startD: ease(15, 18, 10)(L),
   };
 }
@@ -105,7 +111,11 @@ export class AttackMatch extends Match {
     this.total = D.time; this.left = D.time; this.sec = 0; this.res = null; this.plan = new Map(); this.presser = null; this.owner0 = undefined; this.gg = null;
     this.advice = null; this.adviceT = -9; this.meAuto = false;
   }
-  setLevel(level) { super.setLevel(level); if (this.D) { this.standT = this.D.stand; this.opp.keeper = this.D.keeper; } }
+  setLevel(level) {
+    super.setLevel(level); if (!this.D) return; const D = this.D, o = this.opp; this.standT = D.stand; o.keeper = D.keeper;
+    // the first goals (D.early): slower to close him down and to a pass line; a pass of his into a closed line forgiven
+    o.press *= D.slow; o.mark *= D.slow; o.run *= D.slow; o.cutRun *= D.slow; o.cutReact += .35 * (D.early || 0); this.aiSpeed.them = o.run; this.forgive = D.early || 0; this.moveTackleX = AEK.move * (D.early || 0) ** 2; this.forgivePush = (D.early || 0) ** 2;
+  }
   setup() {
     const sc = this.sc, s = this.sim, cy = this.W / 2;
     s.setup({ hero: sc.hero, mates: sc.mates, opps: sc.opps, gk: { them: [this.L - .7, cy] }, carrier: 'hero' });

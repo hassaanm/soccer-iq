@@ -149,8 +149,8 @@ export class Match {
     const pt = this.passTarget(a, b), d = pt.d, sp = pt.sp, tx = pt.x, ty = pt.y;
     s.stop(fromId); s.windup(fromId, 'pass'); this.cmd.set(fromId, s.time + .7);
     s.go(toId, tx, ty, Math.max(2.5, b.sp)); this.cmd.set(toId, s.time + 9); s.open(toId, this.goalX(this.team(toId)), this.W / 2);
-    const team = this.team(fromId), cr = this.cutPace(team), shut = fromId === this.me && !this.passCheck(fromId, toId).open; // (his pass into a line not shown open: they get to it as the check judged it, so what he sees is what happens)
-    const cut = cutBy({ x: a.x, y: a.y }, { x: tx, y: ty }, sp, this.allFoes(team), shut ? cr.run * 1.3 : cr.run, shut ? cr.react * .5 : cr.react, shut ? OPEN_MARGIN : 0);
+    const team = this.team(fromId), cr = this.cutPace(team), kind = fromId === this.me && this.forgive && this.rnd() < this.forgive, shut = fromId === this.me && !kind && !this.passCheck(fromId, toId).open; // (his pass into a line not shown open: they get to it as the check judged it, so what he sees is what happens)
+    const cut = kind ? null : cutBy({ x: a.x, y: a.y }, { x: tx, y: ty }, sp, this.allFoes(team), shut ? cr.run * 1.3 : cr.run, shut ? cr.react * .5 : cr.react, shut ? OPEN_MARGIN : 0); // (kind: Score attack's first goals forgive his pass `forgive` of the time: nobody runs to cut it; only a body in its way stops it)
     if (cut) { const c = s.a(cut.id); if (!c.gk || dist(c, cut) < 3) { s.go(cut.id, cut.x, cut.y, 5.2); this.cmd.set(cut.id, s.time + 9); } }
     this.flight = { kind: 'pass', from: fromId, to: toId, cut: cut?.id || null, team, t0: s.time, me: fromId === this.me };
     if (fromId === this.me) { this.count.passes++; this.invQ = shut ? SHUT_Q : 1; } // (a pass into a closed line that still got there: his friends rush it, not a chance he made)
@@ -161,6 +161,7 @@ export class Match {
     const s = this.sim, team = this.team(id), gx = this.goalX(team), dx = this.dir(team); if (id === this.me) this.acted();
     s.stop(id); s.windup(id, 'shot'); this.cmd.set(id, s.time + .8);
     let tx = gx + dx * .7, ty = res.to.y, z1 = res.to.z ?? .35;
+    if (res.res === 'goal') { const a = s.a(id), run = gx - a.x; if (Math.abs(run) > .3) ty += (ty - a.y) * (dx * .7) / run; } // (v89 integration: aimed through its spot on the goal line, so an angled shot that is in crosses the line inside the posts)
     if (res.res === 'save' || res.res === 'cleared') { tx = res.at.x; ty = res.at.y; z1 = res.at.z ?? .3; }
     else if (res.res === 'over' || res.res === 'wide') { tx = gx + dx * 2.2; z1 = res.to.z; }
     this.flight = { kind, from: id, team, res, t0: s.time };
@@ -187,6 +188,7 @@ export class Match {
       const sp = ring === 2 ? 6 : 3.6; s.go(this.me, x, y, sp); this.meMove = { kind: ring === 2 ? 'sprint' : 'jog', until: t + dist(a, { x, y }) / sp + .3 };
       if (this.flight?.to === this.me) this.cmd.delete(this.me); return;
     }
+    if (ring !== 1 && this.forgivePush && this.rnd() < this.forgivePush && this.allFoes('us').some(o => onLane(o, a, { x, y }, 0).d < PUSH_NEAR)) ring = 1; // (forgive, Score attack's first goals: a big push at one of theirs is a close dribble, `forgivePush` of the time)
     if (ring === 1) { const d = dist(a, { x, y }); this.dribble(this.me, x, y, 3.2, d / 3.2 + .3); this.meMove = { kind: 'near', until: t + d / 3.2 + .3 }; return; }
     // a big push: the ball 1.5 m short of the spot, fast along the grass; he sprints onto it
     const ang = Math.atan2(y - a.y, x - a.x), bx = clamp(x - Math.cos(ang) * 1.2, .8, this.L - .8), by = clamp(y - Math.sin(ang) * 1.2, .8, this.W - .8);
@@ -287,7 +289,7 @@ export class Match {
           if (c === this.me) {
             const mv = this.meMove, moving = mv && mv.kind === 'near' && t < mv.until, ahead = (o.x - ca.x) * (ca.tx - ca.x) + (o.y - ca.y) * (ca.ty - ca.y) > 0;
             if (moving && !ahead) { this.contact.delete(k); continue; } // dribbling away from him: he cannot get it
-            need = moving ? TACKLE_T + .75 : this.standT; // standing on it: he closes in, a warning, then the tackle (by the level)
+            need = moving ? TACKLE_T + .75 + (this.moveTackleX || 0) : this.standT; // (moveTackleX: more time for a dribble into one of them, Score attack's first goals) // standing on it: he closes in, a warning, then the tackle (by the level)
           }
           if (o.id === this.me) need = 1.2;
           const v = (this.contact.get(k) || 0) + dt; this.contact.set(k, v);
