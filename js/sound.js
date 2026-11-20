@@ -206,8 +206,17 @@ function fxStart(key, pool) {
   if (!el.ended && el.currentTime > 0) { try { el.currentTime = 0; } catch { /* not loaded yet */ } }
   el.play().catch(() => {});
 }
+// (v93) At most one effect starts a frame: the phone's slowest frames came as a result started two to five at once (the
+// keeper's "tap" and "yay", a pass's "star" and "kick"). The others wait a frame each (17 ms, too short to hear); the
+// same effect asked twice in one wait starts once.
 const fxWaiting = []; let flushing = false;
-function flush() { flushing = false; const keys = [...new Set(fxWaiting.splice(0))]; for (const k of keys) fxStart(k, SFX_START.mode !== 'later'); }
+const fxLater = () => { if (!flushing) { flushing = true; requestAnimationFrame(() => setTimeout(flush, 0)); } };
+function flush() {
+  flushing = false; const key = fxWaiting.shift(); if (key === undefined) return;
+  for (let i = fxWaiting.length - 1; i >= 0; i--) if (fxWaiting[i] === key) fxWaiting.splice(i, 1);
+  fxStart(key, SFX_START.mode !== 'later');
+  if (fxWaiting.length) fxLater();
+}
 export function sfx(name, arg) {
   if (!unlocked || !enabled || muted || document.hidden) return;
   if (fxTimer) encodeEffects(); // a volume change is waiting: record it now, so this sound plays at the new level
@@ -216,8 +225,7 @@ export function sfx(name, arg) {
   mark('sound ' + key);
   const mode = SFX_MODES.includes(SFX_START.mode) ? SFX_START.mode : 'pool+later';
   if (!mode.endsWith('later')) return fxStart(key, mode === 'pool');
-  fxWaiting.push(key);
-  if (!flushing) { flushing = true; requestAnimationFrame(() => setTimeout(flush, 0)); }
+  fxWaiting.push(key); fxLater();
 }
 
 // ---------- background tune ----------
@@ -283,17 +291,27 @@ export function trim(d) {
 // load works, the file is listed in clipFailed, so canSpeak sends its lines to the built-in voice instead.
 // (round 13) At most LOADS clips are fetched and decoded at once. A mode starting asks for up to 194 together: all at once
 // they arrived in one burst of decoding and trimming over the first seconds of play. A clip a line needs now goes first.
-const LOADS = 4, waiting = [], STUCK = 10000; let loading = 0, moved = 0;
+// (v93) A clip loaded ahead (a mode's lines, as it starts) loads alone, one at a time, the next one a frame after the last
+// is ready: the phone's play log showed 47 to 58 clips fetched and decoded in the first seconds of a mini game, up to 13
+// finishing between two frames (190 to 405 ms frames). A clip a line needs now still goes first, with up to LOADS at once.
+const LOADS = 4, waiting = [], STUCK = 10000; let loading = 0, moved = 0, ahead = false;
 // (round 14) Clips still to load, for the slow-device governor (world.js pace: it does not judge while they load). When no
 // clip has started or finished for 10 s (a fetch that never ends), it counts as nothing loading, so the governor goes on.
 export const clipsLoading = () => (performance.now() - moved < STUCK ? loading + waiting.length : 0);
-function nextLoad() { while (loading < LOADS && waiting.length) { const job = waiting.shift(); loading++; moved = performance.now(); job.go().finally(() => { loading--; moved = performance.now(); nextLoad(); }); } }
+const afterFrame = f => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => setTimeout(f, 0)) : setTimeout(f, 16));
+function nextLoad() {
+  while (loading < LOADS && waiting.length) {
+    const i = waiting.findIndex(j => j.now); if (i < 0 && (loading || ahead)) return; // (one ahead at a time, and none beside a line's)
+    const job = waiting.splice(Math.max(0, i), 1)[0]; loading++; moved = performance.now(); if (!job.now) ahead = true;
+    job.go().finally(() => { loading--; moved = performance.now(); if (job.now) nextLoad(); else afterFrame(() => { ahead = false; nextLoad(); }); });
+  }
+}
 function queued(file, go, now) {
   let job = waiting.find(j => j.file === file);
-  if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); } return job.p; }
+  if (job) { if (now) { waiting.splice(waiting.indexOf(job), 1); waiting.unshift(job); job.now = true; nextLoad(); } return job.p; }
   if (!go) return null; // (only moving a waiting clip up: it is loading or loaded already)
   let res; const p = new Promise(r => { res = r; });
-  job = { file, p, go: () => { const q = go(); res(q); return q.catch(() => {}); } };
+  job = { file, p, now: !!now, go: () => { const q = go(); res(q); return q.catch(() => {}); } };
   if (now) waiting.unshift(job); else waiting.push(job);
   nextLoad(); return p;
 }

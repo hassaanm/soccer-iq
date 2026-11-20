@@ -1062,3 +1062,21 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 :is(#fAct,#rSteal).now{animation:stealNow .6s ease-in-out infinite}
 @keyframes stealNow{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 @media (prefers-reduced-motion:reduce){:is(#fAct,#rSteal).now{animation:none}}
+
+/* ---------- PERF (v93): a result paints nothing big (js/ui/hud.js hudPictures, banner, pop) ---------- */
+/* The sunburst and the goal's flash as pictures made once (<img>, each on a layer of its own that is only moved, turned
+   and faded), in place of the conic gradient and the full-screen gradient that were painted again at every result. The
+   sunburst turns only while it shows (.lit, a frame after the big words); the flash restarts by changing its animation's
+   name (go, go2), and the letters theirs (#banner.alt), so no layout is forced. Until the pictures are ready the CSS ones
+   stay; the speed test's v75 run keeps them. */
+#banner > img.burst,#flash > img.glow{display:none}
+#banner.show.alt i{animation-name:letterB}
+@keyframes letterB{from{transform:translateY(.5em) scale(.2) rotate(-14deg);opacity:0}}
+#flash.go2{animation:flash2 .55s ease-out}
+@keyframes flash2{from{opacity:.6}}
+html.hudimg body:not(.v75look) #banner.goal::before{display:none}
+html.hudimg body:not(.v75look) #banner > img.burst{display:block;position:absolute;left:50%;top:50%;width:min(130vh,620px);height:min(130vh,620px);translate:-50% -50%;pointer-events:none;opacity:0;will-change:transform,opacity;animation:spin 7s linear infinite paused}
+html.hudimg body:not(.v75look) #banner.goal.lit > img.burst{opacity:1;animation-play-state:running}
+html.hudimg body:not(.v75look) #flash{background:none;will-change:opacity}
+html.hudimg body:not(.v75look) #flash > img.glow{display:block;position:absolute;inset:0;width:100%;height:100%}
+@media (prefers-reduced-motion:reduce){#banner > img.burst{animation:none!important}#flash.go2{animation:none}}
