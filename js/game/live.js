@@ -208,9 +208,11 @@ export const live = {
     if (prep) { await prep.done; rounds = prep.rounds; early = prep.first; this.matchRounds = rounds; }
     else {
       rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
-      await this.vetFirst(rounds); this.matchRounds = rounds; // (v83: a scene whose plan takes too many frames is left out; v76 SL: the first now, the rest during play, game/window.js vetFirst, vetRest)
+      { const kept = await this.vetRounds(rounds); rounds.splice(0, rounds.length, ...kept); this.matchRounds = rounds; } // (v83: a scene whose plan takes too many frames is left out, game/window.js vetRounds)
     }
-    let over = false; this.vetRest(rounds, () => !over && this.matchRounds === rounds).catch(e => console.error(e));
+    // (v76 SL, review) A match prepared while its card was up (prepareMatch) has vetted its first scene only: the rest are
+    // vetted in the frames of play (game/window.js vetRest). Unprepared (the tests and the audits), all of them first, as before.
+    let over = false; if (prep) this.vetRest(rounds, () => !over && this.matchRounds === rounds).catch(e => console.error(e));
     this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
     // Play flows on from wherever the last play ended: after "Kept the ball!" or "Stole it!" the next choice starts from
     // right there; after a lost ball he defends from there; after "Stopped him!" he defends again. A goal (and the start)
