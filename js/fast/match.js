@@ -28,7 +28,7 @@ export const QUIET = .8, SHUT_Q = .35, ALONE_SHOT = .02, PUSH_NEAR = 1.3, OPEN_M
 // to a pass line, how hard they pass, how often and from how far they shoot, how often their first touch runs loose, and
 // how well their keeper (5 v 5) follows the ball across his goal. The default makes his team win about two matches in
 // three for a child who plays sensibly (the tuning runs, v84); later it can rise with his results.
-export const LEVELS = { '3v3': -2, '4v4': -.95, '5v5': -.95 }, FIND = 16, FIND_P = .85; // (where his level starts at each team size: a sensible child, the 70% bot, wins about two in three first matches: the tuning runs, v89 integration; level.js moves it with his results)
+export const LEVELS = { '3v3': -1.8, '4v4': -.8, '5v5': -.8 }, FIND = 16, FIND_P = .85; // (where his level starts at each team size: a sensible child, the 70% bot, wins about two in three first matches: the tuning runs, v89 integration; level.js moves it with his results)
 export let LEVEL = .5;
 export const LEVEL_MIN = -2.4, LEVEL_MAX = 1; // (below 0: gentler still, for a child just starting or having a hard time: v86; v89: 3 v 3 starts at -2, so the floor is a little under it)
 export function oppOf(level = LEVEL) { // (LEVEL: one number; LEVELS: its default at each team size)
