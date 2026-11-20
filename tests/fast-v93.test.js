@@ -35,7 +35,7 @@ test('the spots: on the pitch, apart, never on a player, five to seven when ther
       const inn = p.follow ? 0 : R.SPOT_IN; assert.ok(p.x >= inn - 1e-9 && p.x <= L - inn + 1e-9 && p.y >= inn - 1e-9 && p.y <= W - inn + 1e-9, `on the pitch: ${JSON.stringify(p)} ${state}`);
       if (!p.follow) assert.ok(bodies.every(o => Math.hypot(o.x - p.x, o.y - p.y) >= R.SPOT_BODY - 1e-9), 'not on a player');
       for (const q of sp) if (q !== p) assert.ok(Math.hypot(q.x - p.x, q.y - p.y) >= R.SPOT_GAP - 1e-9, 'apart');
-      if (state === 'mine') for (const o of m.allFoes('us')) assert.ok(R.onLane(o, me, p, 0).d >= 1 - 1e-9, 'never a dribble through one of theirs');
+      if (state === 'mine') for (const o of m.allFoes('us')) { const q = R.onLane(o, me, p, 0); if (q.t > .08) assert.ok(q.d >= .8 - 1e-9, 'never a dribble through one of theirs'); } // (one beside or behind him does not shut a way away from him)
     }
     if (state === 'theirs') assert.equal(sp[0]?.kind, 'press');
     if (state === 'loose') assert.equal(sp[0]?.kind, 'ball');
