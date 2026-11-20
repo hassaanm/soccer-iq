@@ -21,6 +21,7 @@ const STEP_OFF = 2.6; // (v76 SL) m off the ball a second one at it steps out to
 // to one side of the run he stands (m); the run to goal left past his place (m); and
 // how fast his own player carries it at him meanwhile (m/s: as coaches teach, he slows a little to set up his move); and
 // how near him one of theirs at his side or behind him pulls up (m).
+const RECOVER = { back: 3, wide: 4, v: 2.8 }; // (v76 SL, review) a beaten defender in a step-up recovers: m on toward his goal, m off the run at least, m/s (stepUp)
 const STEP_UP = { f: [2.5, 13], at: [2.5, 9], back: 1, v: 3.4, side: .8, run: 4, jog: 3.2, near: 3 };
 const MATCH_HOLD = { timeout: .7, kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
 // (v78) A kick more than PLANT (rad) off the way his own player carries the ball: he stops and plays it from where he is (plantFor).
@@ -126,7 +127,10 @@ export const outcomes = {
     const held = s.team('them').filter(d => d !== o && (d.id === this.chaser?.id || (Math.hypot(d.x - a.x, d.y - a.y) < STEP_UP.near && (d.x - a.x) * ux + (d.y - a.y) * uy < 1.5))).map(d => d.id);
     const k = Math.min(bf, STEP_UP.at[1], dl - STEP_UP.run), b = s.ball, duel = { id: o.id, held, ux, uy, side: sd, hx: b.x + ux * k - uy * sd * STEP_UP.side, hy: b.y + uy * k + ux * sd * STEP_UP.side, t0: s.time };
     s.go(a.id, a.tx, a.ty, STEP_UP.jog);
-    for (const id of held) { const c = s.a(id); this.scripted.add(id); s.go(id, clamp(c.x - ux * 2, .5, L - .5), clamp(c.y - uy * 2, .5, W - .5), 2); } this.chaser = null;
+    // (review) A beaten one recovers goal-side, as a defender does: he turns and runs back toward his own goal on his own side
+    // of the run, RECOVER.wide m and more off it, out of the duel's way (he used to backpedal 2 m upfield).
+    for (const id of held) { const c = s.a(id), f = (c.x - a.x) * ux + (c.y - a.y) * uy, l = (c.y - a.y) * ux - (c.x - a.x) * uy, sd = Math.sign(l) || 1, lw = sd * Math.max(Math.abs(l), RECOVER.wide), fw = f + RECOVER.back;
+      this.scripted.add(id); s.go(id, clamp(a.x + ux * fw - uy * lw, .5, L - .5), clamp(a.y + uy * fw + ux * lw, .5, W - .5), RECOVER.v); } this.chaser = null;
     // (v76 SL, review) He goes on a planned way (sim.js track, `watch`: he faces the ball all the way): from the velocity he
     // has, round to his place, then giving ground at STEP_UP.back m/s, his eyes on the dribbler, as a defender does (before,
     // steered a centimetre or two at a time, he walked toward his own goal with his back to him: pro/motion.js backpedals
