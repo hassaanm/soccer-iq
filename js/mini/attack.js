@@ -40,16 +40,20 @@ export const kindById = id => KINDS.find(k => k.id === id);
 // 1 for the first three goals, then easing smoothly to 0) makes their players slower to close and to a pass line
 // (`slow`), never tight on him early, gives him a long time on the ball (stand, into), and forgives a pass of his into a
 // closed line (match.js `forgive`); then the normal curve.
-export const AEK = { slow: .45, stand: 3, into: .6, react: .4, move: 1 }; // (the dribbling ones, into and move, fade as early squared: sooner, so running straight at them stops paying)
+// (v93, D1: "all the games start off way too easy ... it takes too long to ramp up") A real challenge from the first try
+// (a careful adult scores about 3 in 4) and hard by a score of 5 (about 1 in 3), rising on without a wall: their players
+// as quick as the Fast match's middle level at once (opp), a keeper who saves (no early slips), a short timer; the
+// first goal's small help (early) is now only a little more time on the ball.
+export const AEK = { slow: .12, stand: .8, into: .2, react: .12, move: .2 }; // (the dribbling ones, into and move, fade as early squared)
 export function attackLevel(L) {
   L = Math.max(0, L); const e = early(L);
-  const centre = 6 * (1 - Math.exp(-L / 6.5));
-  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.7) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .3) : 1)), sum = w.reduce((a, b) => a + b, 0);
+  const centre = 6 * (1 - Math.exp(-L / 3.2));
+  const w = KINDS.map((k, i) => Math.exp(-(((i - centre) / 1.5) ** 2)) * (i > centre ? Math.exp(-(i - centre) * .3) : 1)), sum = w.reduce((a, b) => a + b, 0);
   return {
     level: L, centre, mix: KINDS.map((k, i) => ({ id: k.id, w: w[i] / sum })),
-    early: e, slow: 1 - AEK.slow * e, opp: 1 - Math.exp(-L / 10), react: ease(.8, .25, 7)(L) + AEK.react * e, stand: ease(4.2, 2.2, 8)(L) + AEK.stand * e, boost: ramp(0, .06, .8)(L), into: (.4 + ramp(0, .15, 1)(L)) * (1 - AEK.into * e * e),
-    commit: ease(8.5, 11, 8)(L), farSave: ease(.55, .8, 8)(L), keeper: ease(.1, .55, 8)(L), slip: ease(.85, .1, 10)(L), friendSave: ease(.08, .35, 8)(L) * (1 - e),
-    time: ease(32, 20, 15)(L), startD: ease(15, 18, 10)(L),
+    early: e, slow: 1 - AEK.slow * e, opp: .45 + .55 * (1 - Math.exp(-L / 1.6)), react: ease(.45, .15, 2)(L) + AEK.react * e, stand: ease(3, 1.5, 2.2)(L) + AEK.stand * e, boost: ramp(0, .12, 1)(L), into: (.6 + ramp(0, .2, 1)(L)) * (1 - AEK.into * e * e),
+    commit: ease(9.5, 12, 3)(L), farSave: ease(.45, .92, 2)(L), keeper: ease(.3, .8, 2)(L), slip: ease(.2, 0, 2)(L), friendSave: ease(.2, .5, 3)(L) * (1 - .5 * e),
+    time: ease(26, 17, 6)(L), startD: ease(15.5, 17.5, 4)(L),
   };
 }
 // The kind for a share u (0..1) of the mix.

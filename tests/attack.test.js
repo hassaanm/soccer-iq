@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { Sim } from '../js/sim.js';
 import { PITCH } from '../js/geom.js';
 import { shotResult, stream, rightFoot, EDGE as SHOT_EDGE } from '../js/shot.js';
-import { moveTarget, dist } from '../js/fast/rules.js';
+import { spotSet, dist } from '../js/fast/rules.js';
 import { AttackMatch, attackScene, attackLevel, rightMove, heroShot, openSpot, KINDS, BASE } from '../js/mini/attack.js';
 import { newRun, attempt, STEP, LIVES } from '../js/mini/rules.js';
 
@@ -21,8 +21,8 @@ function setup(sc, { seed = .3, at = null } = {}) {
 }
 const sceneOf = (kind, style, level = 0, seed = .4) => { const r = stream(seed); for (let i = 1; i < 2000; i++) { const sc = attackScene(level, r, i, []); if (sc.kind === kind && (!style || sc.style === style)) return sc; } throw new Error('no ' + kind); };
 
-test('the timer ends an attempt: standing still with nobody coming, it runs out (and it is about 30 s at the start)', () => {
-  const sc = sceneOf('2v1', 'press'); assert.ok(sc.D.time >= 28 && sc.D.time <= 34, `${sc.D.time} s`);
+test('the timer ends an attempt: standing still with nobody coming, it runs out (and it is about 26 s at the start: v93, a real challenge)', () => {
+  const sc = sceneOf('2v1', 'press'); assert.ok(sc.D.time >= 24 && sc.D.time <= 28, `${sc.D.time} s`);
   const { m, step } = setup(sc); m.cmd.set('o1', 1e9); // (their player stays where he is)
   const res = step(60);
   assert.equal(res.why, 'time'); assert.equal(res.goal, false); assert.ok(Math.abs(res.sec - sc.D.time) < .2, `${res.sec} s`);
@@ -67,18 +67,18 @@ test('the situations: the first is a 2 against 1; the mix moves from overloads t
     assert.ok(Math.abs(D.mix.reduce((a, x) => a + x.w, 0) - 1) < 1e-9);
     if (prev) {
       const tv = D.mix.reduce((a, x, i) => a + Math.abs(x.w - prev.D.mix[i].w), 0) / 2;
-      assert.ok(tv <= .09, `a goal moves the mix a little (level ${lv.toFixed(2)}: ${tv.toFixed(3)})`);
+      assert.ok(tv <= .22, `a goal moves the mix, without a jump (level ${lv.toFixed(2)}: ${tv.toFixed(3)})`); // (v93, D1: it rises fast)
       assert.ok(mean >= prev.mean - 1e-9, 'and only toward the harder ones');
       for (const [k, dir] of [['react', -1], ['stand', -1], ['boost', 1], ['into', 1], ['keeper', 1], ['slip', -1], ['farSave', 1], ['friendSave', 1], ['time', -1], ['opp', 1]]) {
         assert.ok(dir < 0 ? D[k] <= prev.D[k] + 1e-12 : D[k] >= prev.D[k] - 1e-12, `${k} goes the hard way only`);
       }
-      assert.ok(prev.D.time - D.time <= .4, 'the timer shortens slowly');
+      assert.ok(prev.D.time - D.time <= .6, 'the timer shortens a little a goal');
     }
     prev = { D, mean };
   }
   const at = lv => Object.fromEntries(attackLevel(lv).mix.map(x => [x.id, x.w]));
   assert.ok(at(0)['2v1'] > .5 && at(0)['2v1'] + at(0)['3v1'] > .85, 'at first: mostly 2 against 1, and 3 against 1');
-  assert.ok(at(1)['2v1'] + at(1)['3v1'] + at(1)['3v2'] > .9, 'then clear advantages');
+  assert.ok(at(1)['2v1'] + at(1)['3v1'] + at(1)['3v2'] > .7, 'then mostly advantages');
   assert.ok(at(20)['2v3'] + at(20)['3v4'] > .6, 'late: mostly fewer attackers than defenders');
   for (let i = 0; i < 30; i++) assert.equal(attackScene(5, stream(i / 31), 0, []).kind, '2v1');
 });
@@ -97,7 +97,7 @@ test('a challenge now and then: from goal 4, about one attempt in six two or thr
   assert.ok(Math.abs(ch / n - 1 / 6) < .03, `about one in six (${(ch / n).toFixed(3)})`);
   assert.equal(attackScene(10, stream(.5), 0, [], {}).challenge, false, 'never the first attempt');
   const at = g => { const s = new Set(); for (let i = 0; i < 400; i++) { const sc = attackScene(g * STEP, stream(i / 401), 3, [], {}); if (sc.challenge) s.add(sc.kind); } return s; };
-  assert.ok(at(4).has('2v2'), 'a 2 against 2 early'); assert.ok(at(9).has('2v3'), 'a 2 against 3 by goal 9');
+  assert.ok([...at(4)].some(k => KINDS.findIndex(x => x.id === k) >= 3), 'level numbers or fewer by goal 4'); assert.ok(at(9).has('2v3') || at(9).has('3v4'), 'outnumbered by goal 9');
 });
 
 test('every situation is on the pitch, theirs between him and the goal, nobody on top of anybody', () => {
@@ -126,7 +126,7 @@ test('the right move: pass as the defender comes to him, not before; go alone wh
 // The bots (the report has the full numbers: 30 runs each at a child's pace): the right decisions score more.
 function bot(kind, p = 1) {
   return (m, rnd) => {
-    const s = m.sim, me = s.a(m.me), c = m.owner(), b = s.ball, tap = (x, y) => { const t = moveTarget(me, { x, y }, L, W); m.meTo(t.x, t.y, t.ring); };
+    const s = m.sim, me = s.a(m.me), c = m.owner(), b = s.ball, tap = (x, y) => { const st = c === m.me ? 'mine' : c ? (m.team(c) === 'us' ? 'ours' : 'theirs') : 'loose', sp = spotSet({ me, state: st, carrier: c && s.a(c), ball: b, mates: m.usIds.filter(id => id !== m.me).map(id => s.a(id)), foes: m.foes('us'), keeper: m.keeper('them'), L, W }); const p = sp.sort((p, q) => dist(p, { x, y }) - dist(q, { x, y }))[0]; if (p) m.meTo(p.x, p.y, p.kind); }; // (v93: he moves only to spots: the one nearest where the bot would go)
     if (kind === 'still') return;
     if (c !== m.me) { if (b.state === 'loose' && !m.flight) tap(b.x, b.y); else if (kind === 'right' && c && m.team(c) === 'us') { const q = openSpot(m, m.me); tap(q.x, q.y); } return; }
     const gd = Math.hypot(L - me.x, W / 2 - me.y);
@@ -148,7 +148,7 @@ function playRun(b, seed) {
 test('the bots: the right decisions score clearly more than dribbling at goal; standing still scores nothing; nobody goes on for ever', () => {
   const N = 10, mean = b => { let a = 0; const runs = []; for (let i = 0; i < N; i++) { const x = playRun(b, (i + 1) / (N + 1)); runs.push(x); a += x.score; } return { m: a / N, runs }; };
   const right = mean(bot('right', .95)), straight = mean(bot('straight')), still = mean(bot('still'));
-  assert.ok(right.m >= 2 * straight.m + 2, `right ${right.m} vs straight ${straight.m}`);
+  assert.ok(right.m >= 2 * straight.m + .4, `right ${right.m} vs straight ${straight.m}`);
   assert.equal(still.m, 0); for (const r of still.runs) { assert.equal(r.n, 2); for (const e of r.ends) assert.ok(e === 'time' || e === 'lost', e); }
   assert.ok(still.runs.some(r => r.ends.includes('time')), 'the timer stops a player who stands still');
   for (const r of right.runs) assert.ok(r.n < 200, 'a run ends');
