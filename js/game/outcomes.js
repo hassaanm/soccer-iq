@@ -14,6 +14,14 @@ import { kindOf, ACC, SPEED, goAt, PACE } from '../window.js';
 const TIMEOUT_TITLE = 'He got there!'; // (v64: the defender got to the ball before he chose; rounds.js TIMEOUT)
 const FINISH_RUN = 4.65; // (round 5) his run at goal with the ball: a child's sprint with a ball at his feet, no faster than a defender chasing him
 const THEIR_SAVE = .33; // (see finish)
+const STEP_OFF = 2.6; // (v76 SL) m off the ball a second one at it steps out to (stepIn)
+// (v76 SL) The step-up (stepUp): how far ahead of him (m, along his run) the one who comes out may be; how far ahead of
+// the ball he takes his place (m: where he is, within these, or nearer, so that RUN m of the run to goal are left past
+// it: he comes out to meet him); how fast he gives ground from there (m/s); how fast he goes to his place (m/s); how far
+// to one side of the run he stands (m); the run to goal left past his place (m); and
+// how fast his own player carries it at him meanwhile (m/s: as coaches teach, he slows a little to set up his move); and
+// how near him one of theirs at his side or behind him pulls up (m).
+const STEP_UP = { f: [2.5, 13], at: [2.5, 9], back: 1, v: 3.4, side: .8, run: 4, jog: 3.2, near: 3 };
 const MATCH_HOLD = { timeout: .7, kept: .5, held: .7, won: .7, goal: 1.2, goalAgainst: 1.1 }; // seconds on the result in a match (see hold)
 // (v78) A kick more than PLANT (rad) off the way his own player carries the ball: he stops and plays it from where he is (plantFor).
 const PLANT = .52, PRESSURE = 2; // (PRESSURE, m: one of theirs this near him is on him)
@@ -77,8 +85,13 @@ export const outcomes = {
   },
   // Everyone of the other team within a step and a half of the player on the ball steps in at it, now (to a short step
   // off it), as it is played away from him: too late, and off balance for a moment.
-  stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; for (const d of s.team(c.team === 'us' ? 'them' : 'us')) { if (d.gk || dist(d, c) >= r || d.beat > s.time || this.leaving(d)) continue; const l = dist(d, b) || 1; d.tk = s.time; d.beat = s.time + .9;
-    if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
+  // (v76 SL) Of ours, only the nearest goes in: any other one that close steps off it, out to STEP_OFF m (two of ours going
+  // in at once left one of theirs free: the live audit's twoball).
+  stepIn(c, r = 1.6) { const s = this.sim, b = s.ball; let first = true;
+    for (const d of s.team(c.team === 'us' ? 'them' : 'us').sort((p, q) => dist(p, c) - dist(q, c))) { if (d.gk || dist(d, c) >= r || d.beat > s.time || this.leaving(d)) continue; const l = dist(d, b) || 1;
+      if (!first && d.team === 'us') { this.scripted.add(d.id); s.go(d.id, clamp(b.x + (d.x - b.x) / l * STEP_OFF, .5, L - .5), clamp(b.y + (d.y - b.y) / l * STEP_OFF, .5, W - .5), 3.4); continue; } first = false;
+      d.tk = s.time; d.beat = s.time + .9;
+      if (l > .9) { this.scripted.add(d.id); s.go(d.id, b.x + (d.x - b.x) / l * .8, b.y + (d.y - b.y) / l * .8, 3.4); } } },
   // A friend whose job in this defending play is one of their other players (team.js defend, this.teamJob): he is on his way off the ball.
   leaving(d) { return d.team === 'us' && d.id !== 'hero' && !!this.teamJob?.[d.id] && this.teamJob[d.id].job !== 'press' && this.teamJob[d.id].job !== this.sim.ball.carrier; }, // (round 7: unless the player he guards is the one who has it now: then the ball is his job)
   // (round 7) Sent back on himself at a run by the play (to a pass he is to cut out, to a dribbler he ran past): he comes
@@ -88,6 +101,45 @@ export const outcomes = {
     s.go(id, x, y, v); },
   // The nearest of theirs within a step and a half of him who has not just been beaten.
   onHim(a, r = 1.5) { const s = this.sim; return s.team(a.team === 'us' ? 'them' : 'us').filter(o => !o.gk && !(o.beat > s.time) && !this.leaving(o) && dist(o, a) < r).sort((p, q) => dist(p, a) - dist(q, a))[0] || null; },
+  // (v76 SL) The step-up. His own player runs at goal after a right choice (finish), past the one he has just beaten: the
+  // next of them, goal-side of the ball and ahead of him on his way (STEP_UP.f m), comes across into his way and holds him
+  // up as coaches teach: goal-side, a little to one side (showing him the other way), giving a little ground as he comes
+  // rather than diving in; and the one he beat gives up the chase (he pulls up). It is
+  // the skill moment's run at a defender (game/skill.js, sim.js runOffer): before v76 the one he beat at his back, or a
+  // second one coming in from the side, nearly always left no room for one (0.3 to 0.6 offers a match). Only when a skill
+  // moment may be offered (game/skill.js offerAllowed): elsewhere the run at goal is as before. As before, one of theirs
+  // who gets to him stops the run (he keeps the ball, challenge); the better move takes him past (he buys the fake and
+  // steps the wrong way, duelStep); the other one he reads (game/skill.js skillBlock).
+  stepUp(a) {
+    const s = this.sim; if (!this.skillTaps || !this.offerAllowed?.(true)) return null;
+    const dx = a.tx - a.x, dy = a.ty - a.y, dl = Math.hypot(dx, dy); if (dl < STEP_UP.at[0] + STEP_UP.run) return null;
+    const ux = dx / dl, uy = dy / dl, gl = d => Math.hypot(L - d.x, W / 2 - d.y), hg = gl(a);
+    let o = null, bf = 99, sd = 1;
+    for (const d of s.team('them')) { if (d.beat > s.time || this.scripted.has(d.id) || d.id === this.chaser?.id) continue;
+      const f = (d.x - a.x) * ux + (d.y - a.y) * uy, l = (d.y - a.y) * ux - (d.x - a.x) * uy;
+      const k = Math.min(f, STEP_UP.at[1], dl - STEP_UP.run), side = Math.sign(l) || 1;
+      if (f < STEP_UP.f[0] || f > STEP_UP.f[1] || k < STEP_UP.at[0] || gl(d) > hg || (Math.abs(l) - STEP_UP.side) / STEP_UP.v > (f - 2) / STEP_UP.jog) continue; // (he can get across into his way, from the side too, before his own player is there)
+      if (f < bf) { bf = f; o = d; sd = side; } }
+    if (!o) return null;
+    // (the one he beat, and anyone else of theirs at his side or behind him and close: they pull up and drop off)
+    const held = s.team('them').filter(d => d !== o && (d.id === this.chaser?.id || (Math.hypot(d.x - a.x, d.y - a.y) < STEP_UP.near && (d.x - a.x) * ux + (d.y - a.y) * uy < 1.5))).map(d => d.id);
+    const k = Math.min(bf, STEP_UP.at[1], dl - STEP_UP.run), b = s.ball, duel = { id: o.id, held, ux, uy, side: sd, hx: b.x + ux * k - uy * sd * STEP_UP.side, hy: b.y + uy * k + ux * sd * STEP_UP.side, t0: s.time };
+    s.go(a.id, a.tx, a.ty, STEP_UP.jog);
+    for (const id of held) { const c = s.a(id); this.scripted.add(id); s.go(id, clamp(c.x - ux * 2, .5, L - .5), clamp(c.y - uy * 2, .5, W - .5), 2); } this.chaser = null;
+    this.scripted.add(o.id); this.duel = o.id; this.roles = null; this.wasBeaten = null; this.beatenId = null; // (the others' jobs are picked again: he is the one on the ball, and nobody chases, team.js defend)
+    return duel;
+  },
+  // Each moment of the step-up: he goes to his place in his way (STEP_UP.side m to his side of the run: where he is, or a
+  // step or two back if he is nearer than STEP_UP.at[0]), and gives a little ground from there (STEP_UP.back m/s); once beaten (the better move: he steps the way of the fake) or reading the other one
+  // (game/skill.js skillBlock), he is no longer steered from here.
+  duelStep(duel, a) {
+    const s = this.sim, o = s.a(duel.id), b = s.ball; if (!o || duel.off) return;
+    if (o.beat > s.time || this.sk?.blockOn) { duel.off = true; o.duelV = null; if (!this.sk?.blockOn) s.go(a.id, a.tx, a.ty, FINISH_RUN); if (this.sk?.blockOn) return;
+      const fk = this.sk?.pick?.fake || duel.side, nx = -duel.uy * fk, ny = duel.ux * fk; s.go(o.id, clamp(o.x + nx * 1.2 - duel.ux * .4, .5, L - .5), clamp(o.y + ny * 1.2 - duel.uy * .4, .5, W - .5), 3); return; } // (he buys it: a step the fake's way)
+    const k = STEP_UP.back * (s.time - duel.t0), px = duel.hx + duel.ux * k, py = duel.hy + duel.uy * k; o.duelV = Math.hypot(px - o.x, py - o.y) < .6 ? [duel.ux * STEP_UP.back, duel.uy * STEP_UP.back] : null; // (judged as he goes: sim.js moveEvents)
+    s.go(o.id, clamp(px, .5, L - .5), clamp(py, .5, W - .5), Math.hypot(px - o.x, py - o.y) > 1.5 ? STEP_UP.v : 3.2);
+  },
+  duelEnd(duel) { const o = this.sim.a(duel.id); if (o) o.duelV = null; if (!duel.off || !this.sk?.blockOn) this.scripted.delete(duel.id); for (const id of duel.held) this.scripted.delete(id); this.duel = null; },
   // After a good choice the player runs at goal, but only shoots when nobody blocks the path or the shot.
   // If a defender steps in front, he stops and keeps the ball: that is the real reward for a safe choice.
   *finish(id) {
@@ -99,14 +151,17 @@ export const outcomes = {
     const t0 = s.time;
     let blocked = false, near = null;
     this.inFinish = true; // (round 5: a defender within reach of the ball goes for it, team.js defend)
+    const duel = id === 'hero' ? this.stepUp(a) : null; // (v76 SL: the next of them comes out to meet him, see stepUp)
     for (;;) {
       yield 1 / 30;
       // (round 5) One of theirs within reach of him, from any side: a challenge. He cannot run on through it: he puts
       // his body between and keeps the ball (the result a right choice gives), and the next choice comes under pressure.
       // (round 6: within a step and a half he goes in for it at once, and misses: this.challenge)
       { const o = this.onHim(a); if (o) { yield* this.challenge(o, a); blocked = true; break; } }
+      if (duel) this.duelStep(duel, a);
       // The one he just beat (the presser his dribble took him past, the one he raced to a big push) recovers: after the
-      // moment it takes him to turn he chases, for a second and a half, and challenges if he catches him.
+      // moment it takes him to turn he chases, for a second and a half, and challenges if he catches him. (v76 SL: not
+      // while the next of them comes out to meet him: then he has given up, stepUp.)
       const ch = this.chaser, co = ch && s.a(ch.id);
       if (co) { if (s.time - ch.t > 1.9) { this.scripted.delete(ch.id); this.chaser = null; } else if (s.time - ch.t > (ch.turn || 0)) { this.scripted.add(ch.id); s.go(ch.id, a.x, a.y, 4.8); } }
       const aim = { x: L, y: clamp(a.y, gy0 + .8, gy1 - .8) };
@@ -116,6 +171,7 @@ export const outcomes = {
       if (Math.hypot(fx, fy) < .3 || s.time - t0 > 4) { blocked = !shotClear(s.ball, aim, opps); break; }
     }
     s.stop(id); this.spice(null); this.inFinish = false; if (this.chaser) { this.scripted.delete(this.chaser.id); this.chaser = null; }
+    if (duel) this.duelEnd(duel);
     if (blocked) { yield* this.end('kept', 1.1); return; }
     // Wind up facing the goal, then check the shot line once more at the moment of the kick.
     this.ai = false; s.stopAll();
@@ -378,8 +434,7 @@ export const outcomes = {
       s.stop(c.id); this.spice(null);
       // (round 7) He chose to guard, and the ball has come to him: now he is the one on it, and the friend who went to the
       // ball takes the player he was guarding (they swap jobs: one goes, one guards, still).
-      if (this.teamJob && this.teamJob.hero !== 'press' && dist(h, c) < 2.2) { const man = this.teamJob.hero; this.teamJob.hero = 'press';
-        for (const id in this.teamJob) if (id !== 'hero' && this.teamJob[id]?.job === 'press') { if (man && s.a(man)) this.teamJob[id] = { job: man, to: [s.a(man).x, s.a(man).y] }; else delete this.teamJob[id]; } this.roles = null; }
+      if (dist(h, c) < 2.2) this.heroToBall();
       this.stepIn(c); yield .3;
       // (round 6) One of ours within a step and a half of him steps in for it as he gets rid of it: nobody stands at his shoulder.
       this.stepIn(c);
@@ -414,7 +469,7 @@ export const outcomes = {
         // The tackle comes from a defender who is goal-side of the ball (in front of him), never from behind.
         const front = [...defenders()].filter(d => (d.x - c.x) * gx + (d.y - c.y) * gy > .3).sort((a, b) => dist(a, c) - dist(b, c));
         const tackler = front.includes(h) ? h : front[0] || h; // he made the right run, so he makes the tackle
-        this.scripted.add(tackler.id);
+        this.scripted.add(tackler.id); if (tackler === h) this.heroToBall(); // (v76 SL: the friend who was on the ball takes the player he guarded: never two of ours on it, live-audit twoball)
         const t0 = s.time;
         yield () => { s.go(tackler.id, c.x + gx * .7, c.y + gy * .7, 4.6); return dist(tackler, c) < 1 || s.time - t0 > 3; };
         this.spice(null); c.face = [gx, gy];
@@ -447,6 +502,16 @@ export const outcomes = {
     for (const d of s.team('us')) if (d.id !== 'hero') s.stop(d.id);
     const t0 = s.time; yield () => { s.go('hero', shooter.x + 1.4, shooter.y + (h.y > shooter.y ? 1 : -1), 3.4); return dist(shooter, spot) < .4 || s.time - t0 > 3.5; };
     yield* this.concede(shooter);
+  },
+  // (round 7) He chose to guard, and the play now has him go to the ball: he is the one on it, and the friend who went to
+  // the ball takes the player he was guarding (they swap jobs: one goes, one guards, still). (v76 SL: a function, for every
+  // play that sends him to the ball; also a friend the team's shape had pressing, team.js defend, not only one the scene named.)
+  heroToBall() {
+    const s = this.sim; if (!this.teamJob || this.teamJob.hero === 'press') return;
+    const man = this.teamJob.hero; this.teamJob.hero = 'press';
+    for (const id in this.teamJob) if (id !== 'hero' && this.teamJob[id]?.job === 'press') { if (man && s.a(man)) this.teamJob[id] = { job: man, to: [s.a(man).x, s.a(man).y] }; else delete this.teamJob[id]; }
+    const pr = this.roles && Object.keys(this.roles.jobs).find(id => id !== 'hero' && this.roles.jobs[id] === 'press'); if (pr && man && s.a(man) && !this.teamJob[pr]) this.teamJob[pr] = { job: man, to: [s.a(man).x, s.a(man).y] };
+    this.roles = null;
   },
   // Their player is through: everyone stops, and he shoots into our goal.
   *concede(shooter) {

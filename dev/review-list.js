@@ -159,7 +159,7 @@ export const ENTRIES = [
 
   // ---------- goalkeeper ----------
   { id: 'keeper-game', group: KEEPER, title: 'Keeper mini game', keeper: 'game',
-    look: 'The glove button: eight shots at him. Tap a gold spot (between the ball and the goal), then where to dive (watch the shooter\'s eyes).' },
+    look: 'The glove button: shots at him one after another, with two lives (a goal costs one); the shots get a little harder with each save. Tap a gold spot (between the ball and the goal), then where to dive (watch the shooter\'s eyes).' },
   { id: 'keeper-moment', group: KEEPER, title: 'Keeper moment in a match', keeper: 'match', size: '5v5', pick: ['seed'],
     look: 'Their player is through on our goal: the camera goes to our keeper ("You\'re the keeper!", the glove badge), the same two taps, then back to the match. Again: another one.' },
 ];

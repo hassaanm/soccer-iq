@@ -10,6 +10,9 @@ setSize('5v5');
 const { PATH } = await import('../js/skills.js');
 const { makeGame, frameDt, optionsFor } = await import('./harness.js');
 const { Goalie } = await import('../js/game/goalie.js');
+const { KEEPER_EASE, keeperEase } = await import('../js/game/handover.js');
+const { windows } = await import('../js/saves.js');
+const { readFileSync } = await import('node:fs');
 
 test('the setting: off (the default), sometimes, always, kept in the save with the other settings', () => {
   assert.deepEqual(KEEPER_PLAY, ['off', 'sometimes', 'always']);
@@ -39,7 +42,7 @@ async function playMatch(mode, { seed = 3, taps = 'right', toWin = 2, maxSec = 1
   const { g, events } = makeGame(), hud = new Proxy({}, { get: (_, k) => (...a) => events.push(['k:' + k, ...a]) });
   const goalie = new Goalie({ world: { project: () => [400, 200], swapRigs() {} }, hud }), moments = [], logs = [];
   g.skills = new Set(PATH.map(s => s.id)); g.keeperPlay = () => mode; g.onChoice = r => logs.push(r);
-  g.keeperMoment = (spec, id) => { const p = goalie.inMatch(g, spec, id); p.then(r => moments.push({ r, keeperId: g.sim.keeper('us').id, carrier: g.sim.ball.carrier, state: g.sim.ball.state })); return p; };
+  g.keeperMoment = (spec, id) => { const sc0 = { ...g.matchScore }, p = goalie.inMatch(g, spec, id); p.then(r => moments.push({ r, sc0, keeperId: g.sim.keeper('us').id, carrier: g.sim.ball.carrier, state: g.sim.ball.state })); return p; };
   let shots = 0; const concede = g.concede; g.concede = function* (sh) { shots++; yield* concede.call(this, sh); };
   try {
     let done = false, score; g.match(PATH.map(s => s.id), [], toWin, 'free').then(v => { done = true; score = v; });
@@ -113,4 +116,18 @@ test('"Play the keeper" is for Matches and Cups only: lessons, training and a le
   try { await drive(g, g.match(PATH.map(s => s.id), [], 2, 'match'), { maxSec: 1500, pick: gm => (gm.sc.spots ? 'spot:' + gm.sc.spots[gm.sc.spots.length - 1].id : optionsFor(gm.sc).find(o => !o.startsWith('shoot') && gm.rating(o) === 'bad') || gm.sc.best || 'drib:fwd') }); }
   finally { Math.random = real; }
   assert.ok(shots > 0, 'they did shoot at our goal'); assert.equal(moments, 0, 'and none was his');
+});
+
+// (v76 SL) The owner: his save is easier when the score is close, harder when his team leads: his look at the shooter
+// (where to stand, where to dive) is longer when level or behind, shorter when ahead, as in Fast mode (js/fast/fast.js).
+test('the keeper turn follows the score: a longer look when level or behind, a shorter one when ahead, in step with Fast mode', async () => {
+  assert.ok(KEEPER_EASE.close > 1 && KEEPER_EASE.ahead < 1);
+  assert.equal(keeperEase({ us: 0, them: 0 }), KEEPER_EASE.close); assert.equal(keeperEase({ us: 1, them: 2 }), KEEPER_EASE.close); assert.equal(keeperEase({ us: 2, them: 1 }), KEEPER_EASE.ahead);
+  const fast = readFileSync(new URL('../js/fast/fast.js', import.meta.url), 'utf8').match(/lead > 0 \? ([\d.]+) : ([\d.]+)/);
+  assert.ok(fast, 'Fast mode sets the keeper turn by the lead'); assert.equal(+fast[1], KEEPER_EASE.ahead, 'ahead: as Fast'); assert.equal(+fast[2], KEEPER_EASE.close, 'level or behind: as Fast');
+  const seen = new Set();
+  for (const seed of [3, 5]) { const { moments } = await playMatch('always', { seed, taps: 'right', toWin: 3 });
+    for (const { r, sc0 } of moments) { const k = sc0.us > sc0.them ? KEEPER_EASE.ahead : KEEPER_EASE.close, w = windows(r.spec.n); seen.add(k);
+      assert.ok(Math.abs(r.spec.stand - w.stand * k) < 1e-9 && Math.abs(r.spec.dive - w.dive * k) < 1e-9, `score ${sc0.us}-${sc0.them}: his look ${r.spec.stand.toFixed(2)} s, ${(w.stand * k).toFixed(2)} wanted`); } }
+  assert.ok(seen.has(KEEPER_EASE.close), 'a turn with the score close came');
 });

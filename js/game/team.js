@@ -3,6 +3,7 @@ import { lerp, clamp, dist, closestOnLane } from '../geom.js';
 import { L, W, gy0, gy1 } from './shared.js';
 import { longLead, touchAt } from '../sim.js';
 
+const DUEL_ROOM = 4; // (v76 SL) m off the ball the others keep while one of theirs holds his player up (defend)
 const PRESS_OFF = 1.9; // (round 6) the one on the ball holds him up from two steps off, goal-side: nearer than a step and a half he must go in for it
 const COMMIT = { ball: 2, t: .8, react: [.1, .4] }; // (see aiGo)
 
@@ -94,12 +95,18 @@ export const team = {
     for (const d of s.agents.values()) {
       if (d.gk || d.team === c.team || (d.id === 'hero' && !(this.sc?.kind === 'defense' && this.phase === 'outcome')) || d.beat > s.time || d.tk > s.time - .5 || Math.min(dist(d, c), dist(d, s.ball)) >= 1.5) { d.hov = 0; continue; }
       if (this.leaving(d) && d.lv && Math.hypot(d.lv[0], d.lv[1]) > 1) { d.hov = 0; continue; } // (a friend whose job is one of their other players: he is on his way off the ball; v78: not one standing there, held still for a kick's line)
+      if (!this.scripted.has(d.id) && this.otherOnBall(d, c)) { d.hov = 0; this.stepOff(d); continue; } // (v76 SL: a friend of his is already on it: he steps off it at once)
       d.hov = (d.hov || 0) + dt; if (d.hov < .3) continue;
       const b = s.ball, dx = b.x - d.x, dy = b.y - d.y, l = Math.hypot(dx, dy) || 1, sd = Math.sign(dx * (c.ty - c.y) - dy * (c.tx - c.x)) || 1; // (past it on the side the player on it is not going to)
       d.hov = 0; d.tk = s.time; d.beat = s.time + 1; d.mom = null; d.aic = null; d.track = null;
       s.go(d.id, clamp(b.x + dx / l * 1.3 + dy / l * sd * .5, .5, L - .5), clamp(b.y + dy / l * 1.3 - dx / l * sd * .5, .5, W - .5), 5);
     }
   },
+  // (v76 SL) Whether another of d's team (ours: theirs go in as before), nearer the player on the ball than d, is on it already (within a step and a half
+  // of him, or going in at it). Then d does not go in too: he steps off it (stepOff). Two of ours going in at once, each
+  // carried past it off balance, left two at the ball with one of theirs free (the live audit's twoball, mostly at 5v5).
+  otherOnBall(d, c) { const s = this.sim; return d.team === 'us' && s.team(d.team).some(o => o !== d && !o.gk && dist(o, c) < dist(d, c) && (dist(o, c) < 1.5 || o.tk > s.time - .9)); },
+  stepOff(d) { const s = this.sim, b = s.ball, l = dist(d, b) || 1; d.aic = null; d.mom = null; s.go(d.id, clamp(b.x + (d.x - b.x) / l * 2.6, .5, L - .5), clamp(b.y + (d.y - b.y) / l * 2.6, .5, W - .5), 3.4); },
   // A team on defense does what the lessons teach: only one player (the nearest who is free) pressures the ball, and
   // everyone else guards an attacker, standing goal-side of him: nobody leaves his player to chase, and no attacker is
   // left to two while another stands free. One with nobody left to guard drops back and covers.
@@ -109,12 +116,20 @@ export const team = {
     // (round 7) The one on the ball, within shooting range of his goal, stands on the shot's own line (from the ball to
     // the part of the goal straight ahead of it): he blocks the shot, not only the way to the middle of the goal.
     const gsBall = k => { if (Math.abs(goal.x - ball.x) > 12) return gs(ball, k); const ay = clamp(ball.y, gy0 + .8, gy1 - .8), dx = goal.x - ball.x, dy = ay - ball.y, l = Math.hypot(dx, dy) || 1; return { x: ball.x + dx / l * k, y: ball.y + dy / l * k }; };
-    const cover = () => ({ x: lerp(ball.x, goal.x, .4), y: lerp(ball.y, W / 2, .5) });
+    // (v76 SL) While one of them holds his own player up (outcomes.js stepUp), the one covering covers him: a few metres
+    // goal-side of him and off to the side, out of the way the ball goes, not in front of the ball himself.
+    const dd = this.duel && def === 'them' ? s.a(this.duel) : null;
+    const cover = d => { if (!dd) return { x: lerp(ball.x, goal.x, .4), y: lerp(ball.y, W / 2, .5) };
+      const gx = goal.x - dd.x, gy = goal.y - dd.y, gl = Math.hypot(gx, gy) || 1, sd = Math.sign((d ? d.y - ball.y : 0) || (W / 2 - dd.y)) || 1; // (on his own side of the ball)
+      return { x: clamp(dd.x + gx / gl * 2.5, 1, L - 1), y: clamp(dd.y + gy / gl * 2.5 + sd * DUEL_ROOM * .8, 1, W - 1) }; };
     // (round 6) How far off the ball the one pressing holds: two steps, goal-side (he holds him up; nearer than a step and a half he must go in).
     const standOff = () => PRESS_OFF;
     // (round 6) One going to the player he guards goes round the ball, not through it (two and a half metres off it).
     // (round 7) And the place he guards from is never at the shoulder of the player on the ball: two steps and more off it.
-    const off2 = p => { const dx = p.x - ball.x, dy = p.y - ball.y, l = Math.hypot(dx, dy); return l >= 2.4 || l < .05 ? p : { x: clamp(ball.x + dx / l * 2.4, 1, L - 1), y: clamp(ball.y + dy / l * 2.4, 1, W - 1) }; };
+    // (v76 SL) While one of them holds his own player up (outcomes.js stepUp), the others give the two of them room: four
+    // metres off the ball, so nobody else comes into it.
+    const R2 = this.duel && def === 'them' ? DUEL_ROOM : 2.4;
+    const off2 = p => { const dx = p.x - ball.x, dy = p.y - ball.y, l = Math.hypot(dx, dy); return l >= R2 || l < .05 ? p : { x: clamp(ball.x + dx / l * R2, 1, L - 1), y: clamp(ball.y + dy / l * R2, 1, W - 1) }; };
     const round = (d, p0) => { const p = off2(p0);
       // (and one who is nearer the ball than that himself gets out to that distance first, round toward his place: he never runs by its shoulder)
       { const rx = d.x - ball.x, ry = d.y - ball.y, rb = Math.hypot(rx, ry); if (rb < 2.7 && rb > .05 && Math.hypot(p.x - d.x, p.y - d.y) > 1) { const sd = Math.sign(rx * (p.y - ball.y) - ry * (p.x - ball.x)) || 1, an = rb < 2.3 ? .35 : .9, c = Math.cos(sd * an), sn = Math.sin(sd * an), wx = (rx * c - ry * sn) / rb, wy = (rx * sn + ry * c) / rb; return { x: clamp(ball.x + wx * 3.8, 1, L - 1), y: clamp(ball.y + wy * 3.8, 1, W - 1), now: true }; } } const c = closestOnLane(ball, d, p, 0); if (c.d >= 2.3 || c.t <= .05 || c.t >= .95) return p; const nx = c.x - ball.x, ny = c.y - ball.y, l = Math.hypot(nx, ny); return l < .05 ? p : { x: clamp(ball.x + nx / l * 2.8, 1, L - 1), y: clamp(ball.y + ny / l * 2.8, 1, W - 1) }; };
@@ -129,6 +144,7 @@ export const team = {
     const car = s.ball.carrier && s.a(s.ball.carrier), off = d => d.beat > s.time, free0 = free; free = d => free0(d) && !off(d);
     // (round 7: live play only; a lesson's scene plays as it was written)
     if (car && car.team !== def && !this.inFinish && !this.win && (this.mode === 'match' || this.mode === 'free')) for (const d of mine) if (free(d) && !d.gk && !this.leaving(d) && dist(d, car) < 1.5) {
+      if (this.otherOnBall(d, car)) { this.stepOff(d); continue; } // (v76 SL)
       const dx = s.ball.x - d.x, dy = s.ball.y - d.y, l = Math.hypot(dx, dy) || 1; d.tk = s.time; d.beat = s.time + .9; d.mom = null; d.aic = null;
       s.go(d.id, clamp(s.ball.x + dx / l * 1.3, .5, L - .5), clamp(s.ball.y + dy / l * 1.3, .5, W - .5), 5); this.beatenId = d.id; if (this.roles) { this.roles = null; } this.wasBeaten = d.id; this.wasBeatenT = s.time; }
     let beaten = false;
@@ -145,7 +161,7 @@ export const team = {
       // goes to meet it on its way to goal; and with the ball within reach while its carrier runs at goal (this.challenge:
       // outcomes.js finish), he goes for the ball itself: a defender within reach always challenges, he never jogs alongside.
       const reach = false;
-      const p0 = reach ? ball : job === 'press' && !R.across ? gsBall(Math.min(standOff(), Math.max(1, dist(d, ball)))) : t ? gs(t, job === 'press' ? Math.min(2.4, dist(d, ball) * .6) : R.across ? 2 : 1.1) : cover(), p = job === 'press' ? p0 : job === 'cover' ? off2(p0) : round(d, p0); // (never backing off to his stand-off: one already nearer holds where he is)
+      const p0 = reach ? ball : job === 'press' && !R.across ? gsBall(Math.min(standOff(), Math.max(1, dist(d, ball)))) : t ? gs(t, job === 'press' ? Math.min(2.4, dist(d, ball) * .6) : R.across ? 2 : 1.1) : cover(d), p = job === 'press' ? p0 : job === 'cover' ? off2(p0) : round(d, p0); // (never backing off to his stand-off: one already nearer holds where he is)
       this.aiGo(d, p.x, p.y, reach ? 4.4 : job === 'press' ? (R.across ? 4.6 : 3.6) : job === 'cover' ? 3.6 : p.now ? 4.4 : 3.8, job === 'press' || !!p.now); } return; }
     // (round 6) His own choice in a defending play comes first, and his friends take the other jobs (live.js teamJobs:
     // this.teamJob): if he goes to the ball nobody else does; if he guards, the friend nearest the ball goes.
@@ -154,7 +170,7 @@ export const team = {
     const was = (beaten && this.beatenId) || (this.wasBeaten && s.a(this.wasBeaten) && free(s.a(this.wasBeaten)) ? this.wasBeaten : null); if (was === this.wasBeaten) { this.wasBeaten = null; beaten = true; }
     const others = attackers.filter(a => a.id !== s.ball.carrier), taken = new Set();
     // A scripted player (the child, or one making a tackle) already counts: near the ball = pressing; near an attacker = guarding him.
-    let pressing = mine.some(d => !free(d) && dist(d, ball) < 2.5) || !!(tj && tj.hero === 'press');
+    let pressing = mine.some(d => !free(d) && dist(d, ball) < 2.5) || !!(tj && tj.hero === 'press') || !!(this.duel && def === 'them'); // (v76 SL: one coming out to meet him, outcomes.js stepUp, is the one on the ball)
     for (const d of mine) if (!free(d) && !d.gk && !(tj && d.id === 'hero')) { const near = others.find(a => dist(a, d) < 2.5); if (near) taken.add(near.id); }
     if (tj && tj.hero !== 'press' && tj.hero) taken.add(tj.hero);
     if (tj) for (const d of mine) { const j = free(d) && tj[d.id]; if (!j) continue;
@@ -170,7 +186,7 @@ export const team = {
       // (an attacker behind the ball is no danger yet: rather than stand by him, one defender covers the way to goal)
       const harmless = mark && dist(mark, goal) > dist(ball, goal) - 2.5;
       if (mark && (tj || !(harmless && !covering))) { taken.add(mark.id); jobs[d.id] = mark.id; const p = round(d, gs(mark, 1.1)); this.aiGo(d, p.x, p.y, p.now ? 4.4 : 3.8, !!p.now); }
-      else { covering = true; jobs[d.id] = 'cover'; const p = off2(cover()); this.aiGo(d, p.x, p.y, 3.6); } // nobody (dangerous) left to guard: cover between the ball and the goal
+      else { covering = true; jobs[d.id] = 'cover'; const p = off2(cover(d)); this.aiGo(d, p.x, p.y, 3.6); } // nobody (dangerous) left to guard: cover between the ball and the goal
     }
     this.roles = { key, jobs, t: s.time, across: beaten, chase: !!was }; // (across: the one stepping across to a ball that is past the first presser sprints to get in front of it)
   },

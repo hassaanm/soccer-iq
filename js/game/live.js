@@ -189,18 +189,34 @@ export const live = {
     return false;
   },
 
+  // (v76 SL) A match's scenes are vetted (game/window.js vetRounds) and its first scene planned (prePlan) in the frames
+  // after Kick off, on a still picture: 1 to 2.5 s on average, up to 8 s. prepareMatch does that work as the match card is
+  // up (js/flows.js calls it with match's own arguments, before the card): match() then finds it done, or waits only for
+  // what is left of it, and play starts moving at once. It plans as the match will (its mode, a first round's window), so
+  // the plans it keeps are the ones the match asks for. Without it (the tests, the audits) match() does it all itself.
+  prepareMatch(skillIds, extra = [], keep = null, mode = 'match') {
+    this.prep?.stop?.();
+    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
+    const me = Object.create(this, { mode: { value: mode }, firstRound: { value: false }, timeouts: { value: 0, writable: true } }), prep = this.prep = { skillIds: [...skillIds], extra, keep, rounds, first: null };
+    prep.done = (async () => { const kept = await me.vetRounds(rounds); prep.rounds = kept; if (this.prep !== prep) return; const p = me.planAhead(kept[0]); prep.first = { nx: kept[0], p }; prep.stop = () => p.stop(); await p; })().catch(e => console.error(e));
+  },
   async match(skillIds, extra = [], toWin = 2, mode = 'match', keep = null) { // keep: which situations may come up (v64: the mini match, at his level)
     this.mode = mode;
-    const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
-    const rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
-    { const kept = await this.vetRounds(rounds); rounds.splice(0, rounds.length, ...kept); this.matchRounds = rounds; } // (v83: a scene whose plan takes too many frames is left out, game/window.js vetRounds)
+    const score = this.matchScore = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them); // (matchScore: game/handover.js keeperEase)
+    const prep = this.prep && this.prep.extra === extra && this.prep.keep === keep && this.prep.skillIds.join() === skillIds.join() ? this.prep : null; this.prep = null; // (v76 SL: prepareMatch)
+    let rounds, early = null;
+    if (prep) { await prep.done; rounds = prep.rounds; early = prep.first; this.matchRounds = rounds; }
+    else {
+      rounds = shuffle([...pickRounds(skillIds, 6), ...extra].filter(sc => !keep || keep(sc)));
+      { const kept = await this.vetRounds(rounds); rounds.splice(0, rounds.length, ...kept); this.matchRounds = rounds; } // (v83: a scene whose plan takes too many frames is left out, game/window.js vetRounds)
+    }
     this.warm?.(rounds); // (round 11: the lines this match can say are loaded now, ui/voicewarm.js)
     // Play flows on from wherever the last play ended: after "Kept the ball!" or "Stole it!" the next choice starts from
     // right there; after a lost ball he defends from there; after "Stopped him!" he defends again. A goal (and the start)
     // cuts to the next scene, the break the game shows as one. After STALL s of play without a goal, and when he wins the
     // ball before "Won it? Go!", a piece of play on screen brings in the next situation (bridgeTo; v82: it used to cut
     // after four plays without a goal, about 30 s, and at once after a won ball).
-    let live = false, next = 0, streak = 0, since = this.realTime || 0, early = null;
+    let live = false, next = 0, streak = 0, since = this.realTime || 0;
     const isGoal = () => this.result === 'goal' || this.result === 'goalAgainst';
     this.missed = {}; this.misses = 0; this.timeoutsInMatch = 0; this.cued = new Set(); this.hintNext = null; this.choiceLog = 'match'; this.firstRound = false; this.timeouts = 0;
     const tally = () => { if (this.result === 'goal') score.us++; else if (this.result === 'goalAgainst') score.them++; this.hud.score(score, this.us, this.them); };
