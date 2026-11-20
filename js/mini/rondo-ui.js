@@ -62,7 +62,7 @@ function makeBox() {
   const mat = new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: .9, depthWrite: false, toneMapped: false }); // (yellow: not the pitch's own white lines)
   const geo = new THREE.PlaneGeometry(1, .09), lines = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(geo, mat); m.renderOrder = 1; m.visible = false; world.scene.add(m); return m; });
   const cg = new THREE.ConeGeometry(.15, .34, 14), cm = new THREE.MeshStandardMaterial({ color: 0xff8a1c, roughness: .55 });
-  const cones = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(cg, cm); m.rotation.x = Math.PI / 2; m.castShadow = false; m.visible = false; // (no shadow: its cost on a phone, v89 integration) world.scene.add(m); return m; });
+  const cones = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(cg, cm); m.rotation.x = Math.PI / 2; m.castShadow = false; m.visible = false; world.scene.add(m); return m; }); // (the cones cast no shadow: its cost on a phone, v89 integration)
   let key = '';
   return {
     set(b) {
