@@ -63,6 +63,7 @@ test('the keeper game gets harder with every save, a little at a time; quick and
 test('penalties get harder with every goal, a little at a time; the first kick already needs the timing', () => {
   smooth(penLevel, [['run', -1, .09], ['late', -1, .04], ['read', 1, .14], ['lateRead', 1, .1], ['stay', 1, .01], ['low', 1, .09], ['high', 1, .12], ['lowR', 1, .03], ['highR', 1, .05], ['feint', 1, .09]]);
   const e = penLevel(0); assert.ok(e.late >= .6 && e.read > .3 && e.read < .4 && e.lateRead === 0 && e.feint === 0, 'the first kick: a clear last moment; an early tap is read now and then');
+  assert.ok(e.easy && penLevel(STEP).easy && e.hold === 3 && !penLevel(2 * STEP).easy && penLevel(2 * STEP).hold === 0, 'the first two kicks are forgiving; the timing starts at two goals');
   const five = penLevel(5 * STEP); assert.ok(five.read > .7 && five.lateRead > .2 && five.low > .8 && five.feint > .2, 'five goals in: he reads early taps, sometimes even late ones, and feints');
   assert.ok(penLevel(40).late < .32 && penLevel(40).read > .95, 'it keeps getting harder');
 });
@@ -92,9 +93,10 @@ test('the keeper game varies from the first shot: kinds, sides, heights; never t
 
 test('penalties: early taps are read more often the earlier they are and the higher the level; a last-moment tap is a guess', () => {
   const rate = (L, when, shown) => { const r = stream(.37); let n = 0; for (let j = 0; j < 4000; j++) n += keeperGoes(penKick(L, r, j), 'TL', when, shown).read; return n / 4000; };
-  assert.ok(Math.abs(rate(0, 'early', 2) - .35) < .03, 'the first kicks: about a third of early taps are read');
-  assert.ok(rate(0, 'early', .8) < rate(0, 'early', 2), 'a tap just before the last moment is read less often');
-  assert.equal(rate(0, 'late', .3), 0, 'the first kicks: a last-moment tap is never read');
+  assert.ok(rate(0, 'early', 2) < .06 && rate(STEP, 'early', 2) < .06, 'the first two kicks: an early tap is hardly ever read');
+  assert.ok(Math.abs(rate(2 * STEP, 'early', 2) - .56) < .04, 'from two goals: more than half of early taps are read');
+  assert.ok(rate(2 * STEP, 'early', .8) < rate(2 * STEP, 'early', 2), 'a tap just before the last moment is read less often');
+  assert.equal(rate(0, 'late', .3), 0, 'the first kicks: a last-moment tap is never read'); assert.equal(rate(2 * STEP, 'late', .3), 0);
   assert.ok(rate(1, 'early', 2) > .55 && rate(5 / 3, 'early', 2) > .7, 'from three goals on, most early taps are read');
   assert.ok(rate(5 / 3, 'late', .3) > .15 && rate(5 / 3, 'late', .3) < .35, 'later he reads some last-moment taps too');
   // his guess: half each way, a few in the middle; it does not depend on where the shot goes
@@ -140,6 +142,19 @@ test('the keeper game, played: shots keep coming until the second goal; the scor
   assert.equal(run.score, seen.filter(x => x.res === 'save').length); assert.ok(run.score >= SAVES);
   assert.ok(seen[SAVES - 1].spec.level > seen[0].spec.level, 'harder after each save');
   assert.equal(g.onResult, null, 'nothing left hooked on the keeper game (its turns in matches are as before)');
+});
+
+test('penalties, the first two kicks: he holds at the plant, the ball glowing, until a tap (or 3 s); then he kicks', async () => {
+  const { world, hud } = stub(), g = new Penalty({ world, hud }), seen = []; let done = false, flashAt = null, strikeAt = null, struck = [];
+  g.endless(i => (i < 2 ? penKick(i * STEP, stream(.3 + i / 10), i) : null), { onKick: x => { seen.push(x); struck.push(strikeAt); } }).then(() => { done = true; });
+  await drive(g, () => done, g => {
+    if (g.flash && flashAt == null) flashAt = g.real;
+    if (g.phase === 'flight' && strikeAt == null) strikeAt = g.real;
+    if (g.phase === 'ready') { flashAt = null; strikeAt = null; }
+    if (g.kick?.n === 0 && g.flash && !g.pick && g.real - flashAt > 2) { assert.ok(g.ui.ballGlow && !g.sim.a('k2').gkm?.body, 'still waiting, the ball glowing'); g.choose('aim:TR'); }
+  }, 2000);
+  assert.equal(seen[0].when, 'late'); assert.equal(seen[0].tap, 'TR'); assert.notEqual(seen[0].res, 'post', 'a tap in the wait is never rushed');
+  assert.deepEqual([seen[1].tap, seen[1].why], [null, 'none'], 'no tap: after the wait, a soft one, saved');
 });
 
 test('penalties, played: the keeper never moves first; a tap in the last moment is late, before it early; the word comes with the ball', async () => {

@@ -35,13 +35,17 @@ export const sideU = side => (side === 'L' ? -1 : side === 'R' ? 1 : 0); // the 
 //   lowR, highR the same when he read it (he goes with a head start)
 //   feint     the share of kicks in which he feints one way in the run-up (from 2 goals)
 //   rush      real seconds before the kick in which a tap at a top corner is rushed: it hits the post
+//   easy      (v93) the first two kicks of a run (no goal yet, or one): forgiving. He holds at the plant with the ball
+//             glowing until a tap (up to `hold` real s), the keeper hardly ever reads an early tap and gets to fewer of
+//             his guesses. From two goals on, the timing as above.
+export const EASY_BELOW = 2 / 3, HOLD = 3, EASY_COVER = .45;
 export function penLevel(L) {
   L = Math.max(0, L);
   return {
     run: ease(2, 1, 4)(L), late: ease(.7, .3, 4)(L),
     read: ease(.35, .97, 1.6)(L), lateRead: ramp(2 / 3, .3, .5)(L), stay: .1 + ramp(0, .02, .1)(L),
-    low: ease(.6, .97, 1.5)(L), high: ease(.4, .9, 1.5)(L), lowR: ease(.88, .98, 1.5)(L), highR: ease(.75, .95, 1.5)(L),
-    feint: ramp(.5, .25, .7)(L), rush: .12,
+    low: ease(.6, .97, 1.5)(L - 1 / 3), high: ease(.4, .9, 1.5)(L - 1 / 3), lowR: ease(.88, .98, 1.5)(L), highR: ease(.75, .95, 1.5)(L), // (his reach on a guess starts to grow after the easy kicks)
+    feint: ramp(.5, .25, .7)(L), rush: .12, easy: L < EASY_BELOW - 1e-9, hold: L < EASY_BELOW - 1e-9 ? HOLD : 0,
   };
 }
 // One kick at `level`: the level's numbers and the numbers that decide the keeper's guesses (u: 0..1 each, drawn now).
@@ -53,6 +57,7 @@ export function penKick(level, r, n = 0, last = []) {
 // How long his pick showed before the kick: `when` 'early' (tapped in the run-up, `shown` real seconds before the kick)
 // or 'late' (in the last moment). How likely the keeper is to read it.
 export function readChance(k, when, shown) {
+  if (k.easy) return when === 'late' ? 0 : k.read * .1; // (the first two kicks: an early tap is read only now and then)
   if (when === 'late') return k.lateRead;
   const extra = Math.max(0, shown - k.late);
   return k.read * Math.min(1, .5 + .5 * extra / .8); // (tapped just before the last moment: half as often as one shown long before)
@@ -78,7 +83,7 @@ export function kickOf(k, tap, when = 'late', shown = 0) {
   if (T.col === 'M') return { res: 'save', why: 'middle', zone: tap, dive: 'M', read };
   if (T.top && T.col !== 'M' && when === 'late' && shown < k.rush) return { res: 'post', why: 'rush', zone: tap, dive, read };
   if (dive !== T.col) return { res: 'goal', why: null, zone: tap, dive, read };
-  const reach = read ? (T.top ? k.highR : k.lowR) : (T.top ? k.high : k.low);
+  const reach = (read ? (T.top ? k.highR : k.lowR) : (T.top ? k.high : k.low)) * (k.easy ? EASY_COVER : 1);
   return k.u.cover < reach ? { res: 'save', why: read ? 'read' : 'guess', zone: tap, dive, read } : { res: 'goal', why: null, zone: tap, dive, read, close: true };
 }
 // What is said (spoken: tests/spoken.js): the first time, after a goal, and the kind line after a miss, by why.

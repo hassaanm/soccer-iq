@@ -94,7 +94,7 @@ export async function runPenalties() {
     const us = teamById(P.us), them = teamById(P.them), first = !P.mini?.pens?.plays, r = stream(Math.random());
     game.setTeams(us, them); game.mode = 'pens'; world.setEnv('crowd');
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'pens' }); hud.dots([], 0);
-    dress(us, them); sizeGoal(true, false); onStage(pens);
+    dress(us, them); sizeGoal(true); onStage(pens); // (v93: the targets' discs faint, as in the keeper game, so the keeper shows through the top middle one)
     const run = startRun('pens'), next = i => (run.over ? null : penKick(run.level, r, i));
     const k0 = next(0); pens.on = true; pens.setup(); show(null);
     if (first) await card({ emoji: '⚽', title: PEN_SAID.intro, sub: 'Tap a corner when the ball flashes. Tap too soon and he sees where you look!', button: 'Play' });

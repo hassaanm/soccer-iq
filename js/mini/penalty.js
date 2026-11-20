@@ -22,7 +22,7 @@ const READY = .5;                   // real s before the run-up: the keeper sets
 // The view: behind the ball and a little to its right, higher than his head, so the ball's flight is clear of his body
 // and the goal with its targets fills the top half. eye: [m behind the spot, m to the side, height]; tgt: where it looks
 // ([x, m across, height]); Ff: the lens, as a share of the picture's height.
-export const VIEW = { eye: [5.2, .4, 2.3], tgt: [0, .1, -.7], Ff: 2.3 };
+export const VIEW = { eye: [5.2, .4, 2.3], tgt: [0, .1, -.28], Ff: 1.95 };
 export const AFTER = { goal: 2.2, save: 2.7, post: 2.7 }; // real s the result stays before the next kick (a miss: its kind line shows after the big word: ui/hud.js)
 
 export class Penalty extends Goalie {
@@ -108,7 +108,13 @@ export class Penalty extends Goalie {
     await this.wait(99, () => s.time - this.win.t0 >= RUN_G);
     // The last moment: he plants and swings; the ball flashes; the keeper sets in the middle of his goal.
     this.flash = true; this.ui.ballGlow = true; this.world.fx?.('skill'); this.feint = null; if (s.a('k2')?.gkm?.guess) s.a('k2').gkm = null;
-    s.stop('hero'); this.aimFoot(); s.windup('hero', 'shot', null); s.go('k2', K_X, cy, 1.6);
+    s.stop('hero'); s.go('k2', K_X, cy, 1.6);
+    if (k.hold && !this.pick) { // (the first two kicks of a run: he waits at the plant, the ball glowing, until a tap or `hold` s)
+      this.win = { t0: s.time, T: 1e6, real: 1e6 }; this.holding = true; const t0 = this.real; // (full speed while he waits)
+      await this.wait(99, () => !!this.pick || this.real - t0 >= k.hold);
+      this.holding = false;
+    }
+    this.aimFoot(); s.windup('hero', 'shot', null);
     this.win = { t0: s.time, T: FLASH_G, real: hint ? Math.max(1.4, k.late) : k.late }; // (his very first kick: a longer last moment while the hand shows when to tap)
     await this.wait(99, () => s.time - this.win.t0 >= FLASH_G);
     // The kick: the keeper decides now (mini/pens.js), and goes as it is struck.
