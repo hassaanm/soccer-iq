@@ -5,6 +5,9 @@ import assert from 'node:assert/strict';
 import { makeGame, drive } from './harness.js';
 import { PATH, BUILDS } from '../js/skills.js';
 import { defaultProgress, finishSession, focus, trainingPlan, trained } from '../js/progress.js';
+import { EXPLAIN, SAW } from '../js/game/skill.js';
+import { MOVE_NAME } from '../js/flair.js';
+const SKILL_WORDS = new Set([EXPLAIN, SAW, ...Object.values(MOVE_NAME).map(n => n + '!')]);
 
 // Matches shuffle with Math.random; a fixed sequence makes each match repeatable (unseeded, about one run in seven
 // had too few misses to test).
@@ -16,7 +19,7 @@ async function playMatch(pick, busy = false, seed = 8) {
 async function playMatchSeeded(pick, busy) {
   const { g, events } = makeGame(), said = [], decisions = [];
   const hud = g.hud; g.hud = new Proxy({}, { get: (_, k) => (k === 'busy' ? () => busy : hud[k]) });
-  g.say = t => { said.push([events.length, t]); return null; };
+  g.say = t => { if (!SKILL_WORDS.has(t)) said.push([events.length, t]); return null; }; // (v76 SL: the skill moment's own words are not cues)
   g.skills = new Set(PATH.map(s => s.id));
   await drive(g, g.match(['look-up', 'pass-to-open', 'get-goal-side'], [], 3, 'free'), { maxSec: 900, pick: gm => {
     const o = pick(gm); decisions.push({ at: events.length, rating: gm.rating(o), best: gm.sc.best }); return o;

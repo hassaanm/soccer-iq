@@ -29,6 +29,7 @@ export const SKILL_TIP = 'Fake at him, then go to the space!'; // a lesson's car
 export const SAW = 'He saw it!'; // the result's words after the move to the wrong side (outcomes.js emit 'read'), said in a match
 export const SKILL_IDS = ['skillA', 'skillB']; // the two buttons, left and right (index.html)
 
+const ANY_NEAR = 1.6;         // (v76 SL) a plain turn (sim.js turnAhead 'any') is offered only with the defender this far off or more (m)
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const pick = (x, y) => (Math.floor(Math.abs(x * 7.31 + y * 13.7) * 10) & 1); // which of the two moves is the better one: from where he is (the same in a replay)
@@ -43,7 +44,7 @@ export const skill = {
   skillFrame(dt) {
     // (round 13) The sim asks the job the team's rule gives each of the other team (sim.js exitGap: where they will be as
     // a skill move ends): the one on the ball ('press'), one chasing it ('ball'), the one covering ('cover').
-    this.sim.jobOf ||= id => { const j = this.roles?.jobs?.[id]; return this.chaser?.id === id || j === 'chase' ? 'ball' : j === 'press' || j === 'cover' ? j : null; };
+    this.sim.jobOf ||= id => { const j = this.roles?.jobs?.[id]; return this.duel === id ? 'duel' : this.chaser?.id === id || j === 'chase' ? 'ball' : j === 'press' || (j === 'cover' && !this.duel) ? j : null; }; // (v76 SL: one covering while another holds him up, outcomes.js stepUp, covers him, not the ball: as he goes)
     this.sim.movePair ||= () => this.movePair(RUN_MOVES); // (v78: which two moves a run-at offer has)
     this.acc = Math.min(.25, (this.acc || 0) + this.skillPace(dt)); this.woke = false;
     while (this.acc >= STEP) { this.skillHold(); this.acc -= STEP; this.gameTime(STEP); if (this.sk?.blockOn) this.skillBlock(); if (this.woke) break; }
@@ -59,14 +60,14 @@ export const skill = {
     if (this.phase !== 'outcome' || this.sk || !h || h.holdTurn || h.sp >= 3.5 || !this.offerAllowed()) return;
     // (round 13) No skill turn on offer where it would end by a second man of theirs (sim.js exitRoom: he turns and is
     // away about a metre in some 0.4 to 0.7 s).
-    const k = s.turnAhead('hero'); if (!k || s.exitRoom(h, 1, .7, .35) < EXIT_FREE) return;
+    const k = s.turnAhead('hero', true); if (!k || s.exitRoom(h, 1, .7, .35) < EXIT_FREE) return; // (v76 SL: any turn past him, not only one that is a chance for a skill turn: sim.js startTurn)
     const b = s.ball, ch = Math.cos(b.h), sh = Math.sin(b.h); let foe = null, fd = 3.5;
     for (const o of s.team('them')) { const d = Math.hypot(o.x - h.x, o.y - h.y); if (d < fd && (o.x - h.x) * ch + (o.y - h.y) * sh > -.3) { fd = d; foe = o; } }
-    if (!foe) return;
+    if (!foe || (k === 'any' && (!s.flair?.by?.hero || fd < ANY_NEAR))) return; // (v76 SL: a plain turn only in a play of his on the ball, and not with him already on him)
     const side = turnSide(s, h, b.h, Math.atan2(h.ty - h.y, h.tx - h.x)), pair = this.movePair(TURN_MOVES), first = pick(h.x, h.y);
     const alts = pair.map((m, i) => ({ k: m, good: i === first, exit: i === first ? side : -side }));
     this.skillOffer({ kind: 'turn', alts, tgt: foe.id, yaw: b.h });
-    h.holdTurn = true; this.skHoldT = s.time;
+    h.holdTurn = true; h.turnAny = k === 'any'; this.skHoldT = s.time;
   },
   holdG() { return this.mode === 'demo' ? HOLD_DEMO : HOLD_G; },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).
@@ -92,10 +93,11 @@ export const skill = {
   },
   // Whether a new offer may come now: his ball in a play (not while he chooses, not in a replay of the better play),
   // one per play, and in matches GAP seconds apart.
-  offerAllowed() {
+  // (v76 SL) `ahead`: as a run starts, a turn still under way counts as done (outcomes.js stepUp).
+  offerAllowed(ahead = false) {
     const m = this.mode, b = this.sim.ball;
     // (round 6: only in a play that is going his way: no fake on a dribble into their players, which is about to be lost)
-    return this.phase === 'outcome' && this.playGood !== false && !this.skDone && !this.sk && b.carrier === 'hero' && b.state === 'carried' && !b.move
+    return this.phase === 'outcome' && this.playGood !== false && !this.skDone && !this.sk && b.carrier === 'hero' && b.state === 'carried' && (ahead || !b.move)
       && (m === 'demo' || ((m === 'lesson' || m === 'match' || m === 'free') && !this.showing)) && (m === 'lesson' || m === 'demo' || this.clock - (this.skLast ?? -99) > GAP)
       && this.skillsOpen(); // (not in the first lessons: from the one that is about taking a defender on)
   },
@@ -148,7 +150,7 @@ export const skill = {
   skillEnd() {
     const h = this.sim.a('hero'), sk = this.sk; if (!sk) return;
     if (sk.phase !== 'out') this.hud.skill(null);
-    if (h) { h.offer = null; h.armed = null; h.turnTap = null; h.turnBad = false; }
+    if (h) { h.offer = null; h.armed = null; h.turnTap = null; h.turnBad = false; h.turnAny = false; }
     if (sk.blockOn) this.scripted.delete(sk.tgt);
     if (this.mode === 'demo' && SKILL_IDS.includes(this.handAt)) this.handAt = null;
     sk.phase = 'out';

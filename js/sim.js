@@ -110,6 +110,7 @@ function plan(k, d, s, P, alt, run) {
 //            the outside of the near foot
 const SKILL_T = { push: ['croqueta'], cut: ['chop', 'roll'], hook: ['cruyff'], pull: ['cruyff'] };
 export const TURN_SKILLS = new Set(['croqueta', 'double', 'chop', 'roll', 'cruyff']);
+const PLAIN_T = new Set(['push', 'cut', 'hook', 'pull']); // (v76 SL) the plain turns a skill turn he picked can be made on (startTurn)
 function skillPlan(k, base, s, P, own) {
   const T = s > 0 ? 1 : 0, O = 1 - T, E = base.t[base.t.length - 1][4], t = base.t[0], out = { ...base, last: base.t[base.t.length - 1][0] }; // E: where the plain turn leaves the ball
   if (!own) out.path = base.t;
@@ -243,7 +244,7 @@ export class Sim {
   turn(id, x, y, min = .35) { const a = this.a(id); return this.ball.carrier === id && this.ball.state === 'carried' ? this.startTurn(a, ang(x - a.x, y - a.y), min) : 0; }
   // `dry`: only ask which skill turn this turn would be a chance for (see turnAhead): nothing changes, and it returns
   // the move or null.
-  startTurn(c, want, min = .35, kind = null, dry = false) {
+  startTurn(c, want, min = .35, kind = null, dry = false, any = false) {
     const b = this.ball; let d = wrapA(want - b.h);
     if (Math.abs(d) < min) return dry ? null : 0;
     const ad = Math.abs(d), dx = b.x - c.x, dy = b.y - c.y, ch = Math.cos(b.h), sh = Math.sin(b.h), s = turnSide(this, c, b.h, want), told = c.openS;
@@ -263,14 +264,17 @@ export class Sim {
       // one can be a double touch instead.
       const cutOK = k !== 'cut' || this.flair.by[c.id].p >= 1 || rnd(c.x * 13, c.y * 17, idn(c.id)) < (ad < 1.6 ? .7 : .3); // (one who always takes his chance: every one)
       const sk = cutOK && this.pickSkill(c, k === 'push' && !own ? ['double'] : k === 'cut' && ad < 1.6 ? ['double', 'chop', 'roll'].filter(x => x !== 'roll' || c.sp < 2.6) : SKILL_T[k].filter(x => x !== 'roll' || c.sp < 2.6), 'turn', dry);
-      if (dry) return sk || null;
+      if (dry && (sk || !any)) return sk || null;
       // (v78: the child's player makes the move he picked of the two offered, game/skill.js: any skill turn, on the plain turn's way)
       const mine = tap && TURN_SKILLS.has(c.turnTap) ? c.turnTap : null;
       if (sk && (!tap || mine)) { m = skillPlan(mine || sk, m, s, P, own); k = mine || sk; c.skill = null; }
     }
-    if (dry) return null;
+    // (v76 SL) Any turn of his past one of theirs close by that the game offered as a skill moment (turnAhead `any`),
+    // though it was no chance for a skill turn above: the move he picked, on the plain turn's way.
+    if (dry) return any && PLAIN_T.has(k) ? 'any' : null;
+    if (tap && c.turnAny && TURN_SKILLS.has(c.turnTap) && PLAIN_T.has(k)) { m = skillPlan(c.turnTap, m, s, P, false); k = c.turnTap; c.skill = null; }
     const bad = tap && c.turnBad && TURN_SKILLS.has(k); // (v78: the one of the two that goes the wrong way: the defender is not fooled)
-    if (tap) { c.turnTap = null; c.turnBad = false; }
+    if (tap) { c.turnTap = null; c.turnBad = false; c.turnAny = false; }
     let fd = wrapA(want - f0); if (Math.abs(fd) > (told ? .3 : 1.6) && Math.sign(fd) !== s && !c.calmTurn) fd += s * 2 * Math.PI; // the body turns the same way round as the ball (v78: a calm turn: his body its own short way, to face the kick)
     b.move = { k, t0: this.time, a0: b.h, d, s, P, f0, fd, ...m, ...(bad ? { good: false } : {}) };
     this.on('touch');
@@ -292,11 +296,12 @@ export class Sim {
   }
   // The skill turn the next step would start for `id` (his run leaves the ball's line, as in step), or null. The
   // game asks it while play stands still, so the child can be offered the move before the turn begins.
-  turnAhead(id) {
+  // (v76 SL) `any`: or 'any' for a plain turn that is no chance for a skill turn (the game may offer one on it).
+  turnAhead(id, any = false) {
     const a = this.a(id), b = this.ball; if (!a || b.state !== 'carried' || b.carrier !== id || b.move || b.reach) return null;
     const dx = a.tx - a.x, dy = a.ty - a.y;
     if (!(Math.hypot(dx, dy) > .02 && a.speed > 0 && (a.kickAt == null || this.time - a.kickAt > .5))) return null;
-    return this.startTurn(a, ang(dx, dy), .35, null, true);
+    return this.startTurn(a, ang(dx, dy), .35, null, true, any);
   }
   // Running at a defender with the ball (about 1.6 to 6 m in front of him and in his way when the move starts) and a
   // touch just made: a chance for a skill that starts at the next touch (so he has a touch to set it up, and the
@@ -359,8 +364,8 @@ export class Sim {
     for (const o of this.agents.values()) if (o.team !== a.team && !o.gk && Math.hypot(o.x - a.x, o.y - a.y) < 2.4 && (!(o.beat > this.time) || this.time - (o.tk ?? -9) < .6)) return;
     for (const o of this.agents.values()) {
       if (o.team === a.team || o.gk) continue;
-      const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (f < 2.5 || Math.hypot(f, l) > SEE) continue;
-      const ev = this.moveEvents(a, o, 12, WARY); if (!ev || Math.abs(ev.side(ev.j)) > 2.6) continue; // (in his way by the last moment)
+      const f = (o.x - a.x) * ch + (o.y - a.y) * sh, l = (o.y - a.y) * ch - (o.x - a.x) * sh; if (f < 2.5 || Math.hypot(f, l) > SEE || Math.abs(l) > 4.2) continue; // (v76 SL: not one still out wide, coming across: offerGone would close it at once)
+      const ev = this.moveEvents(a, o, 12, this.jobOf?.(o.id) === 'duel' ? 0 : WARY); if (!ev || Math.abs(ev.side(ev.j)) > 2.6) continue; // (in his way by the last moment; v76 SL: one who holds him up, game/outcomes.js stepUp, is judged as he goes: he does not come on faster)
       if (!best || f < best.f) best = { o, ev, f, l };
     }
     if (!best) return;
@@ -390,7 +395,7 @@ export class Sim {
   moveEvents(a, tgt, upto = 12, wary = 0, j0 = 0, raw = false) {
     const b = this.ball, ch = Math.cos(b.h), sh = Math.sin(b.h), sp = Math.max(a.sp, 1.5), now = touchAt(a), k0 = Math.floor(now + 1e-6);
     const dNext = (k0 + 1 - now) * (now - k0 < .05 ? touchLen(this, a) : a.tL || 1.4); // (his run to the next touch; just after a touch, the one it will be)
-    let vx = tgt.lv?.[0] || 0, vy = tgt.lv?.[1] || 0; const rx = tgt.x - a.x, ry = tgt.y - a.y;
+    const tv = tgt.duelV || tgt.lv; let vx = tv?.[0] || 0, vy = tv?.[1] || 0; const rx = tgt.x - a.x, ry = tgt.y - a.y; // (v76 SL duelV: one holding him up goes as his plan says, game/outcomes.js stepUp)
     if (wary) { const d = Math.hypot(rx, ry) || 1; vx -= rx / d * wary; vy -= ry / d * wary; } // (judging ahead: as if he came at him `wary` m/s faster, as a defender who sets off to press does)
     const at = j => { const d = dNext + j * 1.4, t = d / sp, x = rx + vx * t - ch * d, y = ry + vy * t - sh * d; return [x * ch + y * sh, y * ch - x * sh]; };
     const gap = j => at(j)[0], side = j => at(j)[1];
