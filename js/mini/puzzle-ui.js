@@ -118,6 +118,12 @@ function node(kind, i) {
   return a[i];
 }
 const showN = (kind, n) => { for (let i = 0; i < Math.max(n, pool[kind].length); i++) node(kind, i).classList.toggle('off', i >= n); };
+// (v93 integration) The kids, the hint rings and the balls are made ahead, one at a time while the page is idle after it
+// loads (on the hidden board: no layout, no paint), so the first frame of play only shows them (npm run audit:pop start).
+{ const want = [['us', 4], ['them', 4], ['gk', 1], ['hint', 8], ['foot', 4]].flatMap(([k, n]) => Array.from({ length: n }, (_, i) => [k, i]));
+  const idle = typeof requestIdleCallback === 'function' ? f => requestIdleCallback(f, { timeout: 2000 }) : f => setTimeout(f, 60);
+  const step = () => { const w = want.shift(); if (!w) return; try { node(w[0], w[1]); } catch { return; } idle(step); };
+  if (typeof document !== 'undefined') idle(step); }
 const face = (el, left) => { if (el._f !== left) { el._f = left; el.classList.toggle('l', left); } };
 
 // ---------- where things are on the screen ----------
@@ -153,8 +159,17 @@ function drawPitch(pz) {
   let s = `<defs><radialGradient id="pzLight" cx="50%" cy="45%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>`
     + `<radialGradient id="pzLamp"><stop offset="0" stop-color="#fff6c8" stop-opacity=".9"/><stop offset=".25" stop-color="#fff2b0" stop-opacity=".35"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/></radialGradient></defs>`;
   s += `<rect width="${L.w}" height="${L.h}" fill="#2a1f4d"/>`;
-  for (let r = 0; r < 5; r++) for (let x = 6 + (r % 2) * 5; x < L.w; x += 11) { const y = Y(0) - pad - 8 - r * 9; if (y < 4) continue; s += `<circle cx="${x}" cy="${n2(y)}" r="2.6" fill="${CROWD[(x * 7 + r * 3) % 6]}" opacity=".55"/>`; }
-  for (let r = 0; r < 5; r++) for (let x = 3 + (r % 2) * 5; x < L.w; x += 11) { const y = Y(H) + pad + 8 + r * 9; if (y > L.h - 3) continue; s += `<circle cx="${x}" cy="${n2(y)}" r="2.6" fill="${CROWD[(x * 5 + r) % 6]}" opacity=".45"/>`; }
+  // (v93 integration) Each row of the crowd is one rect filled with a pattern of 6 dots (the colours repeat every 6 dots,
+  // 66 px), not a circle per dot: about 850 page nodes fewer, so the first frame of play stays light (npm run audit:pop).
+  const crowd = (id, x0, y, colour, o) => {
+    let d = `<pattern id="${id}" patternUnits="userSpaceOnUse" x="${x0 - 5.5}" y="${n2(y - 4.5)}" width="66" height="9">`;
+    for (let i = 0; i < 6; i++) d += `<circle cx="${5.5 + 11 * i}" cy="4.5" r="2.6" fill="${CROWD[colour(x0 + 11 * i)]}"/>`;
+    s += d + '</pattern>'; rows += `<rect x="${x0 - 5.5}" y="${n2(y - 4.5)}" width="${L.w - x0 + 5.5}" height="9" fill="url(#${id})" opacity="${o}"/>`;
+  };
+  let rows = '';
+  for (let r = 0; r < 5; r++) { const y = Y(0) - pad - 8 - r * 9; if (y >= 4) crowd('pzCt' + r, 6 + (r % 2) * 5, y, x => (x * 7 + r * 3) % 6, .55); }
+  for (let r = 0; r < 5; r++) { const y = Y(H) + pad + 8 + r * 9; if (y <= L.h - 3) crowd('pzCb' + r, 3 + (r % 2) * 5, y, x => (x * 5 + r) % 6, .45); }
+  s += rows;
   for (const [x, y] of [[L.w * .06, 10], [L.w * .94, 10], [L.w * .06, L.h - 8], [L.w * .94, L.h - 8]]) s += `<circle cx="${n2(x)}" cy="${n2(y)}" r="${n2(c * 1.4)}" fill="url(#pzLamp)"/>`;
   // the grass: mown stripes a place wide, then a soft floodlight pool
   const gx = X(0) - pad, gy = Y(0) - pad, gw = (W + 1) * cx + 2 * pad, gh = H * c + 2 * pad;
