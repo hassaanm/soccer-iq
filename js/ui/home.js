@@ -9,6 +9,7 @@ import { CUPS } from '../cups.js';
 import { nextSkill, level, isOpen, graduated, playOpen, matchOpen } from '../progress.js';
 import { SIZES, TEAM, setSize, sizeOf } from '../geom.js';
 import { lessonPic } from './pics.js';
+import { modeOf, modeName as modeNameOf, nextMode } from './mode.js';
 
 // ---------- team size ----------
 // The chip under VS shows how many play on each side as a picture: a little pitch with a dot per player in each team's
@@ -73,7 +74,7 @@ export function renderPickers(flip) {
     if (flip?.side === side) { const sh = el.querySelector('.shirts'); sh.classList.remove('flip-next', 'flip-prev'); replay(sh, flip.dir > 0 ? 'flip-next' : 'flip-prev'); }
   }
   game.setTeams(teamById(P.us), teamById(P.them));
-  renderSize(); renderLessons();
+  renderSize(); renderLessons(); renderMode(); // (the mode too: a reset or a changed save shows)
 }
 const pickTeam = (side, id, dir) => { P[side] = id; save(); renderPickers({ side, dir }); };
 const cycle = (side, dir) => pickTeam(side, neighbor(P[side], dir, otherSide(side)).id, dir);
@@ -140,11 +141,10 @@ wireSheet('#albumSheet', '#albumClose');
 // choice) or "Mode: Live" (Fast: real time, js/fast/). A tap switches. Kept in the settings (P.settings.mode: 'slow' or 'fast');
 // Match starts the one picked. Lessons, training, cups and the keeper game stay as they are.
 const modeBtn = $('#modePick');
-export const modeName = () => (P.settings.mode === 'fast' ? 'Live' : 'Classic');
 export function renderMode() {
-  const live = P.settings.mode === 'fast', name = modeName();
+  const live = modeOf(P.settings) === 'fast', name = modeNameOf(P.settings);
   modeBtn.classList.toggle('on', live); modeBtn.setAttribute('aria-checked', live); modeBtn.setAttribute('aria-label', `Mode: ${name}`);
   modeBtn.querySelector('b').textContent = name;
 }
-modeBtn.onclick = () => { P.settings.mode = P.settings.mode === 'fast' ? 'slow' : 'fast'; save(); renderMode(); };
+modeBtn.onclick = () => { P.settings.mode = nextMode(P.settings); save(); renderMode(); };
 renderMode();

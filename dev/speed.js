@@ -267,8 +267,8 @@ $('#stNormal').onclick = () => {
   catch (e) { $('#stMsg').textContent = 'Could not save: ' + (e?.message || e); }
 };
 function offer(b) {
-  const t = inForce(), same = !b || !G.differences(b).length || (t.fromTest && G.sameSettings(b, t)), note = b && b.measuredSfx && !b.sfx ? ' Sounds: no clear difference, kept standard.' : '';
-  $('#stMsg').textContent = (b ? G.resultSentence(b, t) : 'No result, so nothing changed.') + note;
+  const t = inForce(), same = !b || !G.differences(b).length || (t.fromTest && G.sameSettings(b, t));
+  $('#stMsg').textContent = b ? G.resultSentence(b, t) : 'No result, so nothing changed.'; // (one plain sentence; the sound finding stays in the report below)
   $('#stChoice').hidden = same; showState();
 }
 $('#stUse').onclick = () => { $('#stMsg').textContent = applyBest(best); $('#stChoice').hidden = true; showState(); };

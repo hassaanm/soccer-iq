@@ -1079,3 +1079,8 @@ body.logon #logTab{display:grid}
 .skillPick{bottom:calc(66px + var(--safe-b))}
 .skillPick .nm{position:absolute;left:50%;top:100%;margin-top:16px;transform:translateX(-50%);width:max-content;max-width:126px;padding:3px 7px 4px;border-radius:14px;background:var(--cream);color:var(--ink);font:700 18px/1.08 var(--font);letter-spacing:0;text-align:center;text-shadow:none;box-shadow:0 0 0 2px #fff,0 3px 0 rgba(36,25,58,.28);pointer-events:none}
 .skillPick .nm:empty{display:none}
+/* The mini games chooser from the first tap until the game takes over (js/mini/starter.js): the tile he tapped is lit, the
+   others dim, and nothing on the sheet answers. */
+#miniSheet.starting .tile{pointer-events:none}
+#miniSheet.starting .tile:not(.picked){opacity:.45}
+#miniSheet .tile.picked{box-shadow:0 0 0 4px var(--gold),0 5px 0 var(--gold-e)}
