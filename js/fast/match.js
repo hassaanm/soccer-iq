@@ -182,7 +182,7 @@ export class Match {
     s.stop(id); s.windup(id, 'shot'); this.cmd.set(id, s.time + .8);
     let tx = gx + dx * .7, ty = res.to.y, z1 = res.to.z ?? .35;
     if (res.res === 'goal') { const a = s.a(id), run = gx - a.x; if (Math.abs(run) > .3) ty += (ty - a.y) * (dx * .7) / run; } // (v89 integration: aimed through its spot on the goal line, so an angled shot that is in crosses the line inside the posts)
-    if (res.res === 'save' || res.res === 'cleared') { tx = res.at.x; ty = res.at.y; z1 = res.at.z ?? .3; }
+    if (res.res === 'save' || res.res === 'cleared') { tx = res.at.x; ty = res.at.y; z1 = res.at.z ?? .3; if (res.res === 'save') tx = gx - dx * Math.max(.3, (gx - tx) * dx); } // (v93 integration: a save is made in front of the line, never behind it, where it would count as a goal)
     else if (res.res === 'over' || res.res === 'wide') { // (v93 integration, the owner's log: "over" scored) it must be over or wide AT the line, not only at its end
       tx = gx + dx * 2.2; z1 = res.to.z; const b = s.ball, eL = Math.min(.97, Math.abs(gx - b.x) / Math.abs(tx - b.x)), uL = 1 - Math.pow(1 - eL, 1 / 1.5), arc = res.arc ?? .25; // (sim.js flight: e = 1 - (1 - u)^1.5)
       if (res.res === 'over') z1 = Math.max(z1 ?? 0, (this.gh + .35 - arc * 4 * uL * (1 - uL)) / uL); // (clear of the bar as it crosses the line)
