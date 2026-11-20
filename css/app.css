@@ -1114,3 +1114,12 @@ body.logon #logTab{display:grid}
 #miniSheet .tile.picked{animation:chosenPulse .7s ease-in-out infinite alternate}
 @keyframes chosenPulse{to{transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){#miniSheet .tile.picked{animation:none}}
+/* ---------- RONDO (v93: js/mini/rondo-ui.js) ---------- */
+/* The round and its seconds: a plain label at the top edge (no ring at his feet). STEAL: always bright (D3). */
+#rClock{position:absolute;top:calc(12px + var(--safe-t, 0px));left:50%;transform:translateX(-50%);display:none;align-items:center;gap:12px;padding:6px 18px 6px 16px;border-radius:999px;background:rgba(36,25,58,.82);color:#fff;font-family:Fredoka,system-ui,sans-serif;pointer-events:none;white-space:nowrap}
+#rClock.show{display:flex}
+#rClock span{font-size:20px;font-weight:600;opacity:.9}
+#rClock b{font-size:36px;font-weight:700;line-height:1;min-width:1.3em;text-align:center;color:#ffd23f}
+#rClock.low b{color:#ff8a5c}
+#rSteal.wait,#rSteal.spent,#rSteal.now{animation:none}
+#rSteal:active{transform:scale(.94)}

@@ -1,10 +1,10 @@
 // The rondos (v88), two mini games on the Fast engine's rules: a keep-ball box. A few players stand on the sides of a
 // marked box and pass the ball round; one or two in the middle try to win it.
 //  - "Keep the ball" (mode 'keep'): he is one of the players on the outside, on the near side of the box, the whole
-//    run. He moves along his side (a tap on the grass), with the ball or without it, and passes with a tap on a friend.
-//    A round lasts ROUND_S s of play; his team keeps the ball for the round, or loses it (a life).
-//  - "Win the ball" (mode 'win'): he is the defender in the middle. He moves with a tap; standing in a passing line
-//    blocks it; the STEAL button wins the ball while it glows. A round: ROUND_S s to win it, or a life is lost.
+//    run. He moves along his side between fixed spots (a tap goes to the nearest), with the ball at his feet or without
+//    it, and passes with a tap on a friend. His team keeps the ball for the round, or loses it (a life).
+//  - "Win the ball" (mode 'win'): he is the defender in the middle. He moves between fixed spots (in front of each
+//    passer, in each passing lane); a pass into his body is his; STEAL wins a ball within his reach (it glows then).
 // What this file holds: the box, where a player may stand, when a line is open, and how hard each level is. No page,
 // no 3D world and no sim here, so the tests and the bots use it as it is (mini/rondo-play.js plays it on the sim,
 // mini/rondo-ui.js puts it on the page).
@@ -17,10 +17,9 @@ import { clamp, dist, onLane, cutBy, project, REACH } from '../fast/rules.js';
 import { ease, ramp } from './rules.js';
 
 // ---------- time ----------
-// SPEED: the one base speed, a share of real time (calm for a five-year-old at level 0; no slow motion by itself).
-// HOLD: the speed while a finger is held down (as Fast mode). ROUND_S: game seconds of play a round (about 30 real s).
-export const SPEED = .8, HOLD = .18, ROUND_S = 24, READY_S = 1.3, AFTER_S = 2.2;
-export const ROUND = { keep: ROUND_S, win: 20 }; // (game s a round, each game: 'win' a little shorter, about 25 real s to win it)
+// SPEED: the one base speed, a share of real time. HOLD: the speed while a finger is held down (as Fast mode).
+// A round's length is in REAL seconds (keepLevel / winLevel secs): the countdown on screen shows them as they are.
+export const SPEED = .9, HOLD = .18, READY_S = 1.3, AFTER_S = 2.2;
 
 // ---------- the box ----------
 // Centred on (cx, cy); x0..x1 and y0..y1. His side in 'keep' is the near one (x = x0, the camera behind it), facing +x
@@ -44,6 +43,30 @@ export const isIn = (b, p, m = 0) => p.x >= b.x0 - m && p.x <= b.x1 + m && p.y >
 export const offSide = (b, side, p) => dist(p, toSide(b, side, p));
 // N evenly spaced points along a side (the dots on the grass: "dots all across his line").
 export const sideDots = (b, side, n = 9) => { const lim = reachOf(b); return Array.from({ length: n }, (_, i) => sideAt(b, side, -lim + (2 * lim * i) / (n - 1))); };
+
+// ---------- his spots (v93, D2: he moves only to fixed spots) ----------
+// 'keep': KEEP_SPOTS fixed places along his side, corner to corner (a tap goes to the nearest one).
+// 'win': a set made when he arrives somewhere (or stops, or the ball changes hands): a place in front of each passer,
+// near enough to put a foot on the ball at his feet (PRESS_IN m inside his line, toward the middle), and a place in each
+// passing lane (the middle of the line between two neighbours, and the middle of the box for the lines across it).
+// Places closer than MERGE m are one; the one he stands on is left out. They stay where they are until the next set.
+export const KEEP_SPOTS = 5, MAX_SPOTS = 8, PRESS_IN = 1.05, MERGE = 1.6, ON_SPOT = .9, TAP_R = 2.2;
+export const keepSpots = b => sideDots(b, 'near', KEEP_SPOTS);
+const ORDER = ['far', 'left', 'near', 'right'];
+// passers: [{ id, x, y, side }] (side: the box side he is on); me: where he is. Returns [{ x, y, kind, of }].
+export function winSpots(b, passers, me = null) {
+  const c = { x: b.cx, y: b.cy }, out = [], inner = p => inBox(b, p, .55);
+  for (const p of passers) { const dx = c.x - p.x, dy = c.y - p.y, l = Math.hypot(dx, dy) || 1; out.push({ ...inner({ x: p.x + dx / l * PRESS_IN, y: p.y + dy / l * PRESS_IN }), kind: 'press', of: p.id }); }
+  const by = Object.fromEntries(passers.map(p => [p.side, p]));
+  for (let i = 0; i < 4; i++) { const p = by[ORDER[i]], q = by[ORDER[(i + 1) % 4]]; if (p && q) out.push({ ...inner({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }), kind: 'lane', of: p.id + q.id }); }
+  out.push({ ...c, kind: 'lane', of: 'mid' });
+  const kept = [];
+  for (const s of out) if (!kept.some(k => dist(k, s) < MERGE) && !(me && dist(me, s) < ON_SPOT)) kept.push(s);
+  while (kept.length > MAX_SPOTS) { const lanes = kept.filter(k => k.kind === 'lane' && k.of !== 'mid'), far = (lanes.length ? lanes : kept).reduce((f, k) => (me ? dist(k, me) > dist(f, me) : false) ? k : f); kept.splice(kept.indexOf(far), 1); } // (at most 8: a lane far from him goes)
+  return kept;
+}
+// The spot a tap at p means: the nearest within TAP_R m, else null (a tap far from every spot does nothing).
+export function spotAt(list, p, r = TAP_R) { let best = null, bd = r; for (const s of list) { const d = dist(s, p); if (d < bd) { bd = d; best = s; } } return best; }
 
 // ---------- an open line ----------
 // A pass from → to at `speed` m/s is open when no defender can put a foot on its line before the ball gets there
@@ -73,54 +96,62 @@ export function bestSpot(b, side, ball, foes, { speed = 8, run = 4, react = .3, 
 
 // ---------- how hard, by level (a third of a level a round: mini/rules.js) ----------
 // The one place to tune each game. Every number moves a little with each round and never back (tests/rondo.test.js).
+// (v93, D1) No easy start: from the first round the defender presses with purpose and the passes are brisk; a careful
+// grown-up keeps about 3 rounds in 4 at first, and by a score of 5 it is hard.
 //
 // Keep the ball (he is an outside player):
-//   size     the box's side, m (roomy at first, toward 8.5)
-//   two      the second defender's share of his full speed and sense (0: not there; he comes in at TWO_AT, slow and
-//            often in the wrong place, and is at full speed over the next ten rounds: a gentle step, not a wall)
+//   secs     real seconds a round (shorter at first: no waiting)
+//   size     the box's side, m
+//   two      the second defender's share of his full speed and sense (0: not there; from TWO_AT he comes in at a
+//            third of it and grows over the next rounds: a gentle rise, not a wall)
 //   press    m/s the defender pressing the ball runs at; cover: the second's
 //   cutRun   m/s a defender runs to a pass line, after cutReact s (how far from a line a pass is safe)
-//   stand    s a defender needs on a player standing on the ball to win it
+//   stand    s a defender needs on a player standing on the ball to win it (a red ring warns him first)
 //   think    s between the defenders' choices (where to press, which line to cut)
 //   smart    the share of choices the defenders get right (the pressing curve that cuts the best line)
-//   fMargin  m to spare his friends want on a line before they pass (a little less later; never a risky pass)
-//   fHold    s a friend keeps the ball before passing; fPass: m/s of their passes
-//   fMove    s between his friends' moves to open their lines (slower: he must make more of the angles himself)
-export const TWO_AT = 5 / 3; // (after 5 rounds kept)
-// (v89 integration) The first successes are very easy for a child who sometimes freezes: `early` (1 for the first
-// three rounds, EARLY levels, then easing smoothly to 0 over EARLY_FADE levels) gives a long tackle (a long, visible
-// warning), a defender who closes slowly, and forgiving passes (defenders slow to a line); then the normal curve.
-export const EARLY = .7, EARLY_FADE = 3.3, EK = { stand: 4, press: .45, cutRun: .6, cutReact: .6 };
-export const early = L => { const u = Math.min(1, Math.max(0, (L - EARLY) / EARLY_FADE)); return (1 + Math.cos(Math.PI * u)) / 2; };
+//   fMargin  m to spare his friends want on a line before they pass
+//   fHold    s a friend keeps the ball before passing (one or two touches); fPass: m/s of their passes
+//   fMove    s between his friends' moves to open their lines
+//   fRoom    m a friend wants between a defender and where a pass to him would get to him (time to take it)
+export const TWO_AT = 1; // (after 3 rounds kept)
+// (v93 follow-up) The first rounds are forgiving for a slow young player and the real difficulty comes in over a few
+// rounds, smooth, no wall: `soft` is 1 at score 0, 0.85 at score 1, 0.45 at score 2, 0.15 at score 3 and 0 from score 4
+// (SOFT_TO levels), straight between. Every number it touches still moves only the hard way (tests/rondo.test.js).
+export const SOFT = [1, .85, .45, .15, 0], SOFT_TO = (SOFT.length - 1) / 3;
+export const soft = L => { const x = Math.min(SOFT.length - 1, Math.max(0, L * 3)), i = Math.min(SOFT.length - 2, Math.floor(x)); return SOFT[i] + (SOFT[i + 1] - SOFT[i]) * (x - i); };
 export function keepLevel(L) {
-  L = Math.max(0, L); const e = early(L), two = L >= TWO_AT - 1e-9 ? .3 + ramp(TWO_AT, .2, .7)(L) : 0; // (1e-9: five thirds of a level, counted a third at a time)
-  return {
-    size: ease(13, 8.5, 6)(L), two, press: ease(1.8, 4.6, 6)(L) * (1 - EK.press * e), cover: ease(2.2, 4.3, 6)(L) * two, cutRun: ease(2.8, 5.2, 6)(L) * (1 - EK.cutRun * e), cutReact: ease(.6, .15, 6)(L) + EK.cutReact * e,
-    early: e, stand: ease(3.2, 1, 6)(L) + EK.stand * e, think: ease(1, .25, 6)(L), smart: ease(.25, .97, 6)(L), fMargin: ease(.4, .3, 6)(L), fHold: ease(1, .55, 6)(L), fPass: ease(7.5, 10.5, 6)(L), fMove: ease(.8, 1.1, 6)(L),
+  L = Math.max(0, L); const sf = soft(L), two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
+  return { // (soft: the defender closes a little slower, tackles later, cuts lines later, and his passes slip past a foot more often: rondo-play.js ballCheck)
+    secs: Math.round(30 - 10 * Math.exp(-L / 2)), size: ease(11, 8, 3)(L), two, press: ease(3.6, 5.8, 2.5)(L) * (1 - .25 * sf), cover: ease(3, 4.6, 4)(L) * two, cutRun: ease(3.8, 5.6, 3)(L) * (1 - .3 * sf), cutReact: ease(.45, .12, 3)(L) + .4 * sf,
+    stand: ease(1.4, .5, 2.5)(L) + .9 * sf, think: ease(.6, .25, 3)(L) + .2 * sf, smart: ease(.65, .97, 2.5)(L) - .2 * sf, fMargin: ease(.35, .25, 4)(L), fHold: ease(.7, .45, 3)(L), fPass: ease(9.5, 11.5, 4)(L), fMove: ease(.8, 1.1, 4)(L), fRoom: ease(2.4, 2.1, 3)(L), soft: sf,
   };
 }
-// Win the ball (he is the defender in the middle):
+// Win the ball (he is the defender in the middle; four passers, one on each side, from the first round):
+//   secs     real seconds he has to win it
 //   size     the box's side, m (a little bigger later: more room for them)
-//   n        passers (3 at first, a fourth from FOUR_AT)
-//   pass     m/s of their passes (slow at first: a slow pass glows)
-//   heavy    the share of first touches that run loose (a heavy touch glows)
-//   careless the share of passes made without looking at him (into the line he stands in)
-//   hold     s a passer keeps it before passing
-//   loose    the share of pressed passers who dribble away from him (the ball off the foot glows) instead of shielding it
+//   pass     m/s of their passes
+//   heavy    the share of first touches that run loose (toward the middle)
+//   careless the share of passes made without looking at him
+//   hold     s a passer keeps it before passing, with nobody near
+//   feel     m: with him this near the ball (or closing on it), a passer gets rid of it...
+//   react    ...after this many s (slow at first: get in his face and press, and it is yours)
 //   move     the share of moves to open lines that are good ones
-//   glow     s the ball glows for at least (a chance stays a moment), and the gap after a carrier's window
 //   margin   m to spare they want on a line past him
-export const FOUR_AT = 5 / 3; // (after 5 rounds won)
-// (v89 integration) Longer eases (W_K, levels) so it gets harder gently (the 70% bot: about 75% at level 1, 60% at 2),
-// and the glow stays at its first length (0.5 game s, 0.6 real s) through GLOW_KEEP levels.
-export const W_K = { pass: 5, touch: 3, loose: 5.5, rest: 5.5 }, GLOW_KEEP = 3;
+//   look     the share of times a passer checks that he cannot get to the friend first...
+//   lead     ...with this many s to spare for that friend
+export const FOUR_AT = 0; // (v93: four passers from the first round, so no step when a fourth joins)
 export function winLevel(L) {
-  L = Math.max(0, L);
-  return {
-    size: ease(10, 12.5, 6)(L), n: L >= FOUR_AT - 1e-9 ? 4 : 3, pass: ease(5, 10.5, W_K.pass)(L), heavy: ease(.22, .02, W_K.touch)(L), careless: ease(.16, 0, W_K.touch)(L), loose: ease(.8, .1, W_K.loose)(L), hold: ease(1.8, .5, W_K.rest)(L),
-    move: ease(.2, .95, W_K.rest)(L), glow: ease(.5, .2, 2.5)(Math.max(0, L - GLOW_KEEP)), gap: ease(1, 2.5, W_K.rest)(L), margin: ease(0, .5, W_K.rest)(L),
+  L = Math.max(0, L); const X = .5 + .5 * L, sf = soft(L); // (the passers' curves start half a level in, no easy first round, and rise a little slower)
+  return { // (soft: they read him late, `lag` s behind where he is, so a pass may go into a lane he has just stepped into;
+    //        they keep it longer with him in their face; and his reach for a press is a little longer, `reachPlus` m)
+    secs: Math.round(16 + 4 * Math.exp(-L / 6)), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X) * (1 - .1 * sf), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X) + .12 * sf,
+    hold: ease(1.05, .45, 4)(X) + .4 * sf, feel: ease(3, 4.3, 4)(X), react: ease(.37, .12, 4)(X) * (1 + 1.5 * sf), move: ease(.5, .95, 5)(X), margin: ease(.1, .6, 5)(X), look: ease(.65, 1, 4)(X) * (1 - .5 * sf), lead: ease(.35, .9, 5)(X),
+    lag: .6 * sf, reachPlus: .4 * sf, soft: sf,
   };
 }
+// (v89; Score attack's own first rounds use it: mini/attack.js) 1 for the first rounds, then easing smoothly to 0.
+export const EARLY = .7, EARLY_FADE = 3.3;
+export const early = L => { const u = Math.min(1, Math.max(0, (L - EARLY) / EARLY_FADE)); return (1 + Math.cos(Math.PI * u)) / 2; };
 // ---------- the view ----------
 // Behind and above his player, looking along `yaw` to a point `ahead` m in front of him (the game's own view: never
 // from the top). It starts BACK m behind and UP m high and steps back and up (to at most MAX m back) until every point
@@ -135,7 +166,8 @@ export function rondoCam(me, yaw, ahead, keep, w, h, top = 60) {
   }
 }
 // How fast he is (both games), and how fast he gets to a line in 'win' (their passes are judged against it).
-export const ME = { jog: 3.6, sprint: 5.2, dribble: 3, far: 4.5, run: 4.6, react: .25, pass: 9, lunge: 1.2 };
+// stumble: game s he stumbles after a STEAL that misses (0.8 real s at SPEED), at stumbleV m/s (D3).
+export const ME = { jog: 3.6, sprint: 5.2, dribble: 3, far: 4.5, run: 4.6, react: .25, pass: 10, press: 4, stumble: .65, stumbleV: 1 };
 // What is said (spoken: tests/spoken.js; each has a recorded clip).
 export const RONDO_SAID = {
   keepIntro: 'Pass to a friend. Move so they can pass to you!', kept: 'You kept it!', lost: 'They got it!', move: 'Move to open space so your friend can pass to you!',
