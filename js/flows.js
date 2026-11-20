@@ -137,13 +137,13 @@ const runLesson = flow(async () => {
   const st = finishSession(P, skillId, results.filter(Boolean).length, rounds.length);
   P.pick = null; note(P, skillId, results.filter((_, i) => rounds[i].skill === skillId)); P.openDay = today(); save();
   world.setEnv('crowd'); game.skills = skills(P, PATH);
+  // (v64) The mini match plays only the situations his lesson rounds use at his level ("Our ball? Spread out!" keeps its
+  // harder ones for Level 2). (v76: its scenes are made, and its first one planned, while the card is up: game/live.js prepareMatch.)
+  const fits = sc => atLevel(sc, skillId, lvl), mm = [skillId, ...reviews], mx = fresh(6, mm).filter(fits); game.prepareMatch(mm, mx, fits, 'match');
   await card(st.unlocked ? { emoji: '🔓', title: 'New in matches!', sub: `${UNLOCKS[skillId]}. First to 2 goals wins.`, button: 'Kick off' }
     : !st.passedNow && level(P, skillId) === 0 ? { emoji: '🏟️', title: 'Mini match!', sub: `Get ${need} right next time to unlock this in matches. First to 2 goals wins.`, button: 'Kick off' }
     : { emoji: '🏟️', title: 'Mini match!', sub: 'First to 2 goals wins', button: 'Kick off' });
-  // (v64) The mini match plays only the situations his lesson rounds use at his level ("Our ball? Spread out!" keeps its
-  // harder ones for Level 2).
-  const fits = sc => atLevel(sc, skillId, lvl);
-  const score = await game.match([skillId, ...reviews], fresh(6, [skillId, ...reviews]).filter(fits), 2, 'match', fits), won = score.us > score.them;
+  const score = await game.match(mm, mx, 2, 'match', fits), won = score.us > score.them;
   P.stickers.push({ emoji: won ? '🏆' : sk.emoji, skill: skillId, at: Date.now() }); save();
   const i = PATH.findIndex(s => s.id === skillId), nextSk = PATH[i + 1];
   fillResults({
@@ -203,8 +203,9 @@ export const runFreePlay = flow(async () => {
   if (P.settings.mode === 'fast') return playFast(); // (v84: the Fast way to play a match; below)
   const ids = matchSkills(), us = teamById(P.us), them = teamById(P.them);
   setStage(us, them, 'crowd');
+  const extra = fresh(24, ids); game.prepareMatch(ids, extra, null, 'free'); // (v76: planned while the card is up, game/live.js)
   await card({ emoji: '⚽', title: 'Match time!', sub: `First to ${MATCH_GOALS} goals. ${us.name} vs ${them.name}`, button: 'Kick off' });
-  const score = await game.match(ids, fresh(24, ids), MATCH_GOALS, 'free'), won = score.us > score.them;
+  const score = await game.match(ids, extra, MATCH_GOALS, 'free'), won = score.us > score.them;
   if (won) P.stickers.push({ emoji: '🏆', skill: 'free', at: Date.now() });
   save(); // (the decision log too)
   fillResults({
@@ -252,8 +253,9 @@ const runCup = flow(async cupId => {
   const run = P.cup, names = roundsOf(cup), us = teamById(run.team), them = teamById(run.opps[run.round]), final = run.round === names.length - 1;
   const ids = matchSkills(), again = () => runCup(cupId);
   setStage(us, them, 'crowd');
+  const extra = fresh(24, ids); game.prepareMatch(ids, extra, null, 'free'); // (v76: planned while the card is up, game/live.js)
   await card({ emoji: cup.emoji, title: cup.name, html: `<b>${names[run.round]}</b> · ${us.name} vs ${them.name} · first to ${goalsToWin(run)} goals${cupPath(run)}`, lines: final ? ['The final!'] : [], button: 'Kick off' });
-  const score = await game.match(ids, fresh(24, ids), goalsToWin(run), 'free'), won = score.us > score.them, line = scoreLine(us, them, score), note = tomorrow();
+  const score = await game.match(ids, extra, goalsToWin(run), 'free'), won = score.us > score.them, line = scoreLine(us, them, score), note = tomorrow();
   if (won && final) { (P.trophies ||= []).push({ cup: cup.id, team: run.team, at: Date.now() }); P.cup = null; }
   else if (won) run.round++;
   save();
