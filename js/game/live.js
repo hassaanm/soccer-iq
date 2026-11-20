@@ -202,7 +202,7 @@ export const live = {
   },
   async match(skillIds, extra = [], toWin = 2, mode = 'match', keep = null) { // keep: which situations may come up (v64: the mini match, at his level)
     this.mode = mode;
-    const score = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them);
+    const score = this.matchScore = { us: 0, them: 0 }; this.hud.score(score, this.us, this.them); // (matchScore: game/handover.js keeperEase)
     const prep = this.prep && this.prep.extra === extra && this.prep.keep === keep && this.prep.skillIds.join() === skillIds.join() ? this.prep : null; this.prep = null; // (v76 SL: prepareMatch)
     let rounds, early = null;
     if (prep) { await prep.done; rounds = prep.rounds; early = prep.first; this.matchRounds = rounds; }

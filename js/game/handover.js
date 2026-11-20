@@ -27,7 +27,8 @@ export const handover = {
     const start = { x: shooter.x, u: shooter.y - cy }, d = Math.hypot(start.x, start.u) || 1;
     let dir = { x: -start.x / d, u: -start.u / d }; if (start.x + dir.x * TOUCH < KEEP_OUT) dir = { x: 0, u: -Math.sign(start.u) || 1 };
     const from = { x: Math.max(KEEP_OUT, start.x + dir.x * TOUCH), u: start.u + dir.u * TOUCH };
-    const spec = matchShot(from, start, seeded(from.x, from.u, this.kShots, 23));
+    const spec = matchShot(from, start, seeded(from.x, from.u, this.kShots, 23)), k = keeperEase(this.matchScore);
+    spec.stand *= k; spec.dive *= k; spec.ease = k; // (v76 SL: by the score, keeperEase)
     let r = null; this.keeperMoment(spec, shooter.id).then(v => { r = v; }, e => { console.error(e); r = { res: 'goal', failed: true }; });
     yield () => r;
     if (!r.failed) { const grade = gradeOf(r); this.onChoice?.({ id: KEEPER_IDEA, mode: this.mode, grade: grade === 'timeout' ? 'miss' : grade, sec: r.sec ?? -1, looked: null, timeout: grade === 'timeout' }); }
@@ -43,3 +44,9 @@ export const handover = {
   },
 };
 const TOUCH = .9, KEEP_OUT = 4.2;
+// (v76 SL) The owner: with the score close his save should be easier, with his team ahead harder. As Fast mode does it
+// (js/fast/fast.js keeperMoment): his look at the shooter, where to stand and where to dive, is KEEPER_EASE.close times
+// its length when the score is level or his team is behind, KEEPER_EASE.ahead times when they lead. (tests/keeper-match
+// checks the two stay in step.)
+export const KEEPER_EASE = { close: 1.2, ahead: .7 };
+export const keeperEase = score => ((score?.us ?? 0) - (score?.them ?? 0) > 0 ? KEEPER_EASE.ahead : KEEPER_EASE.close);
