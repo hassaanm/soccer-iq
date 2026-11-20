@@ -62,7 +62,7 @@ function makeBox() {
   const mat = new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: .9, depthWrite: false, toneMapped: false }); // (yellow: not the pitch's own white lines)
   const geo = new THREE.PlaneGeometry(1, .09), lines = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(geo, mat); m.renderOrder = 1; m.visible = false; world.scene.add(m); return m; });
   const cg = new THREE.ConeGeometry(.15, .34, 14), cm = new THREE.MeshStandardMaterial({ color: 0xff8a1c, roughness: .55 });
-  const cones = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(cg, cm); m.rotation.x = Math.PI / 2; m.castShadow = true; m.visible = false; world.scene.add(m); return m; });
+  const cones = Array.from({ length: 4 }, () => { const m = new THREE.Mesh(cg, cm); m.rotation.x = Math.PI / 2; m.castShadow = false; m.visible = false; // (no shadow: its cost on a phone, v89 integration) world.scene.add(m); return m; });
   let key = '';
   return {
     set(b) {
@@ -75,7 +75,7 @@ function makeBox() {
 }
 
 // ---------- his touches (as Fast mode: fast/fast.js down, move, up) ----------
-let lastHint = null, finger = null, yaw = 0, holdYaw = null, holdT = 0, lastAct = 0, real = 0, warnAt = null, warnT = 0, hintSaid = 0, idleSay = 0;
+let shutTaps = 0, shutFor = null, lastHint = null, finger = null, yaw = 0, holdYaw = null, holdT = 0, lastAct = 0, real = 0, warnAt = null, warnT = 0, hintSaid = 0, idleSay = 0;
 function down(e) {
   if (finger && performance.now() - finger.t0 > 5000) dropFinger(); // (an old touch whose lift never came)
   if (!stage.on || !g || held.on || e.isPrimary === false || finger) return;
@@ -110,6 +110,7 @@ function tap(x, y) {
     if (best && bd <= reach) { const open = g.openLine('hero', best, K.ME.pass, .2); if (g.passTo(best)) { lastAct = real; sfx(open ? 'star' : 'tap', open ? 1 : undefined); plog({ is: 'pass', to: best, open: open ? 1 : 0 }); } return; }
   }
   const p = ground(x, y); if (!p) { sfx('tap'); return; }
+  const c = g.owner(); if (g.mode === 'keep' && c && c !== 'hero' && !g.openLine(c, 'hero', g.D.fPass, g.D.fMargin)) shutTaps++; // (his taps while his line stays shut: the hint comes sooner)
   const q = g.moveTo(p); if (q) { lastAct = real; plog({ is: 'move', x: +q.x.toFixed(1), y: +q.y.toFixed(1), ball: g.owner() === 'hero' ? 1 : 0 }); }
 }
 // The point on the grass under a place on the screen (or null: the sky).
@@ -148,9 +149,12 @@ function frame(dt) {
   for (const id of ['m1', 'm2', 'm3']) ui.glow[id] = g.mode === 'keep' && has && g.phase === 'play' && g.openLine('hero', id, K.ME.pass, .2) ? .55 : 0; // (gold: a pass that will get there, with room to spare)
   if (warnAt && (real > warnT || !has)) warnAt = null;
   if (g.goAt && (R.dist(h, g.goAt) < .5 || !play)) g.goAt = null;
-  // the hint ('keep'): his line shut, a friend on the ball, he has done nothing for HINT_S s: the best place on his side pulses
-  let hinted = null; const c0 = g.owner();
-  if (g.mode === 'keep' && g.phase === 'play' && c0 && c0 !== 'hero' && !g.goAt && real - lastAct > HINT_S && !g.openLine(c0, 'hero', g.D.fPass, g.D.fMargin)) {
+  // the hint ('keep'): his line shut, a friend on the ball, and he has done nothing for HINT_S s, or (v89 integration) has
+  // tapped twice with his line still shut while a defender is on that friend: the best place on his side pulses
+  let hinted = null; const c0 = g.owner(), shut = g.mode === 'keep' && c0 && c0 !== 'hero' && !g.openLine(c0, 'hero', g.D.fPass, g.D.fMargin);
+  if (!shut || c0 !== shutFor) { shutTaps = 0; shutFor = shut ? c0 : null; }
+  const pressed = shut && g.takers().some(o => R.dist(o, s.a(c0)) < 2.6);
+  if (g.mode === 'keep' && g.phase === 'play' && shut && ((!g.goAt && real - lastAct > HINT_S) || (shutTaps >= 2 && pressed))) {
     const p = K.bestSpot(bx, 'near', s.a(c0), g.watch(), { speed: g.D.fPass, run: g.D.cutRun, react: g.D.cutReact, margin: .3 });
     if (p && R.dist(p, h) > 1) hinted = [p];
     if (hinted && real - lastAct > SAY_HINT && hintSaid < SAY_HINTS && real - idleSay > 12) { hintSaid++; idleSay = real; say(K.RONDO_SAID.move); plog({ is: 'hint' }); }
