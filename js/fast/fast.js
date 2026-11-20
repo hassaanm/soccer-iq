@@ -29,6 +29,7 @@ import * as R from './rules.js';
 import { shotResult, spaces, zoneGrade, rightFoot, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
+import { warmMini } from '../ui/voicewarm.js';
 
 export const CAM_TURN = 2.6; // rad/s (v89 integration: fast.js camNow)
 const turnTgt = (c, a) => { const dx = c.tgt[0] - c.eye[0], dy = c.tgt[1] - c.eye[1], co = Math.cos(a), si = Math.sin(a); c.tgt[0] = c.eye[0] + dx * co - dy * si; c.tgt[1] = c.eye[1] + dx * si + dy * co; };
@@ -100,7 +101,9 @@ class Fast {
   // ---------- a match ----------
   // opts: { us, them, level (the other team's strength, his own: js/fast/level.js; none: match.js LEVELS) }. Resolves
   // with the counts when one side has GOALS.
-  play({ us, them, level }) {
+  // warm: whose lines to load now (ui/voicewarm.js gameLines; Score attack passes its own). Each clip loads once.
+  play({ us, them, level, warm = 'fast' }) {
+    if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
     this.build(); this.us = us; this.them = them;
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };

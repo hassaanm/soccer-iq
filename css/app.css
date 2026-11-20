@@ -842,7 +842,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 @media (prefers-reduced-motion:reduce){#hud.paused #pausePlay{animation:none}}
 
 /* ---------- Fast mode (v84, js/fast/) ----------
-   The home screen's picker under the team-size chip: Slow (tortoise) or Fast (lightning), the one on ringed in gold.
+   The home screen's mode toggle under the team-size chip (Classic or Live; v93 UI block at the end) picks it.
    In play: the avatar (his player's shirt, top right: pause and change player), LOOK UP when his head is down, the one
    action button bottom right, a small hand-and-timer hint (hold to slow) at the start, and the sheet of shirts. While a
    finger is held the world is slow: a faint cool tint and two sliding chevrons at the top (drag to look). Friends he saw
@@ -900,7 +900,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 .fCounts b{font-size:15px;line-height:1.1}
 .fCounts small{font-size:10px;opacity:.8}
 @media (prefers-reduced-motion:reduce){.fScore .fWin,.fMine i,.fLevel .stars i.new{animation:none}}
-#fSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none}
+#fSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none;will-change:opacity}
 .fChev{position:absolute;top:70px;color:#fff;font:700 30px/1 var(--font);opacity:0;transition:opacity .25s;pointer-events:none;text-shadow:0 1px 0 rgba(36,25,58,.6)}
 #fChevL{left:calc(26px + var(--safe-l))}
 #fChevR{right:calc(26px + var(--safe-r))}
@@ -1004,7 +1004,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #rSteal{right:calc(22px + var(--safe-r));bottom:calc(20px + var(--safe-b));width:112px;height:112px;font-size:13px;pointer-events:auto}
 #rSteal i{font-size:42px}
 #rSteal.show{display:flex}
-#rSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none}
+#rSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none;will-change:opacity}
 #rondoHud.slowing #rSlow{opacity:1}
 
 /* Soccer puzzles (v90, mini/puzzle-ui.js): the board from straight above over the whole screen, under the bar and the

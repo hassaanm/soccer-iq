@@ -115,7 +115,7 @@ function attempt(sc, us, them) {
     let res = null;
     clearFx(); fast.me = 'hero';
     const pl = game.plog; game.plog = (k, o) => (k === 'fast' && o?.is === 'start' ? undefined : pl?.(k, o)); // (not a Fast match: its start is not logged)
-    try { fast.play({ us, them }); } finally { game.plog = pl; }
+    try { fast.play({ us, them, warm: 'attack' }); } finally { game.plog = pl; }
     const m = new AttackMatch({ sim: fast.sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, scene: sc, fx: ev => world.fx(ev), sfx: n => sfx(n),
       real: () => fast.real, pace: () => (fast.aiming ? .3 : fast.holding ? .5 : 1), // (the timer drains slower while he holds to look, slower still while he aims)
       frame: x => { fast.ui.timer = x.res ? null : { left: x.left / x.total, wide: false, scale: 1.35 }; },
