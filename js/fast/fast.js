@@ -114,7 +114,7 @@ class Fast {
     this.ui.clock = 0; this.ui.glow = {}; this.ui.aims = null; this.ui.lines = null; this.warnAt = null; this.warnT = 0; this.over = false;
     this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
-    this.aiming = false; this.ui.ballGlow = false; this.actKind = null; this.actKey = ''; this.skillOpts = null; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
+    this.aiming = false; this.ui.ballGlow = false; this.actKind = null; this.actKey = ''; this.skillOpts = null; this.skUsed = {}; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.set = null; this.chosen = null; this.shotAt = null; this.dom.act2.classList.remove('show');
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, deadTaps: 0, spotTaps: 0, presses: 0, sets: 0, shotEnds: [], chipPasses: 0, played: 0, slowT: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.vw = null; this.camNow(1);
@@ -361,7 +361,7 @@ class Fast {
 
   // ---------- the one action button ----------
   // SHOOT: he has the ball within SHOT_EDGE m of the goal. SKILL: he has it, on the move, and one of theirs comes at him:
-  // the button says the move's name with its picture, two buttons when two moves fit (skillOptions). STEAL: whenever the
+  // the button says the move's name with its picture: one move, the best for now (skillOptions). STEAL: whenever the
   // ball is not his team's (D3: always bright, always pressable; the ball glows only while a press would win it now).
   actionNow() {
     const s = this.sim, m = this.m, me = s.a(this.me); if (!me || m.dead || this.over) return null;
@@ -378,12 +378,19 @@ class Fast {
     if (b.state === 'held' || f?.kind === 'held' || (f && f.team === 'us')) return null; // (his team's pass or shot on its way, a keeper's ball)
     return 'steal';
   }
-  // The two skill moves that fit now (sim.js turn skills): one past him across (the double touch, or the sole roll when
-  // he is slow) and one away from him (a cut; the Cruyff turn when he is right in front).
+  // (v93, the owner: "it comes too quick... it should probably just be one option") ONE skill move, the best one for
+  // now (sim.js turn skills), on the one big button where SHOOT and STEAL sit. One of theirs square in front of him with
+  // space beyond: a move that goes past him across (the double touch, the croqueta; the sole roll when he is slow). One
+  // closing from the side, or no space beyond: a move that turns away (the cut; the Cruyff turn when he is right in
+  // front). Among the moves that fit, the one he has been offered least this match, so he sees them all.
   skillOptions() {
-    const s = this.sim, m = this.m, me = s.a(this.me), h = s.ball.h ?? 0, foe = m.foes('us').filter(o => Math.hypot(o.x - me.x, o.y - me.y) < 4).sort((p, q) => Math.hypot(p.x - me.x, p.y - me.y) - Math.hypot(q.x - me.x, q.y - me.y))[0];
-    const front = foe && Math.abs(R.wrap(Math.atan2(foe.y - me.y, foe.x - me.x) - h)) < .35 && Math.hypot(foe.x - me.x, foe.y - me.y) < 2.2;
-    return [(me.sp || 0) < 2.2 ? 'roll' : 'double', front ? 'cruyff' : 'chop'];
+    const s = this.sim, m = this.m, me = s.a(this.me), h = s.ball.h ?? 0, foes = m.foes('us'), foe = foes.filter(o => Math.hypot(o.x - me.x, o.y - me.y) < 4).sort((p, q) => Math.hypot(p.x - me.x, p.y - me.y) - Math.hypot(q.x - me.x, q.y - me.y))[0];
+    const front = !!foe && Math.abs(R.wrap(Math.atan2(foe.y - me.y, foe.x - me.x) - h)) < .5 && Math.hypot(foe.x - me.x, foe.y - me.y) < 3.2;
+    const bx = me.x + Math.cos(h) * 5.5, by = me.y + Math.sin(h) * 5.5, space = bx > 2 && bx < PITCH.L - 1 && by > 2 && by < PITCH.W - 2 && foes.every(o => o === foe || Math.hypot(o.x - bx, o.y - by) > 2.5);
+    const fits = front && space ? ((me.sp || 0) < 2.2 ? ['roll', 'double', 'croqueta'] : ['double', 'croqueta']) : front ? ['cruyff', 'chop'] : ['chop', 'cruyff'];
+    const used = this.skUsed ||= {}, k = fits.reduce((p, q) => ((used[q] || 0) < (used[p] || 0) ? q : p));
+    used[k] = (used[k] || 0) + 1; this.stats.offers = { ...(this.stats.offers || {}), [k]: (this.stats.offers?.[k] || 0) + 1 };
+    return [k];
   }
   // The button's look (written only when it changes): an icon and a word, or (SKILL) the move's picture and its name.
   drawAction(k) {
@@ -394,9 +401,9 @@ class Fast {
       b.dataset.kind = kind; b.classList.toggle('skill', !!mv);
       const [i, t] = mv ? ['', MOVE_NAME[mv] || 'Skill'] : kind === 'shoot' ? ['🥅', 'SHOOT'] : ['🦶', 'STEAL'];
       b.querySelector('i').textContent = i; b.querySelector('span').textContent = t; b.setAttribute('aria-label', t);
-      b.querySelector('.pic').innerHTML = mv ? `<use href="#mvDef"/><g class="mv"${this.skillSide() > 0 ? ' transform="translate(100 0) scale(-1 1)"' : ''}><use href="#mvArrow"/><use href="#mv-${mv}"/></g><circle cx="50" cy="78" r="9" fill="#fff" stroke="#24193a" stroke-width="3"/>` : '';
+      b.querySelector('.pic').innerHTML = mv ? `<use href="#mvDef"/><g class="mv"${this.skillSide() > 0 ? ' transform="translate(100 0) scale(-1 1)"' : ''}><use href="#mv-${mv}"/></g><circle cx="50" cy="78" r="9" fill="#fff" stroke="#24193a" stroke-width="3"/>` : '';
     };
-    set(this.dom.act, k, opts?.[0]); set(this.dom.act2, opts ? k : null, opts?.[1]);
+    set(this.dom.act, k, opts?.[0]); set(this.dom.act2, null); // (v93: one button; the second stays hidden)
   }
   action(i = 0) {
     const k = this.actionNow(); if (!k || !this.on || held.on) return;
@@ -464,10 +471,10 @@ class Fast {
   }
   // SKILL: the move he picked, in slow motion, toward the open side: a skill turn from the game's own moves (js/sim.js
   // startTurn with a tapped move, drawn by js/pro/motion.js; names from js/flair.js). The defender is fooled a moment.
-  // The move goes ANG of a turn off his way: across him (double, roll), sharper away (chop), back (Cruyff).
+  // The move goes ANG of a turn off his way: across him (double, croqueta, roll), sharper away (chop), back (Cruyff).
   skill(k) {
     const s = this.sim, m = this.m, me = s.a(this.me), b = s.ball; if (!me || m.owner() !== this.me) return;
-    const ANG = { double: 1.05, roll: 1.2, chop: 1.6, cruyff: 2.6 }, h = b.h ?? 0, side = this.skillSide(), foe = m.foes('us').filter(o => Math.hypot(o.x - me.x, o.y - me.y) < 4).sort((p, q) => Math.hypot(p.x - me.x, p.y - me.y) - Math.hypot(q.x - me.x, q.y - me.y))[0];
+    const ANG = { double: 1.05, croqueta: .95, roll: 1.2, chop: 1.6, cruyff: 2.6 }, h = b.h ?? 0, side = this.skillSide(), foe = m.foes('us').filter(o => Math.hypot(o.x - me.x, o.y - me.y) < 4).sort((p, q) => Math.hypot(p.x - me.x, p.y - me.y) - Math.hypot(q.x - me.x, q.y - me.y))[0];
     const a = h + side * (ANG[k] || 1.05), tx = R.clamp(me.x + Math.cos(a) * 4, 1.5, PITCH.L - 1.5), ty = R.clamp(me.y + Math.sin(a) * 4, 1.5, PITCH.W - 1.5);
     s.flair = { ctx: 'fast', by: { [this.me]: { p: 1, can: ['double', 'chop', 'roll', 'croqueta', 'cruyff'], fav: [], tier: 'star' } } }; s.taps = new Set([this.me]); me.turnTap = k; me.skT = -9;
     m.dribble(this.me, tx, ty, 3.4, 1.6); m.meMove = { kind: 'near', until: s.time + 1.6, x: tx, y: ty };

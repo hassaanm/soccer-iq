@@ -1140,3 +1140,8 @@ body.logon #logTab{display:grid}
 #pz .balls.flash i{animation:pzFlash .9s ease-out}
 @keyframes pzHit{0%{transform:scale(1)}30%{transform:scale(1.18)}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){#pz .pzp.hit svg,#pz .balls.flash i,#pz .open.show{animation:none}}
+
+/* ---- SKILL worker (v93): the Live skill moment is ONE big gold button where SHOOT and STEAL sit; its move picture fills it ---- */
+#fAct.fActB.skill .pic{width:68px;height:68px;margin:-6px 0 0}
+#fAct.fActB.skill span{font-size:13px;white-space:nowrap;max-width:none;position:relative}
+#fAct2{display:none!important}

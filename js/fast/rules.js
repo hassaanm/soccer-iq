@@ -64,10 +64,22 @@ export const TAP_PX0 = 64, TAP_PX = .17, TAP_M = 2.4;
 const lattice = (c, r0, r1, L, W) => { const out = []; for (let x = Math.ceil((c.x - r1) / GRID) * GRID; x <= c.x + r1; x += GRID) for (let y = Math.ceil((c.y - r1) / GRID) * GRID; y <= c.y + r1; y += GRID) { if (x < SPOT_IN || x > L - SPOT_IN || y < SPOT_IN || y > W - SPOT_IN) continue; const d = Math.hypot(x - c.x, y - c.y); if (d >= r0 && d <= r1) out.push({ x, y, d }); } return out; };
 const snapPt = (p, L, W) => ({ x: clamp(Math.round(p.x / GRID) * GRID, SPOT_IN, L - SPOT_IN), y: clamp(Math.round(p.y / GRID) * GRID, SPOT_IN, W - SPOT_IN) });
 const nearest = (ps, p) => ps.reduce((m, o) => Math.min(m, Math.hypot(o.x - p.x, o.y - p.y)), 99);
-function choose(cands, firsts, ok0 = () => true) {
-  const out = [], ok = p => ok0(p) && out.every(q => Math.hypot(q.x - p.x, q.y - p.y) >= SPOT_GAP);
-  for (const f of firsts) { const b = cands.filter(c => c.kind === f.kind && (f.side == null || c.side === f.side) && ok(c)).sort((p, q) => q.s - p.s)[0]; if (b) out.push(b); if (out.length >= SPOT_MAX) break; }
-  for (const c of cands.slice().sort((p, q) => q.s - p.s)) { if (out.length >= SPOT_MAX || (out.length >= SPOT_MIN && c.s < -1)) break; if (!out.includes(c) && ok(c)) out.push(c); }
+// (v93 tidy) The spots read as a pattern, not scattered dots: first the places of ROWS (a row ahead of him, one about
+// level with him, one behind; SPOT_STEP m apart along each row, mirrored left and right about his line up the pitch),
+// then, only when too few of those are real choices, the places between (STAGGER), then any point of the grid.
+// Offsets in m from his place on the grid: [up the pitch, across].
+export const SPOT_STEP = 4;
+const ROWS = [[6, 0], [6, 4], [6, -4], [2, 4], [2, -4], [-2, 4], [-2, -4]];
+const STAGGER = [[6, 8], [6, -8], [4, 2], [4, -2], [2, 8], [2, -8], [-2, 0], [8, 2], [8, -2]];
+const pattern = (me, offs, L, W) => { const cx = Math.round(me.x / GRID) * GRID, cy = Math.round(me.y / GRID) * GRID, out = []; for (const [dx, dy] of offs) { const x = cx + dx, y = cy + dy; if (x < SPOT_IN || x > L - SPOT_IN || y < SPOT_IN || y > W - SPOT_IN) continue; out.push({ x, y, d: Math.hypot(x - me.x, y - me.y), cy }); } return out; };
+// The partner of a spot across his line (the same row, the other side), if it is a candidate too.
+const twin = (cands, p) => p.cy == null || p.y === p.cy ? null : cands.find(c => c !== p && c.x === p.x && c.y === 2 * p.cy - p.y && c.cy === p.cy);
+// pre: spots already chosen (an earlier, tidier stage); a chosen spot pulls in its twin when the twin is a choice too.
+function choose(cands, firsts, ok0 = () => true, pre = []) {
+  const out = pre.slice(), ok = p => ok0(p) && !out.includes(p) && out.every(q => Math.hypot(q.x - p.x, q.y - p.y) >= SPOT_GAP);
+  const add = p => { out.push(p); const t = twin(cands, p); if (t && out.length < SPOT_MAX && ok(t)) out.push(t); };
+  for (const f of firsts) { if (out.length >= SPOT_MAX) break; const b = cands.filter(c => c.kind === f.kind && (f.side == null || c.side === f.side) && ok(c)).sort((p, q) => q.s - p.s)[0]; if (b) add(b); }
+  for (const c of cands.slice().sort((p, q) => q.s - p.s)) { if (out.length >= SPOT_MAX || (out.length >= SPOT_MIN && c.s < -1)) break; if (ok(c)) add(c); }
   return out;
 }
 // o: { me, state, carrier (the one on the ball, or where a pass to him goes), ball, mates (his friends, not him),
@@ -77,28 +89,33 @@ export function spotSet({ me, state, carrier = null, ball, mates = [], foes = []
   const goal = { x: L, y: W / 2 }, own = { x: 0, y: W / 2 }, room = p => nearest(all, p);
   let out = [];
   if (state === 'mine') {
-    const ga = Math.atan2(goal.y - me.y, goal.x - me.x), gd0 = dist(me, goal), cands = [];
-    for (const relax of [0, 1]) {
-      for (const c of lattice(me, 2.6, 7.4, L, W)) {
+    const ga = Math.atan2(goal.y - me.y, goal.x - me.x), gd0 = dist(me, goal);
+    const build = (pts, relax) => { const cands = [];
+      for (const c of pts) {
+        if (c.d < 2.6) continue;
         let path = 99; for (const o of all) { const q = onLane(o, me, c, 0); if (q.t > .08) path = Math.min(path, q.d); } // (a defender beside or behind him does not shut a way away from him)
         const r = room(c); if (path < (relax ? 1 : 1.4) || r < (relax ? 1.5 : 2)) continue;
         const a = wrap(Math.atan2(c.y - me.y, c.x - me.x) - ga), aa = Math.abs(a), kind = aa < .45 ? 'goal' : aa < 1.15 ? 'space' : aa < 2.05 ? 'wide' : 'back';
         const edge = Math.min(c.y, W - c.y) < 2.5 ? .6 : 0;
-        cands.push({ x: c.x, y: c.y, kind, side: Math.sign(a) || 1, s: (gd0 - dist(c, goal)) * .45 + Math.min(r, 5) * .5 - edge + (kind === 'back' ? 1.5 : 0) });
+        cands.push({ x: c.x, y: c.y, cy: c.cy, kind, side: Math.sign(a) || 1, s: (gd0 - dist(c, goal)) * .45 + Math.min(r, 5) * .5 - edge + (kind === 'back' ? 1.5 : 0) });
       }
-      if (cands.filter(free).length >= 4) break;
-    }
-    out = choose(cands, [{ kind: 'goal' }, { kind: 'space', side: 1 }, { kind: 'space', side: -1 }, { kind: 'wide', side: 1 }, { kind: 'wide', side: -1 }, { kind: 'back' }], free);
+      return cands; };
+    const firsts = [{ kind: 'goal' }, { kind: 'space', side: 1 }, { kind: 'space', side: -1 }, { kind: 'wide', side: 1 }, { kind: 'wide', side: -1 }, { kind: 'back' }];
+    for (const [pts, relax] of [[pattern(me, ROWS, L, W), 0], [pattern(me, [...ROWS, ...STAGGER], L, W), 0], [lattice(me, 2.6, 7.4, L, W), 0], [lattice(me, 2.6, 7.4, L, W), 1]]) { if (out.length >= SPOT_MIN) break; out = choose(build(pts, relax), firsts, free, out); }
   } else if (state === 'ours' && carrier) {
-    const deep = foes.reduce((m, o) => Math.max(m, o.x), -1), cands = [];
-    for (const c of lattice(me, 1.8, 9.5, L, W)) {
-      const dc = dist(c, carrier); if (dc < 3.5 || dc > 12.5) continue;
-      let lane = 99; for (const o of all) lane = Math.min(lane, onLane(o, carrier, c, .12).d);
-      const r = room(c); if (r < 1.8) continue;
-      const kind = c.x > deep + .5 && c.x > carrier.x + 2 && lane >= .9 ? 'behind' : c.x < carrier.x - 1 ? 'support' : Math.abs(c.y - carrier.y) > 5 ? 'wide' : 'open';
-      cands.push({ x: c.x, y: c.y, kind, side: Math.sign(c.y - carrier.y) || 1, s: Math.min(lane, 3) * 1.2 + Math.min(r, 4) * .5 + (c.x - carrier.x) * .1 - Math.abs(dc - 7) * .15 - c.d * .05 - (lane < 1.2 ? 3 : 0) + (kind === 'behind' ? .6 : 0) });
-    }
-    out = choose(cands, [{ kind: 'behind' }, { kind: 'open' }, { kind: 'wide' }, { kind: 'support' }], free);
+    const deep = foes.reduce((m, o) => Math.max(m, o.x), -1);
+    const build = pts => { const cands = [];
+      for (const c of pts) {
+        if (c.d < 1.8) continue;
+        const dc = dist(c, carrier); if (dc < 3.5 || dc > 12.5) continue;
+        let lane = 99; for (const o of all) lane = Math.min(lane, onLane(o, carrier, c, .12).d);
+        const r = room(c); if (r < 1.8) continue;
+        const kind = c.x > deep + .5 && c.x > carrier.x + 2 && lane >= .9 ? 'behind' : c.x < carrier.x - 1 ? 'support' : Math.abs(c.y - carrier.y) > 5 ? 'wide' : 'open';
+        cands.push({ x: c.x, y: c.y, cy: c.cy, kind, side: Math.sign(c.y - carrier.y) || 1, s: Math.min(lane, 3) * 1.2 + Math.min(r, 4) * .5 + (c.x - carrier.x) * .1 - Math.abs(dc - 7) * .15 - c.d * .05 - (lane < 1.2 ? 3 : 0) + (kind === 'behind' ? .6 : 0) });
+      }
+      return cands; };
+    const firsts = [{ kind: 'behind' }, { kind: 'open' }, { kind: 'wide' }, { kind: 'support' }];
+    for (const pts of [pattern(me, ROWS, L, W), pattern(me, [...ROWS, ...STAGGER], L, W), lattice(me, 1.8, 9.5, L, W)]) { if (out.length >= SPOT_MIN) break; out = choose(build(pts), firsts, free, out); }
   } else if ((state === 'theirs' || state === 'loose') && (carrier || ball)) {
     const c = state === 'theirs' && carrier ? carrier : ball, ux = own.x - c.x, uy = own.y - c.y, l = Math.hypot(ux, uy) || 1, cands = [];
     if (state === 'theirs') cands.push({ x: clamp(c.x + ux / l * 1, .5, L - .5), y: clamp(c.y + uy / l * 1, .5, W - .5), kind: 'press', follow: 'carrier', s: 4 - Math.max(0, dist(me, c) - 4) * .4 });
@@ -110,8 +127,9 @@ export function spotSet({ me, state, carrier = null, ball, mates = [], foes = []
       cands.push({ ...snapPt({ x: c.x + (r.x - c.x) * .45, y: c.y + (r.y - c.y) * .45 }, L, W), kind: 'lane', s: danger(r) });
       const vx = own.x - r.x, vy = own.y - r.y, vl = Math.hypot(vx, vy) || 1; cands.push({ ...snapPt({ x: r.x + vx / vl * 1.8, y: r.y + vy / vl * 1.8 }, L, W), kind: 'mark', s: danger(r) - .5 });
     }
-    for (const p of lattice(me, 2, 10, L, W)) { const q = onLane(p, c, own, 0); if (q.d < 3.5 && dist(p, own) < dist(c, own) - 2) cands.push({ x: p.x, y: p.y, kind: 'cover', s: 1 - q.d * .3 - Math.abs(dist(p, c) - 5) * .15 }); }
-    if (state === 'loose') for (const p of lattice(me, 2, 9, L, W)) { const r = room(p); if (r > 2.5 && p.x > c.x) cands.push({ x: p.x, y: p.y, kind: 'open', s: .5 + Math.min(r, 4) * .3 - p.d * .05 }); }
+    const rows = pattern(me, [...ROWS, ...STAGGER], L, W).filter(p => p.d >= 2), tidy = p => rows.some(q => q.x === p.x && q.y === p.y) ? 0 : -1; // (v93 tidy: the places of his rows before any other point of the grid)
+    for (const p of [...rows, ...lattice(me, 2, 10, L, W)]) { const q = onLane(p, c, own, 0); if (q.d < 3.5 && dist(p, own) < dist(c, own) - 2) cands.push({ x: p.x, y: p.y, cy: p.cy, kind: 'cover', s: 1 - q.d * .3 - Math.abs(dist(p, c) - 5) * .15 + tidy(p) }); }
+    if (state === 'loose') for (const p of [...rows, ...lattice(me, 2, 9, L, W)]) { const r = room(p); if (r > 2.5 && p.x > c.x) cands.push({ x: p.x, y: p.y, cy: p.cy, kind: 'open', s: .5 + Math.min(r, 4) * .3 - p.d * .05 + tidy(p) }); }
     out = choose(cands, [{ kind: state === 'theirs' ? 'press' : 'ball' }, { kind: 'goalside' }, { kind: 'lane' }, { kind: 'mark' }, { kind: 'lane' }], p => p.follow ? seen(p) : free(p));
   }
   if (out.length < 3 && state) { // (never stuck with one or none: any free place in sight round him that is not into one of theirs)
