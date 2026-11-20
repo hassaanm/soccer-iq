@@ -7,7 +7,11 @@ function tex(w, h, draw) { const c = document.createElement('canvas'); c.width =
 const ring = (g, c, r, lw, col) => { g.lineWidth = lw; g.strokeStyle = col; g.beginPath(); g.arc(c, c, r, 0, 7); g.stroke(); };
 const glow = (g, w, a = .38) => { const c = w / 2, rg = g.createRadialGradient(c, c, 8, c, c, c); rg.addColorStop(0, `rgba(255,220,90,${a})`); rg.addColorStop(.7, `rgba(255,210,63,${a * .4})`); rg.addColorStop(1, 'rgba(255,210,63,0)'); g.fillStyle = rg; g.fillRect(0, 0, w, w); };
 const ball = (g, c, r) => { g.fillStyle = '#ffffff'; g.beginPath(); g.arc(c, c, r, 0, 7); g.fill(); g.lineWidth = r * .28; g.strokeStyle = '#24193a'; g.stroke(); g.fillStyle = '#24193a'; g.beginPath(); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; g.lineTo(c + Math.cos(a) * r * .42, c + Math.sin(a) * r * .42); } g.fill(); };
-const dot = withBall => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .28); ring(g, c, 36, 10, 'rgba(255,255,255,.85)'); ring(g, c, 36, 6, '#ffcf2e'); if (withBall) ball(g, c, 17); else { g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(c, c, 7, 0, 7); g.fill(); } });
+// (v93 tidy) A spot: a thick gold ring edged in white and then dark ink, so it reads on the bright day grass and the dark
+// night grass alike; a white dot in it (with the ball: a ball). Lit (the one he chose): filled gold.
+const dot = withBall => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .3); ring(g, c, 38, 16, 'rgba(36,25,58,.55)'); ring(g, c, 38, 11, '#ffffff'); ring(g, c, 38, 7, '#ffcf2e'); if (withBall) ball(g, c, 17); else { g.fillStyle = '#ffffff'; g.beginPath(); g.arc(c, c, 9, 0, 7); g.fill(); g.lineWidth = 3; g.strokeStyle = 'rgba(36,25,58,.55)'; g.stroke(); } });
+const litT = press => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .55); g.fillStyle = press ? 'rgba(255,122,60,.55)' : 'rgba(255,207,46,.55)'; g.beginPath(); g.arc(c, c, 38, 0, 7); g.fill(); ring(g, c, 38, 16, 'rgba(36,25,58,.55)'); ring(g, c, 38, 11, '#ffffff'); ring(g, c, 38, 7, press ? '#ff7a3c' : '#ffcf2e'); g.fillStyle = press ? '#e8443a' : '#ffffff'; g.beginPath(); g.arc(c, c, 12, 0, 7); g.fill(); });
+export const SPOT_M = 1.5;
 const tick = withBall => tex(64, 64, (g, w) => { const c = w / 2; g.fillStyle = withBall ? '#ff9f1c' : '#ffd23f'; g.beginPath(); g.arc(c, c, 18, 0, 7); g.fill(); g.lineWidth = 6; g.strokeStyle = 'rgba(255,255,255,.9)'; g.stroke(); });
 const mine = () => tex(256, 256, (g, w) => { const c = w / 2; ring(g, c, 104, 20, 'rgba(36,25,58,.55)'); ring(g, c, 104, 12, '#ffd23f'); });
 const warn = () => tex(256, 256, (g, w) => { const c = w / 2, rg = g.createRadialGradient(c, c, 10, c, c, c); rg.addColorStop(0, 'rgba(255,80,60,.0)'); rg.addColorStop(.6, 'rgba(255,80,60,.35)'); rg.addColorStop(1, 'rgba(255,80,60,0)'); g.fillStyle = rg; g.fillRect(0, 0, w, w); ring(g, c, 92, 16, '#ff5a3c'); });
@@ -16,7 +20,7 @@ const hintT = () => tex(128, 128, (g, w) => { glow(g, w, .55); });
 const mat = map => new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false, toneMapped: false });
 // (v93) The fixed spots: a gold ring with a white dot (with the ball: a ball in it); pressing their carrier: an orange ring
 // with a red middle. A miss of STEAL: three small stars turning round his feet. A target the keeper covers: grey, crossed.
-const pressT = () => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .28); ring(g, c, 38, 11, 'rgba(255,255,255,.9)'); ring(g, c, 38, 7, '#ff7a3c'); g.fillStyle = '#e8443a'; g.beginPath(); g.arc(c, c, 12, 0, 7); g.fill(); });
+const pressT = () => tex(128, 128, (g, w) => { const c = w / 2; glow(g, w, .3); ring(g, c, 38, 16, 'rgba(36,25,58,.55)'); ring(g, c, 38, 11, '#ffffff'); ring(g, c, 38, 7, '#ff7a3c'); g.fillStyle = '#e8443a'; g.beginPath(); g.arc(c, c, 12, 0, 7); g.fill(); });
 const dizzyT = () => tex(128, 128, (g, w) => { const c = w / 2; for (let i = 0; i < 3; i++) { const a = i * 2 * Math.PI / 3, x = c + Math.cos(a) * 42, y = c + Math.sin(a) * 42; g.fillStyle = '#ffe14d'; g.strokeStyle = '#24193a'; g.lineWidth = 3; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? 6 : 15, b = -Math.PI / 2 + k * Math.PI / 5; g.lineTo(x + Math.cos(b) * r, y + Math.sin(b) * r); } g.closePath(); g.fill(); g.stroke(); } });
 const shutT = () => tex(128, 128, (g, w) => { const c = w / 2; g.fillStyle = 'rgba(36,25,58,.45)'; g.beginPath(); g.arc(c, c, 56, 0, 7); g.fill(); ring(g, c, 44, 12, 'rgba(200,196,210,.95)'); g.strokeStyle = 'rgba(200,196,210,.95)'; g.lineWidth = 12; g.lineCap = 'round'; g.beginPath(); g.moveTo(c - 24, c - 24); g.lineTo(c + 24, c + 24); g.moveTo(c + 24, c - 24); g.lineTo(c - 24, c + 24); g.stroke(); });
 
@@ -32,7 +36,7 @@ export function makeMarks(world) {
   const me = add(mine(), 1.6, 3), danger = add(warn(), 2, 3), go = add(goTo(), .8, 3, .9), hintM = Array.from({ length: 3 }, () => add(hintT(), 1.9, 1));
   const M4 = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(1, 1, 1), Z = new THREE.Vector3(0, 0, 1);
   let withBall = null, dashKey = '';
-  const F = { dot: [dot(false), dot(true)], press: pressT() }, fixM = Array.from({ length: 8 }, () => add(F.dot[0], 1.3, 2, .9)), dizzy = add(dizzyT(), 1.1, 4), shutM = Array.from({ length: 6 }, () => { const m = add(shutT(), .8, 5); m.material.side = THREE.DoubleSide; return m; });
+  const F = { dot: [dot(false), dot(true)], press: pressT(), lit: [litT(false), litT(true)] }, fixM = Array.from({ length: 8 }, () => add(F.dot[0], 1.3, 2, .9)), dizzy = add(dizzyT(), 1.1, 4), shutM = Array.from({ length: 6 }, () => { const m = add(shutT(), .8, 5); m.material.side = THREE.DoubleSide; return m; });
   return {
     // (v93) The fixed spots (rules.js spotSet), drawn where they are on the pitch: the chosen one lit and the rest faint
     // while he runs to it; the best one pulsing (the hint). dizzyAt: his place while he stumbles after a missed STEAL.
@@ -44,8 +48,9 @@ export function makeMarks(world) {
         m.material.map = p.kind === 'press' ? F.press : F.dot[p.kind === 'ball' || hasBall ? 1 : 0];
         m.visible = true; m.position.set(p.x, p.y, .04);
         const k = .5 + .5 * Math.sin(t * 5);
-        m.material.opacity = chosen ? (lit ? 1 : .32) : p === best ? .7 + .3 * k : .85;
-        m.scale.setScalar(lit ? 1.9 + .1 * k : p === best ? 1.5 + .45 * k : 1.5); // (v93: big enough to see and hit from behind him, far ones too)
+        m.material.map = lit ? F.lit[p.kind === 'press' ? 1 : 0] : m.material.map;
+        m.material.opacity = chosen ? (lit ? 1 : .4) : p === best ? .75 + .25 * k : 1;
+        m.scale.setScalar(SPOT_M); // (v93 tidy: every spot the same size on the grass, big enough to see and hit from behind him; the best one pulses in brightness, the chosen one is lit)
       }
       for (; i < fixM.length; i++) fixM[i].visible = false;
       dizzy.visible = !!dizzyAt; if (dizzyAt) { dizzy.position.set(dizzyAt.x, dizzyAt.y, .06); dizzy.rotation.z = t * 6; }
