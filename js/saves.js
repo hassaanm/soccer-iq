@@ -122,32 +122,57 @@ export function roundPlan(seed = 1) {
 // makes the next shots a little harder. keeperLevel says how hard at a level (a third of a level a save): the one place
 // to tune it. The tells stay honest at every level (his eyes, his body, his standing foot): only how long they show and
 // how long he has to choose change, and the shots come from harder places.
-//   stand, dive   real seconds to pick where to stand and where to dive (3.9 and 3.7 at first, toward 0.8 and 0.75)
-//   tell          3: his eyes and an arrow from his foot; 2: his eyes the whole time; 1: his eyes for `flash` s, then his body only
+// (v93) The owner: the first shooter "just stops and waits... shows you the eyes for a long time... so easy", every
+// shot to one side, a try about 12 s. Now a try takes about half that, the shots vary from the first one (where from,
+// which side, how high, which foot, a 1v1 or a penalty), his eyes show for a moment only from the third save, and he
+// can look one way first and then the way he shoots (a feint: his last look is always the true one).
+//   stand, dive   real seconds to pick where to stand and where to dive (1.9 and 1.2 at first, toward 0.8 and 0.55)
+//   tell          2: his eyes the whole time; 1: his eyes for `flash` s after his last look, then his body only
 //   flash         (tell 1) how long his eyes show, in the picture's seconds
-//   side, far, v1, pen   the share of shots from the side, from far out (laces: they can go high), 1v1s and penalties
-//   top           of the far shots, the share aimed at the top corners
+//   fake          the share of shots in which he looks one way first (0.4 at first, toward 0.75)
+//   fakeAt        when his true look comes, as a share of the dive window (later and later: less time to change)
+//   far, top      the share of far shots (laces: they can go high), and of those the share at the top corners
 //   speed         the shot's speed, times the foot's own (after he has chosen: it only looks and feels quicker)
 export function keeperLevel(L) {
   L = Math.max(0, L);
   return {
-    stand: ease(3.9, .8, 7)(L), dive: ease(3.7, .75, 7)(L),
-    tell: L < 1 ? 3 : L < 3 ? 2 : 1, flash: ease(1.6, .3, 9)(Math.max(0, L - 3)),
-    side: ramp(.5, .1, .45)(L), far: ramp(2, .07, .4)(L), v1: ramp(4, .04, .2)(L), pen: L < 1 ? 0 : .06,
-    top: ramp(3, .07, .7)(L), speed: 1 + Math.min(.3, .015 * L),
+    stand: ease(1.9, .8, 5)(L), dive: ease(1.2, .55, 5)(L),
+    tell: L < 1 ? 2 : 1, flash: ease(.8, .3, 4)(Math.max(0, L - 1)),
+    fake: .4 + ramp(0, .1, .35)(L), fakeAt: .5 + ramp(0, .06, .22)(L),
+    far: .2 + ramp(0, .04, .2)(L), top: .35 + ramp(0, .07, .4)(L), speed: 1 + Math.min(.3, .03 * L),
   };
 }
+// The kinds of shot, a few of each in every six (shuffled): close in front, from the side, from far out, a 1v1, a
+// penalty. hist: the shots before (newest last), so no kind and no corner comes twice in a row, and no side three times.
+const KINDS = ['close', 'side', 'far', '1v1', 'pen', 'side'];
 // One shot of the endless game at `level` (n: how many came before it; r: a stream of numbers 0..1, shot.js stream).
-export function endlessShot(level, r, n = 0) {
-  const D = keeperLevel(level), side = r() < .5 ? 1 : -1, pick = a => a[Math.floor(r() * a.length) % a.length];
+export function endlessShot(level, r, n = 0, hist = []) {
+  const D = keeperLevel(level), pick = a => a[Math.floor(r() * a.length) % a.length], last = hist.at(-1);
   const low = s => (s > 0 ? 'L' : 'R'), lowFar = s => (s > 0 ? 'R' : 'L'), top = s => (s > 0 ? 'TL' : 'TR');
-  const u = r(); let sh;
-  if (u < D.pen) sh = makeShot(n, 'pen', { x: 7, u: 0 }, pick(['L', 'R']));
-  else if (u < D.pen + D.v1) sh = makeShot(n, '1v1', { x: 5.5, u: side * (.5 + r() * .5) }, pick([lowFar(side), low(side)]), { x: 15, u: 3 * side });
-  else if (u < D.pen + D.v1 + D.far) { const at = { x: 10.5 + r() * 1.5, u: side * r() * 2.5 }; sh = makeShot(n, 'shot', at, r() < D.top ? pick([top(side), top(-side)]) : pick([low(side), lowFar(side)])); }
-  else if (u < D.pen + D.v1 + D.far + D.side) sh = makeShot(n, 'shot', { x: 6 + r() * .6, u: side * (2.4 + r() * .8) }, pick([lowFar(side), low(side)]));
-  else sh = makeShot(n, 'shot', { x: 6.5 + r(), u: side * r() * .6 }, pick([low(side), low(-side)])); // (close, in front: the first shots)
-  return { ...sh, tell: D.tell, flash: D.flash, stand: D.stand, dive: D.dive, speed: sh.speed * D.speed, level };
+  let kind = KINDS[Math.floor(r() * KINDS.length) % KINDS.length];
+  if (r() < D.far * .6) kind = 'far';
+  if (last && last.k === kind) kind = KINDS[(KINDS.indexOf(kind) + 1 + Math.floor(r() * 3)) % KINDS.length];
+  if (last && last.k === kind) kind = kind === 'close' ? 'side' : 'close';
+  const cols = hist.slice(-2).map(h => zoneAt(h.zone).col);
+  let side = r() < .5 ? 1 : -1;
+  const zoneOf = s => {
+    if (kind === 'pen') return pick(['L', 'R', 'M'].filter(z => z !== last?.zone)); // (from the spot: the inside of the foot, low)
+    if (kind === '1v1' || kind === 'side') return pick([lowFar(s), low(s)]);
+    if (kind === 'far') return r() < D.top ? pick([top(s), top(-s)]) : pick([low(s), lowFar(s), 'M']);
+    return pick([low(s), low(-s), 'M']);
+  };
+  let zone = zoneOf(side);
+  for (let i = 0; i < 6 && (zone === last?.zone || (cols.length === 2 && cols.every(c => c === zoneAt(zone).col))); i++) { side = -side; zone = zoneOf(side); } // (never the same corner twice, nor one side three times)
+  let sh;
+  if (kind === 'pen') sh = makeShot(n, 'pen', { x: 7, u: 0 }, zone);
+  else if (kind === '1v1') sh = makeShot(n, '1v1', { x: 5.5, u: side * (.5 + r() * .5) }, zone, { x: 15, u: 3 * side });
+  else if (kind === 'far') sh = makeShot(n, 'shot', { x: 10.5 + r() * 1.5, u: side * r() * 2.5 }, zone);
+  else if (kind === 'side') sh = makeShot(n, 'shot', { x: 6 + r() * .6, u: side * (2.4 + r() * .8) }, zone);
+  else sh = makeShot(n, 'shot', { x: 6.5 + r(), u: side * r() * .6 }, zone); // (close, in front)
+  // A feint: his eyes and his body go to a target on the other side first (as high), then to the true one.
+  const Z = zoneAt(zone), fake = r() < D.fake ? (Z.col === 'M' ? (r() < .5 ? 'L' : 'R') : Z.col === 'L' ? 'R' : 'L') : null;
+  const fz = fake && (Z.top && sh.foot === 'las' ? 'T' + fake : fake);
+  return { ...sh, k: kind, tell: D.tell, flash: D.flash, stand: D.stand, dive: D.dive, speed: sh.speed * D.speed, level, fake: fz, fakeAt: D.fakeAt };
 }
 
 // The score after a round: saves of SHOTS, and the stars on the card (3: STICKER_AT or more, 2: four or more, 1: some).
