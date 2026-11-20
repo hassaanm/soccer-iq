@@ -94,7 +94,7 @@ function camNow(snap, dt) {
     want = dz * k; wantYaw = da * k;
   }
   const ease = (was, w) => (snap || Math.abs(w) >= Math.abs(was) && Math.sign(w || 1) === Math.sign(was || w || 1) ? w : was + (w - was) * (1 - Math.exp(-(dt || 0) * TIP_RATE))); // (toward it at once, so the goal never slips out; back eased)
-  this.tipZ = ease(this.tipZ || 0, want); this.tipYaw = ease(this.tipYaw || 0, wantYaw);
+  this.tipZ = ease(this.tipZ || 0, want); const y0 = this.tipYaw || 0, lim = 2.4 * (dt || 0); this.tipYaw = snap ? wantYaw : y0 + Math.max(-lim, Math.min(lim, ease(y0, wantYaw) - y0)); // (the turn: never faster than 2.4 rad/s)
   turn(c, this.tipYaw); c.tgt[2] += this.tipZ;
 }
 // The camera's target turned `a` rad about its eye (across the pitch).

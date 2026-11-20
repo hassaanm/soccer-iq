@@ -27,6 +27,8 @@ import { shotResult, spaces, EDGE as SHOT_EDGE } from '../shot.js';
 import { MOVE_NAME } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 
+export const CAM_TURN = 2.6; // rad/s (v89 integration: fast.js camNow)
+const turnTgt = (c, a) => { const dx = c.tgt[0] - c.eye[0], dy = c.tgt[1] - c.eye[1], co = Math.cos(a), si = Math.sin(a); c.tgt[0] = c.eye[0] + dx * co - dy * si; c.tgt[1] = c.eye[1] + dx * si + dy * co; };
 export const TURN_MAX = R.TURN_MAX, SCAN_T = 12, CUE_EVERY = 60, CUES = 4, NEXT_WINS = 210, END_S = 420; // (s of play: after NEXT_WINS the next goal wins; at END_S it ends as it stands)
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
@@ -186,9 +188,12 @@ class Fast {
     if (this.aiming) { w = R.aimCam(h, PITCH.L, PITCH.gy0, PITCH.gy1, PITCH.gh, ww, hh, spaces()); vs.yaw = this.yaw; }
     else { const drag = this.finger?.moved && this.holdYaw != null ? this.holdYaw : null; if (snap) { vs.yaw = this.yaw; vs.at = null; vs.gen = null; }
       w = R.viewStep(vs, { me: h, ball: { x: b.x, y: b.y, z: b.z || 0 }, has, look: this.look, w: ww, h: hh, L: PITCH.L, W: PITCH.W, nat: this.natural(), drag, still: drag == null && this.real <= this.holdT }, dt, snap ? 50 : 1); this.yaw = vs.yaw; }
-    const k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam;
+    const k = snap ? 1 : 1 - Math.exp(-dt * 10), c = this.cam, a0 = Math.atan2(c.tgt[1] - c.eye[1], c.tgt[0] - c.eye[0]);
     for (let i = 0; i < 3; i++) { c.eye[i] += (w.eye[i] - c.eye[i]) * k; c.tgt[i] += (w.tgt[i] - c.tgt[i]) * k; }
     c.Ff += (w.Ff - c.Ff) * k; c.Fw += ((w.Fw || 0) - c.Fw) * k;
+    // (v89 integration) Whatever changed the view (the shot view coming or going, a hold let go, the view search, a
+    // line), the picture never turns faster than CAM_TURN rad/s, except his own drag and a snap (a new match, a swap).
+    if (!snap && !this.finger?.moved && dt > 0) { const d = R.wrap(Math.atan2(c.tgt[1] - c.eye[1], c.tgt[0] - c.eye[0]) - a0), lim = CAM_TURN * dt; if (Math.abs(d) > lim) turnTgt(c, Math.sign(d) * lim - d); }
   }
   // ---------- touches ----------
   // A finger goes down: on the grass (onTap: none, a tap picks what is under it) or on a button (onTap: its action).
