@@ -18,7 +18,7 @@
 // that starts nothing (it reports itself as ended 0.9 s later, so a line that waits for its end goes on). The sound and
 // voice logic itself runs (effects are made, clips fetched and decoded), so this also checks that.
 //
-//   node scripts/pop-audit.js [--games keeper,pens,...] [--rate 4] [--secs 20] [--v]
+//   node scripts/pop-audit.js [--games keeper,pens,...|none] [--live A,D|none] [--live-secs 45] [--rate 4] [--secs 20] [--v] [--dump dir]
 //   (--secs 60 for the full voice check; the default plays 20 s of each game)
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from 'node:fs';
@@ -246,7 +246,7 @@ export function judge(r) {
 //            step is 1 to 3 ms; the phone's is 1 to 3 ms too: a step that needs a whole 60 Hz frame on its own is a freeze),
 //   page     a frame's page work (style, layout, painting of the HTML: perf.js `page`) over RESULT_MS just after a goal, a
 //            cue, a decision start or the first SHOOT.
-export const LIVE = { VARIANTS: ['A', 'D'], SECS: 45, GAME_MS: 16, PAGE_MS: LIMITS.RESULT_MS, AFTER_MS: 700, DEC_MS: 1000 };
+export const LIVE = { VARIANTS: ['A', 'D'], SECS: +arg('live-secs', 45), GAME_MS: 16, PAGE_MS: LIMITS.RESULT_MS, AFTER_MS: 700, DEC_MS: 1000 };
 export const LIVE_WATCH = `const perf = await import('/js/perf.js'); const T = window.__tl = { f: [], m: [], ev: [] };
   perf.hooks.mark = l => T.m.push([performance.now(), l]);
   let was = {}, inTick = false; T.reads = [];
