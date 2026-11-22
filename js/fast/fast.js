@@ -110,8 +110,21 @@ class Fast {
   warm(hud = true) {
     this.chipPics();
     try { this.marks.warm([...(world.aimPool || []), world.ballGlow, world.particles?.mesh, world.particles?.marker, ...(world.glows?.values() || [])].filter(Boolean)); } catch (e) { console.error(e); } // (and the world's own that Live shows: the shot targets, the ball's glow for STEAL, the puffs and sparks, the glow under a friend he can pass to)
+    this.warmCode();
     if (!hud) return; // (Score attack: its HUD shows as play starts, as before)
     const box = this.dom.box; clearTimeout(this.warmT); box.classList.add('fwarm'); this.warmT = setTimeout(() => box.classList.remove('fwarm'), 300);
+  }
+  // (v95) The game step's own work run once before play on a match of its own (thrown away), so the first decision moment
+  // and kick-off do not also pay for the browser compiling it (a 10 to 12 ms step at kick-off in the 4x-slowed checks).
+  warmCode() {
+    try {
+      const size = sizeOf(), sim = new Sim(), m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, rnd: () => .5 });
+      m.setup('us'); const me = sim.a('hero'), b = sim.ball, L = PITCH.L, W = PITCH.W, mates = m.usIds.slice(1).map(id => sim.a(id)), w = world.width || 932, h = world.height || 430;
+      bigChoices({ me, yaw: 0, foes: m.allFoes('us'), L, W });
+      for (const [state, c] of [['mine', null], ['ours', mates[0]], ['theirs', sim.a('o1')], ['loose', null]]) R.spotSet({ me, state, carrier: c, ball: b, mates, foes: m.foes('us'), keeper: m.keeper('them'), L, W });
+      R.viewPick(me, b, true, 1, w, h, L, W); for (const id of m.usIds.slice(1)) m.passCheck('hero', id);
+      for (let i = 0; i < 20; i++) { m.step(1 / 60); m.autoStep(); sim.step(1 / 60); }
+    } catch (e) { console.error(e); }
   }
   // Each chip holds every friend's shirt, made once (here, before play); the one it stands for shows (css "lag").
   chipPics() {
@@ -334,8 +347,8 @@ class Fast {
     if (!due) return;
     this.chosen = null; this.goAt = null;
     const W0 = world.width, H0 = world.height, cam = this.cam, safe = p => { const q = R.project(cam, { x: p.x, y: p.y, z: 0 }, W0, H0); return !!q && q[0] > W0 * .05 && q[0] < W0 * .95 && q[1] > H0 * .2 && q[1] < H0 * .93 && !(q[1] > H0 - 150 && (q[0] < 140 || q[0] > W0 - 150)); }; // (clear of the bar at the top and the two round buttons at the bottom)
-    const k = m.keeper('them');
-    const spots = st.key === 'none' ? [] : R.spotSet({ me: h, state: st.state, carrier: st.carrier, ball: s.ball, mates: m.usIds.filter(id => id !== this.me).map(id => s.a(id)).filter(Boolean), foes: m.foes('us'), keeper: k, L: PITCH.L, W: PITCH.W, seen: safe });
+    const k = m.keeper('them'), wasted = (this.V.big && st.state === 'mine') || (this.V.auto && st.state !== 'ours'); // (v95: a set the variant throws away below is not worked out: the same, cheaper)
+    const spots = st.key === 'none' || wasted ? [] : R.spotSet({ me: h, state: st.state, carrier: st.carrier, ball: s.ball, mates: m.usIds.filter(id => id !== this.me).map(id => s.a(id)).filter(Boolean), foes: m.foes('us'), keeper: k, L: PITCH.L, W: PITCH.W, seen: safe });
     if (this.V.big && st.state === 'mine') spots.length = 0; // (v93 variants: with the ball, the big choices instead: bigNow)
     else if (this.V.auto) { const one = st.state === 'ours' ? spots.filter(p => p.kind === 'behind').sort((p, q) => q.s - p.s)[0] : null; spots.length = 0; if (one) spots.push(one); } // (off the ball he moves by himself: one marked spot only when it matters, a run in behind)
     this.set = { key, at: this.real, spots }; this.stats.sets++;
