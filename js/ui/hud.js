@@ -76,8 +76,11 @@ let resultTok = 0, popTok = 0, flashAlt = false, bigAlt = false;
 function flashGo() { const f = ui.flash; flashAlt = !flashAlt; f.classList.remove(flashAlt ? 'go' : 'go2'); f.classList.add(flashAlt ? 'go2' : 'go'); }
 // The sunburst stops turning once the big words have faded (a moment after `show` goes).
 const unlit = () => { clearTimeout(timers.unlit); timers.unlit = setTimeout(() => { if (!ui.banner.classList.contains('show')) ui.banner.classList.remove('lit'); }, 400); };
+// (v95: Live's toast on the phone made a node each time; its words now change in their own text node, made once here)
+for (const el of [ui.toast, ui.seenNote, ui.skillTag]) if (el && !el.firstChild) el.appendChild(document.createTextNode(''));
 const flash = (el, cls, text, ms) => {
-  el.textContent = text; el.className = cls; void el.offsetWidth; el.classList.add('show');
+  const n = el.firstChild; if (n && n.nodeType === 3 && !n.nextSibling) { if (n.nodeValue !== text) n.nodeValue = text; } else el.textContent = text;
+  el.className = cls; void el.offsetWidth; el.classList.add('show');
   clearTimeout(timers[el.id]); timers[el.id] = setTimeout(() => el.classList.remove('show'), ms);
 };
 // (round 14) The big words, the stars, the dots and the score reuse their nodes: a result changes text and classes only,
