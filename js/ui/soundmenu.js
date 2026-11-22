@@ -31,7 +31,8 @@ function togglePop(btn) {
 }
 for (const b of $$('.soundBtn')) b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); unlockSound(); togglePop(b); });
 // Tapping anywhere outside closes it.
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#soundPop, .soundBtn')) pop.classList.add('hidden'); }, true);
+// (Only when it is open: writing the class on every tap made the page restyle on each tap in play.)
+document.addEventListener('pointerdown', e => { if (!pop.classList.contains('hidden') && !e.target.closest('#soundPop, .soundBtn')) pop.classList.add('hidden'); }, true);
 pop.addEventListener('pointerdown', e => e.stopPropagation());
 $('#muteAll').onclick = () => { P.settings.muted = !P.settings.muted; save(); applySound(); };
 for (const r of rows) {
