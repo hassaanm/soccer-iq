@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; }, flag = k => argv.includes('--' + k);
-const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(','), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
+const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
 export const LIMITS = { RESULT_MS: 50, START_MS: 50, KICK_MS: 50, START_S: 3, DECODE_PER_FRAME: 2, HUD_NODES: 0, RESULT_DECODES: 0, PLAYS_PER_FRAME: 2 };
 const CHROME = process.env.CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -46,8 +46,9 @@ export const PRE = `(() => {
     Object.defineProperty(M, 'pause', { configurable: false, writable: false, value: function () { clearTimeout(this.__end); st(this, true, !!this.ended); } }); } catch {}
   window.__errs = []; { const ce = console.error.bind(console); console.error = (...a) => { window.__errs.push(a.map(x => String(x && x.stack || x)).join(' ').slice(0, 300)); ce(...a); }; addEventListener('error', e => window.__errs.push('error: ' + e.message)); addEventListener('unhandledrejection', e => window.__errs.push('rejection: ' + (e.reason && e.reason.stack || e.reason))); }
   const mini = {}; for (const k of ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles']) mini[k] = { best: 2, plays: 2, last: 1, day: -1, at: 0 };
+  const live = new URLSearchParams(location.search).get('live'); // (v95: a Live match in variant ?live=A … D)
   try { localStorage.setItem('soccer-iq:v1', JSON.stringify({ v: 1, openDay: -1, keeper: { best: 5, plays: 3, last: 4, day: 1, stickers: 0 }, mini,
-    settings: { alwaysOpen: true, voice: true, sound: true, music: false, recorded: true, recordSpeed: true, rounds: 6, skill: null, size: '5v5', mode: 'slow' } })); } catch {}
+    settings: { alwaysOpen: true, voice: true, sound: true, music: false, recorded: true, recordSpeed: true, rounds: 6, skill: null, size: '5v5', mode: live ? 'fast' : 'slow', ...(live ? { liveVariant: live } : {}) } })); } catch {}
   let s = 4242; Math.random = () => ((s = Math.imul(s ^ s >>> 15, 2246822507) + 0x6d2b79f5) >>> 0) / 4294967296;
 })();`;
 
@@ -231,8 +232,93 @@ export function judge(r) {
   return out;
 }
 
+// ---------- a Live match (v95) ----------
+// The owner's iPhone froze in Live (variant A, v94): 31 to 117 ms game steps as a decision moment or the scan cue began,
+// 96 to 251 ms of page work as Live's own HUD changed and at a goal, and 200 to 228 ms waits as its 3D marks were first
+// used (shaders compiled, meshes and textures made at the first SHOOT). A match is played in variant A and D (the big
+// choices: arrows, a ring) by a child-like player tapping the field, with the moments that froze made to happen: the ball
+// given to him (a decision moment), the scan cue, a SHOOT and its target, a goal. It fails on
+//   made     a shader, mesh or texture made, or a page node made or dropped, after the kick-off (all of it is built and
+//            warmed while he picks his player: fast.js pick),
+//   layout   a layout read (offsetWidth, getBoundingClientRect, getComputedStyle) in the game step (fast.js tick): with the
+//            page changed earlier in the frame, the phone lays it all out there and then (a 31 ms step at a cut-out pass),
+//   game     a game step over LIVE.GAME_MS in the second after a decision moment starts (here, slowed 4 times, a usual
+//            step is 1 to 3 ms; the phone's is 1 to 3 ms too: a step that needs a whole 60 Hz frame on its own is a freeze),
+//   page     a frame's page work (style, layout, painting of the HTML: perf.js `page`) over RESULT_MS just after a goal, a
+//            cue, a decision start or the first SHOOT.
+export const LIVE = { VARIANTS: ['A', 'D'], SECS: 45, GAME_MS: 16, PAGE_MS: LIMITS.RESULT_MS, AFTER_MS: 700, DEC_MS: 1000 };
+export const LIVE_WATCH = `const perf = await import('/js/perf.js'); const T = window.__tl = { f: [], m: [], ev: [] };
+  perf.hooks.mark = l => T.m.push([performance.now(), l]);
+  let was = {}, inTick = false; T.reads = [];
+  // (a layout read in the game step: with the page changed earlier in the frame, the phone must lay it out then and there)
+  const F0 = window.__fast, tick = F0.tick.bind(F0); F0.tick = dt => { inTick = true; try { return tick(dt); } finally { inTick = false; } };
+  for (const [P, k] of [[HTMLElement.prototype, 'offsetWidth'], [HTMLElement.prototype, 'offsetHeight'], [Element.prototype, 'clientWidth'], [Element.prototype, 'getBoundingClientRect'], [window, 'getComputedStyle']]) {
+    const d = Object.getOwnPropertyDescriptor(P, k); if (!d) continue; const note = el => { if (inTick) T.reads.push([performance.now(), k + ' ' + (el?.id || el?.className || '')]); };
+    if (d.get) Object.defineProperty(P, k, { ...d, get() { note(this); return d.get.call(this); } }); else if (typeof d.value === 'function') { const f = d.value; P[k] = function (...a) { note(P === window ? a[0] : this); return f.apply(this, a); }; } }
+  perf.hooks.frame = (t, ms, p) => { const F = window.__fast;
+    T.f.push([t, ms, p ? +((p.draw || 0) + (p.strip || 0)).toFixed(1) : 0, p ? +(p.game || 0).toFixed(2) : 0, p ? +(p.page || 0).toFixed(1) : 0, p ? +(p.wait || 0).toFixed(1) : 0]);
+    const now = { start: !!F?.on, live: !!F?.on && !F.m?.dead, dec: !!F?.on && !!F.dec?.on, aim: !!F?.on && !!F.aiming, cue: !!F?.on && !!F.dom?.cue.classList.contains('show'), goal: F?.m ? F.m.score.us + F.m.score.them : 0 };
+    for (const k in now) if (now[k] && now[k] !== was[k] && (k !== 'live' || !T.ev.some(e => e[1] === 'live'))) T.ev.push([t, k]); if (was.start && !now.start) T.ev.push([t, 'end']); was = now; };
+  return 1;`;
+// In the page: things that happen in a match by themselves, made to happen now, inside the game's own step (m.after).
+const LIVE_DO = {
+  ball: `const F = window.__fast, m = F.m; m.after(0, () => { if (!m.dead && m.owner() !== m.me && !m.flight && !F.aiming) m.giveTo(m.me, 'pass'); });`, // (a pass gets to him)
+  cue: `const F = window.__fast; F.lastScan = F.real - 13; F.cueT = -99; F.stats.cues = 0;`, // (he has not looked round for a while)
+  near: `const F = window.__fast, m = F.m, L = window.__fastL, W = window.__fastW; m.after(0, () => { if (m.dead) return; const a = F.sim.a(m.me); Object.assign(a, { x: L - 8, y: W / 2 - 1.5, tx: L - 8, ty: W / 2 - 1.5 }); for (const o of m.foes('us')) if (Math.hypot(o.x - a.x, o.y - a.y) < 4) Object.assign(o, { x: o.x - 5, tx: o.x - 5 }); m.giveTo(m.me, 'pass'); });`, // (in range of their goal with the ball)
+  goal: `const m = window.__fast.m; m.after(0, () => { if (!m.dead) m.goal('us'); });`,
+};
+export async function playLive(b, base, variant, secs = LIVE.SECS) {
+  const loaded = b.once('Page.loadEventFired'); await b.send('Page.navigate', { url: base + '?audit=pop&live=' + variant }); await loaded; await sleep(2500);
+  await b.send('Emulation.setCPUThrottlingRate', { rate: RATE });
+  await b.ev(LIVE_WATCH);
+  await tapEl(b, '#playBtn'); // (the first tap: sound unlocks here)
+  for (let i = 0; i < 30 && !await visibleNow(b, '#card'); i++) await sleep(200);
+  await sleep(800); await tapEl(b, '#cardMain');
+  for (let i = 0; i < 30 && !await visibleNow(b, '#fSheet'); i++) await sleep(200);
+  await sleep(1200); await tapEl(b, '#fSheet .fPick');
+  let rnd = 11 + variant.charCodeAt(0), n = 0; const R = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
+  const start = Date.now(), end = start + secs * 1000, plan = [[.12, 'ball'], [.25, 'cue'], [.35, 'ball'], [.45, 'near'], [.62, 'goal'], [.75, 'cue'], [.85, 'ball']].map(([k, w]) => [start + k * secs * 1000, w]);
+  let shoot = 0;
+  while (Date.now() < end) {
+    await sleep(400 + R() * 800);
+    if (!await b.ev(`return !!window.__fast?.on`)) break;
+    if (plan.length && Date.now() > plan[0][0]) { const w = plan.shift()[1]; await b.ev(LIVE_DO[w]); if (w === 'near') shoot = Date.now() + 1200; continue; }
+    if (shoot && Date.now() > shoot) { // SHOOT, then a target
+      const k = await b.ev(`return window.__fast.actionNow()`);
+      if (k === 'shoot') { await tapEl(b, '#fAct'); await sleep(900); const q = await b.ev(`const F = window.__fast, a = (F.ui.aims || F.aimAll || [])[0]; return a ? window.__fastWorld.project(a.x, a.y, a.z) : null;`); if (q) await tap(b, q[0], q[1]); shoot = 0; continue; }
+      if (Date.now() > shoot + 4000) { await b.ev(LIVE_DO.near); shoot = Date.now() + 1200; continue; }
+    }
+    if (R() < .15 && await tapEl(b, '#fAct.show')) continue;
+    await tap(b, 150 + R() * 630, 110 + R() * 230); n++;
+  }
+  await b.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  const out = await b.ev(`const T = window.__tl, F = window.__fast; return { f: T.f, m: T.m, ev: T.ev, reads: T.reads, errs: window.__errs.slice(0, 8), stats: F?.stats ? { decs: F.stats.decs, shots: F.stats.shots, cues: F.stats.cues } : null }`);
+  return { id: 'live' + variant, taps: n, ...out };
+}
+export function judgeLive(r) {
+  const { f, m, ev } = r, out = { id: r.id, fails: [] };
+  const t0 = ev.find(e => e[1] === 'live')?.[0] ?? Infinity, t1 = ev.find(e => e[1] === 'end' && e[0] > t0)?.[0] ?? Infinity;
+  const inPlay = x => x[0] > t0 && x[0] < t1;
+  out.made = m.filter(x => inPlay(x) && /^(shader compiled|mesh made|texture made)/.test(x[1])).map(x => x[1]);
+  out.nodes = m.filter(x => inPlay(x) && /^html nodes/.test(x[1])).map(x => x[1]);
+  out.reads = (r.reads || []).filter(inPlay).map(x => x[1]);
+  const after = (k, ms) => ev.filter(e => e[1] === k && inPlay(e)).map(([te]) => f.filter(x => x[0] > te && x[0] <= te + ms));
+  const worst = (wins, i) => wins.flat().reduce((a, x) => (!a || x[i] > a[i] ? x : a), null);
+  const dec = after('dec', LIVE.DEC_MS);
+  out.decs = dec.length; out.decGame = worst(dec, 3)?.[3] ?? null;
+  for (const k of ['goal', 'cue', 'dec', 'aim']) { const w = k === 'aim' ? after(k, LIVE.AFTER_MS).slice(0, 1) : after(k, LIVE.AFTER_MS); const p = worst(w, 4), fr = w.flat().reduce((a, x) => (!a || x[1] - x[2] > a[1] - a[2] ? x : a), null); out[k] = { n: w.length, page: p?.[4] ?? null, frame: fr ? +(fr[1] - fr[2]).toFixed(0) : null }; }
+  const play = f.filter(inPlay), game = play.map(x => x[3]).sort((a, b) => a - b); out.gameUsual = game[game.length >> 1] || 0; out.gameMax = game[game.length - 1] || 0;
+  if (out.made.length) out.fails.push(`made: ${out.made.length} in play (${[...new Set(out.made)].slice(0, 4).join('; ')})`);
+  if (out.nodes.length) out.fails.push(`nodes: ${out.nodes.length} node changes in play (${[...new Set(out.nodes)].slice(0, 4).join('; ')})`);
+  if (out.reads.length) out.fails.push(`layout: ${out.reads.length} layout reads in the game step (${[...new Set(out.reads)].slice(0, 4).join('; ')})`);
+  if (out.decGame > LIVE.GAME_MS) out.fails.push(`game: a step of ${out.decGame} ms after a decision moment began (limit ${LIVE.GAME_MS})`);
+  for (const k of ['goal', 'cue', 'dec', 'aim']) { if (!out[k].n) out.fails.push(`${k}: it never happened (the check saw nothing)`); else if (out[k].page > LIVE.PAGE_MS) out.fails.push(`${k}: page work of ${out[k].page} ms in a frame (limit ${LIVE.PAGE_MS})`); }
+  if (r.errs?.length) out.fails.push(`errors: ${r.errs.join(' | ').slice(0, 300)}`);
+  return out;
+}
+
 const fmt = w => (w ? `${w.ms.toFixed(0)} ms${V && w.before.length ? ' <- ' + [...new Set(w.before)].join('; ').slice(0, 160) : ''}` : '-');
-export async function popAudit({ games = GAMES, secs = SECS, log = console.log } = {}) {
+export async function popAudit({ games = GAMES, secs = SECS, live = LIVE_IDS, log = console.log } = {}) {
   if (!CHROME) { log('pop-audit: no Chrome found (set CHROME=/path/to/chrome)'); return { fails: 1 }; }
   const srv = await serve(), base = `http://127.0.0.1:${srv.address().port}/index.html`, b = await browser();
   let fails = 0; const rows = [];
@@ -248,6 +334,14 @@ export async function popAudit({ games = GAMES, secs = SECS, log = console.log }
       const raw = await playOne(b, base, id, secs), r = judge(raw); rows.push(r); fails += r.fails.length;
       if (arg('dump')) writeFileSync(path.join(arg('dump'), id + '.json'), JSON.stringify(raw));
       log(`  ${id.padEnd(10)} usual ${r.usual.toFixed(0)} ms | start ${fmt(r.start)} (3D set-up ${r.setup ? r.setup.ms.toFixed(0) + ' ms' : '-'}) | result ${fmt(r.resultWorst)} (${r.results.length}) | kick ${fmt(r.kickWorst)} (${r.kicks.length}) | clips at start ${r.startClips}, most decoded in a frame ${r.decodeMost}, in play ${r.lateClips.length} | hud nodes ${r.hudNodes} | at results: images decoded ${r.synDecodes}, painted ${r.synPaints.join(' ').replace(/DIV id=|'/g, '') || '-'}, most players started in a frame ${r.playsMost}`);
+      for (const x of r.fails) log(`     FAIL ${x}`);
+    }
+    for (const v of live) {
+      const raw = await playLive(b, base, v), r = judgeLive(raw); rows.push(r); fails += r.fails.length;
+      if (arg('dump')) writeFileSync(path.join(arg('dump'), raw.id + '.json'), JSON.stringify(raw));
+      const k = x => `${x.n ? `page ${x.page ?? '-'} ms, frame ${x.frame ?? '-'} ms` : 'none'}`;
+      log(`  ${r.id.padEnd(10)} game usual ${r.gameUsual} ms, most ${r.gameMax} ms, at a decision start ${r.decGame ?? '-'} ms (${r.decs}) | goal ${k(r.goal)} | cue ${k(r.cue)} | decision ${k(r.dec)} | first SHOOT ${k(r.aim)} | made in play ${r.made.length}, nodes ${r.nodes.length}, layout reads in the game step ${r.reads.length}`);
+      if (V) for (const x of [...new Set([...r.made, ...r.nodes, ...r.reads])]) log(`     (in play: ${x})`);
       for (const x of r.fails) log(`     FAIL ${x}`);
     }
   } finally { await b.close(); srv.close(); }

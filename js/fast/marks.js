@@ -97,6 +97,23 @@ export function makeMarks(world) {
       hintM.forEach((m, i) => { const h = show && hinted?.[i]; m.visible = !!h; if (h) { m.position.set(h.x, h.y, .025); const k = .5 + .5 * Math.sin(t * 4); m.material.opacity = .35 + .45 * k; m.scale.setScalar(1.7 + .35 * k); } });
     },
     hide() { for (const m of [...dotM, ...tickM, me, danger, go, ...hintM, ...fixM, dizzy, ...shutM, ...arrows, ...friendM, laneM, ...tickM2]) m.visible = false; dash.count = 0; dashKey = ''; },
+    // (v95, the owner's phone: "shader compiled +2, mesh made +8, texture made +4" and a 228 ms frame at the first SHOOT)
+    // Everything Live draws on the grass and in the goal, and every picture a mark may switch to, drawn once before play
+    // (fast.js pick, behind the player sheet): each mark (and `more`, the world's own Live objects: the shot targets) is
+    // shown for one picture through the world's own drawing path (so the shaders are the ones play uses), a millimetre in
+    // front of the camera and too small to cover a pixel, then put back as it was. Nothing is made or compiled in play.
+    warm(more = []) {
+      const r = world.renderer, cam = world.camera; if (!r || !cam) return;
+      const objs = [...dotM, ...tickM, me, danger, go, ...hintM, ...fixM, dizzy, ...shutM, ...arrows, ...friendM, laneM, ...tickM2, dash, ...more];
+      const was = objs.map(o => ({ v: o.visible, p: o.position.clone(), s: o.scale.clone(), f: o.frustumCulled, c: o.count }));
+      const at = new THREE.Vector3(); cam.getWorldDirection(at); at.multiplyScalar(cam.near * 4).add(cam.position);
+      const kids = more.flatMap(g => g.children.map(c => [c, c.visible])); // (a group's own parts: shown with it, put back after)
+      for (const o of objs) { o.visible = true; o.position.copy(at); o.scale.setScalar(1e-4); if (o.isInstancedMesh) o.count = 1; for (const c of o.children) c.visible = true; }
+      for (const t of [...T.dot, ...T.tick, ...F.dot, F.press, ...F.lit, VT.arrow, VT.friend, VT.lane, ...VT.tick]) try { r.initTexture?.(t); } catch (e) { console.error(e); }
+      try { if (world.post) world.post.render(); else r.render(world.scene, cam); } catch (e) { console.error(e); }
+      objs.forEach((o, i) => { const w = was[i]; o.visible = w.v; o.position.copy(w.p); o.scale.copy(w.s); o.frustumCulled = w.f; if (o.isInstancedMesh) o.count = w.c; });
+      for (const [c, v] of kids) c.visible = v;
+    },
   };
 }
 

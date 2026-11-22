@@ -269,7 +269,9 @@ export const hud = {
     const ems = el.querySelectorAll('em');
     if (was && was.teams === `${us.id} ${them.id}` && ems.length === 2) { // (round 14) the same two teams: only the numbers change
       scoreNow.teams = was.teams;
-      [[ems[0], s.us, was.us], [ems[1], s.them, was.them]].forEach(([em, v, old]) => { if (em.textContent !== String(v)) em.textContent = v; em.classList.remove('bump'); if (v > old) { void em.offsetWidth; em.classList.add('bump'); } });
+      // (v95, Live's goal on the phone: "html nodes 2 (bump)" and a layout forced in the goal's frame) the number changes
+      // in its own text node, and its jump starts again with no layout: the animation's name swaps (bump, bump2: css "lag")
+      [[ems[0], s.us, was.us], [ems[1], s.them, was.them]].forEach(([em, v, old]) => { const n = em.firstChild, t = String(v); if (n && n.nodeType === 3 && !n.nextSibling) { if (n.nodeValue !== t) n.nodeValue = t; } else if (em.textContent !== t) em.textContent = t; if (v > old) { const b2 = em.classList.contains('bump'); em.classList.remove(b2 ? 'bump' : 'bump2'); em.classList.add(b2 ? 'bump2' : 'bump'); } else em.classList.remove('bump', 'bump2'); });
       return;
     }
     scoreNow.teams = `${us.id} ${them.id}`;

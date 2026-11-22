@@ -40,6 +40,18 @@ export const AIM_SLOW = .2, AIM_S = 7, SPOT_STALE = 2.5; // (v93: while he aims 
 export const BASE = .75, HOLD = .18, GOALS = FAST_GOALS, HOLD_MS = R.HOLD_S * 1000, RUN_TURN = .25, BACK_S = .6, VIEW_BACK = 1;
 const SLIDE = 12; // px a finger may wobble and still be a tap
 
+// (v95) What the page shows in play is all made before it (build, pick): the pass-cut picture, and the glyphs the action
+// button can show (painted once while he picks his player: #fGlyph, css "lag").
+const PIC_CUT = '<i class="cut">⚽</i><i>✋</i>', GLYPHS = ['🥅', '🦶', '⭐', ...Object.values(MOVE_SYM)].join('');
+// (v95) Work that need not be in the game step, each in a task of its own right after this frame (a spoken line, a toast):
+// on the phone a slow call there made the frame's game step 31 to 117 ms.
+// (v95) The next frame (or 100 ms when no frame comes: a hidden page), once.
+const nextFrame = f => { let done = false; const go = () => { if (!done) { done = true; try { f(); } catch (e) { console.error(e); } } }; requestAnimationFrame(go); setTimeout(go, 100); };
+const soon = f => setTimeout(() => { try { f(); } catch (e) { console.error(e); } }, 0);
+// (v95) A class written only when it changes (the speed recorder showed "html show/hide" for classes set to what they were).
+// (v95) A text changed in place, in its own text node (textContent makes a new node each time).
+const text = (el, t) => { const n = el.firstChild; if (n && n.nodeType === 3 && !n.nextSibling) { if (n.nodeValue !== t) n.nodeValue = t; } else el.textContent = t; };
+const cls = (el, k, on) => { if (el && el.classList.contains(k) !== !!on) el.classList.toggle(k, !!on); };
 const $ = s => document.querySelector(s);
 function el(tag, attrs = {}, html = '') { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); e.innerHTML = html; return e; }
 const press = (b, f) => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false) return; f(e); }); // (a second finger or a palm does nothing)
@@ -60,9 +72,11 @@ class Fast {
       <div id="fSlow" aria-hidden="true"></div><div id="fChevL" class="fChev" aria-hidden="true">‹‹</div><div id="fChevR" class="fChev" aria-hidden="true">››</div>
       <div id="fNext" aria-hidden="true"><i>⚽</i><b>➜</b><i>🏆</i></div>
       <div id="fCue" aria-hidden="true"><i>👀</i><b>↔</b></div>
-      <div id="fPic" aria-hidden="true"></div>
+      <div id="fPic" aria-hidden="true">${PIC_CUT}</div>
+      <div id="fGlyph" aria-hidden="true"><i>${GLYPHS}</i></div>
       <div id="fChips">${'<button class="fChip" type="button" aria-label="A friend you saw"><span class="ptr"></span><span class="pic"></span></button>'.repeat(4)}</div>`);
     hudEl.appendChild(box); hudEl.appendChild(el('div', { id: 'fSheet', class: 'hidden' }, '<div class="fCard"><div class="fRow"></div></div>')); // (the sheet: also before play, while the rest is hidden)
+    for (const e of box.querySelectorAll('.fActB i, .fActB span')) e.appendChild(document.createTextNode('')); // (v95: changed in place in play: drawAction)
     this.dom = { box, cue: $('#fCue'), avatar: $('#fAvatar'), look: $('#fLook'), act: $('#fAct'), act2: $('#fAct2'), sheet: $('#fSheet'), row: $('#fSheet .fRow'), tunnel: $('#tunnel') };
     // LOOK UP and the action button act as the finger goes down, at once (a press that starts on them never slows the
     // world); a chip acts as a tap and, held, slows the world like a press anywhere (rules.js pressKind).
@@ -89,7 +103,21 @@ class Fast {
     for (const b of d.row.querySelectorAll('.fPick')) press(b, () => { d.sheet.classList.add('hidden'); hudEl.classList.remove('fpicking'); done(b.dataset.id); });
     d.sheet.classList.remove('hidden'); hudEl.classList.add('fpicking');
   }
-  pick(us) { this.build(); this.us = us; this.me = this.me && this.ids().includes(this.me) ? this.me : 'hero'; return new Promise(res => this.openSheet(id => { this.me = id; res(id); })); }
+  pick(us) { this.build(); this.us = us; this.me = this.me && this.ids().includes(this.me) ? this.me : 'hero'; const p = new Promise(res => this.openSheet(id => { this.me = id; res(id); })); this.warm(); this.picked = us; return p; }
+  // (v95) Before play, behind the player sheet: the chips' shirts made, Live's 3D marks and the shot targets drawn once
+  // (marks.js warm: no shader, mesh or texture made in play), and its HUD painted once at almost no opacity (css "lag":
+  // #fastHud.fwarm), so nothing Live shows is built or painted for the first time in play.
+  warm(hud = true) {
+    this.chipPics();
+    try { this.marks.warm([...(world.aimPool || []), world.ballGlow, world.particles?.mesh, world.particles?.marker, ...(world.glows?.values() || [])].filter(Boolean)); } catch (e) { console.error(e); } // (and the world's own that Live shows: the shot targets, the ball's glow for STEAL, the puffs and sparks, the glow under a friend he can pass to)
+    if (!hud) return; // (Score attack: its HUD shows as play starts, as before)
+    const box = this.dom.box; clearTimeout(this.warmT); box.classList.add('fwarm'); this.warmT = setTimeout(() => box.classList.remove('fwarm'), 300);
+  }
+  // Each chip holds every friend's shirt, made once (here, before play); the one it stands for shows (css "lag").
+  chipPics() {
+    const ids = this.ids(), key = this.us.id + ids.join(); if (this.chipKey === key) return; this.chipKey = key;
+    for (const d of this.dom.chips) { const pic = d.b.querySelector('.pic'); pic.innerHTML = ids.map(id => `<span data-id="${id}">${shirt(this.us, this.player(id).num, 30)}</span>`).join(''); d.pics = Object.fromEntries([...pic.children].map(s => [s.dataset.id, s])); d.key = ''; }
+  }
   setMe(id) {
     const m = this.m; if (!m || id === this.me) { this.drawAvatar(); return; }
     this.resetTransient();
@@ -105,7 +133,7 @@ class Fast {
   // warm: whose lines to load now (ui/voicewarm.js gameLines; Score attack passes its own). Each clip loads once.
   play({ us, them, level, warm = 'fast' }) {
     if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
-    this.build(); this.us = us; this.them = them;
+    this.build(); this.us = us; this.them = them; if (this.picked !== us) this.warm(false); else this.chipPics(); this.picked = null; clearTimeout(this.warmT); this.dom.box.classList.remove('fwarm'); // (Score attack starts with no pick: warmed here, before its kick-off)
     this.vid = variantOf(P.settings); this.V = VARIANTS[this.vid]; this.dec = new Decision(this.vid); this.big = null; this.bigChosen = null; this.lane = null; this.take = null; this.bigAt = 0; // (v93 variants: the home screen's A B C D, variant.js)
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
@@ -127,10 +155,10 @@ class Fast {
     m.on.goal = team => this.goal(team);
     m.on.warn = k => { this.warnAt = k; this.warnT = this.real + 1.6; sfx('ping'); };
     m.on.theirShot = (id, res) => this.keeperTurn(id, res);
-    m.on.cutOut = f => { if (f.me) this.showPic('<i class="cut">⚽</i><i>✋</i>'); }; // (his pass cut out: a ball and a stopping hand, not the skill's picture)
+    m.on.cutOut = f => { if (f.me) this.showPic(); }; // (his pass cut out: a ball and a stopping hand, not the skill's picture)
     m.on.shotEnd = (f, how, by) => this.shotEnd(f, how, by);
     this.lastScan = 0; this.cueT = -99; this.kBusy = false; this.kClear = 0; this.sudden = false; this.dom.box.querySelector('#fNext').classList.remove('show');
-    m.on.lost = was => { if (was === this.me) { this.lookUp(true); say('Where is the ball?'); } };
+    m.on.lost = was => { if (was === this.me) { this.lookUp(true); soon(() => say('Where is the ball?')); } };
     game.plog?.('fast', { is: 'start', size: TEAM.size, me: this.me, us: us.id, them: them.id, level: m.level, variant: this.vid });
     return new Promise(res => { this.done = res; });
   }
@@ -156,16 +184,20 @@ class Fast {
     if (R.headDownOn(id, this.me, how)) { this.lookUp(false); this.stats.downs++; } // the ball comes to him: head down (only then)
     void pressed;
     if (id !== this.me && this.up1 === false) this.lookUp(true); // (he lost it or passed it: head up)
-    if (id === this.me && (how === 'tackle' || how === 'cut' || how === 'steal')) { hud.toast('🦶 Great steal!'); say('Great steal!'); }
+    if (id === this.me && (how === 'tackle' || how === 'cut' || how === 'steal')) soon(() => { hud.toast('🦶 Great steal!'); say('Great steal!'); }); // (v95: after the frame, not in its game step)
     game.plog?.('fast', { is: 'gain', id, how });
   }
   goal(team) {
     const m = this.m, won = m.score[team] >= GOALS || this.sudden;
     this.resetTransient();
-    hud.score(m.score, this.us, this.them); hud.banner(team === 'us' ? 'GOAL!' : 'Their goal', team === 'us' ? 'goal' : 'bad');
-    if (team === 'us') say(m.lastOwner === this.me ? 'Great choice!' : 'Great pass!');
+    // (v95, the owner's phone: 251 ms of page work in the goal's frame, with the score, the big words, the flash and the
+    // line all in it) The big words and their sound now (hud.banner brings its sunburst and flash in the frames after);
+    // the score's jump in the next frame; the line and his head coming up in the one after.
+    const line = team === 'us' ? (m.lastOwner === this.me ? 'Great choice!' : 'Great pass!') : null, score = { ...m.score };
+    hud.banner(team === 'us' ? 'GOAL!' : 'Their goal', team === 'us' ? 'goal' : 'bad');
+    nextFrame(() => { hud.score(score, this.us, this.them); nextFrame(() => { if (this.on) this.lookUp(true); if (line) soon(() => say(line)); }); });
     game.plog?.('fast', { is: 'goal', team, us: m.score.us, them: m.score.them, by: m.lastOwner });
-    this.lookUp(true); this.calm = true;
+    this.calm = true;
     if (won) { this.over = true; m.after(2.2, () => this.finish()); return; }
     m.after(1.8, () => { if (world.mood) world.mood.t = Math.max(world.mood.t, 5.5); m.kickoff(team === 'us' ? 'them' : 'us', () => { this.calm = false; }); }); // (v93 integration: the celebration ends (a 0.5 s fade) as they walk back, not 6 s after the goal)
   }
@@ -186,7 +218,7 @@ class Fast {
   lookUp(up) {
     if (this.up1 === up) return; this.up1 = up;
     if (up) { this.stats.looks++; sfx('up'); this.lastScan = this.real; } else sfx('down');
-    const d = this.dom.look; d.classList.toggle('show', !up); this.downAt = this.real; if (up && this.nudged) { this.nudged = false; d.classList.remove('nudge'); }
+    const d = this.dom.look; cls(d, 'show', !up); this.downAt = this.real; if (up && this.nudged) { this.nudged = false; d.classList.remove('nudge'); }
   }
   // The camera: the shot view while he aims, else the view he does not steer (rules.js viewStep: where he looks, near a
   // line turned along the pitch, the eye in from the line or out over it looking in, close in a corner; the pitch fills
@@ -226,7 +258,9 @@ class Fast {
     this.dom.cue.classList.remove('show'); hudEl.classList.remove('faiming');
   }
   // A small picture over the play for a moment (a skill move's picture, a pass cut out): no words to read.
-  showPic(html) { const p = this.dom.pic; p.innerHTML = html; p.classList.remove('show'); void p.offsetWidth; p.classList.add('show'); clearTimeout(this.picT); this.picT = later(() => p.classList.remove('show'), 1500); }
+  // (v95) Its one picture (a pass cut out) is made with the HUD (build): showing it makes no node and forces no layout in the
+  // game step (on the phone that frame's game step was 31 ms); shown again while up, it stays up 1.5 s more.
+  showPic() { const p = this.dom.pic; cls(p, 'show', true); clearTimeout(this.picT); this.picT = later(() => p.classList.remove('show'), 1500); }
   hold(f) { if (f.held) return; f.held = true; this.lastScan = this.real; this.holding = true; this.slowTo = HOLD; this.stats.holds++; sfx('down'); this.dom.box.classList.add('slowing'); }
   move(e) {
     const f = this.finger; if (!f || e.pointerId !== f.id || held.on) return;
@@ -320,7 +354,7 @@ class Fast {
     const near = (team, r) => (team === 'us' ? m.usIds.filter(id => id !== this.me) : m.themIds).map(id => s.a(id)).filter(a => a && Math.hypot(a.x - h.x, a.y - h.y) < r);
     const unseen = [...near('us', 14), ...near('them', 4)].some(a => !this.seen1(a, .9) && !this.seen1(a, 0));
     if (!unseen) return;
-    this.cueT = this.real; this.stats.cues++; this.placeHint(c); c.classList.add('show'); say('Check your shoulder!'); sfx('ping');
+    this.cueT = this.real; this.stats.cues++; this.placeHint(c); c.classList.add('show'); soon(() => say('Check your shoulder!')); sfx('ping'); // (v95: the line after the frame: on the phone this frame's game step was 117 ms)
     game.plog?.('fast', { is: 'cue' });
   }
   // The scan reminder and the hold hint sit where they cover no goal and no player he needs (rules.js hintSpot): placed
@@ -402,10 +436,10 @@ class Fast {
     const opts = k === 'skill' ? (this.skillOpts ||= this.skillOptions()) : null; if (k !== 'skill') this.skillOpts = null;
     const key = k + (opts ? opts.join() : ''); if (key === this.actKey) return; this.actKey = key; this.actKind = k;
     const set = (b, kind, mv) => {
-      b.classList.toggle('show', !!kind); if (!kind) return;
-      b.dataset.kind = kind; b.classList.toggle('skill', !!mv);
+      cls(b, 'show', !!kind); if (!kind) return;
+      b.dataset.kind = kind; cls(b, 'skill', !!mv);
       const [i, t] = mv ? [MOVE_SYM[mv] || '⭐', MOVE_NAME[mv] || 'Skill'] : kind === 'shoot' ? ['🥅', 'SHOOT'] : ['🦶', 'STEAL'];
-      b.querySelector('i').textContent = i; b.querySelector('span').textContent = t; b.setAttribute('aria-label', t);
+      text(b.querySelector('i'), i); text(b.querySelector('span'), t); b.setAttribute('aria-label', t); // (v95: the text changed in place: no node made in play)
     };
     set(this.dom.act, k, opts?.[0]); set(this.dom.act2, null); // (v93: one button; the second stays hidden)
   }
@@ -451,8 +485,8 @@ class Fast {
     const a = this.shotAt, dt = a ? +(this.sim.time - a.game).toFixed(2) : null; this.shotAt = null;
     if (!this.holding) this.slowTo = BASE;
     if (how === 'goal') this.stats.shotGoals++;
-    else if (how === 'save') { say('Saved!'); hud.toast('🧤 Saved!'); }
-    else if (how === 'out') say('So close!');
+    else if (how === 'save') soon(() => { say('Saved!'); hud.toast('🧤 Saved!'); });
+    else if (how === 'out') soon(() => say('So close!'));
     this.stats.shotEnds.push({ how, dt });
     game.plog?.('fast', { is: 'shotEnd', how, by, dt });
   }
@@ -487,7 +521,7 @@ class Fast {
     this.skT = s.time; this.stats.skills++; m.safeT = s.time + 1.3; this.skillOpts = null; this.set = null;
     if (foe) { s.go(foe.id, foe.x, foe.y, 0); m.cmd.set(foe.id, s.time + .9); } // fooled: he stops a moment
     this.slowTo = .3; m.after(.9, () => { if (!this.holding) this.slowTo = BASE; s.flair = null; s.taps = null; });
-    say((MOVE_NAME[mv] || MOVE_NAME[k] || 'Skill') + '!'); world.fx('skill'); // (v93: no picture over the play: the button said its name)
+    soon(() => say((MOVE_NAME[mv] || MOVE_NAME[k] || 'Skill') + '!')); world.fx('skill'); // (v93: no picture over the play: the button said its name)
     game.plog?.('fast', { is: 'skill', move: mv, pick: k });
   }
 
@@ -579,7 +613,7 @@ class Fast {
     if ((this.hintPT = (this.hintPT || 0) + dt) > .5) { this.hintPT = 0; if (this.dom.cue.classList.contains('show')) this.placeHint(this.dom.cue); }
     // a long match: after NEXT_WINS s the next goal wins (a picture and a word); at END_S it ends as it stands
     if (!this.sudden && this.real > NEXT_WINS && !this.over) { this.sudden = m.sudden = true; // (and both teams go for it: match.js; the next goal ends it, the score as it stands then)
-      if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); say('Next goal wins!'); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }
+      if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); soon(() => say('Next goal wins!')); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }
     if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
     this.ui.ballGlow = this.actKind === 'steal' && m.canSteal(); this.stealGlow = this.ui.ballGlow; // (only while a press would win it now)
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > AIM_S)) this.endAim();
@@ -628,7 +662,7 @@ class Fast {
       const c = chips[i]; d.id = c?.id || null; d.tap = !!c?.tap;
       const o = c ? Math.round(c.alpha * 20) / 20 : 0; if (o !== d.o) { d.o = o; d.b.style.opacity = o; d.b.style.pointerEvents = o > .05 ? 'auto' : 'none'; }
       if (!c) return;
-      const key = c.id + (c.gold ? 'g' : ''); if (key !== d.key) { d.key = key; d.b.querySelector('.pic').innerHTML = shirt(this.us, this.player(c.id).num, 30); d.b.classList.toggle('gold', c.gold); }
+      const key = c.id + (c.gold ? 'g' : ''); if (key !== d.key) { d.key = key; for (const id in d.pics) cls(d.pics[id], 'on', id === c.id); cls(d.b, 'gold', c.gold); } // (v95: the shirts made before play: chipPics)
       const tf = `translate(${Math.round(c.p[0] - 24)}px,${Math.round(c.p[1] - 24)}px)`; if (tf !== d.tf) { d.tf = tf; d.b.style.transform = tf; }
       const a = Math.round(c.ang * 57.3 / 5) * 5 + 'deg'; if (a !== d.a) { d.a = a; d.b.style.setProperty('--a', a); }
     });

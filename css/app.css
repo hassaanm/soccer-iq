@@ -1137,3 +1137,25 @@ body.logon #logTab{display:grid}
 #home.live .livevar{display:flex}
 .livevar button{width:19px;height:24px;padding:0;border:0;border-radius:7px;font:700 12px/24px var(--font);background:var(--blue-d);color:#fff;box-shadow:0 2px 0 var(--blue-e);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .livevar button.on{background:var(--gold-d);color:#3a2700;box-shadow:0 2px 0 var(--gold-e)}
+/* ---- LAG worker (v95): Live's HUD made and painted before play, shown and hidden with opacity only ---- */
+/* While he picks his player (js/fast/fast.js warm), every part of Live's HUD is painted once at almost no opacity, as
+   #hud.warm does for the game's own layer, so its letters, emoji and shadows are already drawn when play shows them (the
+   phone: a 200 ms frame as the HUD first showed at kick-off). #fGlyph holds the action button's other pictures. */
+#fastHud.fwarm{display:block!important;opacity:.01!important;pointer-events:none!important}
+#fastHud.fwarm *{visibility:visible!important;opacity:1!important;animation:none!important;transition:none!important;pointer-events:none!important}
+#fastHud.fwarm :is(#fLook,#fAct,#fGlyph){display:flex!important}
+#fGlyph{display:none;position:absolute;left:0;bottom:0;font-size:42px;line-height:1;pointer-events:none}
+#fGlyph i{font-style:normal}
+/* LOOK UP and the action button stay laid out in play and show by opacity on their own layer (not display, which laid
+   out and painted them again each time); hidden, they take no touch and run no animation, so a show starts the same
+   pop-in as before. */
+#fastHud :is(#fLook,#fAct){display:flex;will-change:transform,opacity}
+#fastHud :is(#fLook,#fAct):not(.show){opacity:0;pointer-events:none!important;animation:none}
+#fastHud :is(#fLook,#fAct):not(.show)::before,#fastHud :is(#fLook,#fAct):not(.show)::after{animation:none}
+/* The chips' shirts: all made before play, the one a chip stands for shown. */
+.fChip .pic{position:relative;display:block;width:30px;height:27px}
+.fChip .pic > span{position:absolute;inset:0;opacity:0}
+.fChip .pic > span.on{opacity:1}
+/* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
+#score em.bump2{animation:bump2 .7s var(--bounce)}
+@keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
