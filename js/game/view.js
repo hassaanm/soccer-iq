@@ -34,6 +34,7 @@ export const HERO_FLOOR = [48, 60];
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
 const BACK_SCALE = [2];
+const HAND_SLACK = 8; // (v96) px a target of the hand may creep before the hand is moved after it (updateHud)
 // The aim view (v64, see aimView): how far behind him the camera is (m), the lens (px per metre at the goal, as a share of
 // the screen's height, is AIM_K / (his distance from the goal + AIM_B), never under AIM_MIN), and where the goal's middle
 // sits (share of the height from the top, and of the width).
@@ -560,7 +561,11 @@ export const view = {
     if (typeof at === 'string') id = at;
     else if (at?.sx != null) { const v = this.viewSize(); x = at.sx * v.w; y = at.sy * v.h; }
     else if (at) { const p = this.handPoint(at), q = p && this.world.project(p.x, p.y, p.z); if (q) [x, y] = q; }
-    if (last.on !== !!at || last.id !== id || last.x !== x || last.y !== y || last.tap !== tap) {
+    // (v96) A target the hand is on that creeps a pixel or two (play going on slowly) does not move it: each new place starts
+    // the hand's glide (css #hand, 0.6 s) again, so it fell behind and tapped short of an arrow that crept on.
+    const near = at === last.at && x != null && last.x != null && Math.abs(x - last.x) < HAND_SLACK && Math.abs(y - last.y) < HAND_SLACK;
+    if (last.on !== !!at || last.id !== id || (!near && (last.x !== x || last.y !== y)) || last.tap !== tap) {
+      last.at = at;
       Object.assign(last, { on: !!at, id, x, y, tap });
       hud.hand(id ?? (x == null ? null : [x, y]), this.handTap);
     }
