@@ -1,6 +1,6 @@
 // What each frame shows: the camera, the HUD state and prompt, the teaching hand, and the highlights in the 3D scene.
 import { lerp, smooth, rot, clamp, closestOnLane } from '../geom.js';
-import { L, W, gy0, gy1, MATES, MATE, DIRS, NONE, facesBall, wrap, spotKind } from './shared.js';
+import { L, W, gy0, gy1, MATES, MATE, DIRS, NONE, facesBall, wrap, spotKind, focal, PHONE } from './shared.js';
 import { pathAt, spotsNow } from '../window.js';
 import { spaces } from '../shot.js';
 
@@ -16,13 +16,13 @@ const SKILL_CAM = [2.7, 1.55, 1.6, 1, .7, .95, .5];
 // The spot camera for runs to the goal and after a shot: a ring far from the eye is drawn up to RING_GROW times bigger
 // and one near it down to RING_SHRINK times, and the view is only taken if that leaves no ring more than RING_RATIO
 // times bigger on screen than another.
-const FIT_TRIES = 3000; // (v76) tries of a spot view's fit in one frame before its other tiers wait for the next frame (spotView)
+const FIT_TRIES = 3000, SPOT_STILL = .2; // (v76) tries of a spot view's fit in one frame before its other tiers wait for the next frame (spotView)
 // (v76) How fast the camera comes round to the way he carries the ball on from live play (game/window.js settle): it
 // is there as the choice opens, not still swinging over (the glide and the slow start of a live window, 2.6 and 1.4, left
 // it 40° to 100° off his run as the choice opened).
 const CAM_TURN = 4;
 // (v76) How much farther back the view sits (along its own line) as a demo's idea starts, gliding in as it is said.
-const PUSH = .7, CLOSE = .25, CLOSE_MIN = 1.5, PUSH_M = 2.5, RISE = 1; // (v76 SL: the close push after a demo's idea, camSpec; RISE: the share of it the view draws back by where it cannot come in) // (v76 SL: CLOSE, see the push after the idea)
+const PUSH = .7, CLOSE = .25, CLOSE_MIN = 1.5, PUSH_M = 2.5, RISE = 1, ARC = .5; // (v76 SL: the close push after a demo's idea, camSpec; RISE: the share of it the view draws back by where it cannot come in) // (v76 SL: CLOSE, see the push after the idea)
 export const TURN_MAX = .6; // (v76) how far (rad) the camera's heading may be off the way he runs, to show the one who comes (threatFit)
 const RING_GROW = 2.2, RING_SHRINK = .72, RING_RATIO = 1.4, RING_RATIO_MAX = 1.8;
 // His own player in those views is this tall on screen, as a share of the focal length (about 76 px of 380 on a phone
@@ -63,7 +63,7 @@ export const view = {
     const { w, h } = this.viewSize(), s = this.sim, pts = [s.a('hero'), s.ball, this.win?.threat?.id && s.a(this.win.threat.id), s.a(MATE[this.sc?.best] || ''), ...(this.sc?.spots || [])].filter(Boolean);
     const proj = (cam, p, e = .05) => { const f = [cam.tgt[0] - cam.eye[0], cam.tgt[1] - cam.eye[1], cam.tgt[2] - cam.eye[2]], fl = Math.hypot(...f); for (let i = 0; i < 3; i++) f[i] /= fl || 1;
       const rl = Math.hypot(f[1], f[0]) || 1, r = [f[1] / rl, -f[0] / rl, 0], up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [p.x - cam.eye[0], p.y - cam.eye[1], .5 - cam.eye[2]];
-      const z = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (z < .3) return false; const F = Math.max(h * cam.Ff, w * (cam.Fw || 0)), x = w / 2 + F * (d[0] * r[0] + d[1] * r[1]) / z, y = h / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / z;
+      const z = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (z < .3) return false; const F = focal(w, h, cam), x = w / 2 + F * (d[0] * r[0] + d[1] * r[1]) / z, y = h / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / z;
       return x > w * e && x < w * (1 - e) && y > h * e && y < h * (1 - e); };
     const was = pts.filter(p => proj(now, p, -.1)); return cam => was.every(p => proj(cam, p, .05)); // (one well inside stays on: a little slack, so one near the edge does not hold the view still)
   },
@@ -71,11 +71,21 @@ export const view = {
     const v = this.viewSize(), s = this.sim, sc = this.sc, yaw = Math.round(this.yaw * 50) / 50, win = this.win;
     const plan = win?.plan || (this.wplan?.sc === sc ? this.wplan : null), hold = plan?.hold ? plan : null, D = hold ? hold.D : [0, 0], G = plan?.G || 0;
     const tw = hold ? s.time - (win ? win.t0 : plan.openAt ?? s.time) : 0, shift = spec => (D[0] || D[1] ? { eye: [spec.eye[0] + D[0] * tw, spec.eye[1] + D[1] * tw, spec.eye[2]], tgt: [spec.tgt[0] + D[0] * tw, spec.tgt[1] + D[1] * tw, spec.tgt[2]], Ff: spec.Ff, Fw: spec.Fw } : spec);
-    const key = `${v.w}x${v.h} ${yaw} ${sc.id} ${sc.spots.length} ${hold ? (hold.vid ||= ++this.vids) : sc.run === 'follow' ? 'f' : win ? Math.round(win.t0 * 1e3) : 0}`;
+    const same = `${v.w}x${v.h} ${sc.id} ${sc.spots.length} ${hold ? (hold.vid ||= ++this.vids) : sc.run === 'follow' ? 'f' : win ? Math.round(win.t0 * 1e3) : 0}`, key = `${yaw} ${same}`;
     if (this.spotFit?.key === key) return shift(this.spotFit.spec);
+    // (v96) While his head turns (a drag, a demo's drag to a ring off the screen), the view turns with it as it was fitted
+    // (lateSpot); the fit for where he looks is made once his head has stopped for SPOT_STILL s. Fitted afresh at every
+    // heading, the views jumped from one to another (a turn of 0.35 rad or a step in height each frame).
+    const ya = this.spotYaw ||= { yaw, t: -9 }; if (ya.yaw !== yaw) { ya.yaw = yaw; ya.t = this.clock; }
+    if (this.clock - ya.t < SPOT_STILL) { const r = this.lateSpot(same, yaw, shift); if (r) return r; }
     // (frame time) In a frame that has already made a window's plan, the camera keeps what it wanted the frame before and
     // the fit is made in the next frame: the two heavy jobs never share a frame (the camera eases over anyway).
-    if (this.camAsk) { this.viewLate = true; return this.lastWant; }
+    // (v96) What it keeps is the last fit of this same view turned to the way he looks now (lateSpot), else the view the
+    // frame before asked for before a demo's push (lastSpec): the push is never put on twice. While his head turned (a
+    // demo's drag to a ring off the screen), each new heading started its fit anew, so the picture held still (0.8 s in
+    // "One goes, one guards") and the push went on again every frame (the camera lurched in or back 1 to 2.5 m).
+    const late = () => { this.viewLate = true; return this.lateSpot(same, yaw, shift) || this.lastSpec || this.lastWant; };
+    if (this.camAsk) return late();
     this.viewLate = false;
     // Where everything is as the window opens (o) and, against the drift, as it ends (e).
     const P0 = !plan && sc.run === 'follow' ? this.sceneState(sc).at : null; // (after a shot: the scene's own places, where everyone is as the rebound stops)
@@ -193,7 +203,7 @@ export const view = {
     for (let ti = work.tier; ti < tiers.length; ti++) {
       if ((best = search(tiers[ti]))) { rule = tiers[ti]; break; }
       work.tier = ti + 1;
-      if (tries > FIT_TRIES && ti + 1 < tiers.length && this.lastWant) { this.viewLate = true; return this.lastWant; }
+      if (tries > FIT_TRIES && ti + 1 < tiers.length && this.lastWant) return late();
     }
     this.spotWork = null;
     // (nothing fits with him that size: a view of him and the rings' middle from as far as keeps him at the floor)
@@ -201,8 +211,16 @@ export const view = {
     const dFloor = 1.85 * F * Math.cos(.62) / floor * .9;
     const { pitch, d, off } = best || { pitch: .62, d: dFloor, off: 0 }; fx = Math.cos(yaw + off); fy = Math.sin(yaw + off); cx = best?.cx ?? lerp(mx, h.x, .92); cy = best?.cy ?? lerp(my, h.y, .92);
     const ex = cx - fx * Math.cos(pitch) * d, ey = cy - fy * Math.cos(pitch) * d;
-    this.spotFit = { key, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null, rule };
+    this.spotFit = { key, same, yaw, spec: { eye: [ex, ey, Math.sin(pitch) * d], tgt: [cx, cy, 0], Ff, Fw }, scales: best?.scales || null, rule };
     return shift(this.spotFit.spec);
+  },
+  // (v96) The last fit of this view (same: all of its key but the heading), turned round the point it looks at to `yaw`:
+  // the view a new heading's fit would most likely give (the same height, distance and lean), for the frames its own fit
+  // waits. null when there is none.
+  lateSpot(same, yaw, shift) {
+    const f = this.spotFit; if (!f || f.same !== same) return null;
+    const d = yaw - f.yaw, c = Math.cos(d), s = Math.sin(d), { eye, tgt } = f.spec, x = eye[0] - tgt[0], y = eye[1] - tgt[1];
+    return shift({ ...f.spec, eye: [tgt[0] + x * c - y * s, tgt[1] + x * s + y * c, eye[2]] });
   },
 
   // The aim view (v64): he picks one of six targets, so the goal must be big (each target at least 44 px), and he must still
@@ -307,7 +325,7 @@ export const view = {
     // are always in view (seeing the touch is the whole lesson).
     if (this.sc?.kind === 'tackle') {
       const [bx, by] = rot(-4.2, 2, this.yaw); // over his shoulder, so his body never hides a ball rolling at him
-      return { eye: [h.x + bx, h.y + by, 4.2], tgt: [lerp(h.x, b.x, .75), lerp(h.y, b.y, .75), 0], Ff: 1.02, Fw: .56 };
+      return { eye: [h.x + bx, h.y + by, 4.2], tgt: [lerp(h.x, b.x, .75), lerp(h.y, b.y, .75), 0], Ff: 1.02, Fw: .56, Fa: PHONE };
     }
     // Player view, behind him in the direction he's turned. Head down: close and aimed just above the ball, so the
     // prompt at the top of a phone screen does not cover his head.
@@ -327,7 +345,7 @@ export const view = {
     let dx = b.x, dy = b.y;
     if (b.state === 'carried' && b.carrier === 'hero' && !b.move) { const [ax, ay] = rot(.45, 0, this.yaw); dx = h.x + ax; dy = h.y + ay; }
     if (facesBall(this.sc)) { const [ax, ay] = rot(C[3], 0, this.yaw); dx = lerp(h.x + ax, b.x, C[4]); dy = lerp(h.y + ay, b.y, C[4]); }
-    return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k) + 2.2 * wide], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k) };
+    return { eye: [h.x + bx, h.y + by, lerp(C[2], 2.8, k) + 2.2 * wide], tgt: [lerp(dx, h.x + fx, k), lerp(dy, h.y + fy, k), lerp(C[5], .5, k)], Ff: lerp(C[6], .9, k), Fw: lerp(C[7], .52, k), Fa: PHONE }; // (v96 Fa: on a screen narrower than a phone's, the phone's own height of field: shared.js focal)
   },
   // (v66) The player view in which the one who comes is seen as the window opens: the head-down view, raised and drawn
   // back (k, as `wide` in camSpec) and turned (off, radians added to the way he looks) as little as shows the threat
@@ -335,7 +353,7 @@ export const view = {
   threatFit(plan, turnMax = TURN_MAX) {
     const none = { k: plan?.wide ? 1 : 0, off: 0, seen: false }, v = this.viewSize(), th = plan?.threat?.id, tp = th && plan.paths[th], hp = plan?.paths.hero;
     if (!tp || !hp || !v.w || this.sc?.kind === 'receive') return none;
-    const h = pathAt(hp, 0, {}), t = pathAt(tp, 0, {}), C = HEAD_DOWN, F = Math.max(v.h * C[6], v.w * C[7]), floor = HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 1;
+    const h = pathAt(hp, 0, {}), t = pathAt(tp, 0, {}), C = HEAD_DOWN, F = focal(v.w, v.h, { Ff: C[6], Fw: C[7], Fa: PHONE }), floor = HERO_FLOOR[0] + clamp((v.w - 667) / 177, 0, 1) * (HERO_FLOOR[1] - HERO_FLOOR[0]) + 1;
     const run = Math.hypot(h.vx, h.vy) > .3 ? Math.atan2(h.vy, h.vx) : this.yaw; // (v76: the way he runs as it opens)
     const fit = (k, off) => {
       const yaw = this.yaw + off, [bx, by] = rot(-C[0] - 3.5 * k, C[1], yaw), [ax, ay] = rot(.45, 0, yaw), eye = [h.x + bx, h.y + by, C[2] + 2.2 * k], tgt = [h.x + ax, h.y + ay, C[5]];
@@ -376,7 +394,7 @@ export const view = {
     }
     this.camAsk = this.heavyAt === (this.frameNo |= 0) && !!this.lastWant; this.frameNo++;
     const was = this.lastWant;
-    let want = this.camSpec(time); this.camAsk = false;
+    let want = this.camSpec(time); this.camAsk = false; this.lastSpec = want; // (v96: before a demo's push: spotView keeps it while a fit waits)
     // (v76) A demo's idea being said while play crawls (demo.js crawlFor, `push`): the view draws back along its own line
     // (wider and higher, the same heading: the whole scene shows) over the run-up, then glides in to the play's own view at an
     // even pace, arriving as the idea ends: the picture never sits still while play crawls.
@@ -397,16 +415,30 @@ export const view = {
         // (and where neither keeps them all, a half or a quarter of that)
         // (and else it draws back along its own line, up and away from what it looks at: the picture widens round its middle,
         // so all of it stays on)
-        let done = false; for (const f of [1, .5, .25]) { const ki = 1 - m * f / d, kb = 1 + m * f / d * RISE; if (d * ki >= CLOSE_MIN && keep(at(ki))) { want = at(ki); done = true; break; } if (keep(at(kb))) { want = at(kb); done = true; break; } }
-        if (!done) { const t = want.tgt, e = want.eye, L0 = Math.hypot(e[0] - t[0], e[1] - t[1], e[2] - t[2]) || 1, k = 1 + m * RISE / L0; want = { ...want, eye: [t[0] + (e[0] - t[0]) * k, t[1] + (e[1] - t[1]) * k, t[2] + (e[2] - t[2]) * k] }; } } } }
+        // (v96) It never draws back. It comes in while that keeps them all on (CLOSE of the way, never nearer him than
+        // CLOSE_MIN); where it cannot (a view from above that frames the rings, or from the moment it no longer can), it goes
+        // slowly round what it looks at instead, at the same height and distance (ARC of the push's pace): the picture keeps
+        // moving without pulling back. It used to draw back level or along its own line there, up to 2.5 m by the choice, and
+        // to flip between coming in and drawing back from one frame to the next (lurches of 2 to 5 m: "the camera pulls back
+        // just before the choice"). Both only ever go on: how far it has come in and how far round never go back.
+        const full = Math.max(CLOSE * d, PUSH_M), pace = full / Math.max(1, P.dur) * Math.max(dt, 0), inOK = mm => d - mm >= CLOSE_MIN && keep(at(1 - mm / d));
+        if (!P.dir) P.dir = inOK(Math.max(m, full / 2)) ? 'in' : 'arc';
+        P.amt ??= 0; P.arc ??= 0;
+        if (P.dir === 'in') { const next = Math.min(m, P.amt + 2 * pace); if (next > P.amt) { if (inOK(next)) P.amt = next; else P.dir = 'arc'; } }
+        if (P.dir === 'arc') P.arc += ARC * pace;
+        want = at(1 - P.amt / d);
+        if (P.arc > 0) { const t = want.tgt, e = want.eye, x = e[0] - t[0], y = e[1] - t[1], r = Math.hypot(x, y) || 1;
+          if (P.side == null) { const turned = sd => { const q = sd * Math.min(.3, ARC * full / r), c = Math.cos(q), sn = Math.sin(q); return { ...want, eye: [t[0] + x * c - y * sn, t[1] + x * sn + y * c, e[2]] }; }; P.side = keep(turned(1)) || !keep(turned(-1)) ? 1 : -1; }
+          const q = P.side * Math.min(.3, P.arc / r), c = Math.cos(q), sn = Math.sin(q); want = { ...want, eye: [t[0] + x * c - y * sn, t[1] + x * sn + y * c, e[2]] }; } } } }
     this.lastWant = want;
     // (round 10) A view that changes at once (the arrows' view as he taps DRIBBLE, the goal view in a celebration): the
     // camera sets off for it from rest, its speed building up over a third of a second, never with a step in the first frame.
-    if (was && Math.hypot(want.eye[0] - was.eye[0], want.eye[1] - was.eye[1], want.eye[2] - was.eye[2]) > 1) this.camT0 = this.clock;
+    // (v96: once a third of a second: a view that changes at once frame after frame no longer holds the camera at rest)
+    if (was && Math.hypot(want.eye[0] - was.eye[0], want.eye[1] - was.eye[1], want.eye[2] - was.eye[2]) > 1 && !(this.clock - (this.camT0 ?? -9) < .35)) this.camT0 = this.clock;
     // In a skill moment the view comes round to the skill camera and back on the same orbit, eased (no cut), and
     // follows it closely meanwhile.
     const sw = smooth(this.skCam || 0); if (sw > 0) want = this.skillView(want, sw, dt);
-    if (!this.cam) { this.cam = { eye: [...want.eye], tgt: [...want.tgt], Ff: want.Ff, Fw: want.Fw }; return; }
+    if (!this.cam) { this.cam = { eye: [...want.eye], tgt: [...want.tgt], Ff: want.Ff, Fw: want.Fw, Fa: want.Fa || 0 }; return; }
     // While play waits for him to tap for a turn, the camera stays where it is (it comes in only if he taps).
     if (this.sk?.kind === 'turn' && this.sk.phase === 'offer') { this.camT0 = this.clock; return; }
     if (this.camMode !== this.camWas) { this.camWas = this.camMode; this.camT0 = this.clock; }
@@ -423,7 +455,7 @@ export const view = {
     for (let i = 0; i < 3; i++) c.tgt[i] = lerp(c.tgt[i], want.tgt[i], k);
     const yaw = o0[0] + wrap(o1[0] - o0[0]) * k, pitch = lerp(o0[1], o1[1], k), r = lerp(o0[2], o1[2], k);
     c.eye[0] = c.tgt[0] + Math.cos(yaw) * Math.cos(pitch) * r; c.eye[1] = c.tgt[1] + Math.sin(yaw) * Math.cos(pitch) * r; c.eye[2] = c.tgt[2] + Math.sin(pitch) * r;
-    c.Ff = lerp(c.Ff, want.Ff, k); c.Fw = lerp(c.Fw ?? want.Fw, want.Fw, k);
+    c.Ff = lerp(c.Ff, want.Ff, k); c.Fw = lerp(c.Fw ?? want.Fw, want.Fw, k); c.Fa = lerp(c.Fa || 0, want.Fa || 0, k); // (v96: shared.js focal)
   },
   // The skill camera starts: which way it looks (his run), from which side, and at whom (the nearest defender, if one
   // is close).
@@ -465,7 +497,7 @@ export const view = {
     // Someone else running close by the eye: it rises over him (smoothly, as he comes), so he never fills the screen.
     let lift = 0; for (const a of s.list) if (a !== h) lift = Math.max(lift, 2.6 - Math.hypot(a.x - eye[0], a.y - eye[1]));
     eye[2] += 1.1 * lift * w;
-    return { eye, tgt, Ff: lerp(want.Ff, C[5], w), Fw: lerp(want.Fw ?? C[6], C[6], w) };
+    return { eye, tgt, Ff: lerp(want.Ff, C[5], w), Fw: lerp(want.Fw ?? C[6], C[6], w), Fa: (want.Fa || 0) * (1 - w) + PHONE * w };
   },
   // Passing to a running friend: a white arrow on the grass in front of him shows which way he is running. Kept
   // per round, so the scene only builds it once.
@@ -487,6 +519,14 @@ export const view = {
     const plan = this.win?.plan || (this.phase === 'pre' && this.wplan?.sc === this.sc ? this.wplan : null), t = plan?.threat && s.a(plan.threat.id);
     if (t && this.sc?.kind !== 'receive') { const p = this.world.project(t.x, t.y, .8), f = this.world.project(t.x, t.y, 0), k = this.world.project(t.x, t.y, 1.7); if (p && f && k) { out.q[0] = p[0]; out.q[1] = p[1]; out.q[2] = clamp(Math.abs(f[1] - k[1]) * .75, 26, 90); out.hole = out.q; } }
     return out;
+  },
+  // (v96) Where a target of the teaching hand on the field is now: a player ({ id, z }), a choice ({ opt }: the arrow, ring,
+  // friend or space it is as this frame has it; demo.js tapAt), or a point ({ x, y, z }). null when it is gone.
+  handPoint(at) {
+    const p = (this.handPt ||= { x: 0, y: 0, z: 0 });
+    if (at.id) { const a = this.sim.a(at.id); if (!a) return null; p.x = a.x; p.y = a.y; p.z = at.z ?? .9; return p; }
+    if (at.opt) { const t = this.targets().find(x => x.opt === at.opt) || this.handSeen?.[at.opt]; if (!t) return null; (this.handSeen ||= {})[at.opt] = t; p.x = t.x; p.y = t.y; p.z = t.z ?? 0; return p; } // (kept: the step may close as the hand taps)
+    p.x = at.x; p.y = at.y; p.z = at.z ?? 0; return p;
   },
   updateHud() {
     const hud = this.hud, s = this.sim;
@@ -519,7 +559,7 @@ export const view = {
     let id = null, x = null, y = null;
     if (typeof at === 'string') id = at;
     else if (at?.sx != null) { const v = this.viewSize(); x = at.sx * v.w; y = at.sy * v.h; }
-    else if (at) { const q = this.world.project(at.x, at.y, at.z ?? 0); if (q) [x, y] = q; }
+    else if (at) { const p = this.handPoint(at), q = p && this.world.project(p.x, p.y, p.z); if (q) [x, y] = q; }
     if (last.on !== !!at || last.id !== id || last.x !== x || last.y !== y || last.tap !== tap) {
       Object.assign(last, { on: !!at, id, x, y, tap });
       hud.hand(id ?? (x == null ? null : [x, y]), this.handTap);

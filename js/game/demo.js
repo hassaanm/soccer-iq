@@ -10,6 +10,7 @@ const talkSec = (text, pause = 1.2) => .6 + text.length / 12 + pause;
 // before the demo ends it itself (demo.js within). The longest takes about 8 s, with the voice at up to three times its time.
 const PLAY_MAX = 40;
 const TAP = 1.2; // tapAt: the hand's move to the button and its tap
+const STEADY = { max: 1.2, px: 1.5, n: 4, sec: .3 }; // (v96) steady: the most it waits, the screen's movement a frame that counts as still, for how many frames; sec: what tapsSec counts for it
 // (v76) A demo's crawl while its idea is said: the slowest and the fastest share of play's speed, and the most of the
 // window's play it may use up (demo.js crawlFor).
 const CRAWL = [.015, .06], CRAWL_U = .2, RING_DRAIN = [.12, .29]; // (RING_DRAIN: the least and most of the ring that drains while the idea is said)
@@ -151,10 +152,10 @@ export const demo = {
     let t = sc.kind === 'tackle' ? .6 : sc.kind === 'receive' ? .4 : !this.lookUp ? TAP + .5 : 0;
     if (!this.checkedBack && this.scanWhy(sc) === 'shoulder') t += SHOULDER.turn + SHOULDER.hold + SHOULDER.back; // (v78: showTaps looks over his shoulder first)
     const off = p => (p && !this.onScreen(p) ? 1.8 : 0); // (dragTo)
-    if (MATE[opt]) { const m = this.sim.a(MATE[opt]); t += off(m && { ...m, z: .9 }) + TAP + .3 + TAP; }
-    else if (opt === 'shoot' || opt.startsWith('shoot:')) { const [, sp, ft] = opt.split(':'), parts = opt === 'shoot' ? {} : this.shotParts(); t += .5 + TAP + (parts.space && sp !== '*' ? .6 + TAP : 0) + (parts.foot && ft !== '*' ? .5 + TAP : 0); }
-    else if (/^(drib|push):/.test(opt)) t += TAP + .5 + TAP + (this.pushAllowed ? .3 + TAP : 0);
-    else if (opt.startsWith('spot:') || opt.startsWith('turn:')) { const sp = sc.spots?.find(p => 'spot:' + p.id === opt); t += (sp ? off(sp) : 0) + TAP; }
+    if (MATE[opt]) { const m = this.sim.a(MATE[opt]); t += off(m && { ...m, z: .9 }) + TAP + .3 + TAP + STEADY.sec; }
+    else if (opt === 'shoot' || opt.startsWith('shoot:')) { const [, sp, ft] = opt.split(':'), parts = opt === 'shoot' ? {} : this.shotParts(); t += .5 + TAP + (parts.space && sp !== '*' ? .6 + TAP + STEADY.sec : 0) + (parts.foot && ft !== '*' ? .5 + TAP : 0); }
+    else if (/^(drib|push):/.test(opt)) t += TAP + .5 + TAP + STEADY.sec + (this.pushAllowed ? .3 + TAP : 0);
+    else if (opt.startsWith('spot:') || opt.startsWith('turn:')) { const sp = sc.spots?.find(p => 'spot:' + p.id === opt); t += (sp ? off(sp) : 0) + TAP + STEADY.sec; }
     return t;
   },
   // Before a shot he is clear for (v72): no look around for friends. One glance up at the goal (and the keeper), to pick
@@ -170,11 +171,26 @@ export const demo = {
   // the arrow (and small touches or big push), SHOOT, a spot to run to, a turn arrow, or STEAL. So he learns
   // which buttons do what along with the idea. `handAt` is a button id, a point on the field {x, y, z}, or a
   // point on the screen {sx, sy} (fractions of its size).
+  // (v96) A target on the field is named, not copied: a player ({ id }) or a choice ({ opt }), and the hand follows it
+  // where it is now (view.js handPoint). The hand sets off for it only once it holds still on the screen (steady): the
+  // owner, of the demo's dribble, "it changed before it actually clicked". The hand was sent to where the arrow had been
+  // while the view was still rising to the arrows, and slid over the other arrows on its way.
   async tapAt(target, wait = .8) {
+    if (this.skipping) return;
+    if (typeof target === 'object' && target && target.sx == null) await this.steady(target);
     if (this.skipping) return;
     this.handAt = target; await this.delay(wait);
     if (this.skipping) return;
     this.handTap = (this.handTap || 0) + 1; this.sfx('click'); await this.delay(.4);
+  },
+  // (v96) Waits (real time, STEADY.max s at the most) until `target` stays where it is on the screen: STEADY.px or less a
+  // frame, STEADY.n frames in a row (the view has come round to it).
+  async steady(target) {
+    if (this.skipping) return;
+    let last = null, calm = 0;
+    this.realJobs = true; const j = this.job(STEADY.max, null, () => { const p = this.handPoint(target), q = p && this.world.project(p.x, p.y, p.z); if (!q) return false;
+      calm = last && Math.hypot(q[0] - last[0], q[1] - last[1]) <= STEADY.px ? calm + 1 : 0; last = q; return calm >= STEADY.n; }); this.realJobs = false;
+    await j.done;
   },
   // A drag on the screen turns his head: the hand slides the way a finger would (see lookMove).
   async dragTo(yaw, sec = 1) {
@@ -206,26 +222,25 @@ export const demo = {
       if (!this.onScreen({ ...m, z: .9 })) await this.dragTo(face(m));
       this.seen.add(MATE[opt]);
       await this.tapAt('passBtn'); this.step = 'pass'; await this.delay(.3);
-      await this.tapAt({ x: m.x, y: m.y, z: .9 });
+      await this.tapAt({ id: m.id, z: .9 });
     } else if (opt === 'shoot' || opt.startsWith('shoot:')) {
       await this.glanceAtGoal(.5); // (v72: his eyes on the goal, never a look left and right first)
       await this.tapAt('shootBtn');
       if (opt !== 'shoot') { // then the space in the goal, and the foot (v62)
         const [, sp, ft] = opt.split(':'), parts = this.shotParts();
-        if (parts.space && sp !== '*') { this.step = 'aim'; await this.delay(.6); const t = this.targets().find(x => x.opt === 'aim:' + sp); if (t) await this.tapAt(t); this.shotSpace = sp; }
+        if (parts.space && sp !== '*') { this.step = 'aim'; await this.delay(.6); if (this.targets().some(x => x.opt === 'aim:' + sp)) await this.tapAt({ opt: 'aim:' + sp }); this.shotSpace = sp; }
         if (parts.foot && ft !== '*') { this.step = 'foot'; await this.delay(.5); await this.tapAt(ft === 'in' ? 'footIn' : 'footLaces'); }
       }
     } else if (/^(drib|push):/.test(opt)) {
       const d = opt.slice(5);
       await this.tapAt('dribBtn'); this.step = 'dribble'; await this.delay(.5); // the camera rises to show the arrows
-      const t = this.targets().find(x => x.opt === 'drib:' + d);
-      if (t) await this.tapAt(t);
+      if (this.targets().some(x => x.opt === 'drib:' + d)) await this.tapAt({ opt: 'drib:' + d });
       if (this.pushAllowed) { this.pendingDir = d; await this.delay(.3); await this.tapAt(opt.startsWith('push:') ? 'touchBig' : 'touchSmall'); }
     } else if (opt.startsWith('spot:') || opt.startsWith('turn:')) {
       this.step = opt.startsWith('spot:') ? 'spot' : 'turn';
       const t = this.targets().find(x => x.opt === opt);
       if (t && opt.startsWith('spot:') && !this.onScreen(t)) await this.dragTo(face(t));
-      if (t) await this.tapAt(t);
+      if (t) await this.tapAt({ opt });
     }
   },
   // (v76) A guard for a wait that depends on the play (a ball that has to come to rest, a player who has to get there): it

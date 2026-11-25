@@ -1159,3 +1159,35 @@ body.logon #logTab{display:grid}
 /* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
 #score em.bump2{animation:bump2 .7s var(--bounce)}
 @keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
+
+/* ===== v96 CLASSIC: the head-down edge on a screen narrower than a phone's (an iPad's 4:3, a square window) =====
+   Sized from the screen's height, as the view itself is there (js/game/shared.js focal: the phone's own height of field,
+   less to the sides): the clear middle round his player is the same size against him as on the phone the game is tuned
+   for (932x430), not stretched to a tall oval that leaves next to no edge. Wider screens (16:9 phones and up): as before.
+   Smooth (no blur): the edge's layer is the phone's shape (2 x 2.167 times the height wide, twice the height high), centred as before;
+   with the blur, the mask's oval is the phone's size against the height. Steps of the same blend as the view's. */
+@media (max-aspect-ratio: 7/4) {
+  body.smooth:not(.blur) #tunnel{left:calc(50vw - 185vh);right:auto;width:370vh}
+  #tunnel,body.smooth.blur #tunnel{
+    -webkit-mask:radial-gradient(ellipse 85vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    mask:radial-gradient(ellipse 85vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    -webkit-mask-composite:source-in;mask-composite:intersect}
+  body.smooth:not(.blur) #tunnel{-webkit-mask:none;mask:none}
+}
+@media (max-aspect-ratio: 8/5) {
+  body.smooth:not(.blur) #tunnel{left:calc(50vw - 205vh);width:410vh}
+  #tunnel,body.smooth.blur #tunnel{
+    -webkit-mask:radial-gradient(ellipse 94vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    mask:radial-gradient(ellipse 94vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    -webkit-mask-composite:source-in;mask-composite:intersect}
+  body.smooth:not(.blur) #tunnel{-webkit-mask:none;mask:none}
+}
+@media (max-aspect-ratio: 29/20) {
+  body.smooth:not(.blur) #tunnel{left:calc(50vw - 216.7vh);width:433.4vh}
+  #tunnel,body.smooth.blur #tunnel{
+    -webkit-mask:radial-gradient(ellipse 99.7vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    mask:radial-gradient(ellipse 99.7vh 52vh at var(--tx) var(--ty),transparent 55%,#000 100%),radial-gradient(circle at var(--hx) var(--hy),transparent var(--hr),#000 calc(var(--hr) + 36px));
+    -webkit-mask-composite:source-in;mask-composite:intersect}
+  body.smooth:not(.blur) #tunnel{-webkit-mask:none;mask:none}
+}
+/* ===== end v96 CLASSIC ===== */

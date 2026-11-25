@@ -14,6 +14,7 @@
 // Slow motion only changes how much game time each frame steps, so the play goes on exactly as it would have.
 import { touchAt, turnSide, TURN_SKILLS, RUN_MOVES, EXIT_FREE } from '../sim.js';
 import { JOCK } from '../window.js';
+import { L, gy0, gy1 } from './shared.js';
 import { MOVE_NAME } from '../flair.js';
 
 const PACE = [.12, .3];       // game speed while the moves are offered: the slower end when the defender comes on fast (.12: the slowest a choice's window goes, window.js PACE)
@@ -39,6 +40,7 @@ export function nameButtons(alts) {
 
 const ANY_NEAR = 1.6;         // (v76 SL) a plain turn (sim.js turnAhead 'any') is offered only with the defender this far off or more (m)
 const OFFER_MIN = 1.6, GONE = 2.7, RUN_END = 1.5; // (v76 SL) the least real seconds an offer shows (runLeft); m: a defender this near along his way withdraws a run-at offer (sim.js offerGone: LATE + a touch, 2.6 m, and a little to spare)
+const CLEAR = 1.9, SHOOT_NEAR = 8.4; // (v96) offerClear: m from him no one of theirs may come in an offer's shortest showing; m from where he aims a shot at the goal he may shoot from (outcomes.js finish: 8)
 const STEP = 1 / 480; // seconds of game time in one step (see skillFrame)
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const pick = (x, y) => (Math.floor(Math.abs(x * 7.31 + y * 13.7) * 10) & 1); // which of the two moves is the better one: from where he is (the same in a replay)
@@ -87,6 +89,20 @@ export const skill = {
     const ch = Math.cos(b.h), sh = Math.sin(b.h), f = (t.x - h.x) * ch + (t.y - h.y) * sh, v = t.duelV || t.lv || [0, 0], close = Math.max(.5, Math.max(1.5, h.sp) - (v[0] * ch + v[1] * sh));
     const run = (Math.hypot(h.tx - h.x, h.ty - h.y) - RUN_END) / Math.max(1.5, h.sp); // (and before his run ends: a play may stop him a little short of where it sends him)
     return Math.max(.05, Math.min(last, (f - GONE) / close, run));
+  },
+  // (v96) Whether nothing else ends a run-at offer before it has shown OFFER_MIN real seconds: the game time that takes at
+  // the pace it will be shown at (skillOffer), with everyone going on as he goes now. Not one of theirs within CLEAR m of
+  // him in that time (the play's rule: one at him, or a step and a half in front of him, stops the run: outcomes.js onHim,
+  // finish), and not near enough to the goal to shoot (finish: within 8 m). One in 170 offers at 5v5 flashed for half a
+  // second: the step-up's defender held him up, and another of theirs came in from the side and got to him first.
+  offerClear(o) {
+    const s = this.sim, h = s.a('hero'); if (!h) return false;
+    const pace = Math.min(PACE[1], Math.max(PACE[0], this.runLeft(o) / OFFER_REAL)), need = (OFFER_MIN + .15) * pace, hv = h.lv || [0, 0];
+    for (const t of s.team('them')) { if (t.beat > s.time) continue;
+      const v = t.lv || [0, 0], px = t.x - h.x, py = t.y - h.y, vx = v[0] - hv[0], vy = v[1] - hv[1], vv = vx * vx + vy * vy, u = vv > 1e-6 ? Math.max(0, Math.min(need, -(px * vx + py * vy) / vv)) : 0; // (the nearest they come in that time)
+      if (Math.hypot(px + vx * u, py + vy * u) < CLEAR) return false; }
+    const x = h.x + hv[0] * need, y = h.y + hv[1] * need;
+    return !(Math.hypot(L - x, Math.max(gy0 + .8, Math.min(gy1 - .8, y)) - y) < SHOOT_NEAR); // (where he aims: outcomes.js finish)
   },
   // Before the frame's game time: the speed of play this frame. Returns the game time to step (dt scaled).
   skillPace(dt) {
@@ -205,7 +221,7 @@ export const skill = {
   // After the frame's step: a new offer, the time left, the move starting and playing, and skill moves by everyone else.
   skillWatch(dt) {
     const s = this.sim, h = s.a('hero'), b = s.ball;
-    if (!this.sk && h?.offer && this.phase === 'outcome') { if (h.offer.kind === 'run' && this.runLeft(h.offer) / PACE[0] < OFFER_MIN) h.offer = null; else this.skillOffer(h.offer); } // (v76 SL: too short to show: none)
+    if (!this.sk && h?.offer && this.phase === 'outcome') { if (h.offer.kind === 'run' && (this.runLeft(h.offer) / PACE[0] < OFFER_MIN || !this.offerClear(h.offer))) h.offer = null; else this.skillOffer(h.offer); } // (v76 SL: too short to show: none)
     const sk = this.sk;
     if (sk?.phase === 'offer') {
       const demo = this.mode === 'demo', left = sk.kind === 'turn' ? clamp01(1 - (s.time - sk.g0) / this.holdG()) : clamp01((sk.last - touchAt(h)) / Math.max(.01, sk.last - sk.n0));

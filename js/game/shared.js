@@ -15,3 +15,16 @@ export const facesBall = sc => (spotKind(sc) && sc.kind !== 'lead') || sc?.kind 
 export const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 // Turns player `a` to face the point (x, y).
 export const faceTo = (a, x, y) => { const dx = x - a.x, dy = y - a.y, l = Math.hypot(dx, dy) || 1; a.face = [dx / l, dy / l]; };
+// (v96) The lens (focal length, px) for a view `c` ({ Ff, Fw, Fa }) on a w x h picture, as world.js draws it: from the
+// height (Ff) and the width (Fw), whichever is longer, so a wide phone does not see more of the field. `Fa` (the player's
+// own views, game/view.js): on a screen narrower than a phone's (an iPad's 4:3, a square window), the field is never taller
+// than at aspect Fa (the phone the game is tuned for, PHONE): his player and the ball fill the same share of the height,
+// and the screen shows less to the sides, not more above and below him (the owner on a square window: "a bird's-eye view,
+// very high up"). It starts below FA_FROM (1.75: a 16:9 phone and every wider one are as before) and is whole by FA_FULL.
+export const PHONE = 932 / 430, FA_FROM = 1.75, FA_FULL = 1.45;
+export function focal(w, h, c) {
+  const F = Math.max(h * c.Ff, w * (c.Fw || 0)), a = w / h;
+  if (!c.Fa || !c.Fw || a >= FA_FROM) return F;
+  const t = Math.min(1, (FA_FROM - a) / (FA_FROM - FA_FULL)), k = t * t * (3 - 2 * t);
+  return Math.max(F, h * c.Fw * (a + (Math.max(a, c.Fa) - a) * k));
+}
