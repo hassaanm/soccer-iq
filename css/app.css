@@ -1165,3 +1165,17 @@ body.logon #logTab{display:grid}
 /* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
 #score em.bump2{animation:bump2 .7s var(--bounce)}
 @keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
+
+/* ---------- SMALL worker (v96) ---------- */
+/* STEAL has its own look: red-orange with white words, so it is never taken for SHOOT or the skill button (those keep
+   their gold). Live's action button wears it only while it says STEAL (data-kind). */
+#fAct[data-kind=steal],#rSteal{--top:#ff7a45;--bot:#e8441f;--edge:#a52b10;color:#fff;text-shadow:0 1px 0 rgba(90,20,0,.35)}
+/* And it shows by how far the ball is (js/ui/steal-look.js): far = not shown at all; mid = small and dim (a press still
+   lunges and misses); in = full size and bright, with a short pop. Only opacity and scale change; the button is already
+   laid out and on its own layer (never made or measured in play). */
+#rSteal{will-change:transform,opacity}
+#fastHud #fAct.sl-far,#rondoHud #rSteal.sl-far{opacity:0;scale:.6;pointer-events:none!important;animation:none;transition:scale .2s ease-out,opacity .2s ease-out}
+#fastHud #fAct.show.sl-mid,#rondoHud #rSteal.sl-mid{opacity:.5;scale:.6;animation:none;transition:scale .2s ease-out,opacity .2s ease-out}
+#fastHud #fAct.show.sl-in,#rondoHud #rSteal.sl-in{opacity:1;scale:1;animation:stealPop .34s var(--bounce);transition:scale .2s ease-out,opacity .2s ease-out}
+@keyframes stealPop{0%{scale:.6}55%{scale:1.2}100%{scale:1}}
+@media (prefers-reduced-motion:reduce){#fastHud #fAct.show.sl-in,#rondoHud #rSteal.sl-in{animation:none}}

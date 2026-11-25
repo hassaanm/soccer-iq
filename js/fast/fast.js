@@ -31,6 +31,7 @@ import { MOVE_NAME, MOVE_SYM } from '../flair.js';
 import { matchShot, SAID } from '../saves.js';
 import { warmMini } from '../ui/voicewarm.js';
 import { P } from '../ui/store.js';
+import { stealState, setStealLook } from '../ui/steal-look.js';
 import { VARIANTS, variantOf, Decision, bigChoices, bigAt } from './variant.js';
 
 export const CAM_TURN = 2.6; // rad/s (v89 integration: fast.js camNow)
@@ -157,7 +158,7 @@ class Fast {
     this.ui.clock = 0; this.ui.glow = {}; this.ui.aims = null; this.ui.lines = null; this.warnAt = null; this.warnT = 0; this.over = false;
     this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
     this.dom.look.classList.remove('show'); this.dom.cue.classList.remove('show'); this.dom.pic.classList.remove('show');
-    this.aiming = false; this.ui.ballGlow = false; this.actKind = null; this.actKey = ''; this.skillOpts = null; this.skUsed = {}; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
+    this.aiming = false; this.ui.ballGlow = false; this.actKind = null; this.actKey = ''; this.stealSt = ''; setStealLook(this.dom.act, ''); this.skillOpts = null; this.skUsed = {}; this.skT = -9; m.meAuto = false; // (he wins a tackle with STEAL, not by standing there)
     this.set = null; this.chosen = null; this.shotAt = null; this.dom.act2.classList.remove('show');
     this.stats = { keeperTurns: 0, saves: 0, cues: 0, shots: 0, shotGoals: 0, steals: 0, stealMiss: 0, spentTaps: 0, skills: 0, deadTaps: 0, spotTaps: 0, presses: 0, sets: 0, shotEnds: [], chipPasses: 0, played: 0, slowT: 0, decT: 0, stopT: 0, decs: 0, decOut: 0, ringTakes: 0, blocked: 0, bigTaps: 0, holdT: 0, holds: 0, actions: 0, looks: 0, taps: 0, swaps: 0, camN: 0, camBall: 0, camGoal: 0, frames: [], work: [], downs: 0, headDownT: 0 };
     this.yaw = this.natural(); this.vw = null; this.camNow(1);
@@ -180,7 +181,7 @@ class Fast {
     for (const k of ['look', 'cue', 'pic']) this.dom?.[k]?.classList.remove('show'); this.dom?.box.querySelector('#fNext')?.classList.remove('show');
     FAST.on = this.on = false; this.marks?.hide(); this.dom?.box.classList.remove('on'); this.dom?.sheet.classList.add('hidden'); hudEl.classList.remove('fpicking');
     const t = this.dom?.tunnel; if (t) { t.style.opacity = 0; t.classList.remove('on'); t.style.transform = ''; }
-    this.ui.glow = {}; this.ui.aims = null; this.ui.ballGlow = false; this.aiming = false; this.dom?.act.classList.remove('show'); this.dom?.act2.classList.remove('show'); this.actKind = null; this.actKey = ''; this.finger = null; this.holding = false; this.dom?.box.classList.remove('slowing'); this.set = null; this.chosen = null;
+    this.ui.glow = {}; this.ui.aims = null; this.ui.ballGlow = false; this.aiming = false; this.dom?.act.classList.remove('show'); this.dom?.act2.classList.remove('show'); this.actKind = null; this.actKey = ''; this.stealSt = ''; if (this.dom) setStealLook(this.dom.act, ''); this.finger = null; this.holding = false; this.dom?.box.classList.remove('slowing'); this.set = null; this.chosen = null;
     for (const d of this.dom?.chips || []) { d.o = 0; d.b.style.opacity = 0; d.b.style.pointerEvents = 'none'; }
   }
   counts() {
@@ -456,6 +457,11 @@ class Fast {
     };
     set(this.dom.act, k, opts?.[0]); set(this.dom.act2, null); // (v93: one button; the second stays hidden)
   }
+  // (v96) STEAL's look from the ball's distance (ui/steal-look.js): a class only when it changes, never a node or a layout read.
+  stealLook(h) {
+    const st = this.actKind === 'steal' && h ? stealState(Math.hypot(this.sim.ball.x - h.x, this.sim.ball.y - h.y), this.ui.ballGlow, this.stealSt === 'far') : '';
+    if (st !== this.stealSt) { this.stealSt = st; setStealLook(this.dom.act, st); }
+  }
   action(i = 0) {
     const k = this.actionNow(); if (!k || !this.on || held.on) return;
     this.acted(k);
@@ -629,6 +635,7 @@ class Fast {
       if (m.score.us === m.score.them) { this.dom.box.querySelector('#fNext').classList.add('show'); soon(() => say('Next goal wins!')); sfx('ping'); } game.plog?.('fast', { is: 'nextGoalEnds', level: m.score.us === m.score.them ? 1 : 0 }); }
     if (this.real > END_S && !this.over && !m.dead) { this.over = true; m.dead = true; s.stopAll(); this.finish(); return; }
     this.ui.ballGlow = this.actKind === 'steal' && m.canSteal(); this.stealGlow = this.ui.ballGlow; // (only while a press would win it now)
+    this.stealLook(h); // (v96: STEAL shows by how far the ball is: not at all, small and dim, or full and bright)
     if (this.aiming && (m.owner() !== this.me || this.real - this.aimT > AIM_S)) this.endAim();
     if (this.aiming && h) this.yaw = R.wrap(this.yaw + R.wrap(Math.atan2(PITCH.W / 2 - h.y, PITCH.L - h.x) - this.yaw) * (1 - Math.exp(-dt * 6)));
     if (this.warnAt && (this.real > this.warnT || !has)) this.warnAt = null;
