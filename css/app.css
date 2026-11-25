@@ -1159,3 +1159,24 @@ body.logon #logTab{display:grid}
 /* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
 #score em.bump2{animation:bump2 .7s var(--bounce)}
 @keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
+
+/* ---------- OPEN (v96): Who's open? (js/mini/open-ui.js) ----------
+   The two turn arrows at the bottom corners (big, always there in a run), and the chips at the side edges for friends he
+   saw who are off the screen now: nodes made once; a chip moves by transform and shows by opacity. */
+#openHud{display:none}
+#openHud.on{display:block}
+#openHud .oTurn{display:flex;bottom:calc(18px + var(--safe-b));width:92px;height:92px;pointer-events:auto;gap:0}
+#oLeft{left:calc(20px + var(--safe-l))}
+#oRight{right:calc(20px + var(--safe-r))}
+#openHud .oTurn svg{width:52px;height:52px;display:block}
+#openHud .oTurn i{font-size:22px;margin-top:-6px}
+#openHud .oTurn.pressed{animation:oPress .3s ease-out}
+@keyframes oPress{0%{transform:scale(1)}35%{transform:scale(.86)}100%{transform:scale(1)}}
+#oChips{position:absolute;inset:0;pointer-events:none}
+.oChip{position:absolute;left:0;top:0;width:56px;height:56px;padding:0;border:3px solid rgba(255,255,255,.9);border-radius:50%;background:rgba(36,25,58,.66);opacity:0;pointer-events:none;transition:opacity .2s;will-change:transform,opacity;display:grid;place-items:center}
+.oChip.show{opacity:1;pointer-events:auto}
+.oChip::after{content:'';position:absolute;left:-13px;top:50%;margin-top:-8px;border:8px solid transparent;border-right:10px solid #fff;border-left:0}
+.oChip.r::after{left:auto;right:-13px;border-right:0;border-left:10px solid #fff}
+.oChip .pic{position:relative;display:block;width:34px;height:31px}
+.oChip .pic > span{position:absolute;inset:0;opacity:0}
+.oChip .pic > span.on{opacity:1}

@@ -13,9 +13,10 @@ import { runPenalties } from './pens-ui.js';
 import { runRondoKeep, runRondoWin } from './rondo-ui.js'; // (v88)
 import { runAttack } from './attack-ui.js';
 import { runPuzzles } from './puzzle-ui.js';
+import { runOpen } from './open-ui.js'; // (v96)
 import { makeStarter } from './starter.js';
 
-const RUN = { keeper: runKeeper, pens: runPenalties, rondoKeep: runRondoKeep, rondoWin: runRondoWin, attack: runAttack, puzzles: runPuzzles };
+const RUN = { keeper: runKeeper, pens: runPenalties, rondoKeep: runRondoKeep, rondoWin: runRondoWin, attack: runAttack, puzzles: runPuzzles, whoOpen: runOpen };
 
 // The sheet, made once (the lesson picker's look: css .sheet).
 const sheet = document.createElement('section');
