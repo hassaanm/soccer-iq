@@ -1,7 +1,8 @@
-// Soccer puzzles (v90, rules redone in v93: mini/puzzle.js): every puzzle shown is solved first; the obvious lines fail
-// and few first moves win; a keeper standing still covers the whole goal, one who just moved covers his spot and the one
-// he came from; the other team answers by the stated rule; a tap that is not a move costs nothing; a cut pass, a
-// tackle, a block, a save and running out of moves fail it; two lives end a run; the difficulty only rises.
+// Soccer puzzles (v90, rules redone in v93, v96: a friend's run and the lane defender: mini/puzzle.js): every puzzle
+// shown is solved first; the obvious lines fail and few first moves win; a keeper standing still covers the whole goal,
+// one who just moved covers his spot and the one he came from; the other team answers by the stated rule; a tap that is
+// not a move costs nothing; a cut pass, a tackle, a block, a save and running out of moves fail it; two lives end a run;
+// the difficulty only rises. (The new situations: tests/puzzle-v96.test.js.)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makePuzzle, rebuild, puzzleLevel, STEPPED, Board, startOf, shortest, solutions, Solver, ideaOf, ideasOf, IDEAS, check, play, cutBy, goalRows, mid, inBox, movesFrom, bestFirst, rng, LANE, easyPuzzle, covers, obviousWin } from '../js/mini/puzzle.js';
@@ -26,15 +27,19 @@ test('every puzzle shown is solved first, the obvious lines fail, few first move
     assert.ok(pz.tries > 0, 'made by the generator, not the last resort');
   }
 });
-test('the first puzzle is the plainest keeper case (pass across, finish); from a score of 1, three moves; by 6, two ideas', () => {
+test('the first puzzle is the plainest keeper case (pass across, finish); a score of 1 is two moves again; from 2, three', () => {
   for (let i = 0; i < 30; i++) {
     const p0 = makePuzzle(0, 100 + i), s0 = startOf(p0);
     assert.deepEqual([p0.len, p0.moves, p0.start.d.length / 2, p0.start.o.length / 2, p0.best[0][0], p0.best[1][0]], [2, 3, 1, 2, 'p', 's']);
     assert.equal(shortest(p0, s0, 1), 0, 'no shot at once');
     const r = play(p0, s0, p0.best[0]); assert.ok(r.s.k >= 0 && !covers(r.s, +p0.best[1].slice(1)), 'the pass moves the keeper; the shot goes to the spot he cannot reach');
-    const pz = makePuzzle(STEP, 100 + i), s = startOf(pz);
+    const p1 = makePuzzle(STEP, 100 + i), s1 = startOf(p1);
+    assert.deepEqual([p1.len, p1.moves, p1.start.d.length / 2], [2, 3, 1], 'a score of 1: the keeper rule again, two moves, one defender to get round');
+    assert.equal(obviousWin(p1, s1, p1.moves), null, 'but not the obvious line');
+    const pz = makePuzzle(2 * STEP, 100 + i), s = startOf(pz);
     assert.equal(pz.len, 3); assert.equal(pz.moves, 4); assert.equal(shortest(pz, s, 2), 0, 'no two-move goal');
-    const p6 = makePuzzle(6 * STEP, 200 + i); assert.ok(p6.ideas.length >= 2 && p6.moves === p6.len, `score 6: ${p6.ideas}`);
+    const p6 = makePuzzle(7 * STEP, 200 + i); assert.ok(p6.moves === p6.len && p6.len >= 3, 'from 7: no spare move');
+    const p13 = makePuzzle(13 * STEP, 200 + i); assert.ok(p13.ideas.length >= 2, `score 13: ${p13.ideas}`);
   }
 });
 
@@ -138,8 +143,9 @@ test('the difficulty: every number goes the hard way only, one of them a success
     if (!a.sec && b.sec) assert.ok(b.sec >= 110, 'it comes in long');
   }
   const z = puzzleLevel(0), o = puzzleLevel(STEP); assert.deepEqual([z.def, z.ours, z.lenLo, z.lenHi, z.spare, z.sec], [1, 2, 2, 2, 1, 0], 'the first: one defender, a friend, two moves');
-  assert.deepEqual([o.def, o.lenLo, o.spare, o.firsts, o.sec], [2, 3, 1, 3, 0], 'then: two defenders, three-move puzzles, one spare');
-  const h = puzzleLevel(50); assert.ok(h.lenLo === 6 && h.def === 6 && h.sec > 30 && h.sec < 40, 'it keeps getting harder');
+  assert.deepEqual([o.def, o.lenLo, o.lenHi, o.spare, o.firsts, o.sec], [1, 2, 2, 1, 3, 0], 'then: two moves again, one defender, one spare');
+  const h = puzzleLevel(50); assert.ok(h.lenLo === 6 && h.def === 4 && h.sec > 30 && h.sec < 40, 'it keeps getting harder');
+  for (const L of big) { const d = puzzleLevel(L); assert.ok(d.W <= 7 && d.H <= 6 && d.ours <= 4 && d.def <= 4, 'the board fits the screen (taps 44 px and more) and the 3D world\'s bodies (four a side)'); }
 });
 
 test('bots: picking a winning move 90% of the time does far better than random; random rarely scores', () => {

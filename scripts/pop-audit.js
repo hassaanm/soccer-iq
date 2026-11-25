@@ -226,6 +226,12 @@ export function judge(r) {
   const big = out.synPaints.filter(x => /id='flash'/.test(x)); if (big.length) out.fails.push(`result: the full-screen flash was painted (${big.join(', ')})`);
   if (plays > L.PLAYS_PER_FRAME) out.fails.push(`sound: ${plays} players started between two frames (limit ${L.PLAYS_PER_FRAME})`);
   if (out.hudNodes > L.HUD_NODES) out.fails.push(`nodes: ${out.hudNodes} nodes made or dropped by the result path`);
+  // (v96, the puzzles in the 3D world) Nothing made in play: every mark, body, shader and page node is made before the
+  // first puzzle shows (the start window). The mini bar's own score and best (run.js: its b and u text) are not the game's.
+  if (r.id === 'puzzles') {
+    out.made = m.filter(x => x[0] > t0 + L.START_S * 1000 && (/^(shader compiled|mesh made|texture made)/.test(x[1]) || (/^html nodes/.test(x[1]) && !/\((b|u|b,u|u,b)\)$/.test(x[1])))).map(x => x[1]);
+    if (out.made.length) out.fails.push(`made: ${out.made.length} in play (${[...new Set(out.made)].slice(0, 4).join('; ')})`);
+  }
   if (r.errs?.length) out.fails.push(`errors: ${r.errs.join(' | ').slice(0, 300)}`);
   const sorted = f.map(x => x[1]).filter(x => x > 0).sort((a, b) => a - b); out.usual = sorted[sorted.length >> 1] || 0;
   out.frames = f.length; out.marks = m.length;
@@ -333,7 +339,7 @@ export async function popAudit({ games = GAMES, secs = SECS, live = LIVE_IDS, lo
     for (const id of games) {
       const raw = await playOne(b, base, id, secs), r = judge(raw); rows.push(r); fails += r.fails.length;
       if (arg('dump')) writeFileSync(path.join(arg('dump'), id + '.json'), JSON.stringify(raw));
-      log(`  ${id.padEnd(10)} usual ${r.usual.toFixed(0)} ms | start ${fmt(r.start)} (3D set-up ${r.setup ? r.setup.ms.toFixed(0) + ' ms' : '-'}) | result ${fmt(r.resultWorst)} (${r.results.length}) | kick ${fmt(r.kickWorst)} (${r.kicks.length}) | clips at start ${r.startClips}, most decoded in a frame ${r.decodeMost}, in play ${r.lateClips.length} | hud nodes ${r.hudNodes} | at results: images decoded ${r.synDecodes}, painted ${r.synPaints.join(' ').replace(/DIV id=|'/g, '') || '-'}, most players started in a frame ${r.playsMost}`);
+      log(`  ${id.padEnd(10)} usual ${r.usual.toFixed(0)} ms | start ${fmt(r.start)} (3D set-up ${r.setup ? r.setup.ms.toFixed(0) + ' ms' : '-'}) | result ${fmt(r.resultWorst)} (${r.results.length}) | kick ${fmt(r.kickWorst)} (${r.kicks.length}) | clips at start ${r.startClips}, most decoded in a frame ${r.decodeMost}, in play ${r.lateClips.length} | hud nodes ${r.hudNodes} | at results: images decoded ${r.synDecodes}, painted ${r.synPaints.join(' ').replace(/DIV id=|'/g, '') || '-'}, most players started in a frame ${r.playsMost}${r.made ? ` | made in play ${r.made.length}` : ''}`);
       for (const x of r.fails) log(`     FAIL ${x}`);
     }
     for (const v of live) {
