@@ -999,40 +999,26 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #rSlow{position:absolute;inset:0;background:rgba(120,175,255,.1);opacity:0;transition:opacity .25s;pointer-events:none;will-change:opacity}
 #rondoHud.slowing #rSlow{opacity:1}
 
-/* Soccer puzzles (v90, mini/puzzle-ui.js): the board from straight above over the whole screen, under the bar and the
-   home and pause buttons. The pitch is one SVG drawn once a puzzle; counters, the ball and the rings are nodes made once
-   and moved by transform only; the moves left are footballs down the left edge, the sand timer down the right. */
-#pz{position:absolute;inset:0;pointer-events:auto;touch-action:none;background:radial-gradient(ellipse at 60% 45%,#3a2c66 0%,#2a1f4d 55%,#1d1538 100%)}
+/* Soccer puzzles (v90; v96 in the 3D world, mini/puzzle-ui.js): the board is the 3D picture; this layer holds only the
+   moves he has left (balls down the left edge), the sand timer (right edge) and a line of words for a grown-up. Taps
+   pass through it to the picture. Nodes made once; in play only classes and transforms change. */
+#pz{position:absolute;inset:0;pointer-events:none}
 #pz.hidden{display:none}
-#pz .pitch,#pz .marks{position:absolute;display:block;overflow:visible;pointer-events:none}
-#pz .pcs{position:absolute;inset:0;pointer-events:none}
-#pz .pzp,#pz .ring,#pz .bad{position:absolute;left:0;top:0;width:var(--c);height:var(--c);will-change:transform;pointer-events:none}
-#pz .pzp svg,#pz .ring svg,#pz .bad svg,#pz .pzball svg{display:block;width:100%;height:100%;overflow:visible}
-#pz .pzp.off{display:none}
-#pz .pzp.hint{opacity:.85}
-#pz .pzp.hint.flash{animation:pzFlash .8s ease-out}
-#pz .ring{opacity:0}
-#pz .ring.show{opacity:1;animation:pzPulse 1.4s ease-in-out infinite}
-#pz .bad{opacity:0;transition:opacity .2s}
-#pz .bad.show{opacity:1}
-#pz .pzball{position:absolute;left:0;top:0;width:calc(var(--c) * .42);height:calc(var(--c) * .42);will-change:transform;pointer-events:none}
-#pz .boxlit{opacity:0}
-#pz .boxlit.flash{animation:pzBox 1s ease-out}
-#pz.in .pitch,#pz.in .pcs,#pz.in .pzball{animation:pzIn .35s ease-out}
-#pz .balls{position:absolute;left:calc(16px + var(--safe-l));top:70px;display:flex;flex-direction:column;gap:6px;pointer-events:none}
-#pz .balls i{display:block;width:34px;height:34px;transition:opacity .3s,transform .3s var(--bounce)}
+#pz .balls{position:absolute;left:calc(14px + var(--safe-l));top:66px;display:flex;flex-direction:column;gap:5px;pointer-events:none;z-index:300}
+#pz .balls i{display:block;width:38px;height:38px;transition:opacity .3s,transform .3s var(--bounce);filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
 #pz .balls i svg{display:block;width:100%;height:100%}
-#pz .balls i.gone{opacity:.18;transform:scale(.6)}
+#pz .balls i.gone{opacity:.22;transform:scale(.6)}
 #pz .balls i.off{display:none}
-#pz .sand{position:absolute;right:calc(22px + var(--safe-r));top:76px;bottom:calc(18px + var(--safe-b));width:14px;border-radius:8px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.3);overflow:hidden;pointer-events:none}
+#pz .balls.flash i{animation:pzFlash .9s ease-out}
+#pz .balls.flash2 i{animation:pzFlash2 .9s ease-out}
+#pz .sand{position:absolute;right:calc(18px + var(--safe-r));top:76px;bottom:calc(18px + var(--safe-b));width:14px;border-radius:8px;background:rgba(36,25,58,.45);border:2px solid rgba(255,255,255,.4);overflow:hidden;pointer-events:none;z-index:300}
 #pz .sand.hidden{display:none}
-#pz .sand i{position:absolute;inset:0;display:block;background:linear-gradient(#ffe27a,#f5b800);transform-origin:50% 100%;will-change:transform}
-#hud[data-mode=puzzles] #caption{top:16px;left:auto;right:calc(76px + var(--safe-r));transform:none;max-width:38vw;text-align:right;font-size:clamp(16px,2.4vw,22px)} /* (the words for a grown-up: up in the corner, off the board) */
-@keyframes pzPulse{0%,100%{opacity:1}50%{opacity:.45}}
-@keyframes pzFlash{0%{opacity:1}30%{opacity:.2}60%{opacity:1}80%{opacity:.4}100%{opacity:.85}}
-@keyframes pzBox{0%{opacity:0}15%,55%{opacity:.45}100%{opacity:0}}
-@keyframes pzIn{0%{opacity:0}100%{opacity:1}}
-@media (prefers-reduced-motion:reduce){#pz .ring.show,#pz.in .pitch,#pz.in .pcs,#pz.in .pzball{animation:none}}
+#pz .sand i{position:absolute;inset:0;display:block;background:linear-gradient(#ffe27a,#f5b800);transform-origin:50% 100%;will-change:transform;transition:transform .5s linear}
+#pz .why{position:absolute;top:14px;right:calc(70px + var(--safe-r));max-width:40vw;text-align:right;font:700 clamp(15px,2.3vw,21px)/1.2 Fredoka,system-ui,sans-serif;color:#fff;text-shadow:0 2px 0 rgba(36,25,58,.7),0 0 10px rgba(36,25,58,.6);opacity:0;transition:opacity .25s;pointer-events:none;z-index:300}
+#pz.worded .why{opacity:1}
+@keyframes pzFlash{0%{opacity:1}30%{opacity:.2}60%{opacity:1}80%{opacity:.4}100%{opacity:1}}
+@keyframes pzFlash2{0%{opacity:1}30%{opacity:.2}60%{opacity:1}80%{opacity:.4}100%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#pz .balls.flash i,#pz .balls.flash2 i{animation:none}}
 
 /* ---------- STEAL's looks (v89 integration: js/fast/fast.js drawStealLook, js/mini/rondo-ui.js) ---------- */
 /* wait: dim and still (the ball cannot be won now); now: gold and pulsing (the ball glows); spent: wait with a dark cover
@@ -1116,23 +1102,6 @@ body.logon #logTab{display:grid}
 #rClock.low b{color:#ff8a5c}
 #rSteal.wait,#rSteal.spent,#rSteal.now{animation:none}
 #rSteal:active{transform:scale(.94)}
-/* ---- PUZZLE worker (v93): the soccer puzzles board redrawn in the mini game pictures' style (mini/puzzle-ui.js) ---- */
-#pz{background:#2a1f4d}
-#pz .pitch,#pz .marks{left:0;top:0;width:100%;height:100%}
-#pz .pzp.us,#pz .pzp.them,#pz .pzp.gk{width:calc(var(--c) * .64);height:var(--c);transform-origin:50% 94%}
-#pz .pzp.us svg,#pz .pzp.them svg,#pz .pzp.gk svg{position:absolute;inset:0}
-#pz .pzp .fl,#pz .pzp.l .fr{display:none}
-#pz .pzp.l .fl{display:block}
-#pz .pzp.hit svg{animation:pzHit .5s ease-out}
-#pz .bad{z-index:300}
-#pz .open{position:absolute;left:0;top:0;width:var(--c);height:var(--c);pointer-events:none;opacity:0;will-change:opacity,transform;z-index:5}
-#pz .open svg{display:block;width:100%;height:100%}
-#pz .open.show{opacity:1;animation:pzPulse 1s ease-in-out infinite}
-#pz .balls,#pz .sand{z-index:300}
-#pz .balls i{width:40px;height:40px}
-#pz .balls.flash i{animation:pzFlash .9s ease-out}
-@keyframes pzHit{0%{transform:scale(1)}30%{transform:scale(1.18)}100%{transform:scale(1)}}
-@media (prefers-reduced-motion:reduce){#pz .pzp.hit svg,#pz .balls.flash i,#pz .open.show{animation:none}}
 
 /* ---- SKILL worker (v93): the Live skill moment is ONE big gold button where SHOOT and STEAL sit; its move picture fills it ---- */
 #fAct.fActB.skill span{font-size:13px;white-space:nowrap;max-width:none;position:relative}
