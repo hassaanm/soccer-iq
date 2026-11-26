@@ -171,16 +171,16 @@ test('a round ends by itself: kept when the time runs out with the ball, and tim
 // Each number, level by level: it never goes the easy way, and a round moves it only a little.
 const LEVELS = Array.from({ length: 121 }, (_, i) => i * STEP);
 // (the forgiving first rounds, K.soft, ease out over their own steps: checked in the test below)
-function smooth(of, keys) {
+function smooth(of, keys, soft = K.SOFT_TO) { // (soft: the level at which the forgiving start has eased out: win's lasts longer, K.SOFT_WIN_TO)
   for (const [k, dir, max] of keys) for (let i = 1; i < LEVELS.length; i++) {
     const a = of(LEVELS[i - 1])[k], b = of(LEVELS[i])[k];
     assert.ok(dir < 0 ? b <= a + 1e-12 : b >= a - 1e-12, `${k} goes the hard way only (level ${LEVELS[i].toFixed(2)})`);
-    if (max != null && LEVELS[i] > K.SOFT_TO + 1e-9) assert.ok(Math.abs(b - a) <= max + 1e-9, `${k} moves a little a round (level ${LEVELS[i].toFixed(2)}: ${a} → ${b})`);
+    if (max != null && LEVELS[i] > soft + 1e-9) assert.ok(Math.abs(b - a) <= max + 1e-9, `${k} moves a little a round (level ${LEVELS[i].toFixed(2)}: ${a} → ${b})`);
   }
 }
 test('the difficulty only rises, a little each round, from a real first round; the second defender comes in gently, four passers from the start', () => {
   smooth(K.keepLevel, [['secs', 1, 2], ['size', -1, .35], ['press', 1, .3], ['cover', 1, 1.6], ['cutRun', 1, .2], ['cutReact', -1, .04], ['stand', -1, .13], ['think', -1, .05], ['smart', 1, .05], ['fMargin', -1, .03], ['fHold', -1, .04], ['fPass', 1, .2], ['fMove', 1, .05], ['fRoom', -1, .1], ['two', 1, .5]]);
-  smooth(K.winLevel, [['secs', -1, 1], ['size', 1, .15], ['n', 1, 0], ['pass', 1, .3], ['heavy', -1, .01], ['careless', -1, .01], ['hold', -1, .05], ['feel', 1, .1], ['react', -1, .02], ['move', 1, .03], ['margin', 1, .03], ['look', 1, .03], ['lead', 1, .03]]);
+  smooth(K.winLevel, [['secs', -1, 1], ['size', 1, .15], ['n', 1, 0], ['pass', 1, .3], ['heavy', -1, .01], ['careless', -1, .01], ['hold', -1, .05], ['feel', 1, .1], ['react', -1, .02], ['move', 1, .03], ['margin', 1, .03], ['look', 1, .03], ['lead', 1, .03]], K.SOFT_WIN_TO);
   const k = K.keepLevel(K.TWO_AT), k0 = K.keepLevel(K.TWO_AT - STEP);
   assert.equal(k0.two, 0); assert.ok(k.two > 0 && k.two <= .5, 'the second defender comes in at under half his strength');
   assert.ok(K.keepLevel(K.TWO_AT + 2 * STEP).two < 1 && K.keepLevel(40).two === 1, 'and grows over the next rounds');
@@ -189,11 +189,11 @@ test('the difficulty only rises, a little each round, from a real first round; t
   assert.equal(K.soft(0), 1); assert.ok(Math.abs(K.soft(STEP) - .85) < 1e-9 && Math.abs(K.soft(2 * STEP) - .45) < 1e-9 && Math.abs(K.soft(3 * STEP) - .15) < 1e-9, 'easing out over four rounds');
   for (let i = 1; i <= 4; i++) assert.ok(K.soft((i - 1) * STEP) - K.soft(i * STEP) <= .4 + 1e-9, 'no step bigger than 0.4'); assert.equal(K.soft(4 * STEP), 0, 'score 4: the real game');
   assert.ok(K.keepLevel(0).stand > K.keepLevel(4 * STEP).stand + .5 && K.keepLevel(0).press < K.keepLevel(4 * STEP).press, 'keep: the defender is slower and tackles later at first');
-  const w0 = K.winLevel(0); assert.ok(w0.lag > .3 && w0.reachPlus > 0 && STEAL_R + w0.reachPlus <= 1.9 + 1e-9 && w0.react > K.winLevel(4 * STEP).react, 'win: they read him late and keep it longer; his reach up to 1.9 m');
-  assert.equal(K.winLevel(4 * STEP).lag, 0); assert.equal(K.winLevel(4 * STEP).reachPlus, 0); assert.equal(K.keepLevel(4 * STEP).soft, 0);
+  const w0 = K.winLevel(0); assert.ok(w0.lag > .3 && w0.reachPlus > 0 && STEAL_R + w0.reachPlus <= 1.9 + 1e-9 && w0.react > K.winLevel(K.SOFT_WIN_TO).react, 'win: they read him late and keep it longer; his reach up to 1.9 m');
+  assert.equal(K.winLevel(K.SOFT_WIN_TO).lag, 0); assert.equal(K.winLevel(K.SOFT_WIN_TO).reachPlus, 0); assert.equal(K.keepLevel(4 * STEP).soft, 0);
   // a real first round (D1): the defender presses with purpose and the passes are brisk; rounds of 20 s or so
   const k1 = K.keepLevel(0), w1 = K.winLevel(0);
-  const k2 = K.keepLevel(4 * STEP), w2 = K.winLevel(4 * STEP);
+  const k2 = K.keepLevel(4 * STEP), w2 = K.winLevel(K.SOFT_WIN_TO);
   assert.ok(k2.press >= 3.5 && k2.stand <= 1.5 && k1.fHold <= .75 && k1.fPass >= 9, 'keep: a real defender from score 4, brisk passes from the start');
   assert.ok(w2.hold <= 1.1 && w2.react <= .4 && w1.pass >= 6, 'win: they pass on quickly from score 4');
   for (const D of [k1, w1]) assert.ok(D.secs >= 18 && D.secs <= 22, `a first round of about 20 s (${D.secs})`);

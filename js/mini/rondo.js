@@ -124,7 +124,7 @@ export const soft = softOf(SOFT);
 // falls from 0.45 to 0.15 and the real curve is still rising. This one eases out over seven rounds instead of four (score 0 to 7),
 // each round's win share a steady 13 to 14 points under the one before it down to the real game at score 7 (rounds 1 and 2 as
 // before). Keep the ball still uses SOFT above.
-export const SOFT_WIN = [1, .85, .43, .31, .26, .2, .06, 0], SOFT_WIN_TO = (SOFT_WIN.length - 1) / 3;
+export const SOFT_WIN = [1, .85, .47, .38, .29, .21, .17, 0], SOFT_WIN_TO = (SOFT_WIN.length - 1) / 3;
 export const softWin = softOf(SOFT_WIN);
 export function keepLevel(L) {
   L = Math.max(0, L); const sf = soft(L), two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
