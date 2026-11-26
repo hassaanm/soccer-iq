@@ -160,7 +160,7 @@ class Fast {
     m.setup('us'); m.kickoff('us');
     // (v96 E) its decision points' state: the countdown by his level (how far he has risen from where this size starts)
     this.E = { side: null, seen: null, key: null, lastOff: -9, endAt: -9, ballAt: null, places: null, goAt: null, friends: [], offered: [], onAgain: 0, kept: false, resume: null, why: null, waveK: 0, len: crawlLen((level ?? m.level) - (LEVELS[TEAM.size] ?? m.level)) };
-    this.ramp = new Ramp(BASE); cls(this.dom.box, 'vE', !!this.V.crawl); cls(this.dom.box, 'crawl', false); cls(this.dom.stay, 'show', false); cls(this.dom.stay, 'run', false); cls(this.dom.stay, 'run2', false); this.dom.stay.style.setProperty('--crawl', this.E.len + 's');
+    this.ramp = new Ramp(BASE); cls(this.dom.box, 'vE', !!this.V.crawl); cls(this.dom.box, 'crawl', false); cls(this.dom.stay, 'show', false); cls(this.dom.stay, 'run', false); cls(this.dom.stay, 'run2', false); cls(this.dom.stay, 'taken', false); cls(this.dom.stay, 'taken2', false); this.dom.stay.style.setProperty('--crawl', this.E.len + 's');
     this.real = 0; this.slow = this.slowTo = BASE; this.look = 1; this.up1 = true; this.yaw = 0; this.holdYaw = null; this.holdT = 0; this.finger = null; this.holding = false;
     this.ui.clock = 0; this.ui.glow = {}; this.ui.aims = null; this.ui.lines = null; this.warnAt = null; this.warnT = 0; this.over = false;
     this.seen = {}; this.chipsKey = null; this.lastAct = 0; this.hinted = null; this.hintAt = 0; this.hintCounted = false; this.goAt = null; this.edgeO = -1; this.edgeT = '';
@@ -274,7 +274,7 @@ class Fast {
   // Everything that lasts only a moment, put back: a touch and its hold, the slow tint, the aim, a warning, where he was
   // going, the hints, the reminder. At a goal, a keeper turn, a pause, a swap and the end.
   resetTransient() {
-    if (this.V?.crawl && this.E) { this.endE('reset'); this.E.goAt = null; this.E.resume = null; cls(this.dom.box, 'crawl', false); cls(this.dom.stay, 'show', false); cls(this.dom.stay, 'run', false); cls(this.dom.stay, 'run2', false); } // (v96 E: a decision point ends with a goal, a pause, a swap)
+    if (this.V?.crawl && this.E) { this.endE('reset'); this.E.goAt = null; this.E.resume = null; cls(this.dom.box, 'crawl', false); cls(this.dom.stay, 'show', false); cls(this.dom.stay, 'run', false); cls(this.dom.stay, 'run2', false); cls(this.dom.stay, 'taken', false); cls(this.dom.stay, 'taken2', false); } // (v96 E: a decision point ends with a goal, a pause, a swap)
     this.set = null; this.chosen = null; this.dec?.reset(); this.big = null; this.bigChosen = null; this.lane = null; this.dropTake();
     this.dropFinger(); this.holding = false; this.holdYaw = null; this.holdT = 0; this.dom.box.classList.remove('slowing');
     if (this.aiming) this.endAim(); this.slowTo = BASE; this.warnAt = null; this.goAt = null; this.hinted = null; this.hintCounted = false; this.lastAct = this.real || 0;
@@ -685,6 +685,7 @@ class Fast {
     d.close(true); E.side = null; E.endAt = this.real;
     if (side === 'on') { this.big = null; if (how === 'default' || how === 'stay') { E.kept = true; E.onAgain = this.real + ON_AGAIN; } }
     else if (how === 'default' || how === 'stay') { this.m.meMove = null; this.sim.stop(this.me); E.goAt = null; }
+    if (how === 'default' || how === 'stay') { E.tk = !E.tk; cls(this.dom.stay, 'taken', E.tk); cls(this.dom.stay, 'taken2', !E.tk); E.takenAt = this.real; } // (v96 INT: STAY's "taken" moment, a pop of about 0.3 s: css #fStay.taken)
     this.stats.eEnds.push({ side, how, secs });
     game.plog?.('fast', { is: 'decide', variant: 'E', side, why: E.why, offered: E.offered.join(' '), chose: how, secs });
   }
@@ -726,6 +727,7 @@ class Fast {
     }
     const fx = this.holding || (!this.V.crawl && want != null && want < BASE * .9);
     if (this.V.crawl) { const on = this.dec.on; cls(this.dom.box, 'crawl', on); cls(this.dom.stay, 'show', on); const run = on && this.dec.clock != null; cls(this.dom.stay, 'run', run && !this.E.flip); cls(this.dom.stay, 'run2', run && this.E.flip); if (on) st.crawlT += dt; if (this.slow < .1) st.deepT += dt; this.E.waveK += ((on ? 1 : 0) - this.E.waveK) * (1 - Math.exp(-dt * 8)); } // (v96 E: its look, STAY and its fill, shown by class)
+    if (this.V.crawl && this.E.takenAt != null && (this.dec.on || this.real - this.E.takenAt > .35)) { this.E.takenAt = null; cls(this.dom.stay, 'taken', false); cls(this.dom.stay, 'taken2', false); } // (v96 INT: STAY's pop over)
     if (fx !== this.dom.box.classList.contains('slowing')) this.dom.box.classList.toggle('slowing', fx); // (the hold's own slow look, here brought by the game)
     if (this.dec.on) st.decT += dt; if (this.slow === 0) st.stopT += dt;
     const gdt = dt * this.slow; if (this.slow < BASE * .9) st.slowT += dt; if (this.holding) st.holdT += dt; if (!this.up1) st.headDownT += dt;

@@ -1224,3 +1224,13 @@ body.logon #logTab{display:grid}
   body.smooth:not(.blur) #tunnel{-webkit-mask:none;mask:none}
 }
 /* ===== end v96 CLASSIC ===== */
+
+/* ---- INT (v96): Live E, STAY taken. When the countdown ends (STAY by default) or he taps STAY, the button stays a moment
+   full of gold and pops (transform and opacity only, about 0.3 s), then goes: it is clear STAY is what happened.
+   js/fast/fast.js endE sets .taken or .taken2 (two names, so a second pop restarts); the next frame after 0.35 s drops it. ---- */
+#fastHud #fStay.taken,#fastHud #fStay.taken2{opacity:1;animation:fStayTaken .32s ease-out forwards}
+#fastHud #fStay.taken2{animation-name:fStayTaken2}
+#fStay.taken .fill,#fStay.taken2 .fill{animation:none;transform:scaleY(1)}
+@keyframes fStayTaken{0%{transform:scale(1);opacity:1}45%{transform:scale(1.22);opacity:1}100%{transform:scale(1.05);opacity:0}}
+@keyframes fStayTaken2{0%{transform:scale(1);opacity:1}45%{transform:scale(1.22);opacity:1}100%{transform:scale(1.05);opacity:0}}
+@media (prefers-reduced-motion:reduce){#fastHud #fStay.taken,#fastHud #fStay.taken2{animation:none;opacity:1}}
