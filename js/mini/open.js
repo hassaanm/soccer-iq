@@ -111,7 +111,7 @@ export const HIDE_AT = 2, BEHIND_AT = 3, MOVE_AT = 4, TWO_AT = 5;
 // middle of his line, and no other red on the pitch), WELCOME_SECS on the clock, and one more go after a first miss
 // (mini/open-ui.js: he sees why, the ball comes back, the same picture again; the second miss costs the life). From the
 // third try on the level's own numbers below, as before.
-export const WELCOME = 2, WELCOME_SECS = 12, AGAIN = 1;
+export const WELCOME = 2, WELCOME_SECS = 12, AGAIN = 1, WELCOME_CLEAR = [3.5, 2.5]; // (m: nobody of theirs this near the open friend, or his line)
 export const welcomeOf = n => (n >= 0 && n < WELCOME ? n : -1); // (the try's place among the welcoming ones, or -1)
 export function openLevel(L, w = -1) {
   const s = Math.max(0, L) * 3, up = (from, per, max) => clamp((s - from) * per, 0, max);
@@ -240,6 +240,7 @@ function tryLayout(d, L, r, prev, seed, n, plan) {
     if (o.job === 'marked' ? dist(o, f) > MARK_D : lay.foes.some(x => dist(x, f) < FREE_D)) return null;
   }
   lay.ans = answersAt(lay, 0); lay.kinds = kinds; lay.after = null;
+  if (d.welcome >= 0) { const f = friends[0]; for (const o of lay.foes) if (dist(o, f) < WELCOME_CLEAR[0] || onLane(o, me, f, 0).d < WELCOME_CLEAR[1]) return null; } // (welcoming: the open one plainly free)
   if (move) { // after the run: the friend he left is open, the old answer shut, the rest as they were; on the way, never anyone else
     const m = lay.foes.find(o => o.move), fId = m.of, end = at.arrive + .05;
     const st1 = statusAt(lay, end), o1 = openIds(st1);

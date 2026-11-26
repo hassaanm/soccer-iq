@@ -1005,7 +1005,7 @@ body.smooth:not(.v75look) .skillPick .ring circle{filter:none}
 #pz{position:absolute;inset:0;pointer-events:none}
 #pz.hidden{display:none}
 #pz .balls{position:absolute;left:calc(14px + var(--safe-l));top:66px;display:flex;flex-direction:column;gap:5px;pointer-events:none;z-index:300}
-#pz .balls i{display:block;width:38px;height:38px;transition:opacity .3s,transform .3s var(--bounce);filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
+#pz .balls i{display:block;width:38px;height:38px;transition:opacity .3s,transform .3s var(--bounce)}
 #pz .balls i svg{display:block;width:100%;height:100%}
 #pz .balls i.gone{opacity:.22;transform:scale(.6)}
 #pz .balls i.off{display:none}

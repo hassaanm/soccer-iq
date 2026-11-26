@@ -152,20 +152,26 @@ function attackPic() {
     + shadow(98, 74, 8) + run(98, 64, .56, { skin: SKIN[2], hair: HAIR[2], arms: [-40, 48], legs: [-18, 24], rot: 6 })
     + shadow(60, 82, 10) + shadow(73, 79, 4) + ball(73, 75.5, 4.6) + run(60, 72, .68, { skin: SKIN[1], hair: HAIR[0], legs: [-10, 30] }));
 }
-// Soccer puzzles: a small pitch from above, players as round counters, a dotted path for the ball past theirs to the goal.
+// Soccer puzzles (v96 fix: the game as it is now, in 3D): the pitch seen from a raised side angle, their goal on the
+// right with the keeper in it, a defender in the middle on his red patch. The move being planned: a gold dashed pass
+// from him round the defender to a free friend on his gold ring, then the shot to the gold target in the open corner.
 function puzzlesPic() {
-  const ours = (x, y) => `<circle cx="${x}" cy="${y + 1.2}" r="6.2" fill="${INK}" opacity=".3"/><circle cx="${x}" cy="${y}" r="6.2" fill="${BLUE.shirt}" stroke="${INK}" stroke-width="2"/><circle cx="${x}" cy="${y}" r="3.4" fill="none" stroke="#fff" stroke-width="1.2" opacity=".7"/>`;
-  const theirs = (x, y) => `<circle cx="${x}" cy="${y + 1.2}" r="6.2" fill="${INK}" opacity=".3"/><circle cx="${x}" cy="${y}" r="6.2" fill="${RED.shirt}" stroke="${INK}" stroke-width="2"/><circle cx="${x}" cy="${y}" r="3.4" fill="none" stroke="#fff" stroke-width="1.2" opacity=".7"/>`;
-  let s = `<rect width="120" height="84" fill="#2a1f4d"/><rect x="4" y="4" width="112" height="76" rx="7" fill="#3c8f46"/>`;
-  for (let x = 12; x < 108; x += 16) s += `<rect x="${x}" y="4" width="8" height="76" fill="#47a352"/>`;
-  s += `<rect x="4" y="4" width="112" height="76" rx="7" fill="none" stroke="${INK}" stroke-width="2"/>`;
-  s += `<g fill="none" stroke="#fff" stroke-width="1.5" opacity=".9"><rect x="10" y="10" width="100" height="64" rx="1.5"/><path d="M60 10V74"/><circle cx="60" cy="42" r="9"/><path d="M110 26H96V58H110"/><path d="M10 30H18V54H10"/></g>`;
-  s += `<rect x="110" y="34" width="5" height="16" fill="#fff" opacity=".35" stroke="#fff" stroke-width="1.5"/>`;
-  s += dashes('M26 58L52 30', 2.2) + dashes('M58 28Q80 22 88 40Q92 46 106 42', 2.2);
-  s += target(106, 42, 5.2);
-  s += theirs(44, 50) + theirs(76, 40) + theirs(92, 58);
-  s += ours(22, 62) + ours(56, 27) + ours(84, 22) + ball(28.5, 56, 3.6);
-  return svg(s);
+  const ring = (x, y, rx, c = GOLD, o = 1) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${n(rx * .36)}" fill="none" stroke="${INK}" stroke-width="3" opacity="${n(.35 * o)}"/><ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${n(rx * .36)}" fill="${c}" fill-opacity=".22" stroke="${c}" stroke-width="1.7" opacity="${o}"/>`;
+  // the grass's lines in the view: the goal line running up the picture to the far post, the box in front of it, a bit
+  // of the centre circle
+  const lines = `<g fill="none" stroke="#fff" stroke-width="1.4" stroke-linejoin="round" opacity=".8"><path d="M87.6 84L114 8"/><path d="M90 77H72L84 22H109"/><path d="M6 84Q14 62 38 54"/></g>`;
+  // their goal, side on (the game's own goal and net, slanted up the goal line: its far post higher, as the camera sees it)
+  const goalSide = `<g transform="translate(91 64) skewY(-50) scale(.8 1)">${goal(0, -23, 26, 23, 3)}</g>`;
+  const patch = `<ellipse cx="61" cy="55" rx="14" ry="5.6" fill="#ff5a3c" opacity=".38"/><ellipse cx="61" cy="55" rx="14" ry="5.6" fill="none" stroke="#ff5a3c" stroke-width="1.4" opacity=".9"/>`;
+  return svg(stadium(14) + lines + goalSide
+    + target(107, 29, 3.8)
+    + shadow(96.5, 57, 4) + kid({ x: 96.5, y: 51.5, s: .36, kit: GK, skin: SKIN[1], hair: HAIR[1], arms: [-58, 96], legs: [-10, 10], look: -1 })
+    + ring(22, 59, 6.5, GOLD, .55) + ring(45, 72, 6.5, GOLD, .55)
+    + patch + kid({ x: 61, y: 46, s: .5, kit: RED, skin: SKIN[2], hair: HAIR[1], arms: [-60, 60], legs: [-12, 12], look: -1 })
+    + ring(84, 47, 8) + kid({ x: 84, y: 39, s: .44, kit: BLUE, skin: SKIN[0], hair: HAIR[3], arms: [-150, 150], armLen: 12, look: 1 })
+    + dashes('M40 74Q68 76 82 50', 2.2) + dashes('M90 38L102.6 31', 1.8)
+    + ring(30, 79, 9) + kid({ x: 30, y: 68, s: .62, kit: BLUE, hair: HAIR[0], skin: SKIN[1], arms: [-34, 40], legs: [-6, 26], look: 1 })
+    + shadow(39, 79, 4) + ball(39, 75.5, 3.8));
 }
 
 // Who's open? (v96): seen from behind him, the ball at his feet; one friend free, arms up, in a gold glow, the pass going
