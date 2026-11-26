@@ -12,7 +12,7 @@
 //  - 5 v 5: two keepers (k1 ours, k2 theirs) who keep to their line, take loose balls near their goal and save shots as
 //    js/shot.js says.
 // Our team attacks +x (their goal at x = L). His player (`me`) moves only when he says so (the controller, fast.js).
-import { clamp, dist, onLane, cutBy, bodyHit, pickPass, REACH as FOOT_REACH } from './rules.js';
+import { clamp, dist, onLane, cutBy, bodyHit, pickPass, REACH as FOOT_REACH, BODY_R as BODY_R_BLOCK } from './rules.js';
 import { shotResult } from '../shot.js';
 import { keeper as KEEP } from '../game/keeper.js';
 
@@ -28,6 +28,7 @@ import { keeper as KEEP } from '../game/keeper.js';
 //  - A shot: the keeper sets off for it as it is struck (game/keeper.js keeperReact: a step, a dive) and a save is in his
 //    hands only as the ball gets there (HOLD_T s in them before he plays on); on.shotEnd tells the page then, never sooner.
 export const KO_MIN = 1.2, KO_MAX = 4.5; // (a kick-off: the least and the most time for everyone to walk back to his place)
+export const SHOT_LAG = .15, CLEAR_RUN = 6, CLEAR_R = FOOT_REACH; // (v96: a shot's block: the defender runs at CLEAR_RUN m/s; at its planned end he must be within CLEAR_R m of the ball)
 export const DRIB_SP = 3.3, RUN_SP = 3.8, RUN_FAST = 5.4, RUN_FAR = 4.5, PRESS_OFF = 1.25, STEAL_REACH = 1.5, STUMBLE_T = .6, STUMBLE_SP = .9, BODY_WIN = .55, HOLD_T = 1.1, AIM_TACKLE = .9;
 
 const SUPPORT_EVERY = .9, TACKLE_T = .55, LOOSE_R = .62, SPREAD = 5;
@@ -180,6 +181,7 @@ export class Match {
   // A shot. res: what js/shot.js says it does ({ res, to, at, speed, arc, t, held }); the ball goes there.
   shoot(id, res, kind = 'shot') {
     const s = this.sim, team = this.team(id), gx = this.goalX(team), dx = this.dir(team); if (id === this.me) this.acted();
+    if (res.res === 'cleared') res = this.clearCheck(res);
     s.stop(id); s.windup(id, 'shot'); this.cmd.set(id, s.time + .8);
     let tx = gx + dx * .7, ty = res.to.y, z1 = res.to.z ?? .35;
     if (res.res === 'goal') { const a = s.a(id), run = gx - a.x; if (Math.abs(run) > .3) ty += (ty - a.y) * (dx * .7) / run; } // (v89 integration: aimed through its spot on the goal line, so an angled shot that is in crosses the line inside the posts)
@@ -195,6 +197,22 @@ export class Match {
     if (res.res === 'cleared' && res.by?.id && s.a(res.by.id)) { s.go(res.by.id, res.at.x, res.at.y, 6); this.cmd.set(res.by.id, s.time + 3); } // (the defender who gets to it runs into its way)
     this.on.shot(id, res);
     this.after(.15, () => { if (s.ball.carrier === id) { s.kick(tx, ty, { speed: res.speed || 15, arc: res.arc ?? .25, z1 }); this.lastTeam = team; } });
+  }
+  // (v96) A shot planned as cleared is stopped only where a defender really meets it. Planned, it needs him to be able to get to
+  // the spot in time (he runs at CLEAR_RUN m/s, SHOT_LAG + res.t s after now); if he cannot, the shot goes on as it would
+  // have without him (a goal: that is the only result a clearance replaces, shot.js). At its planned end he must be within
+  // CLEAR_R m of the ball (goOn, below, if he is not); on the way, a body in its path stops it (step).
+  clearCheck(res) {
+    const d = res.by?.id && this.sim.a(res.by.id);
+    if (d && res.at && dist(d, res.at) - BODY_R_BLOCK <= CLEAR_RUN * (SHOT_LAG + (res.t || 0))) return res;
+    return { ...res, res: 'goal', by: null, at: null, t: res.d / (res.speed || 15) };
+  }
+  // The ball stopped at the end of a planned clearance with nobody there: it goes on to the goal it was aimed at.
+  goOn(f) {
+    const s = this.sim, b = s.ball, r = f.res, team = f.team, a = s.a(f.from), k = this.keeper(team === 'us' ? 'them' : 'us'), tx = this.goalX(team) + this.dir(team) * .7, ty = r.to.y, d = Math.hypot(tx - b.x, ty - b.y);
+    f.res = { ...r, res: 'goal', by: null, at: null };
+    Object.assign(b, { state: 'flying', carrier: null, move: null, fx: b.x, fy: b.y, tx, ty, t: 0, arc: r.arc ?? .25, z1: r.to.z ?? .35, z0: b.z || 0, vz: 0, dur: Math.max(.25, d / (r.speed || 15)) });
+    if (k && a) { k.gkm = null; KEEP.keeperReact.call(this.kc, k, f.res, { x: a.x, y: a.y }, 0); this.cmd.set(k.id, s.time + 9); }
   }
   // The shot the computer plays for a carrier: placed in the biggest space, past the keeper or not as js/shot.js says.
   aiShot(id) {
@@ -294,7 +312,7 @@ export class Match {
         if (f.kind === 'push' && s.time - f.t0 < 3) { this.chase(b, f.contest); this.moveTeams(dt); return; }
       }
       if (f?.kind === 'shot' && f.res?.res === 'save') { const k = this.keeper(f.team === 'us' ? 'them' : 'us'); if (k) { this.hold(k, f); return; } }
-      if (f?.kind === 'shot' && f.res?.res === 'cleared') { const d = s.a(f.res.by?.id); if (d) { this.on.shotEnd(f, 'cleared', d.id); this.flight = null; this.giveTo(d.id, 'block'); return; } }
+      if (f?.kind === 'shot' && f.res?.res === 'cleared') { const d = s.a(f.res.by?.id); if (d && dist(d, b) <= CLEAR_R) { this.on.shotEnd(f, 'cleared', d.id); this.flight = null; this.giveTo(d.id, 'block'); return; } this.goOn(f); return; } // (v96: only if he is there; else it goes on)
       if (f?.kind === 'shot') this.on.shotEnd(f, 'loose', null);
       if (f) for (const x of [f.cut, f.to]) if (x && x !== this.me) this.cmd.delete(x); // (a pass that ended loose: its runners go back to playing)
       this.flight = null;

@@ -27,7 +27,9 @@ wireSheet('#miniSheet', '#miniClose');
 sheet.addEventListener('click', e => { if (start.busy()) e.stopImmediatePropagation(); }, true);
 
 function render() {
-  $('#minis').innerHTML = MINI.filter(g => RUN[g.id]).map(g => { const b = miniBest(P, g.id);
+  const list = MINI.filter(g => RUN[g.id]), n = list.length; // (v96: 6 to 10 games lay out as two rows of 3 to 5 tiles; more scroll sideways: css #minis)
+  $('#minis').className = n > 10 ? 'more' : n > 8 ? 'c5' : n > 6 ? 'c4' : '';
+  $('#minis').innerHTML = list.map(g => { const b = miniBest(P, g.id);
     return `<button class="tile mini" data-id="${g.id}" aria-label="${g.name}${b ? ', best ' + b : ''}"><span class="pic">${g.pic}</span><span class="nm"><span class="k">${g.name}</span>${b ? `<span class="st">${CUP}<b>${b}</b></span>` : ''}</span></button>`; }).join(''); // (v90: his best, a small cup and the number, beside the name or under it)
   for (const t of $$('#minis .tile')) t.onclick = () => start(t.dataset.id);
 }

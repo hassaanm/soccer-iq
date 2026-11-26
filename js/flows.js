@@ -85,6 +85,9 @@ export function toLessons() {
   const sk = skillById(nextSkill(P, PATH));
   return { icon: sk.emoji, pic: sk.id, text: sk.kid, go: () => { P.pick = sk.id; save(); runSession(); }, hot };
 }
+// (v96) The card after a match, a cup round or training offers the next lesson, which is a Classic lesson: not while the Live
+// mode is picked (the owner played Live and was offered "NEXT LESSON, Take him on!"). The tile is then left out.
+export const nextLesson = () => (P.settings.mode === 'fast' ? null : toLessons());
 // After a match or a cup round: the idea he missed most in it (game/live.js), named on the card as "Tomorrow: …" and
 // put into tomorrow's practice (progress.js focus). Only a lesson he has passed (training mixes only those).
 // Equal counts go to the idea he is weakest at overall: the lowest level, then the most misses in his saved log.
@@ -188,7 +191,7 @@ const runTraining = flow(async () => {
   fillResults({
     emoji: '💪', title: 'Training done!', line: '🏆 Cup is open!', rounds: results, note: countRight(results),
     news: ups.map(id => `${'⭐'.repeat(level(P, id))} ${skillById(id).kid}`).join(' · '), extra: outside(weak),
-    match: toMatch(), cup: toCup(), lesson: toLessons(),
+    match: toMatch(), cup: toCup(), lesson: nextLesson(),
     paper: 50,
   });
   finish('Training done!');
@@ -210,7 +213,7 @@ export const runFreePlay = flow(async () => {
   save(); // (the decision log too)
   fillResults({
     emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: scoreLine(us, them, score), note: tomorrow(),
-    match: toMatch(), cup: toCup(), lesson: toLessons(),
+    match: toMatch(), cup: toCup(), lesson: nextLesson(),
     paper: won ? 70 : 0,
   });
   finish(won ? 'You won the match!' : 'Good game!');
@@ -261,14 +264,14 @@ const runCup = flow(async cupId => {
   save();
   if (won && final) {
     fillResults({ sticker: cup.emoji, trophy: true, title: 'Champions!', line, note, news: `You won the ${cup.name}!`,
-      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }) || toCup(), lesson: toLessons(), paper: 140 });
+      match: toMatch(), cup: ifOpen({ icon: '🏆', text: 'Another cup', go: openCups }) || toCup(), lesson: nextLesson(), paper: 140 });
     return finish('You won the cup!');
   }
   const round = names[run.round];
   fillResults({
     emoji: cup.emoji, title: won ? 'You won!' : 'So close!', line, note, news: won ? `On to the ${round.toLowerCase()}!` : `Play the ${round.toLowerCase()} again!`, extra: cupPath(run),
     // The cup tile plays this cup on (the next round, or this one again); every cup is the small corner button.
-    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }) || toCup(), lesson: toLessons(),
+    match: toMatch(), cup: ifOpen({ icon: '🏆', text: won ? STEP[round] : 'Try again', small: cup.emoji === '🏆' ? null : cup.emoji, go: again }) || toCup(), lesson: nextLesson(),
     again: { text: '🏆 All cups', go: openCups },
     paper: won ? 70 : 0,
   });
@@ -298,7 +301,7 @@ async function playFast() {
   fillResults({
     emoji: '⚽', sticker: won ? '🏆' : null, trophy: true, title: won ? 'You won the match!' : 'Good game!', line: '', // (the score is big in the card itself, with the two shirts)
     extra: endCard({ c, img: { us: shirtImg(us), them: shirtImg(them) }, best: now.best, size, fresh }),
-    match: toMatch(), cup: toCup(), lesson: toLessons(), paper: won ? 70 : 0,
+    match: toMatch(), cup: toCup(), lesson: nextLesson(), paper: won ? 70 : 0,
   });
   finish(won ? 'You won the match!' : 'Good game!');
 }

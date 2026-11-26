@@ -28,6 +28,7 @@ import { warmKeeper } from '../ui/voicewarm.js';
 import { makeMarks } from '../fast/marks.js';
 import * as R from '../fast/rules.js';
 import { Rondo } from './rondo-play.js';
+import { stealState, setStealLook } from '../ui/steal-look.js';
 import * as K from './rondo.js';
 import { startRun, runStep, endRun, runOff } from './run.js';
 
@@ -194,6 +195,8 @@ function frame(dt) {
   marks.draw([], [], null, has, ui.clock, danger, play, g.goAt, hinted);
   stage.ui = ui;
   const st = g.mode === 'win' && play; if (st !== dom.stealOn) { dom.stealOn = st; dom.steal.classList.toggle('show', st); }
+  // (v96) STEAL by how far the ball is: not shown beyond about 6 m, small and dim until it is in reach, full and bright in reach (the glow's own test)
+  { const sl = st ? stealState(R.dist(h, b), ui.ballGlow, dom.stealSt === 'far') : ''; if (sl !== dom.stealSt) { dom.stealSt = sl; setStealLook(dom.steal, sl); } }
   clockLabel();
 }
 // The round and its seconds (D5: a plain label for the grown-up), written only when they change.
@@ -259,7 +262,7 @@ async function runRondo(mode) {
 }
 function end() {
   stage.on = false; resetTransient(); marks?.hide(); spotM?.hide(); box?.set(null);
-  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show'); dom.clock.classList.remove('show', 'low'); dom.stealOn = false; dom.clockOn = false; dom.n = dom.sec = null; }
+  if (dom) { dom.el.classList.remove('on', 'slowing'); dom.steal.classList.remove('show'); dom.clock.classList.remove('show', 'low'); dom.stealOn = false; dom.stealSt = ''; setStealLook(dom.steal, ''); dom.clockOn = false; dom.n = dom.sec = null; }
   if (g) { g.phase = 'idle'; g.done = null; }
   onStage(null); undress(); game.home();
 }

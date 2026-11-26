@@ -118,7 +118,14 @@ export const TWO_AT = 1; // (after 3 rounds kept)
 // rounds, smooth, no wall: `soft` is 1 at score 0, 0.85 at score 1, 0.45 at score 2, 0.15 at score 3 and 0 from score 4
 // (SOFT_TO levels), straight between. Every number it touches still moves only the hard way (tests/rondo.test.js).
 export const SOFT = [1, .85, .45, .15, 0], SOFT_TO = (SOFT.length - 1) / 3;
-export const soft = L => { const x = Math.min(SOFT.length - 1, Math.max(0, L * 3)), i = Math.min(SOFT.length - 2, Math.floor(x)); return SOFT[i] + (SOFT[i + 1] - SOFT[i]) * (x - i); };
+const softOf = T => L => { const x = Math.min(T.length - 1, Math.max(0, L * 3)), i = Math.min(T.length - 2, Math.floor(x)); return T[i] + (T[i + 1] - T[i]) * (x - i); };
+export const soft = softOf(SOFT);
+// (v96) "Win the ball" has its own: its win share (a careful adult) dropped from 85% to 46% between rounds 3 and 4, where `soft`
+// falls from 0.45 to 0.15 and the real curve is still rising. This one eases out over seven rounds instead of four (score 0 to 7),
+// each round's win share a steady 13 to 14 points under the one before it down to the real game at score 7 (rounds 1 and 2 as
+// before). Keep the ball still uses SOFT above.
+export const SOFT_WIN = [1, .85, .47, .38, .29, .21, .17, 0], SOFT_WIN_TO = (SOFT_WIN.length - 1) / 3;
+export const softWin = softOf(SOFT_WIN);
 export function keepLevel(L) {
   L = Math.max(0, L); const sf = soft(L), two = L >= TWO_AT - 1e-9 ? .45 + ramp(TWO_AT, .5, .55)(L) : 0; // (1e-9: a level, counted a third at a time)
   return { // (soft: the defender closes a little slower, tackles later, cuts lines later, and his passes slip past a foot more often: rondo-play.js ballCheck)
@@ -141,7 +148,7 @@ export function keepLevel(L) {
 //   lead     ...with this many s to spare for that friend
 export const FOUR_AT = 0; // (v93: four passers from the first round, so no step when a fourth joins)
 export function winLevel(L) {
-  L = Math.max(0, L); const X = .5 + .5 * L, sf = soft(L); // (the passers' curves start half a level in, no easy first round, and rise a little slower)
+  L = Math.max(0, L); const X = .5 + .5 * L, sf = softWin(L); // (the passers' curves start half a level in, no easy first round, and rise a little slower)
   return { // (soft: they read him late, `lag` s behind where he is, so a pass may go into a lane he has just stepped into;
     //        they keep it longer with him in their face; and his reach for a press is a little longer, `reachPlus` m)
     secs: Math.round(16 + 4 * Math.exp(-L / 6)), size: ease(10.5, 13, 6)(X), n: 4, pass: ease(7, 10.5, 5)(X) * (1 - .1 * sf), heavy: ease(.08, .01, 4)(X), careless: ease(.08, 0, 4)(X) + .12 * sf,
