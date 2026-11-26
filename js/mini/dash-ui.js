@@ -216,6 +216,7 @@ function hooks() {
       hud.banner('GREAT RUN!', 'good');
       if (goodN === 1 || late) speak(late ? DASH_SAID.choice : DASH_SAID.good); else if (goodN % 4 === 0) speak(DASH_SAID.good);
     },
+    again(l, info) { plog({ is: 'again', why: info.why, by: info.by, pick: l.pick || '-', kind: l.wave.kind }); }, // (v96 fix: a forgiving leg's first tackle: no life lost, the leg again)
     tackle(l, by, why) {
       slowT = .55; tackles++;
       if (by && why !== 'marked') { sim.windup(by.id, 'touch'); later(.12, () => { sim.give(by.id); world.fx('stolen'); sfx('down'); }); }
@@ -254,7 +255,7 @@ export async function runDash() {
     real = 0; slowT = 0; saidAt = -99; pending = []; warm = 3; wipeEl.classList.remove('on');
     onStage(stage); stage.on = true; stage.phase = 'play'; show(null);
     plog({ is: 'start', size: `${PITCH.L}x${PITCH.W}` });
-    if (first) await card({ emoji: '💨', title: DASH_SAID.intro, sub: 'Tap the gap nobody is closing. Watch which way the red players move!', button: 'Play' });
+    if (first) await card({ emoji: '💨', title: DASH_SAID.intro, sub: 'Tap the gap nobody is closing. Watch which way the other team moves!', button: 'Play' });
     else await new Promise(r => setTimeout(r, 700));
     if (typeof window !== 'undefined') window.__dash.playAt = performance.now();
     d.start(); syncBodies(true); saidAt = real;

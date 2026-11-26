@@ -3,7 +3,7 @@
 // answers are spread, and the two players' numbers sit where the owner wants them.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dashLevel, makeWave, readLine, truth, posAt, velAt, Dash, bot, rng, LOCK, MOVE_MIN, MOVE_MAX, CLEAR_M, BLOCK_M, TACKLE_R, DASH_SAID } from '../js/mini/dash.js';
+import { dashLevel, makeWave, readLine, truth, posAt, velAt, Dash, bot, rng, LOCK, MOVE_MIN, MOVE_MAX, CLEAR_M, BLOCK_M, TACKLE_R, DASH_SAID, CEIL, EASY_LEGS } from '../js/mini/dash.js';
 import { newRun, attempt } from '../js/mini/rules.js';
 import { STEAL_R } from '../js/fast/rules.js';
 import { PITCH } from '../js/geom.js';
@@ -16,7 +16,8 @@ test('dash: the level only gets harder, and the first two lines are the gentle w
   for (let s = 0; s <= 40; s++) {
     const D = dashLevel(s / 3);
     if (was) { assert.ok(D.v >= was.v && D.see <= was.see && D.react <= was.react && D.moveP >= was.moveP && D.lateP >= was.lateP, `score ${s}`); }
-    assert.ok(D.react >= .6 - 1e-9 && D.see >= 1.8 - 1e-9, 'never less than 0.6 s to react after the last change, 1.8 s to choose');
+    if (s <= 8) assert.ok(D.react >= .6 - 1e-9 && D.see >= 1.8 - 1e-9, 'up to score 8, never less than 0.6 s to react after the last change, 1.8 s to choose');
+    assert.ok(D.react >= CEIL.reactMin - 1e-9 && D.see >= CEIL.seeMin - 1e-9, `score ${s}: never less than ${CEIL.reactMin} s to react, ${CEIL.seeMin} s to choose (v96 fix: it keeps rising past score 8)`);
     was = D;
   }
   assert.equal(dashLevel(0).wide, true); assert.equal(dashLevel(1 / 3).wide, true); assert.equal(dashLevel(2 / 3).wide, false);
@@ -94,14 +95,15 @@ test('dash: the open way is always within reach, picked at the first moment or a
 test('dash: a run with two lives ends, nothing waits for ever, and no tap ever loses the ball by itself', () => {
   for (let k = 0; k < 6; k++) {
     const run = newRun(); let over = false, crosses = 0, last = 0;
-    const d = new Dash({ L: PITCH.L, W: PITCH.W, run, seed: 77 + k, hooks: { cross: (l, ok) => { crosses++; attempt(run, ok); last = d.t; }, over: () => { over = true; } } });
+    const d = new Dash({ L: PITCH.L, W: PITCH.W, run, seed: 77 + k, hooks: { cross: (l, ok) => { crosses++; attempt(run, ok); last = d.t; }, again: () => { last = d.t; }, over: () => { over = true; } } }); // (again: a forgiving leg's free tackle, v96 fix)
     const b = bot(k % 2 ? 'child' : 'adult', rng(k + 5)); d.start();
     for (let i = 0; i < 60 * 60 * 30 && !over; i++) { d.tick(1 / 60); b.step(d); assert.ok(d.t - last < 15, 'a line is over within 15 s'); }
     assert.ok(over, 'the run ended'); assert.equal(run.lives, 0); assert.ok(crosses >= 2);
   }
-  // no tap at all: he hesitates and is closed down, every time, and it is told as such
+  // no tap at all (past the forgiving legs, where he runs on straight: tests/v96-fix.test.js): he hesitates and is closed
+  // down, every time, and it is told as such
   const run = newRun(1e9), whys = new Set(); const d = new Dash({ L: PITCH.L, W: PITCH.W, run, seed: 5, hooks: { cross: (l, ok, info) => { assert.equal(ok, false); whys.add(info.why); attempt(run, ok); } } });
-  d.start(); for (let i = 0; i < 60 * 60; i++) d.tick(1 / 60);
+  d.legsDone = EASY_LEGS; d.start(); for (let i = 0; i < 60 * 60; i++) d.tick(1 / 60);
   assert.ok(run.n >= 3); assert.deepEqual([...whys], ['none']);
 });
 

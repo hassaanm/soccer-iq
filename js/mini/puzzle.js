@@ -520,6 +520,6 @@ export class Board {
 // What is said (spoken: tests/spoken.js; recorded clips, so the lines reuse ones that have a clip): the first time, after
 // a goal, after a fail (by why), and the idea as the solution plays.
 export const PZ_SAID = { intro: 'Score before the balls run out!', goal: 'Goal!', watch: 'Watch this way!' };
-export const PZ_WHY = { cut: 'Blocked! A defender was in the way.', blocked: 'Blocked! A defender was in the way.', tackle: 'Tackled! Stay away from the red players.', saved: 'Saved! Shoot where the keeper is not.', out: 'Out of moves!', time: 'Out of time!' };
+export const PZ_WHY = { cut: 'Blocked! A defender was in the way.', blocked: 'Blocked! A defender was in the way.', tackle: 'Tackled! Stay away from the other team.', saved: 'Saved! Shoot where the keeper is not.', out: 'Out of moves!', time: 'Out of time!' };
 export const PZ_IDEA = { keeper: 'Shoot where the keeper is not!', dribble: 'Run into the space!', switch: 'Switch to the empty side!', around: 'Pass around the defender!', draw: 'Bring the defender to you, then pass!', giveGo: 'Pass and go, then get it back!',
   screen: 'Pass around the defender!', getOpen: 'Move to open space so your friend can pass to you!', decoy: 'Pass to the open friend!' };

@@ -105,7 +105,7 @@ function prebuild() {
   let i = 0;
   const next = () => {
     if (stop()) return;
-    if (i >= list.length) { if (!added.length && list.some(([id, team, k]) => !rigFor(id, team, k).userData.openWarm)) try { build(); chipShirts(us); dress(us, them); warm(); } catch (e) { console.error(e); } finally { undress(); } return; }
+    if (i >= list.length) { if (!added.length && list.some(([id, team, k]) => !rigFor(id, team, k).userData.openWarm)) try { build(); chipShirts(us); dress(us, them); warmQuiet(); } catch (e) { console.error(e); } finally { undress(); } return; }
     const [id, team, k] = list[i++]; try { rigFor(id, team, k); } catch (e) { console.error(e); return; } setTimeout(() => requestAnimationFrame(next), 0);
   };
   requestAnimationFrame(next);
@@ -122,16 +122,32 @@ function chipShirts(us) {
   dom.chips.forEach((c, i) => { c.b.querySelector('.pic').innerHTML = shirt(us, body(c.id, us, i + 1).num, 34); }); // (one chip for each friend, his own shirt)
 }
 
-// The first time a body is drawn its shapes and pictures go to the graphics chip: every one is drawn once now, all the
-// players standing in view and the rings showing, while the Mini games sheet still covers the screen (never in play).
+// The first time a body is drawn its shapes and pictures go to the graphics chip. Two ways, never a picture of this game
+// on a screen that shows something else (v96 fix: the home screen's picture changed for one frame, 4.5 s after load):
+//  - warmQuiet (while the home screen or the Mini games sheet shows): each body and ring drawn once, tiny, just in front
+//    of the world's camera as it is now, in the picture the screen already shows (as mini/puzzle-marks.js warm and
+//    fast/marks.js warm do): the frame looks the same as the one before it.
+//  - warm (as the game starts, under the sheet, with the picture about to change to this game's anyway): everything drawn
+//    once in this game's own scene, the players standing in view, the rings and the ring at his feet showing.
+function warmQuiet() {
+  const r = world.renderer, cam = world.camera; if (!r || !cam || added.every(g => g.userData.openWarm)) return;
+  const objs = [...added, ...rings.ms], was = objs.map(o => ({ v: o.visible, p: o.position.clone(), s: o.scale.clone() }));
+  const at = new THREE.Vector3(); cam.getWorldDirection(at); at.multiplyScalar(cam.near * 4).add(cam.position);
+  for (const o of objs) { o.visible = true; o.position.copy(at); o.scale.setScalar(1e-4); }
+  try { if (world.post) world.post.render(); else r.render(world.scene, cam); } catch (e) { console.error(e); }
+  objs.forEach((o, i) => { const w = was[i]; o.visible = w.v; o.position.copy(w.p); o.scale.copy(w.s); });
+  for (const g of added) g.userData.openWarm = true;
+  warmQuiet.n = (warmQuiet.n || 0) + 1;
+}
+let staged = false; // (this game's own scene drawn once: the ring at his feet, the rings, every body standing in view)
 function warm() {
-  if (added.every(r => r.userData.openWarm)) return;
+  if (staged && added.every(r => r.userData.openWarm)) return;
   const h = O.heroAt(), lay = { hero: h, friends: O.FRIENDS.map((id, i) => ({ id, x: h.x + 6, y: h.y - 4 + i * 2 })), foes: O.FOES.map((id, i) => ({ id, x: h.x + 9, y: h.y - 5 + i * 2 })) };
   setup(lay); T = { lay, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 };
   for (const [id, r] of own) animateRig(r, sim.a(id), sim, 0, 0, 0);
   frame(0, true); rings.set(true);
   try { world.render(sim, stage.cam, { glow: {}, timer: TIMER }, 0); } catch (e) { console.error(e); }
-  rings.hide(); T = null; for (const r of added) r.userData.openWarm = true;
+  rings.hide(); T = null; for (const r of added) r.userData.openWarm = true; staged = true;
 }
 
 // ---------- a try ----------
@@ -155,9 +171,9 @@ function setup(lay) {
 // frames for it (at most WAIT_MAX ms; very rare), rather than working it out in one frame.
 const MAKE_MS = 1.5, MAKE_IDLE = 4, WAIT_MAX = 1500;
 let ahead = [];
-async function layoutFor(level) {
-  let a = ahead.find(x => Math.abs(x.level - level) < 1e-6);
-  if (!a) { a = { level, g: O.layoutSteps(level, nextSeed(), prevLay), lay: null }; ahead = [a]; } // (a bonus point: a level not made ahead)
+async function layoutFor(level, w = -1) {
+  let a = ahead.find(x => Math.abs(x.level - level) < 1e-6 && x.w === w);
+  if (!a) { a = { level, w, g: O.layoutSteps(level, nextSeed(), prevLay, w), lay: null }; ahead = [a]; } // (a bonus point: a level not made ahead)
   else ahead = [a];
   for (let w = 0; !a.lay && w < WAIT_MAX; w += 30) await wait(30);
   ahead = [];
@@ -171,13 +187,18 @@ function makeAhead() {
   void t0;
 }
 async function playTry(run) {
-  const lay = await layoutFor(run.level); prevLay = lay;
-  ahead = [run.level + STEP, run.level].map(level => ({ level, g: O.layoutSteps(level, nextSeed(), lay), lay: null }));
-  setup(lay);
-  T = { lay, t: 0, phase: 'ready', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), tap: null, res: null, kick: null, done: null, t0: real, turns: 0, drags: 0 };
-  stage.cam.Ff = .9; frame(0, true);
-  plog({ is: 'layout', seed: lay.seed, level: +run.level.toFixed(2), right: lay.ans.join(','), after: lay.after?.join(',') || null, kinds: Object.entries(lay.kinds).map(([k, v]) => k + ':' + v).join(','), look: lay.look, secs: +lay.secs.toFixed(2), two: lay.two ? 1 : null });
+  const w = O.welcomeOf(run.n), lay = await layoutFor(run.level, w); prevLay = lay;
+  const wNext = O.welcomeOf(run.n + 1); // (the next try: after this one, whichever way it ends)
+  ahead = [run.level + STEP, run.level].map(level => ({ level, w: wNext, g: O.layoutSteps(level, nextSeed(), lay, wNext), lay: null }));
+  begin(lay, O.AGAIN * (w >= 0 ? 1 : 0));
+  plog({ is: 'layout', seed: lay.seed, level: +run.level.toFixed(2), right: lay.ans.join(','), after: lay.after?.join(',') || null, kinds: Object.entries(lay.kinds).map(([k, v]) => k + ':' + v).join(','), look: lay.look, secs: +lay.secs.toFixed(2), two: lay.two ? 1 : null, welcome: w >= 0 ? w + 1 : null });
   return new Promise(res => { T.done = res; });
+}
+// A try's picture, from the start (again: misses he has left that cost no life: a welcoming try's first miss).
+function begin(lay, again, done = null) {
+  setup(lay);
+  T = { lay, t: 0, phase: 'ready', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), tap: null, res: null, kick: null, done, t0: real, turns: 0, drags: 0, again };
+  stage.cam.Ff = .9; frame(0, true);
 }
 // The time he has had (s); the ring shows what is left.
 const left = () => (T ? Math.max(0, 1 - T.t / T.lay.secs) : 0), TIMER = { left: 1 };
@@ -297,8 +318,10 @@ function finish(ok, why = null) {
     hud.banner(why === 'lane' ? 'BLOCKED!' : why === 'time' ? 'TOO SLOW!' : 'MARKED!', 'bad');
     speak(why === 'lane' ? O.OPEN_SAID.lane : why === 'time' ? (ansSteps > 0 ? O.OPEN_SAID.behind : O.OPEN_SAID.time) : O.OPEN_SAID.marked, true);
   }
-  const out = { ok, why, tap: T.tap, bonus, how: T.how || null, sec: T.sec, right: (T.right || []).join(',') || '-', seed: lay.seed, look: ansSteps, turns: T.turns, drags: T.drags, turned: Math.round(T.turned * 57.3), kind: lay.two ? 'two' : lay.after ? 'move' : 'one' };
+  const out = { ok, why, tap: T.tap, bonus, how: T.how || null, sec: T.sec, right: (T.right || []).join(',') || '-', seed: lay.seed, look: ansSteps, turns: T.turns, drags: T.drags, turned: Math.round(T.turned * 57.3), kind: lay.two ? 'two' : lay.after ? 'move' : 'one', ...(!ok && T.again > 0 ? { again: 1 } : {}) };
   hist.push(out); if (hist.length > 200) hist.shift();
+  // (v96 fix) a welcoming try's first miss costs no life: once he has seen why, the same picture again, the ball his
+  if (!ok && T.again > 0) { const t = T; plog({ is: 'again', why, tap: t.tap || 'none' }); later(() => { if (T === t && stage.on) { begin(t.lay, t.again - 1, t.done); if (why !== 'time') speak(O.OPEN_SAID.time); } }, NEXT_BAD + 250); return; } // ("So close! Try again!")
   later(() => { const d = T.done; T.phase = 'gone'; d?.(out); }, ok ? NEXT_OK : NEXT_BAD);
 }
 
@@ -342,16 +365,18 @@ export async function runOpen() {
   try {
     build();
     const us = teamById(P.us), them = teamById(P.them), first = !P.mini?.[ID]?.plays;
-    if (game.us !== us || game.them !== them) game.setTeams(us, them); game.mode = 'open'; // (the same teams: the world keeps its compiled look, and the first frame compiles nothing) world.setEnv('crowd');
+    if (game.us !== us || game.them !== them) game.setTeams(us, them); // (the same teams: the world keeps its compiled look, and the first frame compiles nothing)
+    game.mode = 'open'; world.setEnv('crowd'); // (v96 fix: the night stadium, also after a game on the training ground)
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'rondo' }); hud.dots([], 0);
     dress(us, them); chipShirts(us); warm();
     prevLay = null; real = 0; praised = -99;
     const run = startRun(ID);
     // the first try's picture behind the card (its layout is made again when play starts)
-    { const lay0 = O.makeLayout(0, nextSeed()); ahead = [{ level: 0, lay: lay0 }]; setup(lay0); /* (the first try's own layout, shown behind the card) */ T = { lay: lay0, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 }; frame(0, true); }
+    { const lay0 = O.makeLayout(0, nextSeed(), null, O.welcomeOf(0)); ahead = [{ level: 0, w: O.welcomeOf(0), lay: lay0 }]; setup(lay0); /* (the first try's own layout, shown behind the card) */ T = { lay: lay0, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 }; frame(0, true); }
     onStage(stage); stage.on = true; dom.el.classList.add('on'); show(null);
     plog({ is: 'start' });
     if (first) await card({ emoji: '👀', title: O.OPEN_SAID.intro, sub: 'Tap the friend with nobody from the other team near him and nobody in the way. The arrows turn to look around.', button: 'Play' });
+    if (typeof window !== 'undefined') window.__open.playAt = performance.now(); // (for the checks: play begins; nothing is made for the 3D picture after it)
     for (;;) {
       const r = await playTry(run), lv = run.level;
       const info = { seed: r.seed, tap: r.tap || 'none', how: r.how, right: r.right, sec: r.sec, why: r.why, look: r.look, turns: r.turns, drags: r.drags, turned: r.turned, kind: r.kind };
@@ -369,7 +394,7 @@ function end() {
   onStage(null); undress(); game.home();
 }
 if (typeof window !== 'undefined') window.__open = {
-  stage, hist, get T() { return T; }, get sim() { return sim; },
+  stage, hist, playAt: 0, get T() { return T; }, get sim() { return sim; }, get warms() { return warmQuiet.n || 0; },
   // (for the checks and the bots) where each friend and each of theirs is on the screen now, and the arrows and chips
   view() {
     if (!T?.lay || !sim) return null; const w = world.width, h = world.height, at = (id, z) => { const a = sim.a(id); const q = a && world.project(a.x, a.y, z); return q && R.onScreen(q, w, h, 4) ? [Math.round(q[0]), Math.round(q[1])] : null; };
