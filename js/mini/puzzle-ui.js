@@ -35,7 +35,7 @@ import { puzzleSteps, makePuzzle, Board, startOf, parse, mid, inBox, ourAt, thei
 // the goal line is a place past the last column; the keeper stands on it.
 const C = 2, K_X = .15, GOAL_X = -.5;
 const V = { dribble: 4.4, run: 7, step: 5, gk: 4, pass: 14, shot: 15 }; // m/s
-const T = { beat: .08, why: 1.35, hint: 4, replayEnd: 1.2, goal: 1.3 }; // s (real time)
+const T = { beat: .08, why: 1.35, hint: 4, hintNew: 2.5, replayEnd: 1.2, goal: 1.3 }; // s (real time)
 // The camera: one for the whole puzzle, fitted so the whole board, the goal and the players' heads are in the picture
 // clear of the HUD (the moves down the left edge; the bar, home and pause at the top). 'side': raised above the far
 // touchline, looking across and down (the goal on the right); 'top': straight down. EL: its height angle; FF: the lens.
@@ -350,9 +350,9 @@ function showPuzzle(p) {
   tStart = now(); misses = 0;
 }
 // Plays one puzzle. Resolves { res: 'goal' | 'fail', why }.
-function playOne(p, { hintMv = null } = {}) {
+function playOne(p, { hintMv = null, after = T.hint } = {}) {
   showPuzzle(p); toWait();
-  hint = hintMv ? { after: T.hint, mv: hintMv, on: false } : null;
+  hint = hintMv ? { after, mv: hintMv, on: false } : null;
   return new Promise(res => { onEnd = res; });
 }
 // The shortest solution plays itself once (after a failed puzzle), its ball path in gold on the grass.
@@ -396,8 +396,8 @@ function nextFor(at) {
 }
 
 // ---------- a run ----------
-// The teaching hand: on his very first puzzle, and the first time in a run that a friend's run or a lane defender shows
-// up, it points at the first move of the solution after a few seconds.
+// The teaching hand: on his very first puzzle, and in a run while a friend's run or a lane defender is new to him (until
+// he has solved one), it points at the first move of the solution after a few seconds.
 let busy = false;
 export async function runPuzzles() {
   if (busy) return; busy = true; unlockSpeech(); warmKeeper();
@@ -412,12 +412,12 @@ export async function runPuzzles() {
     onStage(stage); stage.on = true; layer.classList.remove('hidden'); phase = 'busy';
     showPuzzle(p); marks.warm(); show(null);
     if (first) await card({ emoji: '🧩', title: PZ_SAID.intro, sub: 'Tap a friend to pass, a ring to run, the goal to shoot. A keeper standing still saves everything: make him move!', button: 'Play' });
-    const seen = new Set();
+    const taught = new Set(); // (the new situations he has solved in this run: the hand points until he has)
     for (let i = 0; ; i++) {
       const at = run.score; prepare(run, seeds);
-      const lane = p.roles.some(x => x <= -2), intro = (first && i === 0) || (!!p.runs && !seen.has('run')) || (lane && !seen.has('lane'));
-      if (p.runs) seen.add('run'); if (lane) seen.add('lane');
-      const x = await playOne(p, { hintMv: intro ? p.best[0] : null }), ok = x.res === 'goal';
+      const lane = p.roles.some(x => x <= -2), isNew = (!!p.runs && !taught.has('run')) || (lane && !taught.has('lane'));
+      const x = await playOne(p, { hintMv: (first && i === 0) || isNew ? p.best[0] : null, after: isNew ? T.hintNew : T.hint }), ok = x.res === 'goal';
+      if (ok) { if (p.runs) taught.add('run'); if (lane) taught.add('lane'); }
       if (ok) { hud.banner('GOAL!', 'goal'); stage.say(PZ_SAID.goal); }
       const goOn = runStep(run, ok, { at, seed: p.seed, idea: p.idea, ideas: p.ideas.join('+'), sit: p.sit, len: p.len, moves: p.moves, taps: board.taps.join(' '), res: ok ? 'goal' : x.why, miss: misses, sec: Math.round((now() - tStart) * 10) / 10 });
       if (ok) await stage.wait(T.goal); else await replay(p);
@@ -443,7 +443,7 @@ function cellPx() {
   for (let x = 0; x < pz.W; x++) for (let y = 0; y < pz.H; y++) { const a = world.project(wx(x), wy(y), 0); for (const [dx, dy] of [[1, 0], [0, 1]]) { if (x + dx >= pz.W || y + dy >= pz.H) continue; const b = world.project(wx(x + dx), wy(y + dy), 0); if (a && b) m = Math.min(m, Math.hypot(b[0] - a[0], b[1] - a[1])); } }
   return m;
 }
-const dev = { force: null, stage, cellPx, moveMs, get phase() { return phase; }, get pz() { return pz; }, get board() { return board; }, choices, moveAt, reach, fitCam,
+const dev = { force: null, stage, cellPx, moveMs, get hint() { return hint?.on ? hint.mv : null; }, get phase() { return phase; }, get pz() { return pz; }, get board() { return board; }, choices, moveAt, reach, fitCam,
   get view() { return VIEW; }, set view(v) { if (VIEWS[v]) { VIEW = v; if (pz) stage.cam = fitCam(pz); } }, get speed() { return stage.speed; }, set speed(v) { stage.speed = v; },
   // (a picture of a high level) a puzzle shown after k moves of its solution, nothing else changed
   preview(level, seed, k = 0) { const p = makePuzzle(level, seed); showPuzzle(p); for (const mv of p.best.slice(0, k)) board.tap(mv); placeAll(board.s); toWait(); return p.best.length; } };

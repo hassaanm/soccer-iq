@@ -78,8 +78,8 @@ export function puzzleLevel(L) {
   const sits = n < 2 ? ['plain'] : n < 4 ? ['run'] : n < 5 ? ['screen'] : n < 8 ? ['run', 'screen', 'decoy', 'plain'] : ['run', 'screen', 'decoy', 'both', 'both'];
   return {
     W: 6 + past(L, [15]), H: 5 + past(L, [11]), ours: 3 + past(L, [10]),
-    def: 1 + past(L, [4, 8, 16]), mark: past(L, [5, 19]), press: 1 + past(L, [29]),
-    spare: 1 - past(L, [7]), lenLo: 2 + past(L, [3, 9, 17, 27]), lenHi: 2 + past(L, [2, 6, 14, 23]),
+    def: 1 + past(L, [4, 8, 16]), mark: past(L, [7, 19]), press: 1 + past(L, [29]),
+    spare: 1 - past(L, [6]), lenLo: 2 + past(L, [3, 9, 17, 27]), lenHi: 2 + past(L, [2, 5, 14, 23]),
     firsts: 3 - past(L, [12, 18]), ideas: 1 + past(L, [13]), first: false,
     sec: L < 34 / 3 - 1e-9 ? 0 : ease(120, 30, 10)(L - 34 / 3), sits,
   };

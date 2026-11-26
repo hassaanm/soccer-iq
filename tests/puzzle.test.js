@@ -38,7 +38,7 @@ test('the first puzzle is the plainest keeper case (pass across, finish); a scor
     assert.equal(obviousWin(p1, s1, p1.moves), null, 'but not the obvious line');
     const pz = makePuzzle(2 * STEP, 100 + i), s = startOf(pz);
     assert.equal(pz.len, 3); assert.equal(pz.moves, 4); assert.equal(shortest(pz, s, 2), 0, 'no two-move goal');
-    const p6 = makePuzzle(7 * STEP, 200 + i); assert.ok(p6.moves === p6.len && p6.len >= 3, 'from 7: no spare move');
+    const p6 = makePuzzle(6 * STEP, 200 + i); assert.ok(p6.moves === p6.len && p6.len >= 3, 'from 6: no spare move');
     const p13 = makePuzzle(13 * STEP, 200 + i); assert.ok(p13.ideas.length >= 2, `score 13: ${p13.ideas}`);
   }
 });
