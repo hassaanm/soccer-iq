@@ -1,2 +1,2 @@
 // Bump this with every published change so you can tell which build is running (shown on the home screen).
-export const VERSION = 'Nov 22 · v95';
+export const VERSION = 'Nov 26 · v96';
