@@ -151,7 +151,7 @@ function warm() {
 }
 
 // ---------- a try ----------
-let prevLay = null, seedN = 0, real = 0;
+let prevLay = null, seedN = 0, real = 0, playMarked = false;
 const nextSeed = () => (((Math.random() * 4294967296) >>> 0) ^ (++seedN * 2654435761 >>> 0)) >>> 0;
 function setup(lay) {
   sim = new Sim();
@@ -206,7 +206,7 @@ function step(dt) {
   real += dt;
   if (T) {
     if (T.phase === 'ready' || T.phase === 'play') {
-      T.t += dt; if (T.phase === 'ready' && T.t >= READY_S) T.phase = 'play';
+      T.t += dt; if (T.phase === 'ready' && T.t >= READY_S) { T.phase = 'play'; if (!playMarked) { playMarked = true; if (typeof window !== 'undefined') window.__open.playAt = performance.now(); } } // (for the checks: the run's play begins; nothing is made for the 3D picture after it)
       for (const o of T.lay.foes) if (o.move && !T.moved.has(o.id) && T.t >= o.move.t0) { T.moved.add(o.id); sim.go(o.id, o.move.to.x, o.move.to.y, o.move.v); }
       if (T.t >= T.lay.secs) timeUp();
     } else if (T.phase === 'pass') follow();
@@ -369,14 +369,13 @@ export async function runOpen() {
     game.mode = 'open'; world.setEnv('crowd'); // (v96 fix: the night stadium, also after a game on the training ground)
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'rondo' }); hud.dots([], 0);
     dress(us, them); chipShirts(us); warm();
-    prevLay = null; real = 0; praised = -99;
+    prevLay = null; real = 0; praised = -99; playMarked = false;
     const run = startRun(ID);
     // the first try's picture behind the card (its layout is made again when play starts)
     { const lay0 = O.makeLayout(0, nextSeed(), null, O.welcomeOf(0)); ahead = [{ level: 0, w: O.welcomeOf(0), lay: lay0 }]; setup(lay0); /* (the first try's own layout, shown behind the card) */ T = { lay: lay0, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 }; frame(0, true); }
     onStage(stage); stage.on = true; dom.el.classList.add('on'); show(null);
     plog({ is: 'start' });
     if (first) await card({ emoji: '👀', title: O.OPEN_SAID.intro, sub: 'Tap the friend with nobody from the other team near him and nobody in the way. The arrows turn to look around.', button: 'Play' });
-    if (typeof window !== 'undefined') window.__open.playAt = performance.now(); // (for the checks: play begins; nothing is made for the 3D picture after it)
     for (;;) {
       const r = await playTry(run), lv = run.level;
       const info = { seed: r.seed, tap: r.tap || 'none', how: r.how, right: r.right, sec: r.sec, why: r.why, look: r.look, turns: r.turns, drags: r.drags, turned: r.turned, kind: r.kind };
