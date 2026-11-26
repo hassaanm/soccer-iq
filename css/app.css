@@ -1174,3 +1174,21 @@ body.logon #logTab{display:grid}
 #dashWipe{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s ease;will-change:opacity;
   background:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 22px,rgba(255,255,255,.55) 22px 26px,rgba(255,255,255,0) 26px 61px,rgba(255,255,255,.3) 61px 63px),linear-gradient(90deg,#2a1f4d,#3b6fd8 50%,#2a1f4d)}
 #dashWipe.on{opacity:1}
+
+/* ---- VARE worker (v96): Live variant E, the crawl. A chip E after A B C D (same look). At a decision point the
+   picture's edges and the stands above the pitch darken a little (#fCrawl: made before play, shown by opacity only;
+   the pitch and the players stay bright), and STAY sits left of the action button, filling with gold as the countdown
+   runs (a transform): when it is full, STAY is what happens. ---- */
+#fCrawl{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s ease-in-out;will-change:opacity;
+  background:radial-gradient(ellipse 70% 66% at 50% 66%,rgba(10,8,36,0) 48%,rgba(10,8,36,.62) 100%),linear-gradient(180deg,rgba(16,24,80,.62) 0%,rgba(16,24,80,.3) 26%,rgba(16,24,80,0) 44%)}
+#fastHud.crawl #fCrawl{opacity:1}
+#fastHud #fStay{display:flex;right:calc(146px + var(--safe-r));bottom:calc(26px + var(--safe-b));width:92px;height:92px;font-size:13px;pointer-events:auto;overflow:hidden;will-change:transform,opacity}
+#fastHud #fStay:not(.show){opacity:0;pointer-events:none!important;animation:none}
+#fStay b{position:relative;font-size:38px;line-height:1;font-weight:400;text-shadow:none}
+#fStay span{position:relative}
+#fStay .fill{position:absolute;inset:0;border-radius:50%;background:linear-gradient(180deg,#ffe066,#f5b800);transform:scaleY(0);transform-origin:50% 100%;pointer-events:none}
+#fStay.run .fill{animation:fStayFill var(--crawl,5s) linear forwards}
+#fStay.run2 .fill{animation:fStayFill2 var(--crawl,5s) linear forwards}
+@keyframes fStayFill{to{transform:scaleY(1)}}
+@keyframes fStayFill2{to{transform:scaleY(1)}}
+#fastHud.fwarm #fStay{display:flex!important}
