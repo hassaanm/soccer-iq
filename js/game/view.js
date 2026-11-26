@@ -34,6 +34,7 @@ export const HERO_FLOOR = [48, 60];
 // The "stay here" badge (v60): how high over the ground it floats over him, in meters (see World).
 const STAY_Z = 1.62;
 const BACK_SCALE = [2];
+const HAND_ARROW = 4.3 / 3.6; // (v96) the hand on a dribble arrow: 4.3 m out (its head; world.js draws it to 4.75 m), not its tap point at 3.6 m
 const HAND_SLACK = 8; // (v96) px a target of the hand may creep before the hand is moved after it (updateHud)
 // The aim view (v64, see aimView): how far behind him the camera is (m), the lens (px per metre at the goal, as a share of
 // the screen's height, is AIM_K / (his distance from the goal + AIM_B), never under AIM_MIN), and where the goal's middle
@@ -526,7 +527,9 @@ export const view = {
   handPoint(at) {
     const p = (this.handPt ||= { x: 0, y: 0, z: 0 });
     if (at.id) { const a = this.sim.a(at.id); if (!a) return null; p.x = a.x; p.y = a.y; p.z = at.z ?? .9; return p; }
-    if (at.opt) { const t = this.targets().find(x => x.opt === at.opt) || (this.handSeen?.at === at ? this.handSeen.t : null); if (!t) return null; this.handSeen = { at, t }; p.x = t.x; p.y = t.y; p.z = t.z ?? 0; return p; } // (kept for this target: the step may close as the hand taps)
+    if (at.opt) { const t = this.targets().find(x => x.opt === at.opt) || (this.handSeen?.at === at ? this.handSeen.t : null); if (!t) return null; this.handSeen = { at, t }; p.x = t.x; p.y = t.y; p.z = t.z ?? 0;
+      if (at.opt.startsWith('drib:')) { const h = this.sim.a('hero'); if (h) { p.x = h.x + (t.x - h.x) * HAND_ARROW; p.y = h.y + (t.y - h.y) * HAND_ARROW; } } // (on the arrow's head, out past his body: the arrow's tap point is behind him from the view behind)
+      return p; } // (kept for this target: the step may close as the hand taps)
     p.x = at.x; p.y = at.y; p.z = at.z ?? 0; return p;
   },
   updateHud() {
