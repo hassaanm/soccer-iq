@@ -61,8 +61,9 @@ test('every scenario plays out for every option without getting stuck', async ()
 });
 
 test('mini match ends at 2 goals', async () => {
+  const real = Math.random; Math.random = seeded(8); // (v96: repeatable; unseeded, about 1 match in 200 was lost 1-2 even with the best play every time)
   const { g } = makeGame(); let i = 0;
-  const s = await drive(g, g.match(['look-up']), gm => (i++, gm.sc.best || (gm.sc.kind === 'defense' ? 'spot:' + gm.sc.spots[0].id : 'drib:back')), 300);
+  const s = await drive(g, g.match(['look-up']), gm => (i++, gm.sc.best || (gm.sc.kind === 'defense' ? 'spot:' + gm.sc.spots[0].id : 'drib:back')), 300).finally(() => { Math.random = real; });
   assert.equal(s.us, 2, `always choosing the best play should win (${JSON.stringify(s)}, ${i} choices)`);
 });
 

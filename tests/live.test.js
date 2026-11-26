@@ -33,7 +33,9 @@ test('live play: good choices keep the ball', async () => {
   assert.equal(r.goodLost, 0);
 });
 test('live play: wrong passes are never stolen from behind the receiver', async () => {
-  const r = await playMatches(4, gm => ['pass:0', 'pass:1'].find(o => gm.rating(o) === 'bad') || gm.sc.best || 'drib:back');
+  // (v96: repeatable; unseeded, a 3v3 run played 11 to 13 wrong passes, so "more than 10" now and then fell short)
+  const real = Math.random; let x = 10; Math.random = () => (x = (x * 16807) % 2147483647) / 2147483647;
+  const r = await playMatches(4, gm => ['pass:0', 'pass:1'].find(o => gm.rating(o) === 'bad') || gm.sc.best || 'drib:back').finally(() => { Math.random = real; });
   assert.ok(r.steals > 10, `only ${r.steals} wrong passes were played`);
   assert.equal(r.fromBehind, 0);
 });
