@@ -167,7 +167,7 @@ export async function playOne(b, base, id, secs) {
     await tap(b, 150 + R() * 630, 110 + R() * 230); n++; // (the field, clear of the home and sound buttons in the corners)
   }
   await b.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-  const out = await b.ev(`const T = window.__tl; return { f: T.f, m: T.m, hudNodes: T.hudNodes, errs: window.__errs.slice(0, 8), plays: window.__plays, playAt: window.__dash?.stage.on || window.__dash?.playAt ? window.__dash.playAt : null }`); // (v96 playAt: when Dribble dash's play began)
+  const out = await b.ev(`const T = window.__tl; return { f: T.f, m: T.m, hudNodes: T.hudNodes, errs: window.__errs.slice(0, 8), plays: window.__plays, playAt: window.__dash?.stage.on || window.__dash?.playAt ? window.__dash.playAt : window.__open?.playAt || null }`); // (v96 playAt: when Dribble dash's or Who's open's play began)
   return { id, t0, taps: n, syn, ...out };
 }
 
@@ -235,7 +235,7 @@ export function judge(r) {
     out.made = m.filter(x => x[0] > t0 + L.START_S * 1000 && (/^(shader compiled|mesh made|texture made)/.test(x[1]) || (/^html nodes/.test(x[1]) && !/\((b|u|b,u|u,b)\)$/.test(x[1])))).map(x => x[1]);
     if (out.made.length) out.fails.push(`made: ${out.made.length} in play (${[...new Set(out.made)].slice(0, 4).join('; ')})`);
   }
-  // (v96) a game that says when its play begins (Dribble dash: window.__dash.playAt): nothing made for the 3D picture after it
+  // (v96) a game that says when its play begins (Dribble dash: window.__dash.playAt; Who's open: window.__open.playAt): nothing made for the 3D picture after it
   else if (r.playAt) { out.made = m.filter(x => x[0] > r.playAt && /^(shader compiled|mesh made|texture made)/.test(x[1])).map(x => x[1]); if (out.made.length) out.fails.push(`made: ${out.made.length} in play (${[...new Set(out.made)].slice(0, 4).join('; ')})`); }
   if (r.errs?.length) out.fails.push(`errors: ${r.errs.join(' | ').slice(0, 300)}`);
   const sorted = f.map(x => x[1]).filter(x => x > 0).sort((a, b) => a - b); out.usual = sorted[sorted.length >> 1] || 0;
