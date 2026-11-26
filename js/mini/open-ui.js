@@ -59,9 +59,9 @@ function build() {
     + `<button id="oRight" class="btn btn-blue btn-round oTurn" type="button" aria-label="Look right">${ARROW(-1)}<i>👀</i></button>`
     + `<div id="oChips">${'<button class="oChip" type="button" aria-label="A friend you saw"><span class="pic"></span></button>'.repeat(O.FRIENDS.length)}</div>`;
   hudEl.appendChild(el);
-  dom = { el, left: el.querySelector('#oLeft'), right: el.querySelector('#oRight'), chips: [...el.querySelectorAll('.oChip')].map(b => ({ b, id: null, key: '', tf: '', on: false, pics: {} })) };
+  dom = { el, left: el.querySelector('#oLeft'), right: el.querySelector('#oRight'), chips: [...el.querySelectorAll('.oChip')].map((b, i) => ({ b, id: O.FRIENDS[i], tf: '', on: false })) };
   for (const [b, s] of [[dom.left, 1], [dom.right, -1]]) b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false) return; turn(s); });
-  for (const c of dom.chips) c.b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !c.id || !c.on) return; plog({ is: 'chip', to: c.id }); passTo(c.id, 'chip'); });
+  for (const c of dom.chips) c.b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (e.isPrimary === false || !c.on) return; plog({ is: 'chip', to: c.id }); passTo(c.id, 'chip'); });
   rings = makeRings();
   canvas.addEventListener('pointerdown', down);
   addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', e => up(e, true));
@@ -93,19 +93,33 @@ function dress(us, them) {
     if (W_IDS.has(id)) world.rigs.set(id, r); else own.set(id, r);
   }
 }
-// (The bodies the world lacks are made while the Mini games sheet is open, one a frame, so the tile's tap does not wait
-// for them: about 60 ms each on a phone-slow CPU. Any not made by then are made as the game starts.)
+// (The bodies the world lacks are made ahead, one a frame, while nothing is played: a few seconds after the page loads
+// and again when the Mini games sheet opens (the teams may have changed), so the tile's tap never waits for them (about
+// 60 ms each on a phone-slow CPU); then all are drawn once, under the sheet or the home screen. It stops as soon as any
+// game starts. Any not made by then are made as this game starts.)
+let pre = 0;
 function prebuild() {
   let us, them; try { us = teamById(P.us); them = teamById(P.them); } catch { return; }
-  const list = want(us, them); let i = 0;
-  const next = () => { if (busy || i >= list.length) return; const [id, team, k] = list[i++]; try { rigFor(id, team, k); } catch (e) { console.error(e); return; } setTimeout(() => requestAnimationFrame(next), 0); };
+  const list = want(us, them), tok = ++pre, sheet = document.getElementById('miniSheet'), home = document.getElementById('home');
+  const stop = () => busy || tok !== pre || sheet?.classList.contains('starting') || !home || home.classList.contains('hidden');
+  let i = 0;
+  const next = () => {
+    if (stop()) return;
+    if (i >= list.length) { if (!added.length && list.some(([id, team, k]) => !rigFor(id, team, k).userData.openWarm)) try { build(); chipShirts(us); dress(us, them); warm(); } catch (e) { console.error(e); } finally { undress(); } return; }
+    const [id, team, k] = list[i++]; try { rigFor(id, team, k); } catch (e) { console.error(e); return; } setTimeout(() => requestAnimationFrame(next), 0);
+  };
   requestAnimationFrame(next);
 }
-if (typeof document !== 'undefined') setTimeout(() => { const sh = document.getElementById('miniSheet'); if (sh && typeof MutationObserver === 'function') new MutationObserver(() => { if (!sh.classList.contains('hidden')) prebuild(); }).observe(sh, { attributes: true, attributeFilter: ['class'] }); }, 0);
+if (typeof document !== 'undefined') setTimeout(() => {
+  const sh = document.getElementById('miniSheet'); if (sh && typeof MutationObserver === 'function') new MutationObserver(() => { if (!sh.classList.contains('hidden') && !sh.classList.contains('starting')) prebuild(); }).observe(sh, { attributes: true, attributeFilter: ['class'] });
+  setTimeout(prebuild, 4000);
+}, 0);
 function undress() { for (const r of added) world.scene.remove(r); added.length = 0; own.clear(); world.resetRigs(); }
 // The chips' shirts, made before play: each chip holds every friend's shirt; the one it stands for shows.
+let shirtsFor = null;
 function chipShirts(us) {
-  for (const c of dom.chips) { const pic = c.b.querySelector('.pic'); pic.innerHTML = O.FRIENDS.map((id, i) => `<span data-id="${id}">${shirt(us, body(id, us, i + 1).num, 34)}</span>`).join(''); c.pics = Object.fromEntries([...pic.children].map(s => [s.dataset.id, s])); c.key = ''; }
+  if (shirtsFor === us.id + JSON.stringify(us.kit)) return; shirtsFor = us.id + JSON.stringify(us.kit);
+  dom.chips.forEach((c, i) => { c.b.querySelector('.pic').innerHTML = shirt(us, body(c.id, us, i + 1).num, 34); }); // (one chip for each friend, his own shirt)
 }
 
 // The first time a body is drawn its shapes and pictures go to the graphics chip: every one is drawn once now, all the
@@ -135,22 +149,29 @@ function setup(lay) {
   for (const [id, r] of own) r.visible = !!sim.a(id);
 }
 // Plays one try at the run's level; resolves { ok, why, tap, bonus } when it is over.
-// The next try's layout is made during this one, a little each frame (open.js layoutSteps, MAKE_MS a frame): one for the
-// level after a success and one for the level after a miss, so nothing is worked out between two tries.
-const MAKE_MS = 1.5;
+// The next try's layout is made during this one, a little each frame (open.js layoutSteps: MAKE_MS a frame in play,
+// MAKE_IDLE between tries, shared by the candidates): one for the level after a success and one for the level after a
+// miss, so nothing is worked out in one go between two tries. If the one needed is not ready, the next try waits a few
+// frames for it (at most WAIT_MAX ms; very rare), rather than working it out in one frame.
+const MAKE_MS = 1.5, MAKE_IDLE = 4, WAIT_MAX = 1500;
 let ahead = [];
-function layoutFor(level) {
-  const a = ahead.find(x => Math.abs(x.level - level) < 1e-6); ahead = [];
-  if (a?.lay) return a.lay;
-  if (a) for (;;) { const r = a.g.next(); if (r.done) return r.value; } // (not done yet: the rest now)
-  return O.makeLayout(level, nextSeed(), prevLay);
+async function layoutFor(level) {
+  let a = ahead.find(x => Math.abs(x.level - level) < 1e-6);
+  if (!a) { a = { level, g: O.layoutSteps(level, nextSeed(), prevLay), lay: null }; ahead = [a]; } // (a bonus point: a level not made ahead)
+  else ahead = [a];
+  for (let w = 0; !a.lay && w < WAIT_MAX; w += 30) await wait(30);
+  ahead = [];
+  if (a.lay) return a.lay;
+  for (;;) { const r = a.g.next(); if (r.done) return r.value; } // (still not done: the rest now)
 }
 function makeAhead() {
-  const now = performance.now();
-  for (const a of ahead) { if (a.lay) continue; while (performance.now() - now < MAKE_MS) { const r = a.g.next(); if (r.done) { a.lay = r.value; break; } } if (!a.lay) return; }
+  const t0 = performance.now(), todo = ahead.filter(a => !a.lay); if (!todo.length) return;
+  const per = (T && (T.phase === 'play' || T.phase === 'ready' || T.phase === 'pass' || T.phase === 'steal') ? MAKE_MS : MAKE_IDLE) / todo.length;
+  for (const a of todo) { const end = performance.now() + per; while (performance.now() < end) { const r = a.g.next(); if (r.done) { a.lay = r.value; break; } } }
+  void t0;
 }
-function playTry(run) {
-  const lay = layoutFor(run.level); prevLay = lay;
+async function playTry(run) {
+  const lay = await layoutFor(run.level); prevLay = lay;
   ahead = [run.level + STEP, run.level].map(level => ({ level, g: O.layoutSteps(level, nextSeed(), lay), lay: null }));
   setup(lay);
   T = { lay, t: 0, phase: 'ready', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), tap: null, res: null, kick: null, done: null, t0: real, turns: 0, drags: 0 };
@@ -262,7 +283,7 @@ function stealing() {
   const o = sim.a(T.taker), h = sim.a('hero');
   if (!T.over && Math.hypot(o.x - h.x, o.y - h.y) < 1.05) { sim.stop(o.id); take(T.taker); finish(false, 'time'); }
 }
-let talking = false; const hist = []; // (hist: the last tries, for the checks and the bots)
+let talking = false, praised = -99; const PRAISE_S = 5; const hist = []; // (hist: the last tries, for the checks and the bots)
 const speak = (line, force = false) => { if (talking && !force) return; talking = true; Promise.resolve(say(line)).finally(() => { talking = false; }); };
 function finish(ok, why = null) {
   if (T.over) return; T.over = true; T.phase = 'after';
@@ -271,7 +292,7 @@ function finish(ok, why = null) {
   if (ok) {
     sfx('star', bonus ? 2 : 1);
     if (bonus) { hud.banner('FORWARD!', 'goal'); speak(O.OPEN_SAID.forward); }
-    else { hud.banner('NICE PASS!', 'good'); speak(ansSteps > 0 && T.turns + T.drags > 0 ? O.OPEN_SAID.looked : O.OPEN_SAID.good); }
+    else { hud.banner('NICE PASS!', 'good'); const looked = ansSteps > 0 && T.turns + T.drags > 0; if (looked || real - praised > PRAISE_S) { praised = real; speak(looked ? O.OPEN_SAID.looked : O.OPEN_SAID.good); } } // (the plain praise at most every PRAISE_S s: the tries come fast)
   } else {
     hud.banner(why === 'lane' ? 'BLOCKED!' : why === 'time' ? 'TOO SLOW!' : 'MARKED!', 'bad');
     speak(why === 'lane' ? O.OPEN_SAID.lane : why === 'time' ? (ansSteps > 0 ? O.OPEN_SAID.behind : O.OPEN_SAID.time) : O.OPEN_SAID.marked, true);
@@ -307,13 +328,12 @@ function chips(play) {
   }
   const show = [];
   for (const [k, side] of [['l', 0], ['r', 1]]) list[k].sort((p, q) => p.rel - q.rel).slice(0, CHIP_Y.length).forEach((c, i) => show.push({ ...c, x: side ? w - 34 : 34, y: CHIP_Y[i], side }));
-  dom.chips.forEach((d, i) => {
-    const c = show[i], on = !!c; d.id = c?.id || null;
+  for (const d of dom.chips) {
+    const c = show.find(x => x.id === d.id), on = !!c;
     if (on !== d.on) { d.on = on; d.b.classList.toggle('show', on); }
-    if (!c) return;
-    if (c.id !== d.key) { d.key = c.id; for (const id in d.pics) d.pics[id].classList.toggle('on', id === c.id); }
+    if (!c) continue;
     const tf = `translate(${Math.round(c.x - 28)}px,${Math.round(c.y - 28)}px)`; if (tf !== d.tf) { d.tf = tf; d.b.style.transform = tf; d.b.classList.toggle('r', !!c.side); }
-  });
+  }
 }
 
 // ---------- a run ----------
@@ -322,16 +342,16 @@ export async function runOpen() {
   try {
     build();
     const us = teamById(P.us), them = teamById(P.them), first = !P.mini?.[ID]?.plays;
-    game.setTeams(us, them); game.mode = 'open'; world.setEnv('crowd');
+    if (game.us !== us || game.them !== them) game.setTeams(us, them); game.mode = 'open'; // (the same teams: the world keeps its compiled look, and the first frame compiles nothing) world.setEnv('crowd');
     hud.hideScore(); hud.caption(''); hud.state({ phase: 'idle', mode: 'rondo' }); hud.dots([], 0);
     dress(us, them); chipShirts(us); warm();
-    prevLay = null; real = 0;
+    prevLay = null; real = 0; praised = -99;
     const run = startRun(ID);
     // the first try's picture behind the card (its layout is made again when play starts)
-    { const lay0 = O.makeLayout(0, nextSeed()); setup(lay0); T = { lay: lay0, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 }; frame(0, true); }
+    { const lay0 = O.makeLayout(0, nextSeed()); ahead = [{ level: 0, lay: lay0 }]; setup(lay0); /* (the first try's own layout, shown behind the card) */ T = { lay: lay0, phase: 'idle', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), t: 0, turns: 0, drags: 0 }; frame(0, true); }
     onStage(stage); stage.on = true; dom.el.classList.add('on'); show(null);
     plog({ is: 'start' });
-    if (first) await card({ emoji: '👀', title: O.OPEN_SAID.intro, sub: 'Tap the friend with no red near him and no red in the way. The arrows turn to look around.', button: 'Play' });
+    if (first) await card({ emoji: '👀', title: O.OPEN_SAID.intro, sub: 'Tap the friend with nobody from the other team near him and nobody in the way. The arrows turn to look around.', button: 'Play' });
     for (;;) {
       const r = await playTry(run), lv = run.level;
       const info = { seed: r.seed, tap: r.tap || 'none', how: r.how, right: r.right, sec: r.sec, why: r.why, look: r.look, turns: r.turns, drags: r.drags, turned: r.turned, kind: r.kind };
