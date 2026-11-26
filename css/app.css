@@ -1159,3 +1159,8 @@ body.logon #logTab{display:grid}
 /* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
 #score em.bump2{animation:bump2 .7s var(--bounce)}
 @keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
+/* ---- DASH worker (v96): Dribble dash (js/mini/dash-ui.js). The change of picture between legs: speed lines over the
+   whole picture for a quarter of a second (made once; shown by opacity only, takes no touch). ---- */
+#dashWipe{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .2s ease;will-change:opacity;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,0) 0 22px,rgba(255,255,255,.55) 22px 26px,rgba(255,255,255,0) 26px 61px,rgba(255,255,255,.3) 61px 63px),linear-gradient(90deg,#2a1f4d,#3b6fd8 50%,#2a1f4d)}
+#dashWipe.on{opacity:1}

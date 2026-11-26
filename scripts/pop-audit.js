@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; }, flag = k => argv.includes('--' + k);
-const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
+const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles,dash').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
 export const LIMITS = { RESULT_MS: 50, START_MS: 50, KICK_MS: 50, START_S: 3, DECODE_PER_FRAME: 2, HUD_NODES: 0, RESULT_DECODES: 0, PLAYS_PER_FRAME: 2 };
 const CHROME = process.env.CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -45,7 +45,7 @@ export const PRE = `(() => {
       if (!el.loop) el.__end = setTimeout(() => { st(el, true, true); try { el.dispatchEvent(new Event('ended')); } catch {} }, 900); return Promise.resolve(); } });
     Object.defineProperty(M, 'pause', { configurable: false, writable: false, value: function () { clearTimeout(this.__end); st(this, true, !!this.ended); } }); } catch {}
   window.__errs = []; { const ce = console.error.bind(console); console.error = (...a) => { window.__errs.push(a.map(x => String(x && x.stack || x)).join(' ').slice(0, 300)); ce(...a); }; addEventListener('error', e => window.__errs.push('error: ' + e.message)); addEventListener('unhandledrejection', e => window.__errs.push('rejection: ' + (e.reason && e.reason.stack || e.reason))); }
-  const mini = {}; for (const k of ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles']) mini[k] = { best: 2, plays: 2, last: 1, day: -1, at: 0 };
+  const mini = {}; for (const k of ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles', 'dash']) mini[k] = { best: 2, plays: 2, last: 1, day: -1, at: 0 };
   const live = new URLSearchParams(location.search).get('live'); // (v95: a Live match in variant ?live=A … D)
   try { localStorage.setItem('soccer-iq:v1', JSON.stringify({ v: 1, openDay: -1, keeper: { best: 5, plays: 3, last: 4, day: 1, stickers: 0 }, mini,
     settings: { alwaysOpen: true, voice: true, sound: true, music: false, recorded: true, recordSpeed: true, rounds: 6, skill: null, size: '5v5', mode: live ? 'fast' : 'slow', ...(live ? { liveVariant: live } : {}) } })); } catch {}
@@ -127,6 +127,7 @@ export const RESULTS = {
   rondoWin: `sfx('click'); sfx('star', 2); hud.banner('GOT IT!', 'good'); say('Great steal!');`,
   attack: `hud.banner('GOAL!', 'goal'); sfx('goal'); say('Great pass!');`,
   puzzles: `hud.banner('GOAL!', 'goal'); sfx('net'); say('Goal!');`,
+  dash: `hud.banner('GREAT RUN!', 'good'); say('Great run!');`, // (v96: js/mini/dash-ui.js, a line got through)
 };
 const TRACE = ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink.user_timing'];
 async function replay(b, id, k) {
@@ -149,6 +150,7 @@ export async function playOne(b, base, id, secs) {
   await b.ev(WATCH);
   await tapEl(b, '#keeperBtn'); await sleep(1200); // (the first tap: sound unlocks here, as on the phone)
   const t0 = await b.ev(`return performance.now()`);
+  await b.ev(`document.querySelector('#minis .tile[data-id=${id}]')?.scrollIntoView({ block: 'center' }); return 1`); await sleep(200); // (v96: a tile below the first two rows)
   await tapEl(b, `#minis .tile[data-id=${id}]`);
   for (let i = 0; i < 25 && await visibleNow(b, '#home'); i++) await sleep(200); // (its name is said first: the home screen is behind)
   let rnd = 7 + id.length, n = 0; const R = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
@@ -164,7 +166,7 @@ export async function playOne(b, base, id, secs) {
     await tap(b, 150 + R() * 630, 110 + R() * 230); n++; // (the field, clear of the home and sound buttons in the corners)
   }
   await b.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-  const out = await b.ev(`const T = window.__tl; return { f: T.f, m: T.m, hudNodes: T.hudNodes, errs: window.__errs.slice(0, 8), plays: window.__plays }`);
+  const out = await b.ev(`const T = window.__tl; return { f: T.f, m: T.m, hudNodes: T.hudNodes, errs: window.__errs.slice(0, 8), plays: window.__plays, playAt: window.__dash?.stage.on || window.__dash?.playAt ? window.__dash.playAt : null }`); // (v96 playAt: when Dribble dash's play began)
   return { id, t0, taps: n, syn, ...out };
 }
 
@@ -226,6 +228,8 @@ export function judge(r) {
   const big = out.synPaints.filter(x => /id='flash'/.test(x)); if (big.length) out.fails.push(`result: the full-screen flash was painted (${big.join(', ')})`);
   if (plays > L.PLAYS_PER_FRAME) out.fails.push(`sound: ${plays} players started between two frames (limit ${L.PLAYS_PER_FRAME})`);
   if (out.hudNodes > L.HUD_NODES) out.fails.push(`nodes: ${out.hudNodes} nodes made or dropped by the result path`);
+  // (v96) a game that says when its play begins (Dribble dash: window.__dash.playAt): nothing made for the 3D picture after it
+  if (r.playAt) { out.made = m.filter(x => x[0] > r.playAt && /^(shader compiled|mesh made|texture made)/.test(x[1])).map(x => x[1]); if (out.made.length) out.fails.push(`made: ${out.made.length} in play (${[...new Set(out.made)].slice(0, 4).join('; ')})`); }
   if (r.errs?.length) out.fails.push(`errors: ${r.errs.join(' | ').slice(0, 300)}`);
   const sorted = f.map(x => x[1]).filter(x => x > 0).sort((a, b) => a - b); out.usual = sorted[sorted.length >> 1] || 0;
   out.frames = f.length; out.marks = m.length;
@@ -333,7 +337,7 @@ export async function popAudit({ games = GAMES, secs = SECS, live = LIVE_IDS, lo
     for (const id of games) {
       const raw = await playOne(b, base, id, secs), r = judge(raw); rows.push(r); fails += r.fails.length;
       if (arg('dump')) writeFileSync(path.join(arg('dump'), id + '.json'), JSON.stringify(raw));
-      log(`  ${id.padEnd(10)} usual ${r.usual.toFixed(0)} ms | start ${fmt(r.start)} (3D set-up ${r.setup ? r.setup.ms.toFixed(0) + ' ms' : '-'}) | result ${fmt(r.resultWorst)} (${r.results.length}) | kick ${fmt(r.kickWorst)} (${r.kicks.length}) | clips at start ${r.startClips}, most decoded in a frame ${r.decodeMost}, in play ${r.lateClips.length} | hud nodes ${r.hudNodes} | at results: images decoded ${r.synDecodes}, painted ${r.synPaints.join(' ').replace(/DIV id=|'/g, '') || '-'}, most players started in a frame ${r.playsMost}`);
+      log(`  ${id.padEnd(10)} usual ${r.usual.toFixed(0)} ms | start ${fmt(r.start)} (3D set-up ${r.setup ? r.setup.ms.toFixed(0) + ' ms' : '-'}) | result ${fmt(r.resultWorst)} (${r.results.length}) | kick ${fmt(r.kickWorst)} (${r.kicks.length}) | clips at start ${r.startClips}, most decoded in a frame ${r.decodeMost}, in play ${r.lateClips.length} | hud nodes ${r.hudNodes}${r.made ? ` | made in play ${r.made.length}` : ''} | at results: images decoded ${r.synDecodes}, painted ${r.synPaints.join(' ').replace(/DIV id=|'/g, '') || '-'}, most players started in a frame ${r.playsMost}`);
       for (const x of r.fails) log(`     FAIL ${x}`);
     }
     for (const v of live) {

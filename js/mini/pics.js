@@ -3,7 +3,7 @@
 // always blue; the other side red; a keeper in orange with green gloves. Inline SVG (crisp at any size, no ids, so a
 // picture can show many times on a page), no text. No page code here, so the tests can read it.
 // Each picture is a whole <svg> (viewBox 120 x 84, the tile's shape): PIC.keeper, PIC.pens, and four ready for the games
-// being built: PIC.rondoKeep, PIC.rondoWin, PIC.attack, PIC.puzzles. A game's entry in mini/games.js takes one as its `pic`.
+// being built: PIC.rondoKeep, PIC.rondoWin, PIC.attack, PIC.puzzles (v96: PIC.dash). A game's entry in mini/games.js takes one as its `pic`.
 
 const INK = '#24193a', GOLD = '#ffd23f', WHITE = '#fff';
 const BLUE = { shirt: '#4f8dff', shorts: '#1f3f9e', socks: '#4f8dff' };
@@ -168,7 +168,22 @@ function puzzlesPic() {
   return svg(s);
 }
 
-export const PIC = { keeper: keeperPic(), pens: pensPic(), rondoKeep: rondoKeepPic(), rondoWin: rondoWinPic(), attack: attackPic(), puzzles: puzzlesPic() };
+// Dribble dash (v96): seen from behind him as in the game, he bursts with the ball through the gap between two of
+// theirs who lunge in too late, a gold arrow on the grass through the gap, speed lines behind him.
+function dashPic() {
+  const foe = (x, y, extra) => kid({ x, y, s: .56, kit: RED, ...extra });
+  const arrow = `<path d="M55 84L59 61H53.5L63.5 47.5L73.5 61H68L72 84Z" fill="${GOLD}" stroke="${INK}" stroke-width="2.6" stroke-linejoin="round" opacity=".95"/><path d="M55 84L59 61H53.5L63.5 47.5L73.5 61H68L72 84Z" fill="none" stroke="#fff" stroke-width="1.1" stroke-linejoin="round" opacity=".8"/>`;
+  const me = { x: 50, y: 68, s: .8, kit: BLUE, back: true, hair: HAIR[3], skin: SKIN[1], arms: [-58, 64], legs: [-26, 30], rot: 7 };
+  return svg(stadium(17) + `<path d="M34 25L14 84M86 25L106 84M34 25H86" stroke="#fff" stroke-width="1.3" opacity=".7"/>` + goal(44, 9, 32, 16, 2.2)
+    + arrow
+    + shadow(31, 50, 7) + foe(31, 43, { hair: HAIR[1], skin: SKIN[2], arms: [-30, 104], legs: [-6, 58], rot: 10, look: 1, mouth: 'o' })
+    + shadow(91, 50, 7) + foe(91, 43, { hair: HAIR[2], arms: [-104, 30], legs: [-58, 6], rot: -10, look: -1, mouth: 'o' })
+    + shadow(66, 52, 4) + ball(66, 48.5, 4.6)
+    + swish('M33 64l-12 5', 2) + swish('M34 73l-13 7', 2) + swish('M67 64l12 5', 2.2) + swish('M77 72l12 7', 2) + swish('M40 80l-6 4', 1.6)
+    + shadow(51, 79, 10) + kid(me));
+}
+
+export const PIC = { keeper: keeperPic(), pens: pensPic(), rondoKeep: rondoKeepPic(), rondoWin: rondoWinPic(), attack: attackPic(), puzzles: puzzlesPic(), dash: dashPic() };
 
 // (v90) The mark for his best score, wherever it shows (the tiles, the bar in a run, the results card): a little gold
 // cup in the pictures' style, dark outline, a shine. One small SVG, sized by its container (css: .cup).
