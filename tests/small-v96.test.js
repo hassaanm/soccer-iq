@@ -39,7 +39,7 @@ test('STEAL by distance: far (not shown) past about 6 m, mid (small, dim) to rea
   for (const [st, want] of [['far', 'sl-far'], ['mid', 'sl-mid'], ['in', 'sl-in'], ['', null]]) { setStealLook(btn, st); assert.deepEqual([...cls], want ? [want] : []); }
   // the look in the CSS: opacity and scale only, 60% and 50%
   assert.match(css, /\.sl-mid\{opacity:\.5;scale:\.6/); assert.match(css, /\.sl-far\{opacity:0;scale:\.6/); assert.match(css, /\.sl-in\{opacity:1;scale:1;animation:stealPop/);
-  const block = css.slice(css.indexOf('SMALL worker (v96)')); assert.doesNotMatch(block, /[;{](display|width|height|top|left|margin)\s*:/, 'no layout property in STEAL\'s states');
+  const from = css.indexOf('SMALL worker (v96)'), next = css.indexOf('/* ----------', from), block = css.slice(from, next < 0 ? undefined : next); // SMALL's own block only (other workers' blocks follow it) assert.doesNotMatch(block, /[;{](display|width|height|top|left|margin)\s*:/, 'no layout property in STEAL\'s states');
   assert.match(css, /#fAct\[data-kind=steal\],#rSteal\{--top:#ff7a45/, 'red-orange, apart from the gold SHOOT and skill button');
 });
 
