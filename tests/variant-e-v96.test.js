@@ -124,5 +124,5 @@ test('E\'s page: made before play, shown by class and opacity only', () => {
   assert.match(fast, /<div id="fCrawl" aria-hidden="true"><\/div>/); assert.match(fast, /<button id="fStay" class="btn btn-blue btn-round"/);
   assert.match(css, /#fastHud\.crawl #fCrawl\{opacity:1\}/); assert.match(css, /#fastHud #fStay:not\(\.show\)\{opacity:0;pointer-events:none!important;animation:none\}/);
   const block = css.slice(css.indexOf('VARE worker (v96)')); assert.ok(!/filter\s*:/.test(block), 'no filter');
-  assert.match(fast, /cls\(this\.dom\.box, 'crawl', on\); cls\(this\.dom\.stay, 'show', on\); cls\(this\.dom\.stay, 'run', on && this\.dec\.clock != null\);/);
+  assert.match(fast, /cls\(this\.dom\.box, 'crawl', on\); cls\(this\.dom\.stay, 'show', on\); const run = on && this\.dec\.clock != null; cls\(this\.dom\.stay, 'run', run && !this\.E\.flip\); cls\(this\.dom\.stay, 'run2', run && this\.E\.flip\);/);
 });

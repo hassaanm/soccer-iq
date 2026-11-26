@@ -1173,5 +1173,7 @@ body.logon #logTab{display:grid}
 #fStay span{position:relative}
 #fStay .fill{position:absolute;inset:0;border-radius:50%;background:linear-gradient(180deg,#ffe066,#f5b800);transform:scaleY(0);transform-origin:50% 100%;pointer-events:none}
 #fStay.run .fill{animation:fStayFill var(--crawl,5s) linear forwards}
+#fStay.run2 .fill{animation:fStayFill2 var(--crawl,5s) linear forwards}
 @keyframes fStayFill{to{transform:scaleY(1)}}
+@keyframes fStayFill2{to{transform:scaleY(1)}}
 #fastHud.fwarm #fStay{display:flex!important}
