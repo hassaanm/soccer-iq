@@ -18,6 +18,7 @@ import * as Pens from '../mini/pens.js';
 import * as Rondo from '../mini/rondo.js';
 import * as Puzzle from '../mini/puzzle.js';
 import * as Open from '../mini/open.js'; // (v96)
+import * as Dash from '../mini/dash.js'; // (v96)
 
 const load = lines => preloadClips([...new Set(lines.filter(l => typeof l === 'string' && l).map(l => clean(fill(l))).flatMap(l => pieces(l).map(clipKey)))]);
 export function warmVoice(scenes = []) { try { load(linesFor(scenes)); } catch (e) { console.error(e); } }
@@ -27,7 +28,7 @@ const strings = ns => Object.values(ns).flatMap(v => (typeof v === 'string' ? [v
 // What Fast mode and Score attack say (js/fast/fast.js, js/mini/attack-ui.js), and the end of a Fast match.
 const FAST = ['Great choice!', 'Great pass!', 'Where is the ball?', 'Great steal!', 'Check your shoulder!', 'Saved!', 'So close!', 'Next goal wins!', 'Match time!',
   'You won the match!', 'Good game!', 'What do you want to play?', ...Object.values(MOVE_NAME).map(n => n + '!'), 'Skill!'];
-const OWN = { keeper: () => strings(Saves), pens: () => strings(Pens), rondoKeep: () => strings(Rondo), rondoWin: () => strings(Rondo), puzzles: () => strings(Puzzle), whoOpen: () => strings(Open), attack: () => FAST, fast: () => [...FAST, ...strings(Saves)] };
+const OWN = { keeper: () => strings(Saves), pens: () => strings(Pens), rondoKeep: () => strings(Rondo), rondoWin: () => strings(Rondo), puzzles: () => strings(Puzzle), whoOpen: () => strings(Open), dash: () => strings(Dash), attack: () => FAST, fast: () => [...FAST, ...strings(Saves)] };
 // A mini game's lines, in the order they are needed: its name (said as its tile is touched), its own lines, then the end
 // of a run (mini/run.js). `fast`: a Fast match (and his keeper's moment in it, at 5v5).
 export function gameLines(id) {

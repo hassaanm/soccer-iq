@@ -16,6 +16,7 @@ export const MINI = [
   { id: 'attack', name: 'Score attack', say: 'Score attack!', unit: '⚽', pic: PIC.attack },
   { id: 'puzzles', name: 'Soccer puzzles', say: 'Soccer puzzles!', unit: '🧩', pic: PIC.puzzles }, // (v90: mini/puzzle.js, mini/puzzle-ui.js)
   { id: 'whoOpen', name: "Who's open?", say: "Who's open!", unit: '👀', pic: PIC.whoOpen, lines: Object.values(OPEN_SAID) }, // (v96: mini/open.js, mini/open-ui.js)
+  { id: 'dash', name: 'Dribble dash', say: 'Dribble dash!', unit: '💨', pic: PIC.dash }, // (v96: mini/dash.js, mini/dash-ui.js)
 ];
 export const miniById = id => MINI.find(g => g.id === id);
 // What the mini games say (spoken: tests/spoken.js; loaded as a game starts: voicelines.js miniLines).

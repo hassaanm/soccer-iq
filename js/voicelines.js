@@ -8,6 +8,7 @@ import { SAVED, WHY, SAID } from './saves.js';
 import { MINI, MINI_SAID } from './mini/games.js';
 import { PEN_SAID, PEN_WHY } from './mini/pens.js';
 import { PZ_SAID, PZ_WHY, PZ_IDEA } from './mini/puzzle.js';
+import { DASH_SAID } from './mini/dash.js'; // (v96: dribble dash)
 
 export const clean = t => t.replace(/[^\p{L}\p{N}\s.,!?'’-]/gu, '').trim();
 export const fill = t => t.replaceAll('{m0}', 'Saka').replaceAll('{m1}', 'Rice').replaceAll('{m2}', 'Saka'); // (a friend's name is its own clip, loaded with the teams: flows.js setStage)
@@ -33,5 +34,5 @@ export function linesFor(scenes = []) {
 }
 export const keeperLines = () => [SAVED, ...Object.values(WHY), ...Object.values(SAID), 'What do you want to play?', 'You won! You got a new sticker!', 'Great try! You got a new sticker!', ...miniLines()];
 // (v87) The mini games' own lines (the screen, the end of a run, penalties): loaded with the keeper game's.
-export const miniLines = () => [...MINI.map(g => g.say), ...Object.values(MINI_SAID), ...Object.values(PEN_SAID), ...Object.values(PEN_WHY), ...MINI.flatMap(g => g.lines || []), ...puzzleLines()]; // (v88: a game's own lines, games.js `lines`; v90: the puzzles' lines)
+export const miniLines = () => [...MINI.map(g => g.say), ...Object.values(MINI_SAID), ...Object.values(PEN_SAID), ...Object.values(PEN_WHY), ...MINI.flatMap(g => g.lines || []), ...puzzleLines(), ...Object.values(DASH_SAID)]; // (v88: a game's own lines, games.js `lines`; v90: the puzzles' lines)
 const puzzleLines = () => [...Object.values(PZ_SAID), ...Object.values(PZ_WHY), ...Object.values(PZ_IDEA)]; // (v90: soccer puzzles)
