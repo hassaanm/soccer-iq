@@ -16,7 +16,7 @@ function match(seed = 7) { const sim = new Sim(), sz = sizeOf(); const m = new M
 test('the variant comes from the settings (A unless A B C D is chosen), reaches a Live match and its log line', () => {
   assert.equal(variantOf({ liveVariant: 'C' }), 'C'); assert.equal(variantOf({ liveVariant: 'D' }), 'D');
   for (const s of [{}, null, undefined, { liveVariant: 'x' }, { liveVariant: 'a' }]) assert.equal(variantOf(s), 'A');
-  assert.deepEqual(Object.keys(VARIANTS), ['A', 'B', 'C', 'D']);
+  assert.deepEqual(Object.keys(VARIANTS), ['A', 'B', 'C', 'D', 'E']); // (v96: E added after them: tests/variant-e-v96.test.js)
   const fast = read('js/fast/fast.js');
   assert.match(fast, /this\.vid = variantOf\(P\.settings\)/); assert.match(fast, /is: 'start',[^}]*variant: this\.vid/);
   assert.match(read('js/ui/home.js'), /P\.settings\.liveVariant = b\.dataset\.v; save\(\)/);

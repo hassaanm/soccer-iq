@@ -1159,3 +1159,19 @@ body.logon #logTab{display:grid}
 /* The score's jump starts again by its name swapping (js/ui/hud.js score), not by a forced layout. */
 #score em.bump2{animation:bump2 .7s var(--bounce)}
 @keyframes bump2{0%{scale:1}30%{scale:2.1;color:#fff}100%{scale:1}}
+
+/* ---- VARE worker (v96): Live variant E, the crawl. A chip E after A B C D (same look). At a decision point the
+   picture's edges and the stands above the pitch darken a little (#fCrawl: made before play, shown by opacity only;
+   the pitch and the players stay bright), and STAY sits left of the action button, filling with gold as the countdown
+   runs (a transform): when it is full, STAY is what happens. ---- */
+#fCrawl{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s ease-in-out;will-change:opacity;
+  background:radial-gradient(ellipse 70% 66% at 50% 66%,rgba(10,8,36,0) 48%,rgba(10,8,36,.62) 100%),linear-gradient(180deg,rgba(16,24,80,.62) 0%,rgba(16,24,80,.3) 26%,rgba(16,24,80,0) 44%)}
+#fastHud.crawl #fCrawl{opacity:1}
+#fastHud #fStay{display:flex;right:calc(146px + var(--safe-r));bottom:calc(26px + var(--safe-b));width:92px;height:92px;font-size:13px;pointer-events:auto;overflow:hidden;will-change:transform,opacity}
+#fastHud #fStay:not(.show){opacity:0;pointer-events:none!important;animation:none}
+#fStay b{position:relative;font-size:38px;line-height:1;font-weight:400;text-shadow:none}
+#fStay span{position:relative}
+#fStay .fill{position:absolute;inset:0;border-radius:50%;background:linear-gradient(180deg,#ffe066,#f5b800);transform:scaleY(0);transform-origin:50% 100%;pointer-events:none}
+#fStay.run .fill{animation:fStayFill var(--crawl,5s) linear forwards}
+@keyframes fStayFill{to{transform:scaleY(1)}}
+#fastHud.fwarm #fStay{display:flex!important}

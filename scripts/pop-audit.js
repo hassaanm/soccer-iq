@@ -18,7 +18,7 @@
 // that starts nothing (it reports itself as ended 0.9 s later, so a line that waits for its end goes on). The sound and
 // voice logic itself runs (effects are made, clips fetched and decoded), so this also checks that.
 //
-//   node scripts/pop-audit.js [--games keeper,pens,...|none] [--live A,D|none] [--live-secs 45] [--rate 4] [--secs 20] [--v] [--dump dir]
+//   node scripts/pop-audit.js [--games keeper,pens,...|none] [--live A,D,E|none] [--live-secs 45] [--rate 4] [--secs 20] [--v] [--dump dir]
 //   (--secs 60 for the full voice check; the default plays 20 s of each game)
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, statSync } from 'node:fs';
@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; }, flag = k => argv.includes('--' + k);
-const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
+const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D,E').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
 export const LIMITS = { RESULT_MS: 50, START_MS: 50, KICK_MS: 50, START_S: 3, DECODE_PER_FRAME: 2, HUD_NODES: 0, RESULT_DECODES: 0, PLAYS_PER_FRAME: 2 };
 const CHROME = process.env.CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -235,8 +235,8 @@ export function judge(r) {
 // ---------- a Live match (v95) ----------
 // The owner's iPhone froze in Live (variant A, v94): 31 to 117 ms game steps as a decision moment or the scan cue began,
 // 96 to 251 ms of page work as Live's own HUD changed and at a goal, and 200 to 228 ms waits as its 3D marks were first
-// used (shaders compiled, meshes and textures made at the first SHOOT). A match is played in variant A and D (the big
-// choices: arrows, a ring) by a child-like player tapping the field, with the moments that froze made to happen: the ball
+// used (shaders compiled, meshes and textures made at the first SHOOT). A match is played in variant A, D and E (the big
+// choices: arrows, a ring; v96 E: the crawl, its places off the ball, STAY) by a child-like player tapping the field, with the moments that froze made to happen: the ball
 // given to him (a decision moment), the scan cue, a SHOOT and its target, a goal. It fails on
 //   made     a shader, mesh or texture made, or a page node made or dropped, after the kick-off (all of it is built and
 //            warmed while he picks his player: fast.js pick),
@@ -246,7 +246,7 @@ export function judge(r) {
 //            step is 1 to 3 ms; the phone's is 1 to 3 ms too: a step that needs a whole 60 Hz frame on its own is a freeze),
 //   page     a frame's page work (style, layout, painting of the HTML: perf.js `page`) over RESULT_MS just after a goal, a
 //            cue, a decision start or the first SHOOT.
-export const LIVE = { VARIANTS: ['A', 'D'], SECS: +arg('live-secs', 45), GAME_MS: 16, PAGE_MS: LIMITS.RESULT_MS, AFTER_MS: 700, DEC_MS: 1000 };
+export const LIVE = { VARIANTS: ['A', 'D', 'E'], SECS: +arg('live-secs', 45), GAME_MS: 16, PAGE_MS: LIMITS.RESULT_MS, AFTER_MS: 700, DEC_MS: 1000 };
 export const LIVE_WATCH = `const perf = await import('/js/perf.js'); const T = window.__tl = { f: [], m: [], ev: [] };
   perf.hooks.mark = l => T.m.push([performance.now(), l]);
   let was = {}, inTick = false; T.reads = [];
