@@ -149,10 +149,10 @@ class Fast {
   // opts: { us, them, level (the other team's strength, his own: js/fast/level.js; none: match.js LEVELS) }. Resolves
   // with the counts when one side has GOALS.
   // warm: whose lines to load now (ui/voicewarm.js gameLines; Score attack passes its own). Each clip loads once.
-  play({ us, them, level, warm = 'fast' }) {
+  play({ us, them, level, warm = 'fast', noE = false }) { // (noE: a caller that is not a Live match, Score attack, plays E as A)
     if (warm) warmMini(warm); // (v93 integration: a Live match warmed no clips except through the home screen's one button)
     this.build(); this.us = us; this.them = them; if (this.picked !== us) this.warm(false); else this.chipPics(); this.picked = null; clearTimeout(this.warmT); this.dom.box.classList.remove('fwarm'); // (Score attack starts with no pick: warmed here, before its kick-off)
-    this.vid = variantOf(P.settings); this.V = VARIANTS[this.vid]; this.dec = new Decision(this.vid); this.big = null; this.bigChosen = null; this.lane = null; this.take = null; this.bigAt = 0; // (v93 variants: the home screen's A B C D, variant.js)
+    this.vid = variantOf(P.settings); if (noE && this.vid === 'E') this.vid = 'A'; this.V = VARIANTS[this.vid]; this.dec = new Decision(this.vid); this.big = null; this.bigChosen = null; this.lane = null; this.take = null; this.bigAt = 0; // (v93 variants: the home screen's A B C D, variant.js)
     const size = sizeOf(), sim = this.sim = new Sim();
     sim.on = (ev, v) => { if (ev === 'kick') { world.fx('kick', v); sfx(v >= 14 ? 'shot' : 'kick'); } else if (ev === 'touch') world.fx('touch'); };
     const m = this.m = new Match({ size: TEAM.size, sim, L: PITCH.L, W: PITCH.W, gy0: PITCH.gy0, gy1: PITCH.gy1, gh: PITCH.gh, n: size.out, keepers: !!size.keeper, level, fx: ev => world.fx(ev), sfx: n => sfx(n) });
