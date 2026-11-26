@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; }, flag = k => argv.includes('--' + k);
-const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
+const GAMES = arg('games', 'keeper,pens,rondoKeep,rondoWin,attack,puzzles,whoOpen').split(',').filter(g => g && g !== 'none'), LIVE_IDS = arg('live', 'A,D').split(',').filter(v => v && v !== 'none'), RATE = +arg('rate', 4), SECS = +arg('secs', 20), V = flag('v');
 export const LIMITS = { RESULT_MS: 50, START_MS: 50, KICK_MS: 50, START_S: 3, DECODE_PER_FRAME: 2, HUD_NODES: 0, RESULT_DECODES: 0, PLAYS_PER_FRAME: 2 };
 const CHROME = process.env.CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -45,7 +45,7 @@ export const PRE = `(() => {
       if (!el.loop) el.__end = setTimeout(() => { st(el, true, true); try { el.dispatchEvent(new Event('ended')); } catch {} }, 900); return Promise.resolve(); } });
     Object.defineProperty(M, 'pause', { configurable: false, writable: false, value: function () { clearTimeout(this.__end); st(this, true, !!this.ended); } }); } catch {}
   window.__errs = []; { const ce = console.error.bind(console); console.error = (...a) => { window.__errs.push(a.map(x => String(x && x.stack || x)).join(' ').slice(0, 300)); ce(...a); }; addEventListener('error', e => window.__errs.push('error: ' + e.message)); addEventListener('unhandledrejection', e => window.__errs.push('rejection: ' + (e.reason && e.reason.stack || e.reason))); }
-  const mini = {}; for (const k of ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles']) mini[k] = { best: 2, plays: 2, last: 1, day: -1, at: 0 };
+  const mini = {}; for (const k of ['keeper', 'pens', 'rondoKeep', 'rondoWin', 'attack', 'puzzles', 'whoOpen']) mini[k] = { best: 2, plays: 2, last: 1, day: -1, at: 0 };
   const live = new URLSearchParams(location.search).get('live'); // (v95: a Live match in variant ?live=A … D)
   try { localStorage.setItem('soccer-iq:v1', JSON.stringify({ v: 1, openDay: -1, keeper: { best: 5, plays: 3, last: 4, day: 1, stickers: 0 }, mini,
     settings: { alwaysOpen: true, voice: true, sound: true, music: false, recorded: true, recordSpeed: true, rounds: 6, skill: null, size: '5v5', mode: live ? 'fast' : 'slow', ...(live ? { liveVariant: live } : {}) } })); } catch {}
@@ -127,6 +127,7 @@ export const RESULTS = {
   rondoWin: `sfx('click'); sfx('star', 2); hud.banner('GOT IT!', 'good'); say('Great steal!');`,
   attack: `hud.banner('GOAL!', 'goal'); sfx('goal'); say('Great pass!');`,
   puzzles: `hud.banner('GOAL!', 'goal'); sfx('net'); say('Goal!');`,
+  whoOpen: `sfx('star', 1); hud.banner('NICE PASS!', 'good'); say('Great pass!');`, // (v96: mini/open-ui.js finish)
 };
 const TRACE = ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink.user_timing'];
 async function replay(b, id, k) {
@@ -149,6 +150,7 @@ export async function playOne(b, base, id, secs) {
   await b.ev(WATCH);
   await tapEl(b, '#keeperBtn'); await sleep(1200); // (the first tap: sound unlocks here, as on the phone)
   const t0 = await b.ev(`return performance.now()`);
+  await b.ev(`document.querySelector('#minis .tile[data-id=${id}]')?.scrollIntoView({ block: 'center' }); return 1;`); await sleep(300); // (v96: a tile below the fold, while the chooser shows six at a time)
   await tapEl(b, `#minis .tile[data-id=${id}]`);
   for (let i = 0; i < 25 && await visibleNow(b, '#home'); i++) await sleep(200); // (its name is said first: the home screen is behind)
   let rnd = 7 + id.length, n = 0; const R = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);

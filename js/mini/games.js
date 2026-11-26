@@ -6,6 +6,7 @@
 // so the tests can read it.
 import { PIC } from './pics.js'; // (v88: the tiles' pictures, one look for all: mini/pics.js)
 import { RONDO_SAID } from './rondo.js'; // (v88: the rondos' spoken lines, recorded with the rest: voicelines.js miniLines)
+import { OPEN_SAID } from './open.js'; // (v96: Who's open?)
 
 export const MINI = [
   { id: 'keeper', name: 'Goalkeeper', say: 'Goalkeeper!', unit: '🧤', pic: PIC.keeper },
@@ -14,6 +15,7 @@ export const MINI = [
   { id: 'rondoWin', name: 'Win the ball', say: 'Win the ball!', unit: '🦶', pic: PIC.rondoWin, lines: Object.values(RONDO_SAID) }, // (v88: mini/rondo-ui.js)
   { id: 'attack', name: 'Score attack', say: 'Score attack!', unit: '⚽', pic: PIC.attack },
   { id: 'puzzles', name: 'Soccer puzzles', say: 'Soccer puzzles!', unit: '🧩', pic: PIC.puzzles }, // (v90: mini/puzzle.js, mini/puzzle-ui.js)
+  { id: 'whoOpen', name: "Who's open?", say: "Who's open!", unit: '👀', pic: PIC.whoOpen, lines: Object.values(OPEN_SAID) }, // (v96: mini/open.js, mini/open-ui.js)
 ];
 export const miniById = id => MINI.find(g => g.id === id);
 // What the mini games say (spoken: tests/spoken.js; loaded as a game starts: voicelines.js miniLines).
