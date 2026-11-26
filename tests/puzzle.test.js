@@ -30,7 +30,7 @@ test('every puzzle shown is solved first, the obvious lines fail, few first move
 test('the first puzzle is the plainest keeper case (pass across, finish); a score of 1 is two moves again; from 2, three', () => {
   for (let i = 0; i < 30; i++) {
     const p0 = makePuzzle(0, 100 + i), s0 = startOf(p0);
-    assert.deepEqual([p0.len, p0.moves, p0.start.d.length / 2, p0.start.o.length / 2, p0.best[0][0], p0.best[1][0]], [2, 3, 1, 2, 'p', 's']);
+    assert.deepEqual([p0.len, p0.moves, p0.start.d.length / 2, p0.start.o.length / 2, p0.best[0][0], p0.best[1][0]], [2, 4, 1, 3, 'p', 's']); // (v96 fix: two friends and a spare ball more: the cues point the way, tests/v96-fix.test.js)
     assert.equal(shortest(p0, s0, 1), 0, 'no shot at once');
     const r = play(p0, s0, p0.best[0]); assert.ok(r.s.k >= 0 && !covers(r.s, +p0.best[1].slice(1)), 'the pass moves the keeper; the shot goes to the spot he cannot reach');
     const p1 = makePuzzle(STEP, 100 + i), s1 = startOf(p1);
@@ -142,7 +142,7 @@ test('the difficulty: every number goes the hard way only, one of them a success
     if (a.sec) assert.ok(b.sec <= a.sec && a.sec - b.sec <= 4, 'the sand timer shortens a little');
     if (!a.sec && b.sec) assert.ok(b.sec >= 110, 'it comes in long');
   }
-  const z = puzzleLevel(0), o = puzzleLevel(STEP); assert.deepEqual([z.def, z.ours, z.lenLo, z.lenHi, z.spare, z.sec], [1, 2, 2, 2, 1, 0], 'the first: one defender, a friend, two moves');
+  const z = puzzleLevel(0), o = puzzleLevel(STEP); assert.deepEqual([z.def, z.ours, z.lenLo, z.lenHi, z.spare, z.sec], [1, 3, 2, 2, 2, 0], 'the first: one defender, two friends, two moves and two spare (v96 fix)');
   assert.deepEqual([o.def, o.lenLo, o.lenHi, o.spare, o.firsts, o.sec], [1, 2, 2, 1, 3, 0], 'then: two moves again, one defender, one spare');
   const h = puzzleLevel(50); assert.ok(h.lenLo === 6 && h.def === 4 && h.sec > 30 && h.sec < 40, 'it keeps getting harder');
   for (const L of big) { const d = puzzleLevel(L); assert.ok(d.W <= 7 && d.H <= 6 && d.ours <= 4 && d.def <= 4, 'the board fits the screen (taps 44 px and more) and the 3D world\'s bodies (four a side)'); }

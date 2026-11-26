@@ -69,7 +69,11 @@ export function rng(seed) {
 // Each threshold is a number of puzzles solved (a score), all different. (The 3D world has bodies for four of ours and
 // four of theirs: ours and def stay at 4 or less.)
 const past = (L, at) => at.filter(n => L >= n / 3 - 1e-9).length;
-export const FIRST = { W: 6, H: 5, ours: 2, def: 1, mark: 0, press: 1, spare: 1, lenLo: 2, lenHi: 2, firsts: 3, ideas: 1, first: true, sec: 0, sits: ['plain'] };
+// (v96 fix) At a score of 0 and 1 the puzzle is one whose right move the picture's cues point to: a child who only
+// follows them (never a pass down a red lane, a run onto a red square or a shot at a grey spot; a shot at a gold spot
+// whenever there is one; otherwise any other move) solves it at least CUE_MIN of the time (cueChance, worked out exactly).
+export const CUE_MIN = .6, CUE_TO = 2, CUE_SPARE = 2;
+export const FIRST = { W: 6, H: 5, ours: 3, def: 1, mark: 0, press: 1, spare: CUE_SPARE, lenLo: 2, lenHi: 2, firsts: 3, ideas: 1, first: true, sec: 0, sits: ['plain'], cue: CUE_MIN };
 export const SITS = ['plain', 'run', 'screen', 'decoy', 'both'];
 export function puzzleLevel(L) {
   L = Math.max(0, L);
@@ -81,7 +85,7 @@ export function puzzleLevel(L) {
     def: 1 + past(L, [4, 8, 16]), mark: past(L, [7, 19]), press: 1 + past(L, [29]),
     spare: 1 - past(L, [6]), lenLo: 2 + past(L, [3, 9, 17, 27]), lenHi: 2 + past(L, [2, 5, 14, 23]),
     firsts: 3 - past(L, [12, 18]), ideas: 1 + past(L, [13]), first: false,
-    sec: L < 34 / 3 - 1e-9 ? 0 : ease(120, 30, 10)(L - 34 / 3), sits,
+    sec: L < 34 / 3 - 1e-9 ? 0 : ease(120, 30, 10)(L - 34 / 3), sits, cue: n < CUE_TO ? CUE_MIN : 0,
   };
 }
 // The numbers that move in steps, for the tests.
@@ -406,7 +410,7 @@ export function* puzzleSteps(level, seed) {
   const D = puzzleLevel(level), r = rng(seed), want = D.sits[Math.floor(r() * D.sits.length)];
   // The situation the seed picked, then (rarely: it did not come out in its tries) a plainer one, never the last resort.
   const order = [...new Set([want, ...(want === 'both' || want === 'decoy' ? ['run'] : []), ...D.sits.filter(x => x !== 'both' && x !== 'decoy'), 'plain'])];
-  let fallback = null, t = 0;
+  let fallback = null, t = 0, cueBest = null; // (cueBest: at a score of 0 and 1, the puzzle the cues solved best, if none reached CUE_MIN)
   for (const sit of order) for (let k = 0; k < (sit === want ? 1500 : 600); k++, t++) {
     if (t) yield t;
     const pz = place(D, r, sit); if (!pz) continue;
@@ -417,16 +421,19 @@ export function* puzzleSteps(level, seed) {
     if (firsts.length > D.firsts) continue;
     const short = sv.shortestAll(pz.start, len);
     if (D.first && !short.some(x => x[0][0] === 'p')) continue; // (the first: pass across, then finish)
+    const cue = D.cue ? cueChance(pz, pz.start, n) : 1;
+    if (cue < D.cue && !(sit === order.at(-1) && k > 400 && (!cueBest || cue > cueBest.cue))) continue; // (v96 fix: score 0 and 1: the cues point the way)
     // Every shortest solution must play the situation (none gets round it), so the puzzle is about it.
     const tagged = short.map(x => [ideasOf(pz, x), x]);
     if (!plays(sit, tagged)) continue;
     tagged.sort((a, b) => b[0].length - a[0].length || RANK[b[0][0]] - RANK[a[0][0]]);
     const top = D.first ? tagged.find(([, x]) => x[0][0] === 'p') : tagged[0];
     const out = { ...pz, seed, level, sit, moves: n, len, ways: sv.count(pz.start, n), firsts: firsts.length, spare: D.spare, idea: top[0][0], ideas: top[0], best: top[1], sec: D.sec, tries: t + 1 };
+    if (cue < D.cue) { cueBest = { cue, out }; continue; }
     if (top[0].length >= D.ideas) return out;
     fallback ||= out;
   }
-  return fallback || easyPuzzle(seed, level);
+  return fallback || cueBest?.out || easyPuzzle(seed, level);
 }
 // The places, at random by the level's numbers. Ours start outside the box; nobody of theirs next to the ball at the
 // start; each marker on the place next to his man nearest the ball (where the rule keeps him); a lane defender in the
@@ -494,6 +501,26 @@ export function easyPuzzle(seed = 0, level = 0) {
   const len = shortest(pz, pz.start, 5), sv = new Solver(pz), best = sv.shortestAll(pz.start, len)[0];
   return { ...pz, seed, level, sit: 'plain', moves: len + 1, len, ways: sv.count(pz.start, len + 1), firsts: sv.firsts(pz.start, len + 1).length, spare: 1, idea: ideaOf(pz, best), ideas: ideasOf(pz, best), best, sec: 0, tries: 0 };
 }
+// (v96 fix) The chance that a child who follows only the picture's cues solves the puzzle from s with `left` moves: he
+// shoots at a gold spot (an open shot) whenever there is one; otherwise he picks, all alike, any move the picture does not
+// mark as failing (no pass down a red lane, no step onto a red square, no shot at a grey spot); with none, any move.
+export function cueChance(pz, s, left, memo = new Map()) {
+  const key = keyOf(s) + left, m = memo.get(key); if (m !== undefined) return m;
+  const cs = codes(pz, s); let out;
+  if (cs.some(c => c >= 512 && c < 768 && outcome(pz, s, c) === 2)) out = 1;
+  else {
+    const safe = cs.filter(c => !(c >= 512 && c < 768) && outcome(pz, s, c) === 1), list = safe.length ? safe : cs;
+    let sum = 0; for (const c of list) { const o = outcome(pz, s, c); sum += o === 2 ? 1 : o === 1 && left > 1 ? cueChance(pz, next(pz, s, c), left - 1, memo) : 0; }
+    out = list.length ? sum / list.length : 0;
+  }
+  memo.set(key, out); return out;
+}
+// When the teaching hand points at the first move of the puzzle's solution (mini/puzzle-ui.js): 'new' while a friend's run
+// or a lane defender is new to him in this run (until he has solved one), sooner; 'plain' on his very first puzzle ever,
+// and (v96 fix) 'again' on the puzzle after one he failed at a score of 0 or 1 (failedAt: the score he failed at, or
+// null), sooner; else null.
+export const HAND_AFTER_FAIL_TO = 2;
+export const handWhen = ({ firstEver = false, i = 0, isNew = false, failedAt = null } = {}) => (isNew ? 'new' : failedAt != null && failedAt < HAND_AFTER_FAIL_TO ? 'again' : firstEver && i === 0 ? 'plain' : null);
 // A puzzle from a play log's line (mini try: at, the puzzles he had solved before it; seed).
 export const rebuild = ({ at, seed }) => makePuzzle(at / 3, seed);
 
@@ -520,6 +547,6 @@ export class Board {
 // What is said (spoken: tests/spoken.js; recorded clips, so the lines reuse ones that have a clip): the first time, after
 // a goal, after a fail (by why), and the idea as the solution plays.
 export const PZ_SAID = { intro: 'Score before the balls run out!', goal: 'Goal!', watch: 'Watch this way!' };
-export const PZ_WHY = { cut: 'Blocked! A defender was in the way.', blocked: 'Blocked! A defender was in the way.', tackle: 'Tackled! Stay away from the red players.', saved: 'Saved! Shoot where the keeper is not.', out: 'Out of moves!', time: 'Out of time!' };
+export const PZ_WHY = { cut: 'Blocked! A defender was in the way.', blocked: 'Blocked! A defender was in the way.', tackle: 'Tackled! Stay away from the other team.', saved: 'Saved! Shoot where the keeper is not.', out: 'Out of moves!', time: 'Out of time!' };
 export const PZ_IDEA = { keeper: 'Shoot where the keeper is not!', dribble: 'Run into the space!', switch: 'Switch to the empty side!', around: 'Pass around the defender!', draw: 'Bring the defender to you, then pass!', giveGo: 'Pass and go, then get it back!',
   screen: 'Pass around the defender!', getOpen: 'Move to open space so your friend can pass to you!', decoy: 'Pass to the open friend!' };

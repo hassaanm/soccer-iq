@@ -28,7 +28,7 @@ import { ball as ballSvg } from './pics.js';
 import { STEP } from './rules.js';
 import { startRun, runStep, endRun, runOff } from './run.js';
 import { makePzMarks } from './puzzle-marks.js';
-import { puzzleSteps, makePuzzle, Board, startOf, parse, mid, inBox, ourAt, theirAt, rng, covers, cutBy, goalRows, canRun, laneOf, BOX, PZ_SAID, PZ_WHY, PZ_IDEA } from './puzzle.js';
+import { puzzleSteps, makePuzzle, Board, startOf, parse, mid, inBox, ourAt, theirAt, rng, covers, cutBy, goalRows, canRun, laneOf, handWhen, BOX, PZ_SAID, PZ_WHY, PZ_IDEA } from './puzzle.js';
 
 // ---------- the board on the pitch ----------
 // We attack our own goal's end (x = 0: ui/goalie.js sizeGoal makes it the 5 m goal at every size). A place is C metres;
@@ -81,7 +81,8 @@ function build() {
   // The page: the moves he has left (balls down the left edge), the sand timer (right edge) and a line of words for a
   // grown-up (why it failed: its own text node, changed in place). Pointer events pass through to the picture.
   layer = document.createElement('div'); layer.id = 'pz'; layer.className = 'hidden';
-  const BALL = `<svg viewBox="-12.5 -12.5 25 25" aria-hidden="true"><ellipse cx="1.5" cy="9.5" rx="9" ry="3" fill="#24193a" opacity=".35"/>${ballSvg(0, 0, 10)}</svg>`;
+  // (v96 fix: the soft shadow is drawn in the picture, not a CSS filter: the phone repaints no filter over the 3D)
+  const BALL = `<svg viewBox="-12.5 -12.5 25 25" aria-hidden="true"><ellipse cx="1.5" cy="9.5" rx="9" ry="3" fill="#24193a" opacity=".35"/><circle cx="0" cy="1.6" r="10.9" fill="#000" opacity=".16"/><circle cx="0" cy="1" r="10.4" fill="#000" opacity=".2"/>${ballSvg(0, 0, 10)}</svg>`;
   layer.innerHTML = `<div class="balls" aria-label="Moves">${Array.from({ length: MAX_MOVES }, () => `<i class="off">${BALL}</i>`).join('')}</div><div class="sand hidden" aria-label="Time"><i></i></div><div class="why"> </div>`;
   hudEl.insertBefore(layer, hudEl.firstChild);
   ballsEl = layer.querySelector('.balls'); sandEl = layer.querySelector('.sand'); sandFill = sandEl.querySelector('i'); whyText = layer.querySelector('.why').firstChild;
@@ -344,10 +345,18 @@ let flashAlt = false; function flashBalls() { flashAlt = !flashAlt; ballsEl.clas
 
 // ---------- one puzzle ----------
 function showPuzzle(p) {
+  clearFx(); // (v96 fix: the confetti of the last goal, his or the replay's, never falls onto the new board)
   pz = p; board = new Board(p); cy = PITCH.W / 2; words(''); hud.hand(null);
   placeAll(board.s); stage.cam = fitCam(p); marks.path(null); marks.bad(null); drawBoard(board.s, false); drawBalls();
   sandEl.classList.toggle('hidden', !p.sec); sandQ = -1; sandFill.style.transform = 'scaleY(1)';
   tStart = now(); misses = 0;
+}
+// The last goal's confetti and cheer gone at once (as mini/dash-ui.js clearFx at a new leg): nothing made, the pool's
+// pieces put away.
+function clearFx() {
+  world.mood = null; const P = world.particles; if (!P?.live) return;
+  for (let i = 0; i < P.list.length; i++) if (P.list[i].life) { P.list[i].life = 0; P.mesh.setMatrixAt(i, P.zero); }
+  P.live = 0; P.mesh.instanceMatrix.needsUpdate = true;
 }
 // Plays one puzzle. Resolves { res: 'goal' | 'fail', why }.
 function playOne(p, { hintMv = null, after = T.hint } = {}) {
@@ -396,8 +405,9 @@ function nextFor(at) {
 }
 
 // ---------- a run ----------
-// The teaching hand: on his very first puzzle, and in a run while a friend's run or a lane defender is new to him (until
-// he has solved one), it points at the first move of the solution after a few seconds.
+// The teaching hand (puzzle.js handWhen): on his very first puzzle, in a run while a friend's run or a lane defender is new
+// to him (until he has solved one), and (v96 fix) on the puzzle after one he failed at a score of 0 or 1, it points at the
+// first move of the solution after a few seconds.
 let busy = false;
 export async function runPuzzles() {
   if (busy) return; busy = true; unlockSpeech(); warmKeeper();
@@ -412,14 +422,15 @@ export async function runPuzzles() {
     onStage(stage); stage.on = true; layer.classList.remove('hidden'); phase = 'busy';
     showPuzzle(p); marks.warm(); show(null);
     if (first) await card({ emoji: '🧩', title: PZ_SAID.intro, sub: 'Tap a friend to pass, a ring to run, the goal to shoot. A keeper standing still saves everything: make him move!', button: 'Play' });
-    const taught = new Set(); // (the new situations he has solved in this run: the hand points until he has)
+    const taught = new Set(); let failedAt = null; // (the new situations he has solved in this run: the hand points until he has; the score of the last puzzle if he failed it)
     for (let i = 0; ; i++) {
       const at = run.score; prepare(run, seeds);
-      const lane = p.roles.some(x => x <= -2), isNew = (!!p.runs && !taught.has('run')) || (lane && !taught.has('lane'));
-      const x = await playOne(p, { hintMv: (first && i === 0) || isNew ? p.best[0] : null, after: isNew ? T.hintNew : T.hint }), ok = x.res === 'goal';
+      const lane = p.roles.some(x => x <= -2), isNew = (!!p.runs && !taught.has('run')) || (lane && !taught.has('lane')), hand = handWhen({ firstEver: first, i, isNew, failedAt });
+      const x = await playOne(p, { hintMv: hand ? p.best[0] : null, after: hand === 'plain' ? T.hint : T.hintNew }), ok = x.res === 'goal';
+      failedAt = ok ? null : at;
       if (ok) { if (p.runs) taught.add('run'); if (lane) taught.add('lane'); }
       if (ok) { hud.banner('GOAL!', 'goal'); stage.say(PZ_SAID.goal); }
-      const goOn = runStep(run, ok, { at, seed: p.seed, idea: p.idea, ideas: p.ideas.join('+'), sit: p.sit, len: p.len, moves: p.moves, taps: board.taps.join(' '), res: ok ? 'goal' : x.why, miss: misses, sec: Math.round((now() - tStart) * 10) / 10 });
+      const goOn = runStep(run, ok, { at, seed: p.seed, idea: p.idea, ideas: p.ideas.join('+'), sit: p.sit, len: p.len, moves: p.moves, taps: board.taps.join(' '), res: ok ? 'goal' : x.why, hand: hand || null, miss: misses, sec: Math.round((now() - tStart) * 10) / 10 });
       if (ok) await stage.wait(T.goal); else await replay(p);
       if (!goOn) break;
       p = forced() || nextFor(run.score) || makePuzzle(run.level, seeds());

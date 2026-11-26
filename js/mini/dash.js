@@ -40,7 +40,7 @@ export const START_X = 9, SHOT_BACK = 13, GOAL_ROOM = 12.5; // a leg starts here
 export const LANES = { L: 1, M: 0, R: -1 }; // +y is his left (geom.js)
 
 // What he hears (all recorded already: voicelines.js loads every string this module exports, ui/voicewarm.js).
-export const DASH_SAID = { intro: 'Run into the space!', good: 'Great run!', choice: 'Great choice!', pass: 'Great pass!', tackled: 'Tackled! Stay away from the red players.', space: 'Run where nobody is!', wall: 'Pass and go, then get it back!', goal: 'Goal!', look: 'Where is the space?' };
+export const DASH_SAID = { intro: 'Run into the space!', good: 'Great run!', choice: 'Great choice!', pass: 'Great pass!', tackled: 'Tackled! Stay away from the other team.', space: 'Run where nobody is!', wall: 'Pass and go, then get it back!', goal: 'Goal!', look: 'Where is the space?' };
 
 // ---------- how hard, by level (a third of a level a line: mini/rules.js) ----------
 // The one place to tune it. Everything moves a little with each line and never back:
@@ -52,15 +52,31 @@ export const DASH_SAID = { intro: 'Run into the space!', good: 'Great run!', cho
 //   lateP   the share of lines with a late shift (from score 3): one defender goes one way, then back the other
 //   wide    the first two lines: two arrows, nobody moves, one gap wide open
 //   friend  from score 6 a friend runs alongside, one wave in three; doubleP from score 8: a second line right behind
+//   vmax    a defender's fastest pace across (m/s)
+// (v96 fix: no ceiling) Up to score 8 as before; from score 8 on (`past`: scores past 8) it keeps rising, in steady steps
+// through score 40 and beyond, by things he can see and learn: less time to choose (see), less time after the last change
+// of movement (react: a defender who turns back late must be seen at once), faster defenders (vmax), more late turns
+// (lateP), more second rows (doubleP). Never a hidden one: the rule he reads (readLine) still says it all from `settle`.
+export const CEIL = { from: 8, react: .02, reactMin: .3, see: .02, seeMin: 1.4, late: .006, lateMax: .95, dbl: .007, dblMax: .65, vmax: .02, late2: .025, late2From: 8, late2Max: .8 };
 export function dashLevel(L) {
   L = Math.max(0, L);
+  const past = Math.max(0, L * 3 - CEIL.from);
   return {
-    level: L, v: ease(2.9, 5.4, 2.6)(L), see: ease(3.3, 1.8, 1.6)(L), react: ease(1.15, .6, 1.5)(L),
-    narrow: ramp(2 / 3, .35, .8)(L), moveP: ramp(.6, .45, .9)(L), lateP: L < 1 - 1e-9 ? 0 : Math.min(.8, .3 + (L - 1) * .25),
-    wide: L < 2 / 3 - 1e-9, friend: L >= 2 - 1e-9, doubleP: L < 8 / 3 - 1e-9 ? 0 : Math.min(.4, .22 + (L - 8 / 3) * .12),
+    level: L, v: ease(2.9, 5.4, 2.6)(L), see: Math.max(CEIL.seeMin, ease(3.3, 1.8, 1.6)(L) - CEIL.see * past), react: Math.max(CEIL.reactMin, ease(1.15, .6, 1.5)(L) - CEIL.react * past),
+    narrow: ramp(2 / 3, .35, .8)(L), moveP: ramp(.6, .45, .9)(L), lateP: L < 1 - 1e-9 ? 0 : Math.min(CEIL.lateMax, Math.min(.8, .3 + (L - 1) * .25) + CEIL.late * past),
+    wide: L < 2 / 3 - 1e-9, friend: L >= 2 - 1e-9, doubleP: L < 8 / 3 - 1e-9 ? 0 : Math.min(CEIL.dblMax, Math.min(.4, .22 + (L - 8 / 3) * .12) + CEIL.dbl * past),
     third: ramp(1.5, .3, .6)(L), // the share of plain lines with a third defender (out wide, covering)
+    vmax: MOVE_MAX + CEIL.vmax * past,
+    late2: Math.min(CEIL.late2Max, Math.max(0, L * 3 - CEIL.late2From) * CEIL.late2), // (from score 8) a second late turn: both sides of an open middle, or in a second row
   };
 }
+// (v96 fix) The first EASY_LEGS legs of a run (a leg: from his own half to the shot; a tackle starts the same leg again)
+// are forgiving, whatever the score: three arrows and ONE slow defender, so two ways are wide open; he stands on his lane
+// or steps slowly across into it from the next one (EASY_V m/s: the picture changes, as it will later); EASY_SEE s to
+// choose; no tap and the boy runs on straight (no hesitation); and the leg's first tackle costs no life (he sees it, then
+// the leg starts again: hooks.again). Varied: his lane (left, middle or right) and whether he steps across.
+export const EASY_LEGS = 2, EASY_SEE = 4.6, EASY_V = [.85, 1.1];
+export const easyLevel = L => ({ ...dashLevel(0), level: L, see: EASY_SEE, easy: true });
 
 // ---------- a little random stream from a seed (so a logged wave can be made again) ----------
 export function rng(seed) {
@@ -130,9 +146,9 @@ export function truth(line) {
 // { id, dx (m behind the wave's first line), lanes, choices, defs: [{ m, dx }], openT, lockT, settle, answer, safe: [ids],
 //   friend: { side, y } | undefined, second: bool }; times in s from that line's crossing.
 export function makeWave(L, seed, ctx = {}) {
-  const D = dashLevel(L), r = rng(seed), cy = ctx.cy ?? 10, hist = ctx.hist || [], since = ctx.since ?? 9;
-  let kind = D.wide ? 'wide' : 'gaps';
-  if (!D.wide) {
+  const D = ctx.easy ? easyLevel(L) : dashLevel(L), r = rng(seed), cy = ctx.cy ?? 10, hist = ctx.hist || [], since = ctx.since ?? 9;
+  let kind = D.easy ? 'easy' : D.wide ? 'wide' : 'gaps';
+  if (!D.wide && !D.easy) {
     const u = r();
     if (D.friend && since >= 2 && (since >= 4 || u < .6)) kind = 'friend';
     else if (D.doubleP && hist.length && r() < D.doubleP && since >= 1) kind = 'double';
@@ -143,11 +159,12 @@ export function makeWave(L, seed, ctx = {}) {
   const choose = ids => { const ok = ids.filter(i => i !== avoid); return pick(r, ok.length ? ok : ids); };
   for (let tries = 0; tries < 60; tries++) {
     let w = null;
-    if (kind === 'wide') w = wideWave(r, D, cy, choose(['L', 'R']), openT, lockT);
+    if (kind === 'easy') w = easyWave(r, D, cy, choose(['L', 'M', 'R']), openT, lockT, settleMax, ctx.n || 0);
+    else if (kind === 'wide') w = wideWave(r, D, cy, choose(['L', 'R']), openT, lockT);
     else if (kind === 'gaps') w = gapsWave(r, D, cy, choose(['L', 'M', 'R']), openT, lockT, settleMax);
     else if (kind === 'friend') w = friendWave(r, D, cy, choose, openT, lockT, settleMax);
     else w = doubleWave(r, D, cy, choose(['L', 'R']), openT, lockT, settleMax);
-    if (w && w.lines.every(ok)) return { seed, level: L, kind, D, ...w };
+    if (w && w.lines.every(l => ok(l, D))) return { seed, level: L, kind, D, ...w };
   }
   // (a safe fallback, never seen in the tests: the plain wide wave)
   return { seed, level: L, kind: 'wide', D, ...wideWave(r, D, cy, choose(['L', 'R']), openT, lockT) };
@@ -161,16 +178,28 @@ function mkLine({ lanes, choices, defs, openT, lockT, answer, dx = 0, friend, se
 }
 // A line is fair: every choice plainly open or shut; one open at least; the readable rule matches it at `settle` and at
 // the lock; every move within a child's pace.
-function ok(line) {
-  const tr = line.truth;
+function ok(line, D) {
+  const tr = line.truth, vmax = D?.vmax ?? MOVE_MAX;
   if (Object.values(tr).includes('unclear') || !line.safe.length) return false;
-  if (line.settle > line.lockT - .3 + 1e-9) return false;
+  if (line.settle > line.lockT - Math.min(.3, D?.react ?? .3) + 1e-9) return false;
   for (const t of [line.settle + 1e-6, line.lockT]) { const rd = readLine(line, t); if (rd.length !== line.safe.length || rd.some(i => !line.safe.includes(i))) return false; }
-  for (const d of line.defs) { const u = Math.abs(d.m.u); if (d.m.kind !== 'stand' && (u < MOVE_MIN || u > MOVE_MAX || Math.abs(d.m.u1 || 0) > MOVE_MAX)) return false; }
+  for (const d of line.defs) { const u = Math.abs(d.m.u); if (d.m.kind !== 'stand' && (u < MOVE_MIN || u > vmax || Math.abs(d.m.u1 || 0) > vmax)) return false; }
   return true;
 }
 // a defender's x: on his line, a little in front or behind, so a line does not look drawn with a ruler
 const jx = r => U(r, -.35, .35);
+// A forgiving wave (the first legs of a run): three arrows, one slow defender shutting lane `id` (the other two wide
+// open). The first wave of a run: he stands; later, half the time, he steps slowly across into his lane from the next one.
+// He stands on the middle a quarter of the time: with no tap the boy runs on straight here (no hesitation), mostly free.
+function easyWave(r, D, cy, ans, openT, lockT, settleMax, n) {
+  const lanes = lanesOf(cy, ['L', 'M', 'R']), ids = ['L', 'M', 'R'].filter(i => i !== ans), id = ids.includes('M') && r() < (ans === 'M' ? 0 : .375) ? 'M' : pick(r, ids.filter(i => i !== 'M')), lane = cy + LANES[id] * G;
+  let m = stand(lane + U(r, -.2, .2));
+  if (n > 0 && r() < .5) { // a slow step across: from the next lane toward the open side he leaves, into his own
+    const from = id === 'M' ? pick(r, ['L', 'R']) : 'M', ys = cy + LANES[from] * G, u = U(r, ...EASY_V) * Math.sign(lane - ys), tm = (lane - ys) / u * -1 - RAMP / 2;
+    if (tm - RAMP > openT + .2 && tm + RAMP < settleMax - .1) m = stepTo(ys, lane, tm);
+  }
+  return { lines: [mkLine({ lanes, choices: lanes, defs: [{ m, dx: jx(r) }], openT, lockT, answer: ans })], answer: ans };
+}
 // The first two lines: arrows left and right; one side shut by a defender on it, the middle shut by one leaning to that
 // side; the other side wide open. Nobody moves.
 function wideWave(r, D, cy, ans, openT, lockT) {
@@ -206,8 +235,8 @@ function blocker(r, D, cy, id, open, how, openT, settleMax) {
 }
 function gapsWave(r, D, cy, ans, openT, lockT, settleMax) {
   const lanes = lanesOf(cy, ['L', 'M', 'R']), shut = ['L', 'M', 'R'].filter(i => i !== ans), late = r() < D.lateP;
-  const adj = shut.filter(i => Math.abs(LANES[i] - LANES[ans]) === 1), lateId = late ? pick(r, adj) : null;
-  const defs = shut.map(id => blocker(r, D, cy, id, ans, id === lateId ? 'late' : r() < D.moveP ? 'step' : 'stand', openT, settleMax));
+  const adj = shut.filter(i => Math.abs(LANES[i] - LANES[ans]) === 1), lateId = late ? pick(r, adj) : null, both = late && adj.length > 1 && D.late2 && r() < D.late2;
+  const defs = shut.map(id => blocker(r, D, cy, id, ans, id === lateId || (both && adj.includes(id)) ? 'late' : r() < D.moveP ? 'step' : 'stand', openT, settleMax));
   const sides = shut.filter(i => i !== 'M');
   if (sides.length && r() < D.third) { const s = LANES[pick(r, sides)]; defs.push({ m: stand(cy + s * (G + U(r, 2.3, 3))), dx: jx(r) + U(r, .5, 1.5) }); }
   return { lines: [mkLine({ lanes, choices: lanes, defs, openT, lockT, answer: ans })], answer: ans };
@@ -248,7 +277,8 @@ function doubleWave(r, D, cy, s2, openT, lockT, settleMax) {
   // line 2: its own times (from its own crossing, DOUBLE_T s after the first); in sight from the first one's arrows
   const o2 = openT - DOUBLE_T, sm2 = settleMax - .3; // (its movement settles a little before the usual: he reads it while he deals with the first)
   const shut2 = zig ? ['L', 'R'] : [other, 'M'], open2 = zig ? 'M' : s2;
-  const defs2 = shut2.map(id => blocker(r, D, cy, id, open2, r() < D.moveP * .7 ? 'step' : 'stand', o2, sm2));
+  const late2 = D.late2 && r() < D.late2 ? pick(r, shut2.filter(i => Math.abs(LANES[i] - LANES[open2]) === 1)) : null; // (from score 8: one of the second row turns back late)
+  const defs2 = shut2.map(id => blocker(r, D, cy, id, open2, id === late2 ? 'late' : r() < D.moveP * .7 ? 'step' : 'stand', o2, sm2));
   const l2 = mkLine({ lanes, choices: lanes, defs: defs2, openT: o2, lockT, answer: open2, dx, second: true });
   l1.next = l2;
   return { lines: [l1, l2], answer: a1, zig };
@@ -261,6 +291,7 @@ function doubleWave(r, D, cy, s2, openT, lockT, settleMax) {
 //   open(line) / lock(line)           a line's arrows come on / his pick is final
 //   tap(line, id, counted)            a tap on a choice
 //   cross(line, ok, info)             a line is over: ok, or { why, by } (the page calls runStep; the run's score moves)
+//   again(line, info)                 (v96 fix) a forgiving leg's first tackle: no life lost, the leg starts again
 //   tackle(line, by, why)             a defender wins the ball (shown: TACKLE_S s, then fail goes on)
 //   pass(line, free, by)              the wall pass goes; back(line): the friend plays it back
 //   shot() / goal()                   the finish
@@ -270,7 +301,7 @@ export const TACKLE_S = 1.9, GOAL_S = 1, WIPE_S = .5, HESITATE_S = .55, SLOW_K =
 export class Dash {
   constructor({ L = 30, W = 20, run, seed = 1, hooks = {} } = {}) {
     Object.assign(this, { Lp: L, Wp: W, cy: W / 2, run, hooks, seed0: seed >>> 0, x0: Math.max(START_X, L - 28.5) }); // (x0: a leg starts in his own half, as far from their goal on every pitch)
-    this.r = rng(seed); this.t = 0; this.phase = 'ready'; this.hist = []; this.waves = 0; this.since = 9;
+    this.r = rng(seed); this.t = 0; this.phase = 'ready'; this.hist = []; this.waves = 0; this.since = 9; this.legsDone = 0; this.forgiven = new Set(); // (legs that ended with the shot; the forgiving legs whose free tackle is used)
     this.hero = { x: this.x0, y: this.cy, vy: 0, v: 0 }; this.defs = []; this.friend = null; this.lines = []; this.i = 0; this.timer = 0; this.ball = 'hero';
   }
   get line() { return this.lines[this.i] || null; }
@@ -281,7 +312,7 @@ export class Dash {
     const lines = [], slots = ['o1', 'o2', 'o3', 'o4', 'm2', 'm3']; let x = x0, k = 0, friend = null;
     for (;;) {
       const L = ((this.run?.score || 0) + k) / 3, seed = this.nextSeed();
-      const w = makeWave(L, seed, { hist: this.hist, n: this.waves + k, since: this.since, cy: this.cy });
+      const w = makeWave(L, seed, { hist: this.hist, n: this.waves + k, since: this.since, cy: this.cy, easy: this.legsDone < EASY_LEGS });
       const v = w.D.v, X1 = x + v * (w.D.see + LOCK), nDef = w.lines.reduce((a, l) => a + l.defs.length, 0);
       if (lines.length && (X1 + (w.lines.at(-1).dx || 0) > this.Lp - GOAL_ROOM || slots.length < nDef || (friend && w.kind === 'friend'))) break;
       w.lines.forEach((l, j) => {
@@ -334,7 +365,7 @@ export class Dash {
       const q = this.lines[j], t = this.rel(q);
       if (q.state === 'wait' && t >= q.openT && (j === this.i || q.second)) { q.state = q.second ? 'shown' : 'open'; q.openAt = this.t; this.hooks.open?.(q); }
       if (q.state === 'shown' && this.lines[j - 1]?.state !== 'open' && this.lines[j - 1]?.state !== 'wait') { q.state = 'open'; this.hooks.open?.(q); }
-      if (q.state === 'open' && t >= q.lockT) { q.state = 'locked'; if (!q.pick && !q.second) { q.hes = this.t; } this.hooks.lock?.(q); }
+      if (q.state === 'open' && t >= q.lockT) { q.state = 'locked'; if (!q.pick && !q.second && q.wave.kind !== 'easy') { q.hes = this.t; } this.hooks.lock?.(q); } // (a forgiving wave: no tap, he runs on straight)
     }
     this.steer(dt, l);
     this.moveOver(dt); this.place();
@@ -348,7 +379,7 @@ export class Dash {
     if (l.hes && !l.passed && this.t - l.hes >= HESITATE_S) { const by = this.nearest(l); this.fail(l, by, 'none'); return; }
     if (!l.passed && this.rel(l) >= 0 && l.state !== 'done') {
       const by = this.tackler(l);
-      if (by) this.fail(l, by, l.second && !l.pick ? 'straight' : 'shut'); else this.done(l, true);
+      if (by) this.fail(l, by, (l.second || l.wave.kind === 'easy') && !l.pick ? 'straight' : 'shut'); else this.done(l, true);
     }
   }
   // the defender within reach of the ball at the crossing (the nearest), or null
@@ -390,7 +421,9 @@ export class Dash {
   }
   afterFail() {
     const { l, by, why } = this.failInfo; this.failInfo = null;
-    this.hooks.cross?.(l, false, { why, by: by?.id || null, pick: l.pick });
+    // (v96 fix) a forgiving leg forgives its first tackle: he saw why; it costs no life, and the leg starts again
+    if (l.wave.kind === 'easy' && !this.forgiven.has(this.legsDone)) { this.forgiven.add(this.legsDone); this.hooks.again?.(l, { why, by: by?.id || null, pick: l.pick }); }
+    else this.hooks.cross?.(l, false, { why, by: by?.id || null, pick: l.pick });
     if (this.run?.over) { this.phase = 'over'; this.hooks.over?.(); return; }
     // again from just before that wave (its first line), with a new wave there
     const first = l.second ? this.lines[this.lines.indexOf(l) - 1] : l, x0 = Math.max(this.x0, first.X - first.v * (first.wave.D.see + LOCK) - .5);
@@ -405,7 +438,7 @@ export class Dash {
     if (this.phase === 'goal') {
       h.v = Math.max(1.5, h.v - dt * 2.5); this.timer -= dt;
       if (this.goalAt != null && GOAL_S - this.timer >= this.goalAt) { this.goalAt = null; this.hooks.goal?.(); }
-      if (this.timer <= 0) this.wipe(() => this.buildLeg(this.x0));
+      if (this.timer <= 0) this.wipe(() => { this.legsDone++; this.buildLeg(this.x0); });
     }
   }
   // Defenders: each on his line, moving across as his plan says (by the time from his line's crossing); one closing him
@@ -446,8 +479,12 @@ export class Dash {
 //    if the answer changed. In a double he picks the gap of the first line that leads to an open gap in the second.
 //  - 'child': careless: taps at a random moment, often early, by where the defenders stand (not how they move); a third
 //    of his taps are anywhere; now and then he does not tap, or taps twice.
-export const SEE_V = .6;
+//  - 'careful' (v96 fix): an adult who reads by the rule and never slips, with a person's limits: he sees a change of
+//    movement only after a reaction time (REACT_MIN s and more), and judges each defender's pace with an error of up to
+//    SPEED_ERR (a drift under CAREFUL_V m/s, as he judges it, looks like standing).
+export const SEE_V = .6, REACT_MIN = .35, SPEED_ERR = .25, CAREFUL_V = .45;
 export function bot(kind, rnd) {
+  if (kind === 'careful') return careful(rnd);
   let cur = null, at = 0, picked = null, mem = null, again = null, extra = null;
   const nearY = (v, y) => v.defs.filter(d => d.line === v.line).reduce((a, d) => Math.min(a, Math.abs(d.y - y)), Infinity);
   const ruleRead = v => { const ds = v.defs.filter(d => d.line === v.line), mv = ds.filter(d => Math.abs(d.vy) >= SEE_V), slip = mv.length && rnd() < .03 + .07 * mv.length ? pick(rnd, mv) : null; // (a slip: one moving defender taken for standing; likelier the more of them move)
@@ -474,6 +511,36 @@ export function bot(kind, rnd) {
       if (!picked && now >= at) { picked = choose(v); d.tap(picked); if (kind === 'child' && rnd() < .35) extra = now + U(rnd, .2, .9); }
       else if (again && now >= again) { again = null; const p = choose(v); if (p !== picked) { picked = p; d.tap(p); } }
       else if (extra && now >= extra) { extra = null; d.tap(rnd() < .5 ? pick(rnd, v.choices).id : picked); }
+    },
+  };
+}
+
+// The careful adult with a person's limits (bot 'careful'). Each line: a first look REACT_MIN to REACT_MIN + 0.25 s after
+// its arrows come on (0.08 s more for each defender), then a tap by the rule (readLine) on what he sees then: where each
+// defender is and how fast across, each pace judged with its own error (up to SPEED_ERR either way, the same all line).
+// He keeps watching: when a defender's movement changes as he judges it (stands, goes one way, the other), he reads again
+// a reaction time later (REACT_MIN to REACT_MIN + 0.3 s) and taps again if the answer changed. In a double he picks the gap
+// of the first line that leads to an open gap of the second (as 'adult').
+function careful(rnd) {
+  let cur = null, at = 0, picked = null, mem = null, again = null, err = null;
+  const seen = (v, x) => { if (!err.has(x.id)) err.set(x.id, 1 + (rnd() * 2 - 1) * SPEED_ERR); return x.vy * err.get(x.id); };
+  const state = (v, x) => { const q = seen(v, x); return Math.abs(q) < CAREFUL_V ? 0 : Math.sign(q); };
+  const read = v => {
+    const ds = v.defs.filter(d => d.line === v.line);
+    const line = { lanes: v.lanes, choices: v.choices, defs: ds.map(d => ({ m: { y0: d.y, keys: [[0, state(v, d) ? seen(v, d) : 0]], kind: '' } })) };
+    let ok = readLine(line, 1e-9, CAREFUL_V - 1e-9);
+    if (v.next && ok.length > 1) { const nx = readLine(v.next, Math.max(v.next.openT, v.t - DOUBLE_T), SEE_V).map(id => v.next.choices.find(c => c.id === id).y); const lead = ok.filter(id => { const y = v.choices.find(c => c.id === id).y; return nx.some(q => Math.abs(q - y) <= G + .1); }); if (lead.length) ok = lead; }
+    const nearY = y => ds.reduce((a, d) => Math.min(a, Math.abs(d.y - y)), Infinity);
+    if (!ok.length) return v.choices.reduce((a, c) => (nearY(c.y) > nearY(a.y) ? c : a)).id;
+    return ok.reduce((a, id) => (Math.abs(v.choices.find(c => c.id === id).y - v.hero.y) < Math.abs(v.choices.find(c => c.id === a).y - v.hero.y) ? id : a));
+  };
+  return {
+    step(d) {
+      const v = d.view(), now = d.t; if (!v) return;
+      if (v.line !== cur) { cur = v.line; picked = null; again = null; mem = new Map(); err = new Map(); at = now + REACT_MIN + .25 * rnd() + .08 * v.defs.filter(x => x.line === cur).length; }
+      for (const x of v.defs) if (x.line === cur) { const q = state(v, x), was = mem.get(x.id); if (was !== undefined && was !== q && picked && !again) again = now + REACT_MIN + .3 * rnd(); mem.set(x.id, q); }
+      if (!picked && now >= at) { picked = read(v); d.tap(picked); }
+      else if (again && now >= again) { again = null; const p = read(v); if (p !== picked) { picked = p; d.tap(p); } }
     },
   };
 }

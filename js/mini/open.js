@@ -106,8 +106,16 @@ export const openIds = st => Object.keys(st).filter(id => st[id].s === 'open');
 //   two      the chance of two open friends: the one nearer their goal is worth a bonus point ("forward first")
 //   secs     the try's time (the ring at his feet)
 export const HIDE_AT = 2, BEHIND_AT = 3, MOVE_AT = 4, TWO_AT = 5;
-export function openLevel(L) {
+// (v96 fix, the owner's decision) The first WELCOME tries of a run are welcoming, whatever the score: two friends, both
+// in front of him (one open, nobody of theirs near him; the other plainly shut: a red right next to him or right in the
+// middle of his line, and no other red on the pitch), WELCOME_SECS on the clock, and AGAIN more goes after a miss
+// (mini/open-ui.js: he sees why, the ball comes back, the same picture again; the third miss costs the life). From the
+// third try on the level's own numbers below, as before.
+export const WELCOME = 2, WELCOME_SECS = 12, AGAIN = 2, WELCOME_CLEAR = [3.5, 2.5]; // (m: nobody of theirs this near the open friend, or his line)
+export const welcomeOf = n => (n >= 0 && n < WELCOME ? n : -1); // (the try's place among the welcoming ones, or -1)
+export function openLevel(L, w = -1) {
   const s = Math.max(0, L) * 3, up = (from, per, max) => clamp((s - from) * per, 0, max);
+  if (w >= 0) return { s: 0, friends: 2, hide: 0, behind: 0, subtle: 0, press: 0, roam: 0, move: 0, two: 0, secs: WELCOME_SECS, welcome: w };
   return {
     s, friends: 3 + up(1.5, 1 / 3, 2), hide: s < HIDE_AT ? 0 : Math.min(.75, .35 + .07 * (s - HIDE_AT)), behind: s < BEHIND_AT ? 0 : Math.min(.45, .2 + .05 * (s - BEHIND_AT)),
     subtle: up(0, 1 / 6, 1), press: s < HIDE_AT ? 0 : Math.min(.8, .3 + .1 * (s - HIDE_AT)), roam: up(3, 1 / 3, 2),
@@ -154,8 +162,8 @@ const overlap = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0
 // never this one's). Returns { seed, level, hero, friends, foes, ans (open as it starts, best first), after (open once
 // a moving red has got there, or null), at (s: when the answer changes), kinds, secs, need (s), look (arrow turns to
 // the first answer), place, two }.
-export function* layoutSteps(L, seed, prev = null) {
-  const d = openLevel(L), r0 = stream((((seed >>> 0) % 4294967291) + .5) / 4294967296);
+export function* layoutSteps(L, seed, prev = null, w = -1) {
+  const d = openLevel(L, w), r0 = stream((((seed >>> 0) % 4294967291) + .5) / 4294967296);
   // The plan is drawn once (so the shares of each kind of try are as the level says); only the places are drawn again
   // until every check passes. A plan that cannot be made (very rare) gives way to a plainer one.
   const U = (a, b) => a + (b - a) * r0(), nF = Math.min(5, Math.floor(d.friends) + (r0() < d.friends % 1 ? 1 : 0)), two = nF >= 3 && r0() < d.two, move = !two && r0() < d.move;
@@ -163,13 +171,13 @@ export function* layoutSteps(L, seed, prev = null) {
   if (two) zone = 'view'; // (the forward one: up the pitch, in front of him; the safe one anywhere)
   const plan = { nF, two, move, zone, side: r0() < .5 ? 1 : -1, far: r0() < .5 };
   if (prev?.place) { const k = prev.place; if (k.zone === zone && (k.d === 'far') === plan.far && k.lr === (plan.side > 0 ? 'l' : 'r')) plan.side = -plan.side; } // (never the same place twice running)
-  const plans = [plan, { ...plan, move: false }, { ...plan, move: false, two: false, zone: zone === 'behind' ? 'side' : zone }, { ...plan, move: false, two: false, zone: 'view', nF: 3 }];
+  const plans = [plan, { ...plan, move: false }, { ...plan, move: false, two: false, zone: zone === 'behind' ? 'side' : zone }, { ...plan, move: false, two: false, zone: 'view', nF: Math.min(3, nF) }];
   for (const [i, pl] of plans.entries()) for (let n = 0; n < 400; n++) { const lay = tryLayout(d, L, r0, prev, seed, n + i * 1000, pl); if (lay) return lay; yield n; }
-  void U; return fallback(L, seed); // (never seen: the tests make thousands)
+  void U; return fallback(L, seed, w); // (never seen: the tests make thousands)
 }
 // The same, made at once (the tests, the bots); the page makes the next try's layout a little at a time during this one
 // (layoutSteps yields after each attempt: mini/open-ui.js).
-export function makeLayout(L, seed, prev = null) { const g = layoutSteps(L, seed, prev); for (;;) { const r = g.next(); if (r.done) return r.value; } }
+export function makeLayout(L, seed, prev = null, w = -1) { const g = layoutSteps(L, seed, prev, w); for (;;) { const r = g.next(); if (r.done) return r.value; } }
 function tryLayout(d, L, r, prev, seed, n, plan) {
   const me = heroAt(), U = (a, b) => a + (b - a) * r(), pick = a => a[Math.floor(r() * a.length)], sgn = () => (r() < .5 ? 1 : -1);
   const { nF, two, move, zone } = plan, friends = [], foes = [], kinds = {};
@@ -219,7 +227,7 @@ function tryLayout(d, L, r, prev, seed, n, plan) {
     m.move = { to, t0, v: MOVE_V }; at = { t0, arrive };
   }
   // checks: the answer (and the second) open, every decoy shut, by both checks
-  const lay = { seed, level: L, n, hero: me, friends: friends.map(({ id, x, y }) => ({ id, x, y })), foes: foes.map(({ id, x, y, job, of, move: mv }) => ({ id, x, y, job, ...(of ? { of } : {}), ...(mv ? { move: mv } : {}) })), secs, two: !!second, at };
+  const lay = { seed, level: L, n, hero: me, friends: friends.map(({ id, x, y }) => ({ id, x, y })), foes: foes.map(({ id, x, y, job, of, move: mv }) => ({ id, x, y, job, ...(of ? { of } : {}), ...(mv ? { move: mv } : {}) })), secs, two: !!second, at, welcome: d.welcome ?? -1 };
   const st = statuses(me, lay.friends, lay.foes), open = openIds(st).sort();
   const wantOpen = [friends[0].id, ...(second ? [second.id] : [])].sort();
   if (open.join() !== wantOpen.join()) return null;
@@ -228,10 +236,11 @@ function tryLayout(d, L, r, prev, seed, n, plan) {
   // clear: without him he would be open) or 'lane' (that red in the line, nobody near him: free of a marker)
   for (const o of lay.foes) if (o.of) {
     const f = lay.friends.find(x => x.id === o.of), rest = lay.foes.filter(x => x !== o);
-    if (statuses(me, lay.friends, rest)[f.id].s !== 'open') return null;
+    if (rest.length && statuses(me, lay.friends, rest)[f.id].s !== 'open') return null; // (with nobody else of theirs he is open)
     if (o.job === 'marked' ? dist(o, f) > MARK_D : lay.foes.some(x => dist(x, f) < FREE_D)) return null;
   }
   lay.ans = answersAt(lay, 0); lay.kinds = kinds; lay.after = null;
+  if (d.welcome >= 0) { const f = friends[0]; for (const o of lay.foes) if (dist(o, f) < WELCOME_CLEAR[0] || onLane(o, me, f, 0).d < WELCOME_CLEAR[1]) return null; } // (welcoming: the open one plainly free)
   if (move) { // after the run: the friend he left is open, the old answer shut, the rest as they were; on the way, never anyone else
     const m = lay.foes.find(o => o.move), fId = m.of, end = at.arrive + .05;
     const st1 = statusAt(lay, end), o1 = openIds(st1);
@@ -264,10 +273,10 @@ function tryLayout(d, L, r, prev, seed, n, plan) {
   return lay;
 }
 // (never used in play: every level makes its layouts; kept so a try always has one)
-function fallback(L, seed) {
+function fallback(L, seed, w = -1) {
   const me = heroAt(), f = (id, a, r) => ({ id, x: me.x + Math.cos(a) * r, y: me.y + Math.sin(a) * r });
   const friends = [f('m1', .3, 6), f('m2', -.35, 7)], foes = [{ id: 'o1', x: friends[1].x - .7, y: friends[1].y, job: 'marked', of: 'm2' }];
-  return { seed, level: L, n: -2, hero: me, friends, foes, secs: openLevel(L).secs, two: false, at: null, ans: ['m1'], after: null, kinds: { m2: 'marked' }, place: placeKey(me, friends[0]), look: 0, need: needSecs(0) };
+  return { seed, level: L, n: -2, hero: me, friends, foes, secs: openLevel(L, w).secs, two: false, at: null, ans: ['m1'], after: null, kinds: { m2: 'marked' }, place: placeKey(me, friends[0]), look: 0, need: needSecs(0), welcome: w };
 }
 
 // ---------- a pass he plays ----------
