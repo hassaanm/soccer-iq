@@ -135,7 +135,7 @@ function tap(x, y) {
 }
 
 // ---------- one frame ----------
-let slowT = 0, saidAt = -99, real = 0, pending = [], warm = 0, camY = 10, out = 0;
+let slowT = 0, saidAt = -99, real = 0, pending = [], warm = 0, camY = 10, out = 0, agains = 0; // (agains: forgiven tackles since the page loaded, for the checks)
 function step(dt) {
   real += dt;
   const k = slowT > 0 ? .35 : 1; slowT = Math.max(0, slowT - dt);
@@ -216,7 +216,7 @@ function hooks() {
       hud.banner('GREAT RUN!', 'good');
       if (goodN === 1 || late) speak(late ? DASH_SAID.choice : DASH_SAID.good); else if (goodN % 4 === 0) speak(DASH_SAID.good);
     },
-    again(l, info) { plog({ is: 'again', why: info.why, by: info.by, pick: l.pick || '-', kind: l.wave.kind }); }, // (v96 fix: a forgiving leg's first tackle: no life lost, the leg again)
+    again(l, info) { agains++; plog({ is: 'again', why: info.why, by: info.by, pick: l.pick || '-', kind: l.wave.kind }); }, // (v96 fix: a forgiving leg's first tackle: no life lost, the leg again)
     tackle(l, by, why) {
       slowT = .55; tackles++;
       if (by && why !== 'marked') { sim.windup(by.id, 'touch'); later(.12, () => { sim.give(by.id); world.fx('stolen'); sfx('down'); }); }
@@ -270,4 +270,4 @@ function end() {
   onStage(null); undress(); game.home();
 }
 premake();
-if (typeof window !== 'undefined') window.__dash = { stage, runDash, get game() { return d; }, get sim() { return sim; }, playAt: 0 };
+if (typeof window !== 'undefined') window.__dash = { stage, runDash, get game() { return d; }, get sim() { return sim; }, get agains() { return agains; }, playAt: 0 };
