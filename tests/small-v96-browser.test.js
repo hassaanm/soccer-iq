@@ -12,7 +12,7 @@ const tests = CHROME ? test : test.skip;
 
 tests('the page items at 932x430: switches mirror, 8 and 10 tiles fit, STEAL by distance, no Classic lesson after Live', { timeout: 120000 }, async () => {
   const srv = await serve(), base = `http://127.0.0.1:${srv.address().port}/index.html`, b = await browser();
-  const go = async (q, settings = {}) => {
+  const go = async (q, settings = {}) => { settings = { voice: false, sound: false, music: false, ...settings }; // (silence: no voice, no sound, no music in the test save; the audio stubs of PRE as well)
     await b.send('Page.addScriptToEvaluateOnNewDocument', { source: PRE + `;try{const k='soccer-iq:v1',s=JSON.parse(localStorage.getItem(k));Object.assign(s.settings,${JSON.stringify(settings)});localStorage.setItem(k,JSON.stringify(s));}catch{}` }).then(r => r.identifier);
     const l = b.once('Page.loadEventFired'); await b.send('Page.navigate', { url: base + '?audit=pop' + q }); await l; await sleep(2200);
   };
