@@ -108,10 +108,10 @@ export const openIds = st => Object.keys(st).filter(id => st[id].s === 'open');
 export const HIDE_AT = 2, BEHIND_AT = 3, MOVE_AT = 4, TWO_AT = 5;
 // (v96 fix, the owner's decision) The first WELCOME tries of a run are welcoming, whatever the score: two friends, both
 // in front of him (one open, nobody of theirs near him; the other plainly shut: a red right next to him or right in the
-// middle of his line, and no other red on the pitch), WELCOME_SECS on the clock, and one more go after a first miss
-// (mini/open-ui.js: he sees why, the ball comes back, the same picture again; the second miss costs the life). From the
+// middle of his line, and no other red on the pitch), WELCOME_SECS on the clock, and AGAIN more goes after a miss
+// (mini/open-ui.js: he sees why, the ball comes back, the same picture again; the third miss costs the life). From the
 // third try on the level's own numbers below, as before.
-export const WELCOME = 2, WELCOME_SECS = 12, AGAIN = 1, WELCOME_CLEAR = [3.5, 2.5]; // (m: nobody of theirs this near the open friend, or his line)
+export const WELCOME = 2, WELCOME_SECS = 12, AGAIN = 2, WELCOME_CLEAR = [3.5, 2.5]; // (m: nobody of theirs this near the open friend, or his line)
 export const welcomeOf = n => (n >= 0 && n < WELCOME ? n : -1); // (the try's place among the welcoming ones, or -1)
 export function openLevel(L, w = -1) {
   const s = Math.max(0, L) * 3, up = (from, per, max) => clamp((s - from) * per, 0, max);

@@ -76,7 +76,8 @@ test("fix 3: Who's open's first two tries of a run are welcoming, then the level
   assert.deepEqual(O.openLevel(0), O.openLevel(0, -1)); assert.ok(O.openLevel(0).friends >= 3 && O.openLevel(2).hide > 0);
   const ui = code('js/mini/open-ui.js');
   assert.match(ui, /O\.welcomeOf\(run\.n\)/, 'the page asks for the welcoming layout by the try\'s number');
-  assert.match(body(ui, 'function finish('), /T\.again > 0/, 'a welcoming try\'s first miss gives one more go');
+  assert.ok(O.AGAIN >= 1); assert.match(body(ui, 'function finish('), /T\.again > 0/, 'a welcoming try\'s first misses give more goes');
+  assert.match(body(ui, 'async function playTry('), /begin\(lay, O\.AGAIN \* \(w >= 0 \? 1 : 0\)\)/, 'only in a welcoming try');
 });
 
 // ---------- 4. Dribble dash: forgiving first legs ----------

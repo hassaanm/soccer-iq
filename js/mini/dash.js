@@ -67,7 +67,7 @@ export function dashLevel(L) {
     wide: L < 2 / 3 - 1e-9, friend: L >= 2 - 1e-9, doubleP: L < 8 / 3 - 1e-9 ? 0 : Math.min(CEIL.dblMax, Math.min(.4, .22 + (L - 8 / 3) * .12) + CEIL.dbl * past),
     third: ramp(1.5, .3, .6)(L), // the share of plain lines with a third defender (out wide, covering)
     vmax: MOVE_MAX + CEIL.vmax * past,
-    late2: Math.min(CEIL.late2Max, Math.max(0, L * 3 - CEIL.late2From) * CEIL.late2), // (from score 16) a second late turn: both sides of an open middle, or in a second row
+    late2: Math.min(CEIL.late2Max, Math.max(0, L * 3 - CEIL.late2From) * CEIL.late2), // (from score 8) a second late turn: both sides of an open middle, or in a second row
   };
 }
 // (v96 fix) The first EASY_LEGS legs of a run (a leg: from his own half to the shot; a tackle starts the same leg again)
@@ -277,7 +277,7 @@ function doubleWave(r, D, cy, s2, openT, lockT, settleMax) {
   // line 2: its own times (from its own crossing, DOUBLE_T s after the first); in sight from the first one's arrows
   const o2 = openT - DOUBLE_T, sm2 = settleMax - .3; // (its movement settles a little before the usual: he reads it while he deals with the first)
   const shut2 = zig ? ['L', 'R'] : [other, 'M'], open2 = zig ? 'M' : s2;
-  const late2 = D.late2 && r() < D.late2 ? pick(r, shut2.filter(i => Math.abs(LANES[i] - LANES[open2]) === 1)) : null; // (from score 16: one of the second row turns back late)
+  const late2 = D.late2 && r() < D.late2 ? pick(r, shut2.filter(i => Math.abs(LANES[i] - LANES[open2]) === 1)) : null; // (from score 8: one of the second row turns back late)
   const defs2 = shut2.map(id => blocker(r, D, cy, id, open2, id === late2 ? 'late' : r() < D.moveP * .7 ? 'step' : 'stand', o2, sm2));
   const l2 = mkLine({ lanes, choices: lanes, defs: defs2, openT: o2, lockT, answer: open2, dx, second: true });
   l1.next = l2;

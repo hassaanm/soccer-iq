@@ -194,7 +194,7 @@ async function playTry(run) {
   plog({ is: 'layout', seed: lay.seed, level: +run.level.toFixed(2), right: lay.ans.join(','), after: lay.after?.join(',') || null, kinds: Object.entries(lay.kinds).map(([k, v]) => k + ':' + v).join(','), look: lay.look, secs: +lay.secs.toFixed(2), two: lay.two ? 1 : null, welcome: w >= 0 ? w + 1 : null });
   return new Promise(res => { T.done = res; });
 }
-// A try's picture, from the start (again: misses he has left that cost no life: a welcoming try's first miss).
+// A try's picture, from the start (again: misses he has left that cost no life: a welcoming try's first misses).
 function begin(lay, again, done = null) {
   setup(lay);
   T = { lay, t: 0, phase: 'ready', yaw: 0, yawTo: 0, turned: 0, seen: new Map(), moved: new Set(), tap: null, res: null, kick: null, done, t0: real, turns: 0, drags: 0, again };
@@ -320,7 +320,7 @@ function finish(ok, why = null) {
   }
   const out = { ok, why, tap: T.tap, bonus, how: T.how || null, sec: T.sec, right: (T.right || []).join(',') || '-', seed: lay.seed, look: ansSteps, turns: T.turns, drags: T.drags, turned: Math.round(T.turned * 57.3), kind: lay.two ? 'two' : lay.after ? 'move' : 'one', ...(!ok && T.again > 0 ? { again: 1 } : {}) };
   hist.push(out); if (hist.length > 200) hist.shift();
-  // (v96 fix) a welcoming try's first miss costs no life: once he has seen why, the same picture again, the ball his
+  // (v96 fix) a welcoming try's first misses (open.js AGAIN) cost no life: once he has seen why, the same picture again, the ball his
   if (!ok && T.again > 0) { const t = T; plog({ is: 'again', why, tap: t.tap || 'none' }); later(() => { if (T === t && stage.on) { begin(t.lay, t.again - 1, t.done); if (why !== 'time') speak(O.OPEN_SAID.time); } }, NEXT_BAD + 250); return; } // ("So close! Try again!")
   later(() => { const d = T.done; T.phase = 'gone'; d?.(out); }, ok ? NEXT_OK : NEXT_BAD);
 }
