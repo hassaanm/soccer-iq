@@ -36,7 +36,7 @@ export const SIDE_V = 3.4, LEAN_V = .8, LEAN_MAX = .5, HOME_V = 2.2, SIDE_ACC = 
 export const LOCK = 1.15;      // s before the crossing that his pick is final (a cut of G m takes about 1.1 s)
 export const MOVE_MIN = .8, MOVE_MAX = 2.6, RAMP = .25, TURN_RAMP = .3; // a defender's sideways pace (m/s) once he moves; speeding up, turning back
 export const AFTER_S = .45;    // s of running between a crossing and the next wave's arrows
-export const START_X = 1.5, SHOT_BACK = 13, GOAL_ROOM = 12.5; // a leg starts here; the shot is from at most SHOT_BACK m out; the last line leaves GOAL_ROOM m to their goal
+export const START_X = 9, SHOT_BACK = 13, GOAL_ROOM = 12.5; // a leg starts here (far enough out that the camera behind him is in front of his own goal, not looking through its net); the shot is from at most SHOT_BACK m out; the last line leaves GOAL_ROOM m to their goal
 export const LANES = { L: 1, M: 0, R: -1 }; // +y is his left (geom.js)
 
 // What he hears (all recorded already: voicelines.js loads every string this module exports, ui/voicewarm.js).

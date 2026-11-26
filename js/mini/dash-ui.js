@@ -189,11 +189,11 @@ function marks() {
 
 // ---------- what he sees and hears as play goes (the model's hooks) ----------
 function hooks() {
-  let goodN = 0, tackles = 0;
+  let goodN = 0, tackles = 0, friends = 0;
   return {
+    open(l) { if (l.state === 'open' && l.wave.kind === 'friend' && !friends++) speak(DASH_SAID.wall); }, // (the first friend of a run: "Pass and go, then get it back!")
     leg() { if (!sim) return; syncBodies(true); sim.restores++; ballToHero(); camera(0, true); world.mood = null; clearFx(); }, // (a new picture: the last goal's cheer and confetti go)
     wipe(on) { wipeEl.classList.toggle('on', on); },
-    open(l) { if (l.second || l.state !== 'open') return; if (d.waves <= 1 && !l.wave.n && l.wave.kind === 'wide' && real - saidAt > 4) { /* (the start card's line was just said) */ } },
     tap(l, id, counted) { plog({ is: 'tap', pick: id, ok: counted ? 1 : 0, t: l ? +d.rel(l).toFixed(2) : null }); },
     pass(l, free, by) {
       const f = d.friend; sim.windup('hero', 'pass');
