@@ -526,7 +526,7 @@ export const view = {
   handPoint(at) {
     const p = (this.handPt ||= { x: 0, y: 0, z: 0 });
     if (at.id) { const a = this.sim.a(at.id); if (!a) return null; p.x = a.x; p.y = a.y; p.z = at.z ?? .9; return p; }
-    if (at.opt) { const t = this.targets().find(x => x.opt === at.opt) || this.handSeen?.[at.opt]; if (!t) return null; (this.handSeen ||= {})[at.opt] = t; p.x = t.x; p.y = t.y; p.z = t.z ?? 0; return p; } // (kept: the step may close as the hand taps)
+    if (at.opt) { const t = this.targets().find(x => x.opt === at.opt) || (this.handSeen?.at === at ? this.handSeen.t : null); if (!t) return null; this.handSeen = { at, t }; p.x = t.x; p.y = t.y; p.z = t.z ?? 0; return p; } // (kept for this target: the step may close as the hand taps)
     p.x = at.x; p.y = at.y; p.z = at.z ?? 0; return p;
   },
   updateHud() {
