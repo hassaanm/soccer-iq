@@ -725,7 +725,8 @@ class Fast {
     if (want === 0 && this.slow < .015) this.slow = 0;
     }
     const fx = this.holding || (!this.V.crawl && want != null && want < BASE * .9);
-    if (this.V.crawl) { const on = this.dec.on; cls(this.dom.box, 'crawl', on); cls(this.dom.stay, 'show', on); const run = on && this.dec.clock != null; cls(this.dom.stay, 'run', run && !this.E.flip); cls(this.dom.stay, 'run2', run && this.E.flip); if (on) st.crawlT += dt; if (this.slow < .1) st.deepT += dt; this.E.waveK += ((on ? 1 : 0) - this.E.waveK) * (1 - Math.exp(-dt * 8)); } // (v96 E: its look, STAY and its fill, shown by class) if (fx !== this.dom.box.classList.contains('slowing')) this.dom.box.classList.toggle('slowing', fx); // (the hold's own slow look, here brought by the game)
+    if (this.V.crawl) { const on = this.dec.on; cls(this.dom.box, 'crawl', on); cls(this.dom.stay, 'show', on); const run = on && this.dec.clock != null; cls(this.dom.stay, 'run', run && !this.E.flip); cls(this.dom.stay, 'run2', run && this.E.flip); if (on) st.crawlT += dt; if (this.slow < .1) st.deepT += dt; this.E.waveK += ((on ? 1 : 0) - this.E.waveK) * (1 - Math.exp(-dt * 8)); } // (v96 E: its look, STAY and its fill, shown by class)
+    if (fx !== this.dom.box.classList.contains('slowing')) this.dom.box.classList.toggle('slowing', fx); // (the hold's own slow look, here brought by the game)
     if (this.dec.on) st.decT += dt; if (this.slow === 0) st.stopT += dt;
     const gdt = dt * this.slow; if (this.slow < BASE * .9) st.slowT += dt; if (this.holding) st.holdT += dt; if (!this.up1) st.headDownT += dt;
     m.step(gdt); if (this.V.auto) m.autoStep();
