@@ -54,6 +54,7 @@ import { optionsFor, makeGame, drive } from '../tests/harness.js';
 import { headingWatch, headingMatches, HEADING, kickWatch, walkMatches, walkText, WALK, cutMatches, cutText, RATE, rateJudge, hardFlags } from './live-audit.js';
 import { readFileSync, writeFileSync } from 'fs';
 import { poser, standWatch } from './stand-audit.js';
+import { focal } from '../js/game/shared.js';
 await poser(); // (alive-shape: everyone is posed as world.js poses him, so what he sees when he taps is graded as drawn too)
 
 const args = process.argv.slice(2), flag = k => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
@@ -87,7 +88,7 @@ function screen(cam, [x, y, z = .9]) {
   let r = [f[1], -f[0], 0]; const rl = Math.hypot(...r) || 1; r = r.map(v => v / rl);
   const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [x - cam.eye[0], y - cam.eye[1], z - cam.eye[2]];
   const zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (zz < .3) return null;
-  const F = Math.max(VH * cam.Ff, VW * (cam.Fw || 0));
+  const F = focal(VW, VH, cam); // (v96: as world.js draws it)
   return [VW / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, VH / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz];
 }
 const on = (p, m = 0) => !!p && p[0] >= m && p[0] <= VW - m && p[1] >= m && p[1] <= VH - m;

@@ -203,10 +203,14 @@ export class Game {
     if (this.lookUp && (this.phase === 'pre' || this.phase === 'decide')) this.playLook = true; // (v78: he has looked up in this play: beginStep)
     if (h) h.look = this.look; // his head in the picture (pro/motion.js): down over the ball until he looks up
     // While deciding with his head up, his body turns with his head (the ball stays at his feet).
-    if (h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble' && this.sc?.kind !== 'receive') {
+    const turns = !!h && this.phase === 'decide' && this.lookUp && this.step !== 'dribble' && this.sc?.kind !== 'receive';
+    if (turns) {
       const f0 = Math.atan2(h.face[1], h.face[0]), f = f0 + wrap(this.yaw - f0) * Math.min(1, dt * 10);
       h.face[0] = Math.cos(f); h.face[1] = Math.sin(f);
     }
+    // (v96) ... and in the picture the ball goes round with him, under his sole, as his body turns (pro/motion.js rollBall):
+    // never in the game itself (s.ball), from which every choice is planned and graded.
+    (s.ballShow ||= { id: 'hero', on: false, x: null, y: null }).on = turns && s.ball.carrier === 'hero';
 
     // Teammates count as found when he can see them with his head up. Everyone spotted together shows in one message.
     if (this.look > .8 && (this.phase === 'pre' || this.phase === 'decide')) {

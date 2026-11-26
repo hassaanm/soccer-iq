@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs';
 import { PATH, allScenarios } from '../js/skills.js';
 import { SIZES, setSize } from '../js/geom.js';
 import { makeGame, drive } from '../tests/harness.js';
+import { focal } from '../js/game/shared.js';
 
 export const STAND = { k: .12, yaw: 15, VW: 844, VH: 390 };
 // Rooted (reported, not limited): a second of play at full speed in which the ball moves ROOT.ball m or more and he, in
@@ -75,7 +76,7 @@ function screen(cam, x, y, z, VW = STAND.VW, VH = STAND.VH) {
   let r = [f[1], -f[0], 0]; const rl = Math.hypot(...r) || 1; r = r.map(v => v / rl);
   const up = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]], d = [x - cam.eye[0], y - cam.eye[1], z - cam.eye[2]];
   const zz = d[0] * f[0] + d[1] * f[1] + d[2] * f[2]; if (zz < .3) return null;
-  const F = Math.max(VH * cam.Ff, VW * (cam.Fw || 0));
+  const F = focal(VW, VH, cam); // (v96: as world.js draws it)
   return [VW / 2 + F * (d[0] * r[0] + d[1] * r[1]) / zz, VH / 2 - F * (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / zz];
 }
 const onScreen = p => !!p && p[0] >= 0 && p[0] <= STAND.VW && p[1] >= 0 && p[1] <= STAND.VH;

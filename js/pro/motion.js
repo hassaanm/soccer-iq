@@ -215,6 +215,40 @@ const bump = (c, a, b, d) => sm((c - a) / (b - a)) * (1 - sm((c - b) / (d - b)))
 const dropOf = (k, c) => k === 'fakeshot' ? .9 * bump(c, .1, .4, .72) - .6 * bump(c, .66, .92, 1.25) : k === 'scissors' ? bump(c, .4, .62, .9) - .8 * bump(c, .05, .3, .45) - .5 * bump(c, .85, 1.02, 1.3) : k === 'feint' ? 1.6 * bump(c, .08, .42, .8) - .6 * bump(c, .62, .9, 1.25) : bump(c, .15, .45, .78) - .6 * bump(c, .62, .9, 1.25);
 const DRIB_SKILL = { stepover: 1, scissors: 1, feint: 1, fakeshot: 1 };
 
+// (v96) The ball goes round with him as he turns to look at a decision (the owner: "they should sort of use a sole roll ...
+// to roll the ball with them as they look, versus just their body rotating awkwardly and the ball just stays in that one
+// spot"). Only for the player the game names in sim.ballShow ({ id, on }; the Classic game: his own player while his body
+// turns with the view, game.js frame), and only in the picture: the game's ball (sim.ball), from which every choice is
+// planned and graded, never moves for it. A small turn (under ROLL.dead) is his head and shoulders: the ball stays. A bigger
+// one: his sole goes on top of the ball and rolls it round in front of his feet as his body comes round (on a circle at the
+// distance the game has it, never in through his feet), and it stays there. When the game no longer asks (his choice) or
+// his body faces the game's ball again, it rolls back to the game's ball the same way, at the latest by the moment a kick's
+// foot meets it. Fills bs.x, bs.y (the drawn ball, for world.js) and returns true while it is drawn off the game's.
+export const ROLL = { dead: .4, k: 12, v: 2.2, back: 7, pull: .08, min: .3 };
+function rollBall(m, a, b, bs, carrying, kt, yaw, st, rdt) {
+  const R = m.roll ||= { th: 0, w: 0, leg: 0, on: false, off: false };
+  if (!carrying || b.state !== 'carried') { R.on = R.off = false; R.w = 0; bs.x = b.x; bs.y = b.y; return false; }
+  const dx = b.x - a.x, dy = b.y - a.y, r = Math.hypot(dx, dy), ph = Math.atan2(dy, dx);
+  if (!R.off) R.th = ph;
+  const free = bs.on && !b.move && !b.reach && kt > .7 && r < .8;
+  let to = ph, k = ROLL.back;
+  if (free) {
+    const gap = wrap(yaw - R.th); if (!R.on && Math.abs(gap) > ROLL.dead) { R.on = true; R.leg = gap > 0 ? 1 : 0; }
+    to = R.on ? yaw : Math.abs(wrap(yaw - ph)) < ROLL.dead ? ph : R.th; k = ROLL.k; // (rolling: to where his body faces; else it stays, or rejoins the game's ball when he faces it)
+  } else R.on = false;
+  const gap = wrap(to - R.th); let v = Math.max(ROLL.v, k * Math.abs(gap));
+  if (kt < .2) v = Math.max(v, Math.abs(gap) / Math.max(.02, .2 - kt)); // (a kick: on the game's ball as the foot meets it)
+  R.th += Math.sign(gap) * Math.min(Math.abs(gap), v * st);
+  if (R.on && Math.abs(wrap(to - R.th)) < .04) R.on = false;
+  R.off = Math.abs(wrap(R.th - ph)) > .004;
+  const moving = Math.abs(gap) > .03 && st > 0;
+  if (moving && !R.on) R.leg = gap > 0 ? 1 : 0;
+  R.w = damp(R.w, moving && r < .8 && kt > .7 && a.sp < 2 ? 1 : 0, 12, rdt); // (not at a run: his touches carry it then)
+  if (!R.off) { bs.x = b.x; bs.y = b.y; return false; }
+  const rr = Math.max(Math.min(r, ROLL.min), r * (1 - ROLL.pull * R.w)); // (under the sole it comes in a little, never nearer than ROLL.min)
+  bs.x = a.x + Math.cos(R.th) * rr; bs.y = a.y + Math.sin(R.th) * rr; return true;
+}
+
 // `time` is the clock of the picture, which keeps running when the game stops its own clock (`sim.time`).
 export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const u = g.userData, face = Math.atan2(a.face[1], a.face[0]), b = sim.ball, now = sim.time;
@@ -244,7 +278,9 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
   const carrying = carrier === a, vs = carrying ? a.sp : m.v, defending = !!m.poss && m.poss !== a.team, ours = m.poss === a.team && !carrying, dc = carrier ? Math.hypot(carrier.x - a.x, carrier.y - a.y) : 99;
   let foe = null, fd = 9;
   for (let i = 0; i < sim.list.length; i++) { const o = sim.list[i]; if (o.team !== a.team) { const d = Math.hypot(o.x - a.x, o.y - a.y); if (d < fd) { fd = d; foe = o; } } }
-  const bx = b.x - a.x, by = b.y - a.y, bd = Math.hypot(bx, by), toBall = Math.atan2(by, bx), gdir = Math.atan2(FIELD.W / 2 - a.y, (a.team === 'us' ? FIELD.L : 0) - a.x);
+  // (v96) His ball as it is drawn: where the game has it, unless the game asks for it to go round with his body (rollBall).
+  const bs = sim.ballShow, drawn = bs && bs.id === a.id ? rollBall(m, a, b, bs, carrying, kt, u.yaw + .5 * wrap(face - u.yaw), dt || rdt, rdt) : (m.roll = null);
+  const bx = (drawn ? bs.x : b.x) - a.x, by = (drawn ? bs.y : b.y) - a.y, bd = Math.hypot(bx, by), toBall = Math.atan2(by, bx), gdir = Math.atan2(FIELD.W / 2 - a.y, (a.team === 'us' ? FIELD.L : 0) - a.x);
   // His skill move now, if any (sim.js); through a skill turn's fake his chest stays square to the old way (hold).
   const sk = carrying && kt > .7 ? skillNow(sim, a.id) : null;
   const hold = sk && b.move && (sk.k === 'chop' || sk.k === 'cruyff') ? wrap(sk.yaw - face) * (1 - sm((sk.c - sk.at + .04) / .14)) : 0;
@@ -374,6 +410,8 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
       const r = BALL + (k === 'laces' ? .12 : .05) + .1 * pre + (b.move.k === 'cruyff' || b.move.k === 'chop' ? .03 : 0), back = k === 'inside' ? .05 : k === 'outside' ? .07 : 0; // on its way it comes from that side, a little off the ball
       fx = bf - nx * r - Math.cos(ft) * back; fy = bl - ny * r - Math.sin(ft) * back; fz = (k === 'laces' ? .1 : .09) + .12 * pre; fp = k === 'laces' ? .5 : k === 'outside' ? .1 : -.15;
     }
+  } else if (!act && m.roll && m.roll.w > .01) { // (v96) the sole on top of the ball, rolling it round with him (rollBall)
+    fW = m.roll.w; fLeg = m.roll.leg; fx = bf - .05; fy = bl; fz = .3; fp = -.2; ft = (fLeg ? 1 : -1) * .2;
   } else if (act && act.k === 'trap') {
     if (act.hit < 0 && b.state !== 'flying') act.hit = now;
     const c = act.hit < 0 ? 0 : now - act.hit, e = sm(c / .2);
@@ -543,7 +581,7 @@ export function animateRig(g, a, sim, mood = 0, moodT = 0, time = sim.time) {
     if (air) { z += air * .85; p += .5 * hop * mood; }
     // Where his foot's pose comes from (a turn's touch and its part, a trap, a sole, a kick, a skill, a fake, a planted
     // foot, a dribble touch, a jump): when that changes, the foot goes on from where it was (see `join`).
-    const key = (i === fLeg && fW > 0 ? (tm ? 4 + PART[tm.part] : act.k === 'trap' ? 2 : 3) : 0) + (kw > 0 ? 16 : 0) + (sw > 0 ? 32 : 0) + (fk > 0 && i === fkL ? 64 : 0) + (pw > 0 && i !== fkL ? 128 : 0) + (fl.on ? 256 : 0) + (tch ? 512 : 0) + (air > 0 ? 1024 : 0);
+    const key = (i === fLeg && fW > 0 ? (tm ? 4 + PART[tm.part] : act?.k === 'trap' ? 2 : 3) : 0) + (kw > 0 ? 16 : 0) + (sw > 0 ? 32 : 0) + (fk > 0 && i === fkL ? 64 : 0) + (pw > 0 && i !== fkL ? 128 : 0) + (fl.on ? 256 : 0) + (tch ? 512 : 0) + (air > 0 ? 1024 : 0);
     const J = join(fl, key, x - ox, y, z, p, turn, kq, time, i === fLeg && tm && fW > 0 ? 34 : JW); // a foot going to the ball in a turn gets there sooner (about 0.1 s)
     if (bd < 1.2 && b.state !== 'flying' && !(kw && i === m.kf) && !(act?.k === 'trap' && i === fLeg) && !(tm && i === fLeg && fW > .5 && b.move.k === 'first')) bootOut(J, ox - bf, oy - bl, BALL, fl); else fl.bo = null; // (a kick's foot, a trap's and the foot taking a pass on with a turn meet it as they are made to)
     fl.px = a.x + AX + cyaw * (J[0] + ox) - syaw * (J[1] + oy); fl.py = a.y + AY + syaw * (J[0] + ox) + cyaw * (J[1] + oy); // where this foot is on the grass now

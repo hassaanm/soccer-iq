@@ -10,6 +10,7 @@ import { animateRig } from './pro/motion.js';
 import { animateKeeper } from './pro/keeper.js';
 import { keeperKit } from './teams.js';
 import { mark } from './perf.js';
+import { focal } from './game/shared.js';
 import { clipsLoading } from './sound.js';
 import { makePost } from './pro/post.js';
 import { buildStadium, TOWERS, join } from './pro/stadium.js';
@@ -557,7 +558,7 @@ export class World {
     // it costs no compile. (On the first frame and at a scene change, where the picture changes anyway.)
     if (!this.warmed) { this.warmed = true; try { this.renderer.compile(this.scene, c); } catch (e) { console.error(e); } }
     // Focal length from height (Ff) and width (Fw) so wide phones don't see extra field.
-    const F = Math.max(Hpx * cam.Ff, Wpx * (cam.Fw || 0)), aspect = Wpx / Hpx;
+    const F = focal(Wpx, Hpx, cam), aspect = Wpx / Hpx; // (v96: game/shared.js focal: with cam.Fa, the Classic game's own views on a screen narrower than a phone's)
     let fov = 2 * Math.atan(Hpx / 2 / F) * 180 / Math.PI;
     c.position.set(eye[0], eye[1], eye[2]); c.lookAt(tgt[0], tgt[1], tgt[2]);
     const dt = Math.min(.05, Math.max(0, time - (this.time ?? time))); this.time = time; this.sim = sim;
@@ -624,13 +625,15 @@ export class World {
     if (st) { const k = 1 + .04 * Math.sin(time * 5); this.stayBadge.position.set(st.x, st.y, st.z); this.stayBadge.scale.set(.82 * k, 1 * k, 1); } // (a softer pulse than the rings)
     this.setLines(ui.lines);
     // Roll the ball by the distance it moved, around the axis perpendicular to its motion.
-    const b = sim.ball, bp = this.ballPrev;
+    // (v96) The ball as it is drawn: the game may have it go round with his body as he looks (pro/motion.js rollBall,
+    // sim.ballShow); else, and in every other mode, where the game has it.
+    const b = sim.ball, sb = sim.ballShow, own = !!sb && b.state === 'carried' && b.carrier === sb.id && sb.x != null, bX = own ? sb.x : b.x, bY = own ? sb.y : b.y, bp = this.ballPrev;
     if (bp) {
-      const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
+      const dx = bX - bp.x, dy = bY - bp.y, d = Math.hypot(dx, dy);
       if (d > 1e-4 && d < 3) this.ball.quaternion.premultiply(this.q.setFromAxisAngle(this.axis.set(-dy / d, dx / d, 0), d / BALL_R));
       if (dt && b.state === 'flying' && d / dt > 13) this.particles.trail(b.x, b.y, BALL_R + (b.z || 0)); // a hard shot leaves a trail
-      bp.x = b.x; bp.y = b.y;
-    } else this.ballPrev = { x: b.x, y: b.y };
+      bp.x = bX; bp.y = bY;
+    } else this.ballPrev = { x: bX, y: bY };
     const tm = ui.timer && h; this.timerRing.visible = !!tm;
     if (tm) {
       const left = ui.timer.left, top = Math.atan2(c.position.y - h.y, c.position.x - h.x) + Math.PI; // the ring's far side from the camera: where it starts and ends
@@ -644,10 +647,10 @@ export class World {
       this.pressSegs.forEach((m, i) => { const d = ((i - c) % 24 + 36) % 24 - 12; m.visible = Math.abs(d) * 2 < n || (n >= 24); }); }
     const rc = null; this.reachMesh.visible = false; // (round 3: no patch on the grass) // the threat's reach, from his feet to as far as it goes (a little behind him, so it starts under him)
     if (rc) { const back = .3; this.reachMesh.position.set(rc.x - rc.dx * back, rc.y - rc.dy * back, .022); this.reachMesh.rotation.z = Math.atan2(rc.dy, rc.dx); this.reachMesh.scale.set(rc.len + back + .12, 1.05, 1); }
-    this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(b.x, b.y, .03); this.ballGlow.material.opacity = pulse; }
-    this.ball.position.set(b.x, b.y, BALL_R + (b.z || 0)); this.ball.visible = this.ballBlob.visible = !b.hidden; // (hidden: out of play, see outcomes.js missedShot)
+    this.ballGlow.visible = !!ui.ballGlow; if (ui.ballGlow) { this.ballGlow.position.set(bX, bY, .03); this.ballGlow.material.opacity = pulse; }
+    this.ball.position.set(bX, bY, BALL_R + (b.z || 0)); this.ball.visible = this.ballBlob.visible = !b.hidden; // (hidden: out of play, see outcomes.js missedShot)
     // The ball's own soft spot on the grass, smaller and fainter the higher it flies, so its height is easy to read.
-    const bz = b.z || 0; this.ballBlob.position.set(b.x, b.y, .014); this.ballBlob.scale.setScalar(1 / (1 + bz * .5)); this.ballBlob.material.opacity = .9 / (1 + bz * .8);
+    const bz = b.z || 0; this.ballBlob.position.set(bX, bY, .014); this.ballBlob.scale.setScalar(1 / (1 + bz * .5)); this.ballBlob.material.opacity = .9 / (1 + bz * .8);
     // The crowd gets louder as the ball nears a goal and calms down after.
     const nearGoal = this.crowd.visible ? clamp(1 - Math.min(Math.hypot(b.x - L, b.y - CY), Math.hypot(b.x, b.y - CY)) / 9, 0, 1) * .3 : 0;
     this.excite = Math.max(nearGoal, this.excite * Math.exp(-dt * .55));
@@ -671,7 +674,7 @@ export class World {
         }
       };
       for (let i = 0; i < IDS.length; i++) { const g = this.rigs.get(IDS[i]); if (g?.visible) put(g.position.x, g.position.y, 1.6); }
-      if ((sim.ball.z || 0) < .5) put(sim.ball.x, sim.ball.y, .3);
+      if ((sim.ball.z || 0) < .5) put(this.ball.position.x, this.ball.position.y, .3); // (the ball as drawn: render)
       this.streaks.instanceMatrix.needsUpdate = true;
     }
     this.streaks.count = n;
